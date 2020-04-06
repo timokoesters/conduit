@@ -225,6 +225,10 @@ impl Data {
         ))
         .expect("ruma's reference hashes are correct");
 
+        let key_pair: ruma_signatures::Ed25519KeyPair = todo!();
+        let mut pdu_json = serde_json::to_value(pdu).unwrap();
+        ruma_signatures::hash_and_sign_event(self.hostname(), &key_pair, &mut pdu_json);
+
         self.pdu_leaves_replace(&room_id, &pdu.event_id);
 
         // The new value will need a new index. We store the last used index in 'n'
@@ -250,7 +254,7 @@ impl Data {
 
         self.db
             .pduid_pdus
-            .insert(&pdu_id, &*serde_json::to_string(&pdu).unwrap())
+            .insert(&pdu_id, &*serde_json::to_string(&pdu_json).unwrap())
             .unwrap();
 
         self.db
