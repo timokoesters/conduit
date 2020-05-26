@@ -1,3 +1,4 @@
+use super::appservices;
 use crate::{utils, Error, Result};
 
 pub const COUNTER: &str = "c";
@@ -6,12 +7,18 @@ pub struct Globals {
     pub(super) globals: sled::Tree,
     keypair: ruma::signatures::Ed25519KeyPair,
     reqwest_client: reqwest::Client,
+    appservices: appservices::AppServices,
     server_name: String,
     registration_disabled: bool,
 }
 
 impl Globals {
     pub fn load(globals: sled::Tree, config: &rocket::Config) -> Result<Self> {
+        let server_name = config
+            .get_str("server_name")
+            .unwrap_or("localhost")
+            .to_owned();
+
         let keypair = ruma::signatures::Ed25519KeyPair::new(
             &*globals
                 .update_and_fetch("keypair", utils::generate_keypair)?
@@ -20,16 +27,37 @@ impl Globals {
         )
         .map_err(|_| Error::bad_database("Private or public keys are invalid."))?;
 
+        let appservices = appservices::AppServices::new(
+            config
+                .get_slice("appservice_registrations")
+                .unwrap_or(&vec![])
+                .iter()
+                .map(|reg| {
+                    reg.clone()
+                        .try_into::<String>()
+                        .expect("appservice registration should be a path to a file")
+                }),
+            &server_name,
+        )?;
+
         Ok(Self {
             globals,
             keypair,
             reqwest_client: reqwest::Client::new(),
-            server_name: config
-                .get_str("server_name")
-                .unwrap_or("localhost")
-                .to_owned(),
+            appservices,
+            server_name,
             registration_disabled: config.get_bool("registration_disabled").unwrap_or(false),
         })
+    }
+
+    /// Returns the server_name of the server.
+    pub fn server_name(&self) -> &str {
+        &self.server_name
+    }
+
+    /// Returns the appservice registrations of the server.
+    pub fn appservices(&self) -> &appservices::AppServices {
+        &self.appservices
     }
 
     /// Returns this server's keypair.
@@ -57,10 +85,6 @@ impl Globals {
             Ok(utils::u64_from_bytes(&bytes)
                 .map_err(|_| Error::bad_database("Count has invalid bytes."))?)
         })
-    }
-
-    pub fn server_name(&self) -> &str {
-        &self.server_name
     }
 
     pub fn registration_disabled(&self) -> bool {

@@ -1,14 +1,18 @@
-use crate::{utils, Error};
+use crate::{database::appservices::InterestLevel, utils, Error};
 use log::warn;
 use rocket::{
-    data::{Data, FromDataFuture, Transform, TransformFuture, Transformed, FromTransformedData},
+    data::{Data, FromDataFuture, FromTransformedData, Transform, TransformFuture, Transformed},
     http::Status,
     response::{self, Responder},
     Outcome::*,
     Request, State,
 };
 use ruma::{api::Endpoint, identifiers::UserId};
-use std::{convert::TryInto, io::Cursor, ops::Deref};
+use std::{
+    convert::{TryFrom, TryInto},
+    io::Cursor,
+    ops::Deref,
+};
 use tokio::io::AsyncReadExt;
 
 const MESSAGE_LIMIT: u64 = 20 * 1024 * 1024; // 20 MB
@@ -61,8 +65,35 @@ impl<'a, T: Endpoint> FromTransformedData<'a> for Ruma<T> {
 
                 // Check if token is valid
                 match db.users.find_from_token(&token).unwrap() {
-                    // TODO: M_UNKNOWN_TOKEN
-                    None => return Failure((Status::Unauthorized, ())),
+                    None => {
+                        if let Some(appservice) = db.globals.appservices().from_token(&token) {
+                            match request.get_query_value::<String>("user_id") {
+                                Some(Ok(user_id)) => {
+                                    if let Ok(user_id) = UserId::try_from(user_id) {
+                                        if !db.users.exists(&user_id).unwrap() {
+                                            // User does not exist
+                                            return Failure((Status::BadRequest, ()));
+                                        }
+                                        if appservice.interest_in_user(&user_id)
+                                            != InterestLevel::Uninterested
+                                        {
+                                            (Some(user_id), None)
+                                        } else {
+                                            // TODO: M_EXCLUSIVE
+                                            return Failure((Status::Unauthorized, ()));
+                                        }
+                                    } else {
+                                        return Failure(((Status::BadRequest), ()));
+                                    }
+                                }
+                                Some(Err(_)) => return Failure(((Status::BadRequest), ())),
+                                None => (Some(appservice.service_user.clone()), None),
+                            }
+                        } else {
+                            // TODO: M_UNKNOWN_TOKEN
+                            return Failure((Status::Unauthorized, ()));
+                        }
+                    }
                     Some((user_id, device_id)) => (Some(user_id), Some(device_id)),
                 }
             } else {
@@ -125,7 +156,7 @@ impl<'r, 'o, T> Responder<'r, 'o> for RumaResponse<T>
 where
     T: Send + TryInto<http::Response<Vec<u8>>>,
     T::Error: Send,
-    'o: 'r
+    'o: 'r,
 {
     fn respond_to(self, _: &'r Request<'_>) -> response::Result<'o> {
         let http_response: Result<http::Response<_>, _> = self.0.try_into();
@@ -143,8 +174,7 @@ where
 
                 let http_body = http_response.into_body();
 
-                response
-                    .sized_body(http_body.len(), Cursor::new(http_body));
+                response.sized_body(http_body.len(), Cursor::new(http_body));
 
                 response.raw_header("Access-Control-Allow-Origin", "*");
                 response.raw_header(

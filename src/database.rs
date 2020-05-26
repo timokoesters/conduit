@@ -1,4 +1,5 @@
 pub(self) mod account_data;
+pub mod appservices;
 pub(self) mod global_edus;
 pub(self) mod globals;
 pub(self) mod key_backups;
@@ -66,7 +67,7 @@ impl Database {
         info!("Opened sled database at {}", path);
 
         Ok(Self {
-            globals: globals::Globals::load(db.open_tree("global")?, config)?,
+            globals: globals::Globals::load(db.open_tree("global").unwrap(), config)?,
             users: users::Users {
                 userid_password: db.open_tree("userid_password")?,
                 userid_displayname: db.open_tree("userid_displayname")?,
