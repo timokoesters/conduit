@@ -707,8 +707,6 @@ pub fn upload_keys_route(
         if db.users.get_device_keys(user_id, device_id)?.is_none() {
             db.users
                 .add_device_keys(user_id, device_id, device_keys, &db.globals)?;
-        } else {
-            println!("Key from {} was skipped: {:?}", user_id, device_keys);
         }
     }
 
@@ -3125,4 +3123,3 @@ pub fn options_route(
 ) -> ConduitResult<send_event_to_device::Response> {
     Ok(send_event_to_device::Response.into())
 }
-

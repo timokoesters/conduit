@@ -472,11 +472,6 @@ impl Users {
         sender_id: &UserId,
         globals: &super::globals::Globals,
     ) -> Result<()> {
-        println!(
-            "Adding signatures on {}'s {} by {}: {}->{}",
-            target_id, key_id, sender_id, signature.0, signature.1
-        );
-
         let mut key = target_id.to_string().as_bytes().to_vec();
         key.push(0xff);
         key.extend_from_slice(key_id.to_string().as_bytes());

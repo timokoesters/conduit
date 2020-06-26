@@ -1,4 +1,3 @@
-# Register endpoints implemented
 GET /register yields a set of flows
 POST /register can create a user
 POST /register downcases capitals in usernames
@@ -17,14 +16,12 @@ POST /register rejects registration of usernames with '£'
 POST /register rejects registration of usernames with 'é'
 POST /register rejects registration of usernames with '\n'
 POST /register rejects registration of usernames with '''
-# Login endpoints implemented
 GET /login yields a set of flows
 POST /login can log in as a user
 POST /login returns the same device_id as that in the request
 POST /login can log in as a user with just the local part of the id
 POST /login as non-existing user is rejected
 POST /login wrong password is rejected
-# Room creation endpoints implemented
 POST /createRoom makes a private room
 POST /createRoom makes a private room with invites
 GET /rooms/:room_id/state/m.room.member/:user_id fetches my membership
@@ -49,15 +46,6 @@ Can read configuration endpoint
 AS cannot create users outside its own namespace
 Changing the actions of an unknown default rule fails with 404
 Changing the actions of an unknown rule fails with 404
-Trying to add push rule with invalid scope fails with 400
-Trying to add push rule with invalid template fails with 400
-Trying to add push rule with rule_id with slashes fails with 400
-Trying to add push rule with override rule without conditions fails with 400
-Trying to add push rule with underride rule without conditions fails with 400
-Trying to add push rule with condition without kind fails with 400
-Trying to add push rule with content rule without pattern fails with 400
-Trying to add push rule with no actions fails with 400
-Trying to add push rule with invalid action fails with 400
 Trying to get push rules with unknown rule_id fails with 404
 GET /events with non-numeric 'limit'
 GET /events with negative 'limit'
