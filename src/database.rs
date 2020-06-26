@@ -65,6 +65,25 @@ impl Database {
         let db = sled::open(&path)?;
         info!("Opened sled database at {}", path);
 
+        // Migrate old sled:
+        let path_old = path + ".old";
+        let old = old_sled::open(&path_old).unwrap();
+        db.import(old.export());
+        let _ = db.drop_tree(b"userid_password");
+        let _ = db.drop_tree(b"userid_displayname");
+        let _ = db.drop_tree(b"userid_avatarurl");
+        let _ = db.drop_tree(b"userdeviceid_token");
+        let _ = db.drop_tree(b"userdeviceid_metadata");
+        let _ = db.drop_tree(b"token_userdeviceid");
+        let _ = db.drop_tree(b"onetimekeyid_onetimekeys");
+        let _ = db.drop_tree(b"devicekeychangeid_userid");
+        let _ = db.drop_tree(b"keyid_key");
+        let _ = db.drop_tree(b"userid_masterkeyid");
+        let _ = db.drop_tree(b"userid_selfsigningkeyid");
+        let _ = db.drop_tree(b"userid_usersigningkeyid");
+        let _ = db.drop_tree(b"todeviceid_events");
+        let _ = db.drop_tree(b"roomuserdataid_accountdata");
+
         Ok(Self {
             globals: globals::Globals::load(db.open_tree("global")?, config)?,
             users: users::Users {
