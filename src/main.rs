@@ -26,7 +26,7 @@ fn setup_rocket() -> rocket::Rocket {
                 client_server::get_supported_versions_route,
                 client_server::get_register_available_route,
                 client_server::register_route,
-                client_server::get_login_route,
+                client_server::get_login_types_route,
                 client_server::login_route,
                 client_server::whoami_route,
                 client_server::logout_route,

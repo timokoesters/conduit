@@ -20,6 +20,12 @@ use rocket::{get, post};
 
 const GUEST_NAME_LENGTH: usize = 10;
 
+/// # `GET /_matrix/client/r0/register/available`
+///
+/// Checks if a username is valid and available on this server.
+///
+/// - Returns true if no user or appservice on this server claimed this username
+/// - This will not reserve the username, so the username might become invalid when trying to register
 #[cfg_attr(
     feature = "conduit_bin",
     get("/_matrix/client/r0/register/available", data = "<body>")
@@ -53,6 +59,15 @@ pub fn get_register_available_route(
     Ok(get_username_availability::Response { available: true }.into())
 }
 
+/// # `GET /_matrix/client/r0/register`
+///
+/// Register an account on this homeserver.
+///
+/// - Returns the device id and access_token unless `inhibit_login` is true
+/// - When registering a guest account, all parameters except initial_device_display_name will be
+/// ignored
+/// - Creates a new account and a device for it
+/// - The account will be populated with default account data
 #[cfg_attr(
     feature = "conduit_bin",
     post("/_matrix/client/r0/register", data = "<body>")
@@ -168,6 +183,13 @@ pub fn register_route(
     .into())
 }
 
+/// # `POST /_matrix/client/r0/account/password`
+///
+/// Changes the password of this account.
+///
+/// - Invalidates all other access tokens if logout_devices is true
+/// - Deletes all other devices and most of their data (to-device events, last seen, etc.) if
+/// logout_devices is true
 #[cfg_attr(
     feature = "conduit_bin",
     post("/_matrix/client/r0/account/password", data = "<body>")
@@ -225,6 +247,11 @@ pub fn change_password_route(
     Ok(change_password::Response.into())
 }
 
+/// # `GET _matrix/client/r0/account/whoami`
+///
+/// Get user_id of this account.
+///
+/// - Also works for Application Services
 #[cfg_attr(
     feature = "conduit_bin",
     get("/_matrix/client/r0/account/whoami", data = "<body>")
@@ -237,6 +264,14 @@ pub fn whoami_route(body: Ruma<whoami::Request>) -> ConduitResult<whoami::Respon
     .into())
 }
 
+/// # `POST /_matrix/client/r0/account/deactivate`
+///
+/// Deactivate this user's account
+///
+/// - Leaves all rooms and rejects all invitations
+/// - Invalidates all access tokens
+/// - Deletes all devices
+/// - Removes ability to log in again
 #[cfg_attr(
     feature = "conduit_bin",
     post("/_matrix/client/r0/account/deactivate", data = "<body>")

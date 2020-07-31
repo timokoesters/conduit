@@ -12,14 +12,28 @@ use ruma::{
 #[cfg(feature = "conduit_bin")]
 use rocket::{get, post};
 
+/// # `GET /_matrix/client/r0/login`
+///
+/// Get the homeserver's supported login types. One of these should be used as the `type` field
+/// when logging in.
 #[cfg_attr(feature = "conduit_bin", get("/_matrix/client/r0/login"))]
-pub fn get_login_route() -> ConduitResult<get_login_types::Response> {
+pub fn get_login_types_route() -> ConduitResult<get_login_types::Response> {
     Ok(get_login_types::Response {
         flows: vec![get_login_types::LoginType::Password],
     }
     .into())
 }
 
+/// # `POST /_matrix/client/r0/login`
+///
+/// Authenticates the user and returns an access token it can use in subsequent requests.
+///
+/// - The returned access token is associated with the user and device
+/// - Old access tokens of that device should be invalidated
+/// - If `device_id` is unknown, a new device will be created
+///
+/// Note: You can use [`GET /_matrix/client/r0/login`](fn.get_supported_versions_route.html) to see
+/// supported login types.
 #[cfg_attr(
     feature = "conduit_bin",
     post("/_matrix/client/r0/login", data = "<body>")
@@ -74,6 +88,7 @@ pub fn login_route(
     // Generate a new token for the device
     let token = utils::random_string(TOKEN_LENGTH);
 
+    // TODO: Don't always create a new device
     // Add device
     db.users.create_device(
         &user_id,
@@ -92,6 +107,12 @@ pub fn login_route(
     .into())
 }
 
+/// # `POST /_matrix/client/r0/logout`
+///
+/// Log out the current device.
+///
+/// - Invalidates the access token
+/// - Deletes the device and most of it's data (to-device events, last seen, etc.)
 #[cfg_attr(
     feature = "conduit_bin",
     post("/_matrix/client/r0/logout", data = "<body>")
@@ -108,6 +129,15 @@ pub fn logout_route(
     Ok(logout::Response.into())
 }
 
+/// # `POST /_matrix/client/r0/logout/all`
+///
+/// Log out all devices of this user.
+///
+/// - Invalidates all access tokens
+/// - Deletes devices and most of their data (to-device events, last seen, etc.)
+///
+/// Note: This is equivalent to calling [`GET /_matrix/client/r0/logout`](fn.logout_route.html)
+/// from each device of this user.
 #[cfg_attr(
     feature = "conduit_bin",
     post("/_matrix/client/r0/logout/all", data = "<body>")

@@ -5,6 +5,9 @@ use std::collections::BTreeMap;
 #[cfg(feature = "conduit_bin")]
 use rocket::get;
 
+/// # `GET /_matrix/client/r0/capabilities`
+///
+/// Get information on this server's supported feature set and other relevent capabilities.
 #[cfg_attr(feature = "conduit_bin", get("/_matrix/client/r0/capabilities"))]
 pub fn get_capabilities_route() -> ConduitResult<get_capabilities::Response> {
     let mut available = BTreeMap::new();

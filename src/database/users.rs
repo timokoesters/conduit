@@ -859,7 +859,9 @@ impl Users {
             self.remove_device(&user_id, &device_id?)?;
         }
 
-        // Set the password to "" to indicate a deactivated account
+        // Set the password to "" to indicate a deactivated account. Hashes will never result in an
+        // empty string, so the user will not be able to log in again. Systems like changing the
+        // password without logging in should check if the account is deactivated.
         self.userid_password.insert(user_id.to_string(), "")?;
 
         // TODO: Unhook 3PID
