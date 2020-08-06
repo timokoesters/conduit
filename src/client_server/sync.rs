@@ -19,7 +19,7 @@ use std::{
 )]
 pub async fn sync_events_route(
     db: State<'_, Database>,
-    body: Ruma<sync_events::Request>,
+    body: Ruma<sync_events::IncomingRequest>,
 ) -> ConduitResult<sync_events::Response> {
     let sender_id = body.sender_id.as_ref().expect("user is authenticated");
     let device_id = body.device_id.as_ref().expect("user is authenticated");
@@ -391,18 +391,18 @@ pub async fn sync_events_route(
         let mut invited_since_last_sync = false;
         for pdu in db.rooms.pdus_since(&sender_id, &room_id, since)? {
             let pdu = pdu?;
-            if pdu.kind == EventType::RoomMember {
-                if pdu.state_key == Some(sender_id.to_string()) {
-                    let content = serde_json::from_value::<
-                        Raw<ruma::events::room::member::MemberEventContent>,
-                    >(pdu.content.clone())
-                    .expect("Raw::from_value always works")
-                    .deserialize()
-                    .map_err(|_| Error::bad_database("Invalid PDU in database."))?;
-                    if content.membership == ruma::events::room::member::MembershipState::Invite {
-                        invited_since_last_sync = true;
-                        break;
-                    }
+
+            if pdu.kind == EventType::RoomMember && pdu.state_key == Some(sender_id.to_string()) {
+                let content = serde_json::from_value::<
+                    Raw<ruma::events::room::member::MemberEventContent>,
+                >(pdu.content.clone())
+                .expect("Raw::from_value always works")
+                .deserialize()
+                .map_err(|_| Error::bad_database("Invalid PDU in database."))?;
+
+                if content.membership == ruma::events::room::member::MembershipState::Invite {
+                    invited_since_last_sync = true;
+                    break;
                 }
             }
         }

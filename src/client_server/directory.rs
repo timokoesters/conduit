@@ -6,7 +6,7 @@ use ruma::{
             error::ErrorKind,
             r0::{
                 directory::{
-                    self, get_public_rooms, get_public_rooms_filtered, get_room_visibility,
+                    get_public_rooms, get_public_rooms_filtered, get_room_visibility,
                     set_room_visibility,
                 },
                 room,
@@ -14,6 +14,7 @@ use ruma::{
         },
         federation,
     },
+    directory::PublicRoomsChunk,
     events::{
         room::{avatar, canonical_alias, guest_access, history_visibility, name, topic},
         EventType,
@@ -35,15 +36,15 @@ pub async fn get_public_rooms_filtered_route(
     if let Some(other_server) = body
         .server
         .clone()
-        .filter(|server| server != &db.globals.server_name().as_str())
+        .filter(|server| server != db.globals.server_name().as_str())
     {
         let response = server_server::send_request(
             &db,
             other_server,
             federation::directory::get_public_rooms::v1::Request {
                 limit: body.limit,
-                since: body.since.clone(),
-                room_network: federation::directory::get_public_rooms::v1::RoomNetwork::Matrix,
+                since: body.since.as_deref(),
+                room_network: ruma::directory::RoomNetwork::Matrix,
             },
         )
         .await?;
@@ -107,7 +108,7 @@ pub async fn get_public_rooms_filtered_route(
                 // TODO: Do not load full state?
                 let state = db.rooms.room_state_full(&room_id)?;
 
-                let chunk = directory::PublicRoomsChunk {
+                let chunk = PublicRoomsChunk {
                     aliases: Vec::new(),
                     canonical_alias: state
                         .get(&(EventType::RoomCanonicalAlias, "".to_owned()))
@@ -272,7 +273,7 @@ pub async fn get_public_rooms_route(
             body: get_public_rooms_filtered::IncomingRequest {
                 filter: None,
                 limit,
-                room_network: get_public_rooms_filtered::RoomNetwork::Matrix,
+                room_network: ruma::directory::RoomNetwork::Matrix,
                 server,
                 since,
             },

@@ -177,6 +177,35 @@ impl PduEvent {
     }
 }
 
+impl PduEvent {
+    pub fn convert_for_state_res(&self) -> Result<state_res::StateEvent> {
+        serde_json::from_value(json!({
+            "event_id": self.event_id,
+            "room_id": self.room_id,
+            "sender": self.sender,
+            "origin": self.origin,
+            "origin_server_ts": self.origin_server_ts,
+            "type": self.kind,
+            "content": self.content,
+            "state_key": self.state_key,
+            "prev_events": self.prev_events
+                .iter()
+                .map(|id| (id, EventHash { sha256: "hello".into() }))
+                .collect::<Vec<_>>(),
+            "depth": self.depth,
+            "auth_events": self.auth_events
+                .iter()
+                .map(|id| (id, EventHash { sha256: "hello".into() }))
+                .collect::<Vec<_>>(),
+            "redacts": self.redacts,
+            "unsigned": self.unsigned,
+            "hashes": self.hashes,
+            "signatures": self.signatures,
+        }))
+        .map_err(|_| Error::bad_database("Failed to convert PDU to ruma::Pdu type."))
+    }
+}
+
 /// Build the start of a PDU in order to add it to the `Database`.
 #[derive(Debug)]
 pub struct PduBuilder {

@@ -1,8 +1,11 @@
 use super::State;
 use crate::{pdu::PduBuilder, ConduitResult, Database, Error, Ruma};
-use ruma::api::client::{
-    error::ErrorKind,
-    r0::message::{get_message_events, send_message_event},
+use ruma::{
+    api::client::{
+        error::ErrorKind,
+        r0::message::{get_message_events, send_message_event},
+    },
+    events::EventContent,
 };
 use std::convert::TryInto;
 
@@ -26,7 +29,7 @@ pub fn send_message_event_route(
         PduBuilder {
             room_id: body.room_id.clone(),
             sender: sender_id.clone(),
-            event_type: body.event_type.clone(),
+            event_type: body.content.event_type().into(),
             content: serde_json::from_str(
                 body.json_body
                     .ok_or(Error::BadRequest(ErrorKind::BadJson, "Invalid JSON body."))?
@@ -41,7 +44,7 @@ pub fn send_message_event_route(
         &db.account_data,
     )?;
 
-    Ok(send_message_event::Response { event_id }.into())
+    Ok(send_message_event::Response::new(event_id).into())
 }
 
 #[cfg_attr(
@@ -50,7 +53,7 @@ pub fn send_message_event_route(
 )]
 pub fn get_message_events_route(
     db: State<'_, Database>,
-    body: Ruma<get_message_events::Request>,
+    body: Ruma<get_message_events::IncomingRequest>,
 ) -> ConduitResult<get_message_events::Response> {
     let sender_id = body.sender_id.as_ref().expect("user is authenticated");
 
@@ -92,13 +95,13 @@ pub fn get_message_events_route(
                 .map(|(_, pdu)| pdu.to_room_event())
                 .collect::<Vec<_>>();
 
-            Ok(get_message_events::Response {
-                start: Some(body.from.clone()),
-                end: end_token,
-                chunk: events_after,
-                state: Vec::new(),
-            }
-            .into())
+            let mut resp = get_message_events::Response::new();
+            resp.start = Some(body.from.clone());
+            resp.end = end_token;
+            resp.chunk = events_after;
+            resp.state = Vec::new();
+
+            Ok(resp.into())
         }
         get_message_events::Direction::Backward => {
             let events_before = db
@@ -116,13 +119,13 @@ pub fn get_message_events_route(
                 .map(|(_, pdu)| pdu.to_room_event())
                 .collect::<Vec<_>>();
 
-            Ok(get_message_events::Response {
-                start: Some(body.from.clone()),
-                end: start_token,
-                chunk: events_before,
-                state: Vec::new(),
-            }
-            .into())
+            let mut resp = get_message_events::Response::new();
+            resp.start = Some(body.from.clone());
+            resp.end = start_token;
+            resp.chunk = events_before;
+            resp.state = Vec::new();
+
+            Ok(resp.into())
         }
     }
 }

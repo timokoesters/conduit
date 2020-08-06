@@ -20,6 +20,8 @@ use ruma::{
     events::{room::member, EventType},
     EventId, Raw, RoomId, RoomVersionId,
 };
+use state_res::StateEvent;
+
 use std::{collections::BTreeMap, convert::TryFrom};
 
 #[cfg(feature = "conduit_bin")]
@@ -92,17 +94,73 @@ pub async fn join_room_by_id_route(
         let send_join_response = server_server::send_request(
             &db,
             body.room_id.server_name().to_string(),
-            federation::membership::create_join_event::v2::Request {
+            federation::membership::create_join_event::v1::Request {
                 room_id: body.room_id.clone(),
                 event_id,
-                pdu_stub: serde_json::from_value::<Raw<_>>(join_event_stub_value)
+                pdu_stub: serde_json::from_value(join_event_stub_value)
                     .expect("Raw::from_value always works"),
             },
         )
         .await?;
 
-        dbg!(send_join_response);
-        todo!("Take send_join_response and 'create' the room using that data");
+        dbg!(&send_join_response);
+        // todo!("Take send_join_response and 'create' the room using that data");
+
+        let mut event_map = send_join_response
+            .room_state
+            .state
+            .iter()
+            .map(|pdu| pdu.deserialize().map(StateEvent::Full))
+            .map(|ev| {
+                let ev = ev?;
+                Ok::<_, serde_json::Error>((ev.event_id(), ev))
+            })
+            .collect::<Result<BTreeMap<EventId, StateEvent>, _>>()
+            .map_err(|_| Error::bad_database("Invalid PDU found in db."))?;
+
+        let _auth_chain = send_join_response
+            .room_state
+            .auth_chain
+            .iter()
+            .flat_map(|pdu| pdu.deserialize().ok())
+            .map(StateEvent::Full)
+            .collect::<Vec<_>>();
+
+        // TODO make StateResolution's methods free functions ? or no self param ?
+        let sorted_events_ids = state_res::StateResolution::default()
+            .reverse_topological_power_sort(
+                &body.room_id,
+                &event_map.keys().cloned().collect::<Vec<_>>(),
+                &mut event_map,
+                &db.rooms,
+                &[], // TODO auth_diff: is this none since we have a set of resolved events we only want to sort
+            );
+
+        for ev_id in &sorted_events_ids {
+            // this is a `state_res::StateEvent` that holds a `ruma::Pdu`
+            let pdu = event_map.get(ev_id).ok_or_else(|| {
+                Error::Conflict("Found event_id in sorted events that is not in resolved state")
+            })?;
+
+            db.rooms.append_pdu(
+                PduBuilder {
+                    room_id: pdu.room_id().unwrap_or(&body.room_id).clone(),
+                    sender: pdu.sender().clone(),
+                    event_type: pdu.kind(),
+                    content: pdu.content().clone(),
+                    unsigned: Some(
+                        pdu.unsigned()
+                            .iter()
+                            .map(|(k, v)| (k.clone(), v.clone()))
+                            .collect(),
+                    ),
+                    state_key: pdu.state_key(),
+                    redacts: pdu.redacts().cloned(),
+                },
+                &db.globals,
+                &db.account_data,
+            )?;
+        }
     }
 
     let event = member::MemberEventContent {
@@ -127,10 +185,7 @@ pub async fn join_room_by_id_route(
         &db.account_data,
     )?;
 
-    Ok(join_room_by_id::Response {
-        room_id: body.room_id.clone(),
-    }
-    .into())
+    Ok(join_room_by_id::Response::new(body.room_id.clone()).into())
 }
 
 #[cfg_attr(
@@ -140,7 +195,7 @@ pub async fn join_room_by_id_route(
 pub async fn join_room_by_id_or_alias_route(
     db: State<'_, Database>,
     db2: State<'_, Database>,
-    body: Ruma<join_room_by_id_or_alias::Request>,
+    body: Ruma<join_room_by_id_or_alias::IncomingRequest>,
 ) -> ConduitResult<join_room_by_id_or_alias::Response> {
     let room_id = match RoomId::try_from(body.room_id_or_alias.clone()) {
         Ok(room_id) => room_id,
@@ -148,7 +203,13 @@ pub async fn join_room_by_id_or_alias_route(
             client_server::get_alias_route(
                 db,
                 Ruma {
-                    body: alias::get_alias::IncomingRequest { room_alias },
+                    body: alias::get_alias::IncomingRequest::try_from(http::Request::new(
+                        serde_json::json!({ "room_alias": room_alias })
+                            .to_string()
+                            .as_bytes()
+                            .to_vec(),
+                    ))
+                    .unwrap(),
                     sender_id: body.sender_id.clone(),
                     device_id: body.device_id.clone(),
                     json_body: None,
@@ -160,14 +221,32 @@ pub async fn join_room_by_id_or_alias_route(
         }
     };
 
+    // TODO ruma needs to implement the same constructors for the Incoming variants
+    let tps = if let Some(in_tps) = &body.third_party_signed {
+        Some(ruma::api::client::r0::membership::ThirdPartySigned {
+            token: &in_tps.token,
+            sender: &in_tps.sender,
+            signatures: in_tps.signatures.clone(),
+            mxid: &in_tps.mxid,
+        })
+    } else {
+        None
+    };
+
     let body = Ruma {
         sender_id: body.sender_id.clone(),
         device_id: body.device_id.clone(),
         json_body: None,
-        body: join_room_by_id::IncomingRequest {
-            room_id,
-            third_party_signed: body.third_party_signed.clone(),
-        },
+        body: join_room_by_id::IncomingRequest::try_from(http::Request::new(
+            serde_json::json!({
+                "room_id": room_id,
+                "third_party_signed": tps,
+            })
+            .to_string()
+            .as_bytes()
+            .to_vec(),
+        ))
+        .unwrap(),
     };
 
     Ok(join_room_by_id_or_alias::Response {
@@ -219,7 +298,7 @@ pub fn leave_room_route(
         &db.account_data,
     )?;
 
-    Ok(leave_room::Response.into())
+    Ok(leave_room::Response::new().into())
 }
 
 #[cfg_attr(
@@ -266,7 +345,7 @@ pub fn invite_user_route(
 )]
 pub fn kick_user_route(
     db: State<'_, Database>,
-    body: Ruma<kick_user::Request>,
+    body: Ruma<kick_user::IncomingRequest>,
 ) -> ConduitResult<kick_user::Response> {
     let sender_id = body.sender_id.as_ref().expect("user is authenticated");
 
@@ -304,7 +383,7 @@ pub fn kick_user_route(
         &db.account_data,
     )?;
 
-    Ok(kick_user::Response.into())
+    Ok(kick_user::Response::new().into())
 }
 
 #[cfg_attr(
@@ -313,7 +392,7 @@ pub fn kick_user_route(
 )]
 pub fn ban_user_route(
     db: State<'_, Database>,
-    body: Ruma<ban_user::Request>,
+    body: Ruma<ban_user::IncomingRequest>,
 ) -> ConduitResult<ban_user::Response> {
     let sender_id = body.sender_id.as_ref().expect("user is authenticated");
 
@@ -359,7 +438,7 @@ pub fn ban_user_route(
         &db.account_data,
     )?;
 
-    Ok(ban_user::Response.into())
+    Ok(ban_user::Response::new().into())
 }
 
 #[cfg_attr(
@@ -368,7 +447,7 @@ pub fn ban_user_route(
 )]
 pub fn unban_user_route(
     db: State<'_, Database>,
-    body: Ruma<unban_user::Request>,
+    body: Ruma<unban_user::IncomingRequest>,
 ) -> ConduitResult<unban_user::Response> {
     let sender_id = body.sender_id.as_ref().expect("user is authenticated");
 
@@ -405,7 +484,7 @@ pub fn unban_user_route(
         &db.account_data,
     )?;
 
-    Ok(unban_user::Response.into())
+    Ok(unban_user::Response::new().into())
 }
 
 #[cfg_attr(
@@ -414,13 +493,13 @@ pub fn unban_user_route(
 )]
 pub fn forget_room_route(
     db: State<'_, Database>,
-    body: Ruma<forget_room::Request>,
+    body: Ruma<forget_room::IncomingRequest>,
 ) -> ConduitResult<forget_room::Response> {
     let sender_id = body.sender_id.as_ref().expect("user is authenticated");
 
     db.rooms.forget(&body.room_id, &sender_id)?;
 
-    Ok(forget_room::Response.into())
+    Ok(forget_room::Response::new().into())
 }
 
 #[cfg_attr(

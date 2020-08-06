@@ -97,8 +97,8 @@ impl Database {
                 },
                 pduid_pdu: db.open_tree("pduid_pdu")?,
                 eventid_pduid: db.open_tree("eventid_pduid")?,
+                roomstateid_pduid: db.open_tree("roomstateid_pduid")?,
                 roomid_pduleaves: db.open_tree("roomid_pduleaves")?,
-                roomstateid_pdu: db.open_tree("roomstateid_pdu")?,
 
                 alias_roomid: db.open_tree("alias_roomid")?,
                 aliasid_alias: db.open_tree("alias_roomid")?,
@@ -109,6 +109,9 @@ impl Database {
                 userroomid_invited: db.open_tree("userroomid_invited")?,
                 roomuserid_invited: db.open_tree("roomuserid_invited")?,
                 userroomid_left: db.open_tree("userroomid_left")?,
+
+                stateid_pduid: db.open_tree("stateid_pduid")?,
+                pduid_statehash: db.open_tree("pduid_statehash")?,
             },
             account_data: account_data::AccountData {
                 roomuserdataid_accountdata: db.open_tree("roomuserdataid_accountdata")?,

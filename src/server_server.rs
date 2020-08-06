@@ -1,14 +1,17 @@
 use crate::{client_server, ConduitResult, Database, Error, Result, Ruma};
 use http::header::{HeaderValue, AUTHORIZATION};
 use rocket::{get, post, put, response::content::Json, State};
-use ruma::api::federation::{
-    directory::get_public_rooms,
-    discovery::{
-        get_server_keys, get_server_version::v1 as get_server_version, ServerKey, VerifyKey,
+use ruma::api::{
+    client,
+    federation::{
+        directory::get_public_rooms,
+        discovery::{
+            get_server_keys, get_server_version::v1 as get_server_version, ServerKey, VerifyKey,
+        },
+        transactions::send_transaction_message,
     },
-    transactions::send_transaction_message,
+    OutgoingRequest,
 };
-use ruma::api::{client, OutgoingRequest};
 use serde_json::json;
 use std::{
     collections::BTreeMap,
@@ -204,11 +207,11 @@ pub fn get_server_keys_deprecated(db: State<'_, Database>) -> Json<String> {
 )]
 pub async fn get_public_rooms_route(
     db: State<'_, Database>,
-    body: Ruma<get_public_rooms::v1::Request>,
+    body: Ruma<get_public_rooms::v1::IncomingRequest>,
 ) -> ConduitResult<get_public_rooms::v1::Response> {
     let Ruma {
         body:
-            get_public_rooms::v1::Request {
+            get_public_rooms::v1::IncomingRequest {
                 room_network: _room_network, // TODO
                 limit,
                 since,
@@ -229,7 +232,7 @@ pub async fn get_public_rooms_route(
             body: client::r0::directory::get_public_rooms_filtered::IncomingRequest {
                 filter: None,
                 limit,
-                room_network: client::r0::directory::get_public_rooms_filtered::RoomNetwork::Matrix,
+                room_network: ruma::directory::RoomNetwork::Matrix,
                 server: None,
                 since,
             },
@@ -268,9 +271,9 @@ pub async fn get_public_rooms_route(
     feature = "conduit_bin",
     put("/_matrix/federation/v1/send/<_>", data = "<body>")
 )]
-pub fn send_transaction_message_route(
-    db: State<'_, Database>,
-    body: Ruma<send_transaction_message::v1::Request>,
+pub fn send_transaction_message_route<'a>(
+    _db: State<'a, Database>,
+    body: Ruma<send_transaction_message::v1::IncomingRequest>,
 ) -> ConduitResult<send_transaction_message::v1::Response> {
     dbg!(&*body);
     Ok(send_transaction_message::v1::Response {

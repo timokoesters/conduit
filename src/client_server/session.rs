@@ -1,5 +1,4 @@
-use super::State;
-use super::{DEVICE_ID_LENGTH, TOKEN_LENGTH};
+use super::{State, DEVICE_ID_LENGTH, TOKEN_LENGTH};
 use crate::{utils, ConduitResult, Database, Error, Ruma};
 use ruma::{
     api::client::{
@@ -18,10 +17,7 @@ use rocket::{get, post};
 /// when logging in.
 #[cfg_attr(feature = "conduit_bin", get("/_matrix/client/r0/login"))]
 pub fn get_login_types_route() -> ConduitResult<get_login_types::Response> {
-    Ok(get_login_types::Response {
-        flows: vec![get_login_types::LoginType::Password],
-    }
-    .into())
+    Ok(get_login_types::Response::new(vec![get_login_types::LoginType::Password]).into())
 }
 
 /// # `POST /_matrix/client/r0/login`
@@ -40,15 +36,15 @@ pub fn get_login_types_route() -> ConduitResult<get_login_types::Response> {
 )]
 pub fn login_route(
     db: State<'_, Database>,
-    body: Ruma<login::Request>,
+    body: Ruma<login::IncomingRequest>,
 ) -> ConduitResult<login::Response> {
     // Validate login method
     let user_id =
         // TODO: Other login methods
-        if let (login::UserInfo::MatrixId(username), login::LoginInfo::Password { password }) =
-            (body.user.clone(), body.login_info.clone())
+        if let (login::IncomingUserInfo::MatrixId(username), login::IncomingLoginInfo::Password { password }) =
+            (&body.user, &body.login_info)
         {
-            let user_id = UserId::parse_with_server_name(username, db.globals.server_name())
+            let user_id = UserId::parse_with_server_name(username.to_string(), db.globals.server_name())
                 .map_err(|_| Error::BadRequest(
                     ErrorKind::InvalidUsername,
                     "Username is invalid."
@@ -126,7 +122,7 @@ pub fn logout_route(
 
     db.users.remove_device(&sender_id, device_id)?;
 
-    Ok(logout::Response.into())
+    Ok(logout::Response::new().into())
 }
 
 /// # `POST /_matrix/client/r0/logout/all`
@@ -154,5 +150,5 @@ pub fn logout_all_route(
         }
     }
 
-    Ok(logout_all::Response.into())
+    Ok(logout_all::Response::new().into())
 }

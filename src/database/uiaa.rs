@@ -2,7 +2,7 @@ use crate::{Error, Result};
 use ruma::{
     api::client::{
         error::ErrorKind,
-        r0::uiaa::{AuthData, UiaaInfo},
+        r0::uiaa::{IncomingAuthData, UiaaInfo},
     },
     DeviceId, UserId,
 };
@@ -26,12 +26,12 @@ impl Uiaa {
         &self,
         user_id: &UserId,
         device_id: &DeviceId,
-        auth: &AuthData,
+        auth: &IncomingAuthData,
         uiaainfo: &UiaaInfo,
         users: &super::users::Users,
         globals: &super::globals::Globals,
     ) -> Result<(bool, UiaaInfo)> {
-        if let AuthData::DirectRequest {
+        if let IncomingAuthData::DirectRequest {
             kind,
             session,
             auth_parameters,

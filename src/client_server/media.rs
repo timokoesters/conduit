@@ -53,7 +53,7 @@ pub fn create_content_route(
 )]
 pub fn get_content_route(
     db: State<'_, Database>,
-    body: Ruma<get_content::Request>,
+    body: Ruma<get_content::IncomingRequest>,
     _server_name: String,
     _media_id: String,
 ) -> ConduitResult<get_content::Response> {
@@ -85,7 +85,7 @@ pub fn get_content_route(
 )]
 pub fn get_content_thumbnail_route(
     db: State<'_, Database>,
-    body: Ruma<get_content_thumbnail::Request>,
+    body: Ruma<get_content_thumbnail::IncomingRequest>,
     _server_name: String,
     _media_id: String,
 ) -> ConduitResult<get_content_thumbnail::Response> {

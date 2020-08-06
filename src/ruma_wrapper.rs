@@ -1,5 +1,8 @@
 use crate::Error;
-use ruma::identifiers::{DeviceId, UserId};
+use ruma::{
+    api::IncomingRequest,
+    identifiers::{DeviceId, UserId},
+};
 use std::{convert::TryInto, ops::Deref};
 
 #[cfg(feature = "conduit_bin")]
@@ -16,13 +19,12 @@ use {
         tokio::io::AsyncReadExt,
         Request, State,
     },
-    ruma::api::IncomingRequest,
     std::io::Cursor,
 };
 
 /// This struct converts rocket requests into ruma structs by converting them into http requests
 /// first.
-pub struct Ruma<T> {
+pub struct Ruma<T: IncomingRequest> {
     pub body: T,
     pub sender_id: Option<UserId>,
     pub device_id: Option<Box<DeviceId>>,
@@ -110,7 +112,7 @@ impl<'a, T: IncomingRequest> FromTransformedData<'a> for Ruma<T> {
     }
 }
 
-impl<T> Deref for Ruma<T> {
+impl<T: IncomingRequest> Deref for Ruma<T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {

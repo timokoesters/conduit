@@ -1,3 +1,4 @@
+use crate::Error;
 use argon2::{Config, Variant};
 use rand::prelude::*;
 use std::{
@@ -58,4 +59,9 @@ pub fn calculate_hash(password: &str) -> Result<String, argon2::Error> {
 
     let salt = random_string(32);
     argon2::hash_encoded(password.as_bytes(), salt.as_bytes(), &hashing_config)
+}
+
+pub fn deserialize<'de, T: serde::Deserialize<'de>>(val: &'de sled::IVec) -> Result<T, Error> {
+    serde_json::from_slice::<T>(val.as_ref())
+        .map_err(|_| Error::bad_database("PDU in db is invalid."))
 }

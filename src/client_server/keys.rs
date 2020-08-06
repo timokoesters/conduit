@@ -167,7 +167,7 @@ pub fn claim_keys_route(
 )]
 pub fn upload_signing_keys_route(
     db: State<'_, Database>,
-    body: Ruma<upload_signing_keys::Request>,
+    body: Ruma<upload_signing_keys::IncomingRequest>,
 ) -> ConduitResult<upload_signing_keys::Response> {
     let sender_id = body.sender_id.as_ref().expect("user is authenticated");
     let device_id = body.device_id.as_ref().expect("user is authenticated");

@@ -12,7 +12,7 @@ use rocket::get;
 )]
 pub fn get_context_route(
     db: State<'_, Database>,
-    body: Ruma<get_context::Request>,
+    body: Ruma<get_context::IncomingRequest>,
 ) -> ConduitResult<get_context::Response> {
     let sender_id = body.sender_id.as_ref().expect("user is authenticated");
 
@@ -75,18 +75,18 @@ pub fn get_context_route(
         .map(|(_, pdu)| pdu.to_room_event())
         .collect::<Vec<_>>();
 
-    Ok(get_context::Response {
-        start: start_token,
-        end: end_token,
-        events_before,
-        event: Some(base_event),
-        events_after,
-        state: db // TODO: State at event
-            .rooms
-            .room_state_full(&body.room_id)?
-            .values()
-            .map(|pdu| pdu.to_state_event())
-            .collect(),
-    }
-    .into())
+    let mut resp = get_context::Response::new();
+    resp.start = start_token;
+    resp.end = end_token;
+    resp.events_before = events_before;
+    resp.event = Some(base_event);
+    resp.events_after = events_after;
+    resp.state = db // TODO: State at event
+        .rooms
+        .room_state_full(&body.room_id)?
+        .values()
+        .map(|pdu| pdu.to_state_event())
+        .collect();
+
+    Ok(resp.into())
 }

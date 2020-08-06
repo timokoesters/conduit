@@ -37,7 +37,7 @@ pub fn get_devices_route(
 )]
 pub fn get_device_route(
     db: State<'_, Database>,
-    body: Ruma<get_device::Request>,
+    body: Ruma<get_device::IncomingRequest>,
     _device_id: String,
 ) -> ConduitResult<get_device::Response> {
     let sender_id = body.sender_id.as_ref().expect("user is authenticated");
@@ -56,7 +56,7 @@ pub fn get_device_route(
 )]
 pub fn update_device_route(
     db: State<'_, Database>,
-    body: Ruma<update_device::Request>,
+    body: Ruma<update_device::IncomingRequest>,
     _device_id: String,
 ) -> ConduitResult<update_device::Response> {
     let sender_id = body.sender_id.as_ref().expect("user is authenticated");
@@ -80,7 +80,7 @@ pub fn update_device_route(
 )]
 pub fn delete_device_route(
     db: State<'_, Database>,
-    body: Ruma<delete_device::Request>,
+    body: Ruma<delete_device::IncomingRequest>,
     _device_id: String,
 ) -> ConduitResult<delete_device::Response> {
     let sender_id = body.sender_id.as_ref().expect("user is authenticated");
@@ -127,7 +127,7 @@ pub fn delete_device_route(
 )]
 pub fn delete_devices_route(
     db: State<'_, Database>,
-    body: Ruma<delete_devices::Request>,
+    body: Ruma<delete_devices::IncomingRequest>,
 ) -> ConduitResult<delete_devices::Response> {
     let sender_id = body.sender_id.as_ref().expect("user is authenticated");
     let device_id = body.device_id.as_ref().expect("user is authenticated");

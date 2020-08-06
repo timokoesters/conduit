@@ -26,7 +26,7 @@ pub fn create_alias_route(
     db.rooms
         .set_alias(&body.room_alias, Some(&body.room_id), &db.globals)?;
 
-    Ok(create_alias::Response.into())
+    Ok(create_alias::Response::new().into())
 }
 
 #[cfg_attr(
@@ -39,7 +39,7 @@ pub fn delete_alias_route(
 ) -> ConduitResult<delete_alias::Response> {
     db.rooms.set_alias(&body.room_alias, None, &db.globals)?;
 
-    Ok(delete_alias::Response.into())
+    Ok(delete_alias::Response::new().into())
 }
 
 #[cfg_attr(
@@ -60,11 +60,7 @@ pub async fn get_alias_route(
         )
         .await?;
 
-        return Ok(get_alias::Response {
-            room_id: response.room_id,
-            servers: response.servers,
-        }
-        .into());
+        return Ok(get_alias::Response::new(response.room_id, response.servers).into());
     }
 
     let room_id = db
@@ -75,9 +71,5 @@ pub async fn get_alias_route(
             "Room with alias not found.",
         ))?;
 
-    Ok(get_alias::Response {
-        room_id,
-        servers: vec![db.globals.server_name().to_string()],
-    }
-    .into())
+    Ok(get_alias::Response::new(room_id, vec![db.globals.server_name().to_string()]).into())
 }

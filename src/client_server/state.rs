@@ -8,9 +8,9 @@ use ruma::{
             send_state_event_for_empty_key, send_state_event_for_key,
         },
     },
-    events::{room::canonical_alias, EventType},
-    Raw,
+    events::{AnyStateEventContent, EventContent},
 };
+use std::convert::TryFrom;
 
 #[cfg(feature = "conduit_bin")]
 use rocket::{get, put};
@@ -33,17 +33,10 @@ pub fn send_state_event_for_key_route(
     )
     .map_err(|_| Error::BadRequest(ErrorKind::BadJson, "Invalid JSON body."))?;
 
-    if body.event_type == EventType::RoomCanonicalAlias {
-        let canonical_alias = serde_json::from_value::<
-            Raw<canonical_alias::CanonicalAliasEventContent>,
-        >(content.clone())
-        .expect("from_value::<Raw<..>> can never fail")
-        .deserialize()
-        .map_err(|_| Error::BadRequest(ErrorKind::InvalidParam, "Invalid canonical alias."))?;
+    if let AnyStateEventContent::RoomCanonicalAlias(canonical_alias) = &body.content {
+        let mut aliases = canonical_alias.alt_aliases.clone();
 
-        let mut aliases = canonical_alias.alt_aliases;
-
-        if let Some(alias) = canonical_alias.alias {
+        if let Some(alias) = canonical_alias.alias.clone() {
             aliases.push(alias);
         }
 
@@ -68,7 +61,7 @@ pub fn send_state_event_for_key_route(
         PduBuilder {
             room_id: body.room_id.clone(),
             sender: sender_id.clone(),
-            event_type: body.event_type.clone(),
+            event_type: body.content.event_type().into(),
             content,
             unsigned: None,
             state_key: Some(body.state_key.clone()),
@@ -78,7 +71,7 @@ pub fn send_state_event_for_key_route(
         &db.account_data,
     )?;
 
-    Ok(send_state_event_for_key::Response { event_id }.into())
+    Ok(send_state_event_for_key::Response::new(event_id).into())
 }
 
 #[cfg_attr(
@@ -93,25 +86,28 @@ pub fn send_state_event_for_empty_key_route(
     let Ruma {
         body:
             send_state_event_for_empty_key::IncomingRequest {
-                room_id,
-                event_type,
-                data,
+                room_id, content, ..
             },
         sender_id,
         device_id,
         json_body,
     } = body;
 
-    Ok(send_state_event_for_empty_key::Response {
-        event_id: send_state_event_for_key_route(
+    Ok(send_state_event_for_empty_key::Response::new(
+        send_state_event_for_key_route(
             db,
             Ruma {
-                body: send_state_event_for_key::IncomingRequest {
-                    room_id,
-                    event_type,
-                    data,
-                    state_key: "".to_owned(),
-                },
+                body: send_state_event_for_key::IncomingRequest::try_from(http::Request::new(
+                    serde_json::json!({
+                        "room_id": room_id,
+                        "state_key": "",
+                        "content": content,
+                    })
+                    .to_string()
+                    .as_bytes()
+                    .to_vec(),
+                ))
+                .unwrap(),
                 sender_id,
                 device_id,
                 json_body,
@@ -119,7 +115,7 @@ pub fn send_state_event_for_empty_key_route(
         )?
         .0
         .event_id,
-    }
+    )
     .into())
 }
 

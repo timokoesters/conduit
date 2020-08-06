@@ -315,7 +315,7 @@ pub fn create_room_route(
         db.rooms.set_public(&room_id, true)?;
     }
 
-    Ok(create_room::Response { room_id }.into())
+    Ok(create_room::Response::new(room_id).into())
 }
 
 #[cfg_attr(
