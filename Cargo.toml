@@ -12,7 +12,7 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-rocket = { git = "https://github.com/SergioBenitez/Rocket.git", branch = "async", features = ["tls"] }
+rocket = { git = "https://github.com/SergioBenitez/Rocket.git", rev = "78c8ac8ccdbe85abb9508fb9657e70eb2b8d08c0", features = ["tls"] }
 http = "0.2.1"
 ruma-client-api = { git = "https://github.com/ruma/ruma-client-api.git", rev = "c725288cd099690c1d13f1a9b9e57228bc860a62" }
 ruma-identifiers = { version = "0.16.2", features = ["rand"] }

@@ -1665,15 +1665,14 @@ pub async fn get_public_rooms_filtered_route(
 
     chunk.sort_by(|l, r| r.num_joined_members.cmp(&l.num_joined_members));
 
-    /*
     chunk.extend_from_slice(
         &server_server::send_request(
             &db,
             "privacytools.io".to_owned(),
-            ruma_federation_api::v1::get_public_rooms::Request {
+            ruma_federation_api::directory::get_public_rooms::v1::Request {
                 limit: Some(20_u32.into()),
                 since: None,
-                room_network: ruma_federation_api::v1::get_public_rooms::RoomNetwork::Matrix,
+                room_network: ruma_federation_api::directory::get_public_rooms::v1::RoomNetwork::Matrix,
             },
         )
         .await
@@ -1683,7 +1682,6 @@ pub async fn get_public_rooms_filtered_route(
         .map(|c| serde_json::from_str(&serde_json::to_string(&c).unwrap()).unwrap())
         .collect::<Vec<_>>(),
     );
-    */
 
     let total_room_count_estimate = (chunk.len() as u32).into();
 
