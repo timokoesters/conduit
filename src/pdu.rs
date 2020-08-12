@@ -37,11 +37,12 @@ pub struct PduEvent {
 impl PduEvent {
     pub fn redact(&mut self) -> Result<()> {
         self.unsigned.clear();
-        let allowed = match self.kind {
-            EventType::RoomMember => vec!["membership"],
-            EventType::RoomCreate => vec!["creator"],
-            EventType::RoomJoinRules => vec!["join_rule"],
-            EventType::RoomPowerLevels => vec![
+
+        let allowed: &[&str] = match self.kind {
+            EventType::RoomMember => &["membership"],
+            EventType::RoomCreate => &["creator"],
+            EventType::RoomJoinRules => &["join_rule"],
+            EventType::RoomPowerLevels => &[
                 "ban",
                 "events",
                 "events_default",
@@ -51,8 +52,8 @@ impl PduEvent {
                 "users",
                 "users_default",
             ],
-            EventType::RoomHistoryVisibility => vec!["history_visibility"],
-            _ => vec![],
+            EventType::RoomHistoryVisibility => &["history_visibility"],
+            _ => &[],
         };
 
         let old_content = self
@@ -63,8 +64,8 @@ impl PduEvent {
         let mut new_content = serde_json::Map::new();
 
         for key in allowed {
-            if let Some(value) = old_content.remove(key) {
-                new_content.insert(key.to_owned(), value);
+            if let Some(value) = old_content.remove(*key) {
+                new_content.insert((*key).to_owned(), value);
             }
         }
 
