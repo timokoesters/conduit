@@ -81,10 +81,7 @@ pub async fn sync_events_route(
         let mut send_member_count = false;
         let mut joined_since_last_sync = false;
         let mut send_notification_counts = false;
-        for pdu in db
-            .rooms
-            .pdus_since(&sender_id, &room_id, since)?
-        {
+        for pdu in db.rooms.pdus_since(&sender_id, &room_id, since)? {
             let pdu = pdu?;
             send_notification_counts = true;
             if pdu.kind == EventType::RoomMember {
@@ -392,10 +389,7 @@ pub async fn sync_events_route(
     for room_id in db.rooms.rooms_invited(&sender_id) {
         let room_id = room_id?;
         let mut invited_since_last_sync = false;
-        for pdu in db
-            .rooms
-            .pdus_since(&sender_id, &room_id, since)?
-        {
+        for pdu in db.rooms.pdus_since(&sender_id, &room_id, since)? {
             let pdu = pdu?;
             if pdu.kind == EventType::RoomMember {
                 if pdu.state_key == Some(sender_id.to_string()) {

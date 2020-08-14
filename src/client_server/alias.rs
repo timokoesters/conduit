@@ -1,9 +1,12 @@
 use super::State;
-use crate::{ConduitResult, Database, Error, Ruma, server_server};
-use ruma::api::{federation, client::{
-    error::ErrorKind,
-    r0::alias::{create_alias, delete_alias, get_alias},
-}};
+use crate::{server_server, ConduitResult, Database, Error, Ruma};
+use ruma::api::{
+    client::{
+        error::ErrorKind,
+        r0::alias::{create_alias, delete_alias, get_alias},
+    },
+    federation,
+};
 
 #[cfg(feature = "conduit_bin")]
 use rocket::{delete, get, put};

@@ -1,12 +1,12 @@
 #![warn(rust_2018_idioms)]
 
-pub mod server_server;
 pub mod client_server;
+pub mod server_server;
 
-mod push_rules;
 mod database;
 mod error;
 mod pdu;
+mod push_rules;
 mod ruma_wrapper;
 mod utils;
 
