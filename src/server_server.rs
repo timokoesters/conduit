@@ -1,10 +1,14 @@
-use crate::{ConduitResult, Database, Result};
+use crate::{client_server, ConduitResult, Database, Error, Result, Ruma};
 use http::header::{HeaderValue, AUTHORIZATION};
-use rocket::{get, response::content::Json, State};
-use ruma::api::federation::discovery::{
-    get_server_keys, get_server_version::v1 as get_server_version, ServerKey, VerifyKey,
+use rocket::{get, post, put, response::content::Json, State};
+use ruma::api::federation::{
+    directory::get_public_rooms,
+    discovery::{
+        get_server_keys, get_server_version::v1 as get_server_version, ServerKey, VerifyKey,
+    },
+    transactions::send_transaction_message,
 };
-use ruma::api::OutgoingRequest;
+use ruma::api::{client, OutgoingRequest};
 use serde_json::json;
 use std::{
     collections::BTreeMap,
@@ -192,4 +196,85 @@ pub fn get_server_keys(db: State<'_, Database>) -> Json<String> {
 #[cfg_attr(feature = "conduit_bin", get("/_matrix/key/v2/server/<_>"))]
 pub fn get_server_keys_deprecated(db: State<'_, Database>) -> Json<String> {
     get_server_keys(db)
+}
+
+#[cfg_attr(
+    feature = "conduit_bin",
+    post("/_matrix/federation/v1/publicRooms", data = "<body>")
+)]
+pub async fn get_public_rooms_route(
+    db: State<'_, Database>,
+    body: Ruma<get_public_rooms::v1::Request>,
+) -> ConduitResult<get_public_rooms::v1::Response> {
+    let Ruma {
+        body:
+            get_public_rooms::v1::Request {
+                room_network: _room_network, // TODO
+                limit,
+                since,
+            },
+        sender_id,
+        device_id,
+        json_body,
+    } = body;
+
+    let client::r0::directory::get_public_rooms_filtered::Response {
+        chunk,
+        prev_batch,
+        next_batch,
+        total_room_count_estimate,
+    } = client_server::get_public_rooms_filtered_route(
+        db,
+        Ruma {
+            body: client::r0::directory::get_public_rooms_filtered::IncomingRequest {
+                filter: None,
+                limit,
+                room_network: client::r0::directory::get_public_rooms_filtered::RoomNetwork::Matrix,
+                server: None,
+                since,
+            },
+            sender_id,
+            device_id,
+            json_body,
+        },
+    )
+    .await?
+    .0;
+
+    Ok(get_public_rooms::v1::Response {
+        chunk: chunk
+            .into_iter()
+            .map(|c| {
+                // Convert ruma::api::federation::directory::get_public_rooms::v1::PublicRoomsChunk
+                // to ruma::api::client::r0::directory::PublicRoomsChunk
+                Ok::<_, Error>(
+                    serde_json::from_str(
+                        &serde_json::to_string(&c)
+                            .expect("PublicRoomsChunk::to_string always works"),
+                    )
+                    .expect("federation and client-server PublicRoomsChunk are the same type"),
+                )
+            })
+            .filter_map(|r| r.ok())
+            .collect(),
+        prev_batch,
+        next_batch,
+        total_room_count_estimate,
+    }
+    .into())
+}
+
+#[cfg_attr(
+    feature = "conduit_bin",
+    put("/_matrix/federation/v1/send/<_>", data = "<body>")
+)]
+pub fn send_transaction_message_route(
+    db: State<'_, Database>,
+    body: Ruma<send_transaction_message::v1::Request>,
+) -> ConduitResult<send_transaction_message::v1::Response> {
+    dbg!(&*body);
+    Ok(send_transaction_message::v1::Response {
+        pdus: BTreeMap::new(),
+    }
+    .into())
 }
