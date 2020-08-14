@@ -267,6 +267,7 @@ checksum = "0dbbb57365263e881e805dc77d94697c9118fd94d8da011240555aa7b23445bd"
 name = "conduit"
 version = "0.1.0"
 dependencies = [
+ "base64 0.12.3",
  "directories",
  "http",
  "image",
@@ -1559,7 +1560,7 @@ dependencies = [
 [[package]]
 name = "ruma"
 version = "0.0.1"
-source = "git+https://github.com/ruma/ruma?rev=987d48666cf166cf12100b5dbc61b5e3385c4014#987d48666cf166cf12100b5dbc61b5e3385c4014"
+source = "git+https://github.com/timokoesters/ruma?branch=timo-fixes#8868d2f72bc5d54f04154fb4fe71b08e4f69a0ae"
 dependencies = [
  "ruma-api",
  "ruma-client-api",
@@ -1573,7 +1574,7 @@ dependencies = [
 [[package]]
 name = "ruma-api"
 version = "0.17.0-alpha.1"
-source = "git+https://github.com/ruma/ruma?rev=987d48666cf166cf12100b5dbc61b5e3385c4014#987d48666cf166cf12100b5dbc61b5e3385c4014"
+source = "git+https://github.com/timokoesters/ruma?branch=timo-fixes#8868d2f72bc5d54f04154fb4fe71b08e4f69a0ae"
 dependencies = [
  "http",
  "percent-encoding",
@@ -1588,7 +1589,7 @@ dependencies = [
 [[package]]
 name = "ruma-api-macros"
 version = "0.17.0-alpha.1"
-source = "git+https://github.com/ruma/ruma?rev=987d48666cf166cf12100b5dbc61b5e3385c4014#987d48666cf166cf12100b5dbc61b5e3385c4014"
+source = "git+https://github.com/timokoesters/ruma?branch=timo-fixes#8868d2f72bc5d54f04154fb4fe71b08e4f69a0ae"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -1599,7 +1600,7 @@ dependencies = [
 [[package]]
 name = "ruma-client-api"
 version = "0.10.0-alpha.1"
-source = "git+https://github.com/ruma/ruma?rev=987d48666cf166cf12100b5dbc61b5e3385c4014#987d48666cf166cf12100b5dbc61b5e3385c4014"
+source = "git+https://github.com/timokoesters/ruma?branch=timo-fixes#8868d2f72bc5d54f04154fb4fe71b08e4f69a0ae"
 dependencies = [
  "assign",
  "http",
@@ -1617,7 +1618,7 @@ dependencies = [
 [[package]]
 name = "ruma-common"
 version = "0.2.0"
-source = "git+https://github.com/ruma/ruma?rev=987d48666cf166cf12100b5dbc61b5e3385c4014#987d48666cf166cf12100b5dbc61b5e3385c4014"
+source = "git+https://github.com/timokoesters/ruma?branch=timo-fixes#8868d2f72bc5d54f04154fb4fe71b08e4f69a0ae"
 dependencies = [
  "js_int",
  "ruma-identifiers",
@@ -1630,7 +1631,7 @@ dependencies = [
 [[package]]
 name = "ruma-events"
 version = "0.22.0-alpha.1"
-source = "git+https://github.com/ruma/ruma?rev=987d48666cf166cf12100b5dbc61b5e3385c4014#987d48666cf166cf12100b5dbc61b5e3385c4014"
+source = "git+https://github.com/timokoesters/ruma?branch=timo-fixes#8868d2f72bc5d54f04154fb4fe71b08e4f69a0ae"
 dependencies = [
  "js_int",
  "ruma-common",
@@ -1645,7 +1646,7 @@ dependencies = [
 [[package]]
 name = "ruma-events-macros"
 version = "0.22.0-alpha.1"
-source = "git+https://github.com/ruma/ruma?rev=987d48666cf166cf12100b5dbc61b5e3385c4014#987d48666cf166cf12100b5dbc61b5e3385c4014"
+source = "git+https://github.com/timokoesters/ruma?branch=timo-fixes#8868d2f72bc5d54f04154fb4fe71b08e4f69a0ae"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -1656,7 +1657,7 @@ dependencies = [
 [[package]]
 name = "ruma-federation-api"
 version = "0.0.3"
-source = "git+https://github.com/ruma/ruma?rev=987d48666cf166cf12100b5dbc61b5e3385c4014#987d48666cf166cf12100b5dbc61b5e3385c4014"
+source = "git+https://github.com/timokoesters/ruma?branch=timo-fixes#8868d2f72bc5d54f04154fb4fe71b08e4f69a0ae"
 dependencies = [
  "js_int",
  "ruma-api",
@@ -1671,7 +1672,7 @@ dependencies = [
 [[package]]
 name = "ruma-identifiers"
 version = "0.17.4"
-source = "git+https://github.com/ruma/ruma?rev=987d48666cf166cf12100b5dbc61b5e3385c4014#987d48666cf166cf12100b5dbc61b5e3385c4014"
+source = "git+https://github.com/timokoesters/ruma?branch=timo-fixes#8868d2f72bc5d54f04154fb4fe71b08e4f69a0ae"
 dependencies = [
  "rand",
  "ruma-identifiers-macros",
@@ -1683,7 +1684,7 @@ dependencies = [
 [[package]]
 name = "ruma-identifiers-macros"
 version = "0.17.4"
-source = "git+https://github.com/ruma/ruma?rev=987d48666cf166cf12100b5dbc61b5e3385c4014#987d48666cf166cf12100b5dbc61b5e3385c4014"
+source = "git+https://github.com/timokoesters/ruma?branch=timo-fixes#8868d2f72bc5d54f04154fb4fe71b08e4f69a0ae"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1694,7 +1695,7 @@ dependencies = [
 [[package]]
 name = "ruma-identifiers-validation"
 version = "0.1.1"
-source = "git+https://github.com/ruma/ruma?rev=987d48666cf166cf12100b5dbc61b5e3385c4014#987d48666cf166cf12100b5dbc61b5e3385c4014"
+source = "git+https://github.com/timokoesters/ruma?branch=timo-fixes#8868d2f72bc5d54f04154fb4fe71b08e4f69a0ae"
 dependencies = [
  "ruma-serde",
  "serde",
@@ -1705,7 +1706,7 @@ dependencies = [
 [[package]]
 name = "ruma-serde"
 version = "0.2.3"
-source = "git+https://github.com/ruma/ruma?rev=987d48666cf166cf12100b5dbc61b5e3385c4014#987d48666cf166cf12100b5dbc61b5e3385c4014"
+source = "git+https://github.com/timokoesters/ruma?branch=timo-fixes#8868d2f72bc5d54f04154fb4fe71b08e4f69a0ae"
 dependencies = [
  "form_urlencoded",
  "itoa",
@@ -1717,7 +1718,7 @@ dependencies = [
 [[package]]
 name = "ruma-signatures"
 version = "0.6.0-dev.1"
-source = "git+https://github.com/ruma/ruma?rev=987d48666cf166cf12100b5dbc61b5e3385c4014#987d48666cf166cf12100b5dbc61b5e3385c4014"
+source = "git+https://github.com/timokoesters/ruma?branch=timo-fixes#8868d2f72bc5d54f04154fb4fe71b08e4f69a0ae"
 dependencies = [
  "base64 0.12.3",
  "ring",

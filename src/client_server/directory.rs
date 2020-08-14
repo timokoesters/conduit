@@ -1,15 +1,18 @@
 use super::State;
-use crate::{ConduitResult, Database, Error, Result, Ruma};
+use crate::{server_server, ConduitResult, Database, Error, Result, Ruma};
 use ruma::{
-    api::client::{
-        error::ErrorKind,
-        r0::{
-            directory::{
-                self, get_public_rooms, get_public_rooms_filtered, get_room_visibility,
-                set_room_visibility,
+    api::{
+        client::{
+            error::ErrorKind,
+            r0::{
+                directory::{
+                    self, get_public_rooms, get_public_rooms_filtered, get_room_visibility,
+                    set_room_visibility,
+                },
+                room,
             },
-            room,
         },
+        federation,
     },
     events::{
         room::{avatar, canonical_alias, guest_access, history_visibility, name, topic},
@@ -29,6 +32,46 @@ pub async fn get_public_rooms_filtered_route(
     db: State<'_, Database>,
     body: Ruma<get_public_rooms_filtered::IncomingRequest>,
 ) -> ConduitResult<get_public_rooms_filtered::Response> {
+    if let Some(other_server) = body
+        .server
+        .clone()
+        .filter(|server| server != &db.globals.server_name().as_str())
+    {
+        let response = server_server::send_request(
+            &db,
+            other_server,
+            federation::directory::get_public_rooms::v1::Request {
+                limit: body.limit,
+                since: body.since.clone(),
+                room_network: federation::directory::get_public_rooms::v1::RoomNetwork::Matrix,
+            },
+        )
+        .await?;
+
+        return Ok(get_public_rooms_filtered::Response {
+            chunk: response
+                .chunk
+                .into_iter()
+                .map(|c| {
+                    // Convert ruma::api::federation::directory::get_public_rooms::v1::PublicRoomsChunk
+                    // to ruma::api::client::r0::directory::PublicRoomsChunk
+                    Ok::<_, Error>(
+                        serde_json::from_str(
+                            &serde_json::to_string(&c)
+                                .expect("PublicRoomsChunk::to_string always works"),
+                        )
+                        .expect("federation and client-server PublicRoomsChunk are the same type"),
+                    )
+                })
+                .filter_map(|r| r.ok())
+                .collect(),
+            prev_batch: response.prev_batch,
+            next_batch: response.next_batch,
+            total_room_count_estimate: response.total_room_count_estimate,
+        }
+        .into());
+    }
+
     let limit = body.limit.map_or(10, u64::from);
     let mut since = 0_u64;
 
@@ -168,26 +211,6 @@ pub async fn get_public_rooms_filtered_route(
             .collect::<Vec<_>>();
 
     all_rooms.sort_by(|l, r| r.num_joined_members.cmp(&l.num_joined_members));
-
-    /*
-    all_rooms.extend_from_slice(
-        &server_server::send_request(
-            &db,
-            "privacytools.io".to_owned(),
-            ruma::api::federation::v1::get_public_rooms::Request {
-                limit: Some(20_u32.into()),
-                since: None,
-                room_network: ruma::api::federation::v1::get_public_rooms::RoomNetwork::Matrix,
-            },
-        )
-        .await
-        ?
-        .chunk
-        .into_iter()
-        .map(|c| serde_json::from_str(&serde_json::to_string(&c)?)?)
-        .collect::<Vec<_>>(),
-    );
-    */
 
     let total_room_count_estimate = (all_rooms.len() as u32).into();
 

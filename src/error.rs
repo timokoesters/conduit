@@ -27,6 +27,13 @@ pub enum Error {
         #[from]
         source: image::error::ImageError,
     },
+    #[error("Could not connect to server.")]
+    ReqwestError {
+        #[from]
+        source: reqwest::Error,
+    },
+    #[error("{0}")]
+    BadServerResponse(&'static str),
     #[error("{0}")]
     BadConfig(&'static str),
     #[error("{0}")]

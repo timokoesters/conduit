@@ -1,16 +1,24 @@
 use super::State;
-use crate::{pdu::PduBuilder, ConduitResult, Database, Error, Ruma};
+use crate::{
+    client_server, pdu::PduBuilder, server_server, utils, ConduitResult, Database, Error, Ruma,
+};
 use ruma::{
-    api::client::{
-        error::ErrorKind,
-        r0::membership::{
-            ban_user, forget_room, get_member_events, invite_user, join_room_by_id,
-            join_room_by_id_or_alias, joined_members, joined_rooms, kick_user, leave_room,
-            unban_user,
+    api::{
+        client::{
+            error::ErrorKind,
+            r0::{
+                alias,
+                membership::{
+                    ban_user, forget_room, get_member_events, invite_user, join_room_by_id,
+                    join_room_by_id_or_alias, joined_members, joined_rooms, kick_user, leave_room,
+                    unban_user,
+                },
+            },
         },
+        federation,
     },
     events::{room::member, EventType},
-    Raw, RoomId,
+    EventId, Raw, RoomId, RoomVersionId,
 };
 use std::{collections::BTreeMap, convert::TryFrom};
 
@@ -21,13 +29,81 @@ use rocket::{get, post};
     feature = "conduit_bin",
     post("/_matrix/client/r0/rooms/<_>/join", data = "<body>")
 )]
-pub fn join_room_by_id_route(
+pub async fn join_room_by_id_route(
     db: State<'_, Database>,
     body: Ruma<join_room_by_id::IncomingRequest>,
 ) -> ConduitResult<join_room_by_id::Response> {
     let sender_id = body.sender_id.as_ref().expect("user is authenticated");
 
-    // TODO: Ask a remote server if we don't have this room
+    // Ask a remote server if we don't have this room
+    if !db.rooms.exists(&body.room_id)? && body.room_id.server_name() != db.globals.server_name() {
+        let make_join_response = server_server::send_request(
+            &db,
+            body.room_id.server_name().to_string(),
+            federation::membership::create_join_event_template::v1::Request {
+                room_id: body.room_id.clone(),
+                user_id: sender_id.clone(),
+                ver: vec![RoomVersionId::Version5, RoomVersionId::Version6],
+            },
+        )
+        .await?;
+
+        let mut join_event_stub_value =
+            serde_json::from_str::<serde_json::Value>(make_join_response.event.json().get())
+                .map_err(|_| {
+                    Error::BadServerResponse("Invalid make_join event json received from server.")
+                })?;
+
+        let join_event_stub =
+            join_event_stub_value
+                .as_object_mut()
+                .ok_or(Error::BadServerResponse(
+                    "Invalid make join event object received from server.",
+                ))?;
+
+        join_event_stub.insert(
+            "origin".to_owned(),
+            db.globals.server_name().to_owned().to_string().into(),
+        );
+        join_event_stub.insert(
+            "origin_server_ts".to_owned(),
+            utils::millis_since_unix_epoch().into(),
+        );
+
+        // Generate event id
+        let event_id = EventId::try_from(&*format!(
+            "${}",
+            ruma::signatures::reference_hash(&join_event_stub_value)
+                .expect("ruma can calculate reference hashes")
+        ))
+        .expect("ruma's reference hashes are valid event ids");
+
+        // We don't leave the event id into the pdu because that's only allowed in v1 or v2 rooms
+        let join_event_stub = join_event_stub_value.as_object_mut().unwrap();
+        join_event_stub.remove("event_id");
+
+        ruma::signatures::hash_and_sign_event(
+            db.globals.server_name().as_str(),
+            db.globals.keypair(),
+            &mut join_event_stub_value,
+        )
+        .expect("event is valid, we just created it");
+
+        let send_join_response = server_server::send_request(
+            &db,
+            body.room_id.server_name().to_string(),
+            federation::membership::create_join_event::v2::Request {
+                room_id: body.room_id.clone(),
+                event_id,
+                pdu_stub: serde_json::from_value::<Raw<_>>(join_event_stub_value)
+                    .expect("Raw::from_value always works"),
+            },
+        )
+        .await?;
+
+        dbg!(send_join_response);
+        todo!("Take send_join_response and 'create' the room using that data");
+    }
 
     let event = member::MemberEventContent {
         membership: member::MembershipState::Join,
@@ -61,16 +137,28 @@ pub fn join_room_by_id_route(
     feature = "conduit_bin",
     post("/_matrix/client/r0/join/<_>", data = "<body>")
 )]
-pub fn join_room_by_id_or_alias_route(
+pub async fn join_room_by_id_or_alias_route(
     db: State<'_, Database>,
+    db2: State<'_, Database>,
     body: Ruma<join_room_by_id_or_alias::Request>,
 ) -> ConduitResult<join_room_by_id_or_alias::Response> {
-    let room_id = RoomId::try_from(body.room_id_or_alias.clone()).or_else(|alias| {
-        Ok::<_, Error>(db.rooms.id_from_alias(&alias)?.ok_or(Error::BadRequest(
-            ErrorKind::NotFound,
-            "Room not found (TODO: Federation).",
-        ))?)
-    })?;
+    let room_id = match RoomId::try_from(body.room_id_or_alias.clone()) {
+        Ok(room_id) => room_id,
+        Err(room_alias) => {
+            client_server::get_alias_route(
+                db,
+                Ruma {
+                    body: alias::get_alias::IncomingRequest { room_alias },
+                    sender_id: body.sender_id.clone(),
+                    device_id: body.device_id.clone(),
+                    json_body: None,
+                },
+            )
+            .await?
+            .0
+            .room_id
+        }
+    };
 
     let body = Ruma {
         sender_id: body.sender_id.clone(),
@@ -83,7 +171,7 @@ pub fn join_room_by_id_or_alias_route(
     };
 
     Ok(join_room_by_id_or_alias::Response {
-        room_id: join_room_by_id_route(db, body)?.0.room_id,
+        room_id: join_room_by_id_route(db2, body).await?.0.room_id,
     }
     .into())
 }

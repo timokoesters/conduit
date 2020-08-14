@@ -92,13 +92,6 @@ pub fn create_room_route(
         &db.account_data,
     )?;
 
-    // Figure out preset. We need it for power levels and preset specific events
-    let visibility = body.visibility.unwrap_or(room::Visibility::Private);
-    let preset = body.preset.unwrap_or_else(|| match visibility {
-        room::Visibility::Private => create_room::RoomPreset::PrivateChat,
-        room::Visibility::Public => create_room::RoomPreset::PublicChat,
-    });
-
     // 3. Power levels
     let mut users = BTreeMap::new();
     users.insert(sender_id.clone(), 100.into());
@@ -142,6 +135,14 @@ pub fn create_room_route(
     )?;
 
     // 4. Events set by preset
+
+    // Figure out preset. We need it for preset specific events
+    let visibility = body.visibility.unwrap_or(room::Visibility::Private);
+    let preset = body.preset.unwrap_or_else(|| match visibility {
+        room::Visibility::Private => create_room::RoomPreset::PrivateChat,
+        room::Visibility::Public => create_room::RoomPreset::PublicChat,
+    });
+
     // 4.1 Join Rules
     db.rooms.append_pdu(
         PduBuilder {

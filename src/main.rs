@@ -1,13 +1,13 @@
 #![warn(rust_2018_idioms)]
 
-pub mod push_rules;
+pub mod server_server;
+pub mod client_server;
 
-mod client_server;
+mod push_rules;
 mod database;
 mod error;
 mod pdu;
 mod ruma_wrapper;
-//mod server_server;
 mod utils;
 
 pub use database::Database;
@@ -110,10 +110,10 @@ fn setup_rocket() -> rocket::Rocket {
                 client_server::get_key_changes_route,
                 client_server::get_pushers_route,
                 client_server::set_pushers_route,
-                //server_server::well_known_server,
-                //server_server::get_server_version,
-                //server_server::get_server_keys,
-                //server_server::get_server_keys_deprecated,
+                server_server::well_known_server,
+                server_server::get_server_version,
+                server_server::get_server_keys,
+                server_server::get_server_keys_deprecated,
             ],
         )
         .attach(AdHoc::on_attach("Config", |mut rocket| async {
