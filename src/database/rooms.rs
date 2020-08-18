@@ -4,6 +4,7 @@ pub use edus::RoomEdus;
 
 use crate::{pdu::PduBuilder, utils, Error, PduEvent, Result};
 use log::error;
+use ring::digest;
 use ruma::{
     api::client::error::ErrorKind,
     events::{
@@ -21,9 +22,8 @@ use sled::IVec;
 use state_res::{event_auth, Requester, StateEvent, StateMap, StateStore};
 
 use std::{
-    collections::{hash_map::DefaultHasher, BTreeMap, HashMap},
+    collections::{BTreeMap, HashMap},
     convert::{TryFrom, TryInto},
-    hash::{Hash, Hasher},
     mem,
     result::Result as StdResult,
 };
@@ -283,8 +283,10 @@ impl Rooms {
             .next()
             .is_none()
         {
-            // TODO use ring crate to hash
-            return Ok(room_id.as_str().to_owned());
+            return utils::string_from_bytes(
+                digest::digest(&digest::SHA256, room_id.as_bytes()).as_ref(),
+            )
+            .map_err(|_| Error::bad_database("Empty state generated invalid string from hash."));
         }
 
         let pdu_ids_to_hash = self
@@ -302,11 +304,13 @@ impl Rooms {
                     .collect::<Result<Vec<Vec<u8>>>>()
             })??;
 
-        let mut hasher = DefaultHasher::new();
-        pdu_ids_to_hash.hash(&mut hasher);
-        let hash = hasher.finish().to_string();
+        let hash = digest::digest(
+            &digest::SHA256,
+            &pdu_ids_to_hash.into_iter().flatten().collect::<Vec<u8>>(),
+        );
         // TODO not sure how you want to hash this
-        Ok(hash)
+        utils::string_from_bytes(hash.as_ref())
+            .map_err(|_| Error::bad_database("State generated invalid string from hash."))
     }
 
     /// Checks if a room exists.

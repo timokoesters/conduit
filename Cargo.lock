@@ -295,6 +295,7 @@ dependencies = [
  "log",
  "rand",
  "reqwest",
+ "ring",
  "rocket",
  "ruma",
  "rust-argon2 0.8.2",
