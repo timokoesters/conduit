@@ -59,7 +59,7 @@ pub fn get_register_available_route(
     Ok(get_username_availability::Response { available: true }.into())
 }
 
-/// # `GET /_matrix/client/r0/register`
+/// # `POST /_matrix/client/r0/register`
 ///
 /// Register an account on this homeserver.
 ///
