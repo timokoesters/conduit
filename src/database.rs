@@ -104,6 +104,8 @@ impl Database {
                 aliasid_alias: db.open_tree("alias_roomid")?,
                 publicroomids: db.open_tree("publicroomids")?,
 
+                tokenids: db.open_tree("tokenids")?,
+
                 userroomid_joined: db.open_tree("userroomid_joined")?,
                 roomuserid_joined: db.open_tree("roomuserid_joined")?,
                 userroomid_invited: db.open_tree("userroomid_invited")?,
