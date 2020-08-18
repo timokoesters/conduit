@@ -90,6 +90,7 @@ fn setup_rocket() -> rocket::Rocket {
                 client_server::sync_events_route,
                 client_server::get_context_route,
                 client_server::get_message_events_route,
+                client_server::search_events_route,
                 client_server::turn_server_route,
                 client_server::send_event_to_device_route,
                 client_server::get_media_config_route,

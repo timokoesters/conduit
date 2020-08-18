@@ -17,8 +17,8 @@ edition = "2018"
 rocket = { git = "https://github.com/timokoesters/Rocket.git", branch = "empty_parameters", features = ["tls"] }
 
 #ruma = { git = "https://github.com/ruma/ruma", features = ["rand", "client-api", "federation-api", "unstable-pre-spec", "unstable-synapse-quirks"], rev = "987d48666cf166cf12100b5dbc61b5e3385c4014" } # Used for matrix spec type definitions and helpers
-ruma = { git = "https://github.com/timokoesters/ruma", features = ["rand", "client-api", "federation-api", "unstable-pre-spec", "unstable-synapse-quirks"], branch = "timo-fixes" } # Used for matrix spec type definitions and helpers
-#ruma = { path = "../ruma/ruma", features = ["rand", "client-api", "federation-api", "unstable-pre-spec", "unstable-synapse-quirks"] }
+#ruma = { git = "https://github.com/timokoesters/ruma", features = ["rand", "client-api", "federation-api", "unstable-pre-spec", "unstable-synapse-quirks"], branch = "timo-fixes" } # Used for matrix spec type definitions and helpers
+ruma = { path = "../ruma/ruma", features = ["rand", "client-api", "federation-api", "unstable-pre-spec", "unstable-synapse-quirks"] }
 tokio = "0.2.22" # Used for long polling
 sled = "0.32.0" # Used for storing data permanently
 log = "0.4.8" # Used for emitting log entries

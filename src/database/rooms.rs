@@ -35,6 +35,8 @@ pub struct Rooms {
     pub(super) aliasid_alias: sled::Tree, // AliasId = RoomId + Count
     pub(super) publicroomids: sled::Tree,
 
+    pub(super) tokenids: sled::Tree, // TokenId = RoomId + Token + PduId
+
     pub(super) userroomid_joined: sled::Tree,
     pub(super) roomuserid_joined: sled::Tree,
     pub(super) userroomid_invited: sled::Tree,
@@ -562,7 +564,7 @@ impl Rooms {
         self.pduid_pdu.insert(&pdu_id, &*pdu_json.to_string())?;
 
         self.eventid_pduid
-            .insert(pdu.event_id.to_string(), pdu_id)?;
+            .insert(pdu.event_id.to_string(), pdu_id.clone())?;
 
         if let Some(state_key) = pdu.state_key {
             let mut key = room_id.to_string().as_bytes().to_vec();
@@ -573,7 +575,7 @@ impl Rooms {
             self.roomstateid_pdu.insert(key, &*pdu_json.to_string())?;
         }
 
-        match event_type {
+        match dbg!(event_type) {
             EventType::RoomRedaction => {
                 if let Some(redact_id) = &redacts {
                     // TODO: Reason
@@ -614,6 +616,21 @@ impl Rooms {
                         account_data,
                         globals,
                     )?;
+                }
+            }
+            EventType::RoomMessage => {
+                if let Some(body) = dbg!(content).get("body").and_then(|b| b.as_str()) {
+                    for word in body
+                        .split_terminator(|c: char| !c.is_alphanumeric())
+                        .map(str::to_lowercase)
+                    {
+                        let mut key = room_id.to_string().as_bytes().to_vec();
+                        key.push(0xff);
+                        key.extend_from_slice(word.as_bytes());
+                        key.push(0xff);
+                        key.extend_from_slice(&pdu_id);
+                        self.tokenids.insert(key, &[])?;
+                    }
                 }
             }
             _ => {}
@@ -926,6 +943,80 @@ impl Rooms {
                 .map_err(|_| Error::bad_database("Room ID in publicroomids is invalid."))?,
             )
         })
+    }
+
+    pub fn search_pdus(
+        &self,
+        room_id: &RoomId,
+        search_string: &str,
+    ) -> Result<(impl Iterator<Item = IVec>, Vec<String>)> {
+        let mut prefix = room_id.to_string().as_bytes().to_vec();
+        prefix.push(0xff);
+
+        let words = search_string
+            .split_terminator(|c: char| !c.is_alphanumeric())
+            .map(str::to_lowercase)
+            .collect::<Vec<_>>();
+
+        let mut iterators = words.iter().map(|word| {
+            let mut prefix2 = prefix.clone();
+            prefix2.extend_from_slice(word.as_bytes());
+            prefix2.push(0xff);
+            self.tokenids
+                .scan_prefix(&prefix2)
+                .keys()
+                .filter_map(|r| r.ok())
+                .map(|key| {
+                    let pduid_index = key
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, &b)| b == 0xff)
+                        .nth(1)
+                        .ok_or_else(|| Error::bad_database("Invalid tokenid in db."))?
+                        .0 + 1; // +1 because the pdu id starts AFTER the separator
+
+                    let pdu_id =
+                        key.subslice(pduid_index, key.len() - pduid_index);
+
+                    Ok::<_, Error>(pdu_id)
+                })
+                .filter_map(|r| r.ok())
+                .peekable()
+        });
+
+        let first_iterator = match iterators.next() {
+            Some(i) => i,
+            None => {
+                return Err(Error::BadRequest(
+                    ErrorKind::InvalidParam,
+                    "search_term needs to contain at least one word.",
+                ))
+            }
+        };
+
+        let mut other_iterators = iterators.collect::<Vec<_>>();
+
+        Ok((
+            first_iterator.filter(move |target| {
+                other_iterators
+                    .iter_mut()
+                    .map(|it| {
+                        while let Some(element) = it.peek() {
+                            if dbg!(element) > dbg!(target) {
+                                return false;
+                            } else if element == target {
+                                return true;
+                            } else {
+                                it.next();
+                            }
+                        }
+
+                        false
+                    })
+                    .all(|b| b)
+            }),
+            words,
+        ))
     }
 
     /// Returns an iterator over all joined members of a room.
