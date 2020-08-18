@@ -9,7 +9,7 @@ use ruma::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::collections::HashMap;
+use std::{collections::HashMap, convert::TryFrom};
 
 #[derive(Deserialize, Serialize)]
 pub struct PduEvent {
@@ -177,6 +177,30 @@ impl PduEvent {
     }
 }
 
+impl TryFrom<&state_res::StateEvent> for PduEvent {
+    type Error = Error;
+    fn try_from(pdu: &state_res::StateEvent) -> Result<Self> {
+        serde_json::from_value(json!({
+            "event_id": pdu.event_id(),
+            "room_id": pdu.room_id(),
+            "sender": pdu.sender(),
+            "origin": pdu.origin(),
+            "origin_server_ts": pdu.origin_server_ts(),
+            "event_type": pdu.kind(),
+            "content": pdu.content(),
+            "state_key": pdu.state_key(),
+            "prev_events": pdu.prev_event_ids(),
+            "depth": pdu.depth(),
+            "auth_events": pdu.auth_events(),
+            "redacts": pdu.redacts(),
+            "unsigned": pdu.unsigned(),
+            "hashes": pdu.hashes(),
+            "signatures": pdu.signatures(),
+        }))
+        .map_err(|_| Error::bad_database("Failed to convert PDU to ruma::Pdu type."))
+    }
+}
+
 impl PduEvent {
     pub fn convert_for_state_res(&self) -> Result<state_res::StateEvent> {
         serde_json::from_value(json!({
@@ -190,11 +214,13 @@ impl PduEvent {
             "state_key": self.state_key,
             "prev_events": self.prev_events
                 .iter()
+                // TODO How do we create one of these
                 .map(|id| (id, EventHash { sha256: "hello".into() }))
                 .collect::<Vec<_>>(),
             "depth": self.depth,
             "auth_events": self.auth_events
                 .iter()
+                // TODO How do we create one of these
                 .map(|id| (id, EventHash { sha256: "hello".into() }))
                 .collect::<Vec<_>>(),
             "redacts": self.redacts,

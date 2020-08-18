@@ -4,6 +4,7 @@ pub use edus::RoomEdus;
 
 use crate::{pdu::PduBuilder, utils, Error, PduEvent, Result};
 use log::error;
+// TODO if ruma-signatures re-exports `use ruma::signatures::digest;`
 use ring::digest;
 use ruma::{
     api::client::error::ErrorKind,
@@ -97,7 +98,13 @@ impl Rooms {
     /// This adds all current state events (not including the incoming event)
     /// to `stateid_pduid` and adds the incoming event to `pduid_statehash`.
     /// The incoming event is the `pdu_id` passed to this method.
-    pub fn append_state_pdu(&self, room_id: &RoomId, pdu_id: &[u8]) -> Result<StateHashId> {
+    pub fn append_state_pdu(
+        &self,
+        room_id: &RoomId,
+        pdu_id: &[u8],
+        state_key: &str,
+        kind: &EventType,
+    ) -> Result<StateHashId> {
         let state_hash = self.new_state_hash_id(room_id)?;
         let state = self.current_state_pduids(room_id)?;
 
@@ -120,6 +127,13 @@ impl Rooms {
         // uses `roomstateid_pduid` before the current event is inserted to the tree so the state
         // will be everything up to but not including the incoming event.
         self.pduid_statehash.insert(pdu_id, state_hash.as_bytes())?;
+
+        let mut key = room_id.as_bytes().to_vec();
+        key.push(0xff);
+        key.extend_from_slice(kind.to_string().as_bytes());
+        key.push(0xff);
+        key.extend_from_slice(state_key.as_bytes());
+        self.roomstateid_pduid.insert(key, pdu_id)?;
 
         Ok(state_hash)
     }
@@ -533,8 +547,92 @@ impl Rooms {
     }
 
     /// Creates a new persisted data unit and adds it to a room.
-    #[allow(clippy::blocks_in_if_conditions)]
     pub fn append_pdu(
+        &self,
+        pdu: PduEvent,
+        globals: &super::globals::Globals,
+        account_data: &super::account_data::AccountData,
+    ) -> Result<EventId> {
+        let mut pdu_json = serde_json::to_value(&pdu).expect("event is valid, we just created it");
+        ruma::signatures::hash_and_sign_event(
+            globals.server_name().as_str(),
+            globals.keypair(),
+            &mut pdu_json,
+        )
+        .expect("event is valid, we just created it");
+
+        self.replace_pdu_leaves(&pdu.room_id, &pdu.event_id)?;
+
+        // Increment the last index and use that
+        // This is also the next_batch/since value
+        let index = globals.next_count()?;
+
+        let mut pdu_id = pdu.room_id.as_bytes().to_vec();
+        pdu_id.push(0xff);
+        pdu_id.extend_from_slice(&index.to_be_bytes());
+
+        self.pduid_pdu.insert(&pdu_id, &*pdu_json.to_string())?;
+
+        self.eventid_pduid
+            .insert(pdu.event_id.as_bytes(), &*pdu_id)?;
+
+        if let Some(state_key) = &pdu.state_key {
+            self.append_state_pdu(&pdu.room_id, &pdu_id, state_key, &pdu.kind)?;
+        }
+
+        match pdu.kind {
+            EventType::RoomRedaction => {
+                if let Some(redact_id) = &pdu.redacts {
+                    // TODO: Reason
+                    let _reason = serde_json::from_value::<Raw<redaction::RedactionEventContent>>(
+                        pdu.content,
+                    )
+                    .expect("Raw::from_value always works.")
+                    .deserialize()
+                    .map_err(|_| {
+                        Error::BadRequest(
+                            ErrorKind::InvalidParam,
+                            "Invalid redaction event content.",
+                        )
+                    })?
+                    .reason;
+
+                    self.redact_pdu(&redact_id)?;
+                }
+            }
+            EventType::RoomMember => {
+                if let Some(state_key) = &pdu.state_key {
+                    // if the state_key fails
+                    let target_user_id = UserId::try_from(state_key.as_str())
+                        .expect("This state_key was previously validated");
+                    // Update our membership info, we do this here incase a user is invited
+                    // and immediately leaves we need the DB to record the invite event for auth
+                    self.update_membership(
+                        &pdu.room_id,
+                        &target_user_id,
+                        serde_json::from_value::<member::MemberEventContent>(pdu.content).map_err(
+                            |_| {
+                                Error::BadRequest(
+                                    ErrorKind::InvalidParam,
+                                    "Invalid redaction event content.",
+                                )
+                            },
+                        )?,
+                        &pdu.sender,
+                        account_data,
+                        globals,
+                    )?;
+                }
+            }
+            _ => {}
+        }
+        self.edus.room_read_set(&pdu.room_id, &pdu.sender, index)?;
+
+        Ok(pdu.event_id)
+    }
+
+    /// Creates a new persisted data unit and adds it to a room.
+    pub fn build_and_append_pdu(
         &self,
         pdu_builder: PduBuilder,
         globals: &super::globals::Globals,
@@ -616,6 +714,7 @@ impl Rooms {
             );
 
             // Is the event allowed?
+            #[allow(clippy::blocks_in_if_conditions)]
             if !match event_type {
                 EventType::RoomEncryption => {
                     // Don't allow encryption events when it's disabled
@@ -685,15 +784,15 @@ impl Rooms {
 
         let mut pdu = PduEvent {
             event_id: EventId::try_from("$thiswillbefilledinlater").expect("we know this is valid"),
-            room_id: room_id.clone(),
-            sender: sender.clone(),
+            room_id,
+            sender,
             origin: globals.server_name().to_owned(),
             origin_server_ts: utils::millis_since_unix_epoch()
                 .try_into()
                 .expect("time is valid"),
-            kind: event_type.clone(),
-            content: content.clone(),
-            state_key: state_key.clone(),
+            kind: event_type,
+            content,
+            state_key,
             prev_events,
             depth: depth
                 .try_into()
@@ -702,7 +801,7 @@ impl Rooms {
                 .into_iter()
                 .map(|(_, pdu)| pdu.event_id)
                 .collect(),
-            redacts: redacts.clone(),
+            redacts,
             unsigned,
             hashes: ruma::events::pdu::EventHash {
                 sha256: "aaa".to_owned(),
@@ -720,90 +819,7 @@ impl Rooms {
         ))
         .expect("ruma's reference hashes are valid event ids");
 
-        let mut pdu_json = serde_json::to_value(&pdu).expect("event is valid, we just created it");
-        ruma::signatures::hash_and_sign_event(
-            globals.server_name().as_str(),
-            globals.keypair(),
-            &mut pdu_json,
-        )
-        .expect("event is valid, we just created it");
-
-        self.replace_pdu_leaves(&room_id, &pdu.event_id)?;
-
-        // Increment the last index and use that
-        // This is also the next_batch/since value
-        let index = globals.next_count()?;
-
-        let mut pdu_id = room_id.to_string().as_bytes().to_vec();
-        pdu_id.push(0xff);
-        pdu_id.extend_from_slice(&index.to_be_bytes());
-
-        self.pduid_pdu.insert(&pdu_id, &*pdu_json.to_string())?;
-
-        self.eventid_pduid
-            .insert(pdu.event_id.to_string(), &*pdu_id)?;
-
-        if let Some(state_key) = &pdu.state_key {
-            // We call this first because our StateHash relies on the
-            // state before the new event
-            self.append_state_pdu(&room_id, &pdu_id)?;
-
-            let mut key = room_id.as_bytes().to_vec();
-            key.push(0xff);
-            key.extend_from_slice(pdu.kind.to_string().as_bytes());
-            key.push(0xff);
-            key.extend_from_slice(state_key.as_bytes());
-            self.roomstateid_pduid.insert(key, pdu_id.as_slice())?;
-        }
-
-        match event_type {
-            EventType::RoomRedaction => {
-                if let Some(redact_id) = &redacts {
-                    // TODO: Reason
-                    let _reason =
-                        serde_json::from_value::<Raw<redaction::RedactionEventContent>>(content)
-                            .expect("Raw::from_value always works.")
-                            .deserialize()
-                            .map_err(|_| {
-                                Error::BadRequest(
-                                    ErrorKind::InvalidParam,
-                                    "Invalid redaction event content.",
-                                )
-                            })?
-                            .reason;
-
-                    self.redact_pdu(&redact_id)?;
-                }
-            }
-            EventType::RoomMember => {
-                if let Some(state_key) = state_key {
-                    // if the state_key fails
-                    let target_user_id = UserId::try_from(state_key)
-                        .expect("This state_key was previously validated");
-                    // Update our membership info, we do this here incase a user is invited
-                    // and immediately leaves we need the DB to record the invite event for auth
-                    self.update_membership(
-                        &room_id,
-                        &target_user_id,
-                        serde_json::from_value::<member::MemberEventContent>(content).map_err(
-                            |_| {
-                                Error::BadRequest(
-                                    ErrorKind::InvalidParam,
-                                    "Invalid redaction event content.",
-                                )
-                            },
-                        )?,
-                        &sender,
-                        account_data,
-                        globals,
-                    )?;
-                }
-            }
-            _ => {}
-        }
-        self.edus.room_read_set(&room_id, &sender, index)?;
-
-        Ok(pdu.event_id)
+        self.append_pdu(pdu, globals, account_data)
     }
 
     /// Returns an iterator over all PDUs in a room.
@@ -982,7 +998,7 @@ impl Rooms {
                 if is_ignored {
                     member_content.membership = member::MembershipState::Leave;
 
-                    self.append_pdu(
+                    self.build_and_append_pdu(
                         PduBuilder {
                             room_id: room_id.clone(),
                             sender: user_id.clone(),

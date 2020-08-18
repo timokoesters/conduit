@@ -25,7 +25,7 @@ pub fn send_message_event_route(
     let mut unsigned = serde_json::Map::new();
     unsigned.insert("transaction_id".to_owned(), body.txn_id.clone().into());
 
-    let event_id = db.rooms.append_pdu(
+    let event_id = db.rooms.build_and_append_pdu(
         PduBuilder {
             room_id: body.room_id.clone(),
             sender: sender_id.clone(),

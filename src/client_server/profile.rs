@@ -31,7 +31,7 @@ pub fn set_displayname_route(
     // Send a new membership event and presence update into all joined rooms
     for room_id in db.rooms.rooms_joined(&sender_id) {
         let room_id = room_id?;
-        db.rooms.append_pdu(
+        db.rooms.build_and_append_pdu(
             PduBuilder {
                 room_id: room_id.clone(),
                 sender: sender_id.clone(),
@@ -134,7 +134,7 @@ pub fn set_avatar_url_route(
     // Send a new membership event and presence update into all joined rooms
     for room_id in db.rooms.rooms_joined(&sender_id) {
         let room_id = room_id?;
-        db.rooms.append_pdu(
+        db.rooms.build_and_append_pdu(
             PduBuilder {
                 room_id: room_id.clone(),
                 sender: sender_id.clone(),

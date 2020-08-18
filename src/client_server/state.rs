@@ -57,7 +57,7 @@ pub fn send_state_event_for_key_route(
         }
     }
 
-    let event_id = db.rooms.append_pdu(
+    let event_id = db.rooms.build_and_append_pdu(
         PduBuilder {
             room_id: body.room_id.clone(),
             sender: sender_id.clone(),

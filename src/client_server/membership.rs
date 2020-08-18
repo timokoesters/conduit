@@ -1,6 +1,8 @@
 use super::State;
 use crate::{
-    client_server, pdu::PduBuilder, server_server, utils, ConduitResult, Database, Error, Ruma,
+    client_server,
+    pdu::{PduBuilder, PduEvent},
+    server_server, utils, ConduitResult, Database, Error, Ruma,
 };
 use ruma::{
     api::{
@@ -142,24 +144,9 @@ pub async fn join_room_by_id_route(
                 Error::Conflict("Found event_id in sorted events that is not in resolved state")
             })?;
 
-            db.rooms.append_pdu(
-                PduBuilder {
-                    room_id: pdu.room_id().unwrap_or(&body.room_id).clone(),
-                    sender: pdu.sender().clone(),
-                    event_type: pdu.kind(),
-                    content: pdu.content().clone(),
-                    unsigned: Some(
-                        pdu.unsigned()
-                            .iter()
-                            .map(|(k, v)| (k.clone(), v.clone()))
-                            .collect(),
-                    ),
-                    state_key: pdu.state_key(),
-                    redacts: pdu.redacts().cloned(),
-                },
-                &db.globals,
-                &db.account_data,
-            )?;
+            // We do not rebuild the PDU in this case only insert to DB
+            db.rooms
+                .append_pdu(PduEvent::try_from(pdu)?, &db.globals, &db.account_data)?;
         }
     }
 
@@ -171,7 +158,7 @@ pub async fn join_room_by_id_route(
         third_party_invite: None,
     };
 
-    db.rooms.append_pdu(
+    db.rooms.build_and_append_pdu(
         PduBuilder {
             room_id: body.room_id.clone(),
             sender: sender_id.clone(),
@@ -284,7 +271,7 @@ pub fn leave_room_route(
 
     event.membership = member::MembershipState::Leave;
 
-    db.rooms.append_pdu(
+    db.rooms.build_and_append_pdu(
         PduBuilder {
             room_id: body.room_id.clone(),
             sender: sender_id.clone(),
@@ -312,7 +299,7 @@ pub fn invite_user_route(
     let sender_id = body.sender_id.as_ref().expect("user is authenticated");
 
     if let invite_user::InvitationRecipient::UserId { user_id } = &body.recipient {
-        db.rooms.append_pdu(
+        db.rooms.build_and_append_pdu(
             PduBuilder {
                 room_id: body.room_id.clone(),
                 sender: sender_id.clone(),
@@ -369,7 +356,7 @@ pub fn kick_user_route(
     event.membership = ruma::events::room::member::MembershipState::Leave;
     // TODO: reason
 
-    db.rooms.append_pdu(
+    db.rooms.build_and_append_pdu(
         PduBuilder {
             room_id: body.room_id.clone(),
             sender: sender_id.clone(),
@@ -424,7 +411,7 @@ pub fn ban_user_route(
             },
         )?;
 
-    db.rooms.append_pdu(
+    db.rooms.build_and_append_pdu(
         PduBuilder {
             room_id: body.room_id.clone(),
             sender: sender_id.clone(),
@@ -470,7 +457,7 @@ pub fn unban_user_route(
 
     event.membership = ruma::events::room::member::MembershipState::Leave;
 
-    db.rooms.append_pdu(
+    db.rooms.build_and_append_pdu(
         PduBuilder {
             room_id: body.room_id.clone(),
             sender: sender_id.clone(),

@@ -56,7 +56,7 @@ pub fn create_room_route(
     content.room_version = RoomVersionId::Version6;
 
     // 1. The room create event
-    db.rooms.append_pdu(
+    db.rooms.build_and_append_pdu(
         PduBuilder {
             room_id: room_id.clone(),
             sender: sender_id.clone(),
@@ -71,7 +71,7 @@ pub fn create_room_route(
     )?;
 
     // 2. Let the room creator join
-    db.rooms.append_pdu(
+    db.rooms.build_and_append_pdu(
         PduBuilder {
             room_id: room_id.clone(),
             sender: sender_id.clone(),
@@ -120,7 +120,7 @@ pub fn create_room_route(
         })
         .expect("event is valid, we just created it")
     };
-    db.rooms.append_pdu(
+    db.rooms.build_and_append_pdu(
         PduBuilder {
             room_id: room_id.clone(),
             sender: sender_id.clone(),
@@ -144,7 +144,7 @@ pub fn create_room_route(
     });
 
     // 4.1 Join Rules
-    db.rooms.append_pdu(
+    db.rooms.build_and_append_pdu(
         PduBuilder {
             room_id: room_id.clone(),
             sender: sender_id.clone(),
@@ -169,7 +169,7 @@ pub fn create_room_route(
     )?;
 
     // 4.2 History Visibility
-    db.rooms.append_pdu(
+    db.rooms.build_and_append_pdu(
         PduBuilder {
             room_id: room_id.clone(),
             sender: sender_id.clone(),
@@ -187,7 +187,7 @@ pub fn create_room_route(
     )?;
 
     // 4.3 Guest Access
-    db.rooms.append_pdu(
+    db.rooms.build_and_append_pdu(
         PduBuilder {
             room_id: room_id.clone(),
             sender: sender_id.clone(),
@@ -224,7 +224,7 @@ pub fn create_room_route(
             continue;
         }
 
-        db.rooms.append_pdu(
+        db.rooms.build_and_append_pdu(
             PduBuilder {
                 room_id: room_id.clone(),
                 sender: sender_id.clone(),
@@ -243,7 +243,7 @@ pub fn create_room_route(
 
     // 6. Events implied by name and topic
     if let Some(name) = &body.name {
-        db.rooms.append_pdu(
+        db.rooms.build_and_append_pdu(
             PduBuilder {
                 room_id: room_id.clone(),
                 sender: sender_id.clone(),
@@ -264,7 +264,7 @@ pub fn create_room_route(
     }
 
     if let Some(topic) = &body.topic {
-        db.rooms.append_pdu(
+        db.rooms.build_and_append_pdu(
             PduBuilder {
                 room_id: room_id.clone(),
                 sender: sender_id.clone(),
@@ -284,7 +284,7 @@ pub fn create_room_route(
 
     // 7. Events implied by invite (and TODO: invite_3pid)
     for user in &body.invite {
-        db.rooms.append_pdu(
+        db.rooms.build_and_append_pdu(
             PduBuilder {
                 room_id: room_id.clone(),
                 sender: sender_id.clone(),
