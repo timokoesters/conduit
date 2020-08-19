@@ -33,7 +33,7 @@ use std::{
 ///
 /// This is created when a state group is added to the database by
 /// hashing the entire state.
-pub type StateHashId = String;
+pub type StateHashId = Vec<u8>;
 
 /// This identifier consists of roomId + count. It represents a
 /// unique event, it will never be overwritten or removed.
@@ -98,7 +98,7 @@ impl Rooms {
     /// with `state_hash`, this gives the full state at event "x".
     pub fn get_statemap_by_hash(&self, state_hash: StateHashId) -> Result<StateMap<EventId>> {
         self.stateid_pduid
-            .scan_prefix(state_hash.as_bytes())
+            .scan_prefix(&state_hash)
             .values()
             .map(|pduid| {
                 self.pduid_pdu.get(&pduid?)?.map_or_else(
@@ -121,12 +121,12 @@ impl Rooms {
     pub fn prev_state_hash(&self, current: StateHashId) -> Option<StateHashId> {
         let mut found = false;
         for pair in self.pduid_statehash.iter().rev() {
-            let prev = utils::string_from_bytes(&pair.ok()?.1).ok()?;
-            if current == prev {
+            let prev = pair.ok()?.1;
+            if current == prev.as_ref() {
                 found = true;
             }
-            if current != prev && found {
-                return Some(prev);
+            if current != prev.as_ref() && found {
+                return Some(prev.to_vec());
             }
         }
         None
@@ -170,17 +170,14 @@ impl Rooms {
         // We must check here because this method is called outside and before
         // `append_state_pdu` so the DB can be empty
         if self.pduid_statehash.scan_prefix(prefix).next().is_none() {
-            // TODO use ring crate to hash
-            return Ok(room_id.as_str().to_owned());
+            // return the hash of the room_id, this represents a room with no state
+            return self.new_state_hash_id(room_id);
         }
 
         self.pduid_statehash
             .iter()
             .next_back()
-            .map(|pair| {
-                utils::string_from_bytes(&pair?.1)
-                    .map_err(|_| Error::bad_database("Invalid state hash string in db."))
-            })
+            .map(|pair| Ok(pair?.1.to_vec()))
             .ok_or_else(|| Error::bad_database("No PDU's found for this room."))?
     }
 
@@ -253,10 +250,9 @@ impl Rooms {
             .next()
             .is_none()
         {
-            return utils::string_from_bytes(
-                digest::digest(&digest::SHA256, room_id.as_bytes()).as_ref(),
-            )
-            .map_err(|_| Error::bad_database("Empty state generated invalid string from hash."));
+            return Ok(digest::digest(&digest::SHA256, room_id.as_bytes())
+                .as_ref()
+                .to_vec());
         }
 
         let pdu_ids_to_hash = self
@@ -278,9 +274,7 @@ impl Rooms {
             &digest::SHA256,
             &pdu_ids_to_hash.into_iter().flatten().collect::<Vec<u8>>(),
         );
-        // TODO not sure how you want to hash this
-        utils::string_from_bytes(hash.as_ref())
-            .map_err(|_| Error::bad_database("State generated invalid string from hash."))
+        Ok(hash.as_ref().to_vec())
     }
 
     /// Checks if a room exists.
@@ -602,7 +596,7 @@ impl Rooms {
         let state_hash = self.new_state_hash_id(room_id)?;
         let state = self.current_state_pduids(room_id)?;
 
-        let mut key = state_hash.as_bytes().to_vec();
+        let mut key = state_hash.to_vec();
         key.push(0xff);
 
         // TODO eventually we could avoid writing to the DB so much on every event
@@ -620,9 +614,10 @@ impl Rooms {
         // This event's state does not include the event itself. `current_state_pduids`
         // uses `roomstateid_pduid` before the current event is inserted to the tree so the state
         // will be everything up to but not including the incoming event.
-        self.pduid_statehash.insert(pdu_id, state_hash.as_bytes())?;
+        self.pduid_statehash.insert(pdu_id, state_hash.as_slice())?;
 
-        self.roomid_statehash.insert(room_id.as_bytes(), state_hash.as_bytes())?;
+        self.roomid_statehash
+            .insert(room_id.as_bytes(), state_hash.as_slice())?;
 
         let mut key = room_id.as_bytes().to_vec();
         key.push(0xff);
