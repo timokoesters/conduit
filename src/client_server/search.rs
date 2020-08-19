@@ -60,10 +60,10 @@ pub fn search_events_route(
             Ok::<_, Error>(SearchResult {
                 context: None,
                 rank: None,
-                result: dbg!(db
+                result: db
                     .rooms
-                    .get_pdu_from_id(dbg!(&result))?
-                    .map(|pdu| pdu.to_room_event())),
+                    .get_pdu_from_id(&result)?
+                    .map(|pdu| pdu.to_room_event()),
             })
         })
         .filter_map(|r| r.ok())

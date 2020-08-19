@@ -575,7 +575,7 @@ impl Rooms {
             self.roomstateid_pdu.insert(key, &*pdu_json.to_string())?;
         }
 
-        match dbg!(event_type) {
+        match event_type {
             EventType::RoomRedaction => {
                 if let Some(redact_id) = &redacts {
                     // TODO: Reason
@@ -619,7 +619,7 @@ impl Rooms {
                 }
             }
             EventType::RoomMessage => {
-                if let Some(body) = dbg!(content).get("body").and_then(|b| b.as_str()) {
+                if let Some(body) = content.get("body").and_then(|b| b.as_str()) {
                     for word in body
                         .split_terminator(|c: char| !c.is_alphanumeric())
                         .map(str::to_lowercase)
@@ -1002,7 +1002,7 @@ impl Rooms {
                     .iter_mut()
                     .map(|it| {
                         while let Some(element) = it.peek() {
-                            if dbg!(element) > dbg!(target) {
+                            if element > target {
                                 return false;
                             } else if element == target {
                                 return true;
