@@ -61,6 +61,8 @@ pub struct Rooms {
     pub(super) pduid_statehash: sled::Tree, // PDU id -> StateHash
     /// Also holds the full room state minus the latest event.
     pub(super) stateid_pduid: sled::Tree, // StateId = StateHash + (EventType, StateKey)
+    /// The room_id -> the latest StateHash
+    pub(super) roomid_statehash: sled::Tree,
 }
 
 impl StateStore for Rooms {
@@ -91,53 +93,7 @@ impl StateStore for Rooms {
     }
 }
 
-// These are the methods related to STATE resolution.
 impl Rooms {
-    /// Generates a new StateHash and associates it with the incoming event.
-    ///
-    /// This adds all current state events (not including the incoming event)
-    /// to `stateid_pduid` and adds the incoming event to `pduid_statehash`.
-    /// The incoming event is the `pdu_id` passed to this method.
-    pub fn append_state_pdu(
-        &self,
-        room_id: &RoomId,
-        pdu_id: &[u8],
-        state_key: &str,
-        kind: &EventType,
-    ) -> Result<StateHashId> {
-        let state_hash = self.new_state_hash_id(room_id)?;
-        let state = self.current_state_pduids(room_id)?;
-
-        let mut key = state_hash.as_bytes().to_vec();
-        key.push(0xff);
-
-        // TODO eventually we could avoid writing to the DB so much on every event
-        // by keeping track of the delta and write that every so often
-        for ((ev_ty, state_key), pid) in state {
-            let mut state_id = key.to_vec();
-            state_id.extend_from_slice(ev_ty.to_string().as_bytes());
-            key.push(0xff);
-            state_id.extend_from_slice(state_key.expect("state event").as_bytes());
-            key.push(0xff);
-
-            self.stateid_pduid.insert(&state_id, &pid)?;
-        }
-
-        // This event's state does not include the event itself. `current_state_pduids`
-        // uses `roomstateid_pduid` before the current event is inserted to the tree so the state
-        // will be everything up to but not including the incoming event.
-        self.pduid_statehash.insert(pdu_id, state_hash.as_bytes())?;
-
-        let mut key = room_id.as_bytes().to_vec();
-        key.push(0xff);
-        key.extend_from_slice(kind.to_string().as_bytes());
-        key.push(0xff);
-        key.extend_from_slice(state_key.as_bytes());
-        self.roomstateid_pduid.insert(key, pdu_id)?;
-
-        Ok(state_hash)
-    }
-
     /// Builds a `StateMap` by iterating over all keys that start
     /// with `state_hash`, this gives the full state at event "x".
     pub fn get_statemap_by_hash(&self, state_hash: StateHashId) -> Result<StateMap<EventId>> {
@@ -629,6 +585,53 @@ impl Rooms {
         self.edus.room_read_set(&pdu.room_id, &pdu.sender, index)?;
 
         Ok(pdu.event_id)
+    }
+
+    /// Generates a new StateHash and associates it with the incoming event.
+    ///
+    /// This adds all current state events (not including the incoming event)
+    /// to `stateid_pduid` and adds the incoming event to `pduid_statehash`.
+    /// The incoming event is the `pdu_id` passed to this method.
+    fn append_state_pdu(
+        &self,
+        room_id: &RoomId,
+        pdu_id: &[u8],
+        state_key: &str,
+        kind: &EventType,
+    ) -> Result<StateHashId> {
+        let state_hash = self.new_state_hash_id(room_id)?;
+        let state = self.current_state_pduids(room_id)?;
+
+        let mut key = state_hash.as_bytes().to_vec();
+        key.push(0xff);
+
+        // TODO eventually we could avoid writing to the DB so much on every event
+        // by keeping track of the delta and write that every so often
+        for ((ev_ty, state_key), pid) in state {
+            let mut state_id = key.to_vec();
+            state_id.extend_from_slice(ev_ty.to_string().as_bytes());
+            key.push(0xff);
+            state_id.extend_from_slice(state_key.expect("state event").as_bytes());
+            key.push(0xff);
+
+            self.stateid_pduid.insert(&state_id, &pid)?;
+        }
+
+        // This event's state does not include the event itself. `current_state_pduids`
+        // uses `roomstateid_pduid` before the current event is inserted to the tree so the state
+        // will be everything up to but not including the incoming event.
+        self.pduid_statehash.insert(pdu_id, state_hash.as_bytes())?;
+
+        self.roomid_statehash.insert(room_id.as_bytes(), state_hash.as_bytes())?;
+
+        let mut key = room_id.as_bytes().to_vec();
+        key.push(0xff);
+        key.extend_from_slice(kind.to_string().as_bytes());
+        key.push(0xff);
+        key.extend_from_slice(state_key.as_bytes());
+        self.roomstateid_pduid.insert(key, pdu_id)?;
+
+        Ok(state_hash)
     }
 
     /// Creates a new persisted data unit and adds it to a room.

@@ -112,11 +112,7 @@ pub async fn join_room_by_id_route(
             .room_state
             .state
             .iter()
-            .map(|pdu| pdu.deserialize().map(StateEvent::Full))
-            .map(|ev| {
-                let ev = ev?;
-                Ok::<_, serde_json::Error>((ev.event_id(), ev))
-            })
+            .map(|pdu| pdu.deserialize().map(StateEvent::Full).map(|ev| (ev.event_id(), ev)))
             .collect::<Result<BTreeMap<EventId, StateEvent>, _>>()
             .map_err(|_| Error::bad_database("Invalid PDU found in db."))?;
 
@@ -140,9 +136,7 @@ pub async fn join_room_by_id_route(
 
         for ev_id in &sorted_events_ids {
             // this is a `state_res::StateEvent` that holds a `ruma::Pdu`
-            let pdu = event_map.get(ev_id).ok_or_else(|| {
-                Error::Conflict("Found event_id in sorted events that is not in resolved state")
-            })?;
+            let pdu = event_map.get(ev_id).expect("Found event_id in sorted events that is not in resolved state");
 
             // We do not rebuild the PDU in this case only insert to DB
             db.rooms
