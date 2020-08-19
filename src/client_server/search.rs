@@ -14,21 +14,14 @@ use std::collections::BTreeMap;
 )]
 pub fn search_events_route(
     db: State<'_, Database>,
-    body: Ruma<search_events::Request>,
+    body: Ruma<search_events::IncomingRequest>,
 ) -> ConduitResult<search_events::Response> {
     let sender_id = body.sender_id.as_ref().expect("user is authenticated");
 
     let search_criteria = body.search_categories.room_events.as_ref().unwrap();
-    let filter = search_criteria
-        .filter
-        .as_ref()
-        .unwrap();
+    let filter = search_criteria.filter.as_ref().unwrap();
 
-    let room_id = filter.rooms
-        .as_ref()
-        .unwrap()
-        .first()
-        .unwrap();
+    let room_id = filter.rooms.as_ref().unwrap().first().unwrap();
 
     let limit = filter.limit.map_or(10, |l| u64::from(l) as usize);
 
@@ -60,10 +53,11 @@ pub fn search_events_route(
             Ok::<_, Error>(SearchResult {
                 context: None,
                 rank: None,
-                result: dbg!(db
+                result: db
                     .rooms
-                    .get_pdu_from_id(dbg!(&result))?
-                    .map(|pdu| pdu.to_room_event())),
+                    .get_pdu_from_id(&result)?
+                    // TODO this is an awkward type conversion see method
+                    .map(|pdu| pdu.to_any_event()),
             })
         })
         .filter_map(|r| r.ok())
@@ -77,17 +71,15 @@ pub fn search_events_route(
         Some((skip + limit).to_string())
     };
 
-    Ok(search_events::Response {
-        search_categories: ResultCategories {
-            room_events: Some(ResultRoomEvents {
-                count: uint!(0),         // TODO
-                groups: BTreeMap::new(), // TODO
-                next_batch,
-                results,
-                state: BTreeMap::new(), // TODO
-                highlights: search.1,
-            }),
-        },
-    }
+    Ok(search_events::Response::new(ResultCategories {
+        room_events: Some(ResultRoomEvents {
+            count: uint!(0),         // TODO
+            groups: BTreeMap::new(), // TODO
+            next_batch,
+            results,
+            state: BTreeMap::new(), // TODO
+            highlights: search.1,
+        }),
+    })
     .into())
 }

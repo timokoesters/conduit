@@ -5,10 +5,9 @@ use ruma::{
         error::ErrorKind,
         r0::config::{get_global_account_data, set_global_account_data},
     },
-    events::{custom::CustomEventContent, BasicEvent, EventType},
+    events::{custom::CustomEventContent, BasicEvent},
     Raw,
 };
-use std::convert::TryFrom;
 
 #[cfg(feature = "conduit_bin")]
 use rocket::{get, put};

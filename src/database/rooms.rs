@@ -532,7 +532,7 @@ impl Rooms {
             self.append_state_pdu(&pdu.room_id, &pdu_id, state_key, &pdu.kind)?;
         }
 
-        match pdu.kind {
+        match &pdu.kind {
             EventType::RoomRedaction => {
                 if let Some(redact_id) = &pdu.redacts {
                     // TODO: Reason
@@ -553,7 +553,7 @@ impl Rooms {
                 }
             }
             EventType::RoomMember => {
-                if let Some(state_key) = &pdu.state_key {
+                if let Some(state_key) = pdu.state_key.as_ref() {
                     // if the state_key fails
                     let target_user_id = UserId::try_from(state_key.as_str())
                         .expect("This state_key was previously validated");
@@ -574,6 +574,21 @@ impl Rooms {
                         account_data,
                         globals,
                     )?;
+                }
+            }
+            EventType::RoomMessage => {
+                if let Some(body) = pdu.content.get("body").and_then(|b| b.as_str()) {
+                    for word in body
+                        .split_terminator(|c: char| !c.is_alphanumeric())
+                        .map(str::to_lowercase)
+                    {
+                        let mut key = pdu.room_id.to_string().as_bytes().to_vec();
+                        key.push(0xff);
+                        key.extend_from_slice(word.as_bytes());
+                        key.push(0xff);
+                        key.extend_from_slice(&pdu_id);
+                        self.tokenids.insert(key, &[])?;
+                    }
                 }
             }
             _ => {}
@@ -1184,12 +1199,12 @@ impl Rooms {
                     .iter_mut()
                     .map(|it| {
                         while let Some(element) = it.peek() {
-                            if dbg!(element) > dbg!(target) {
-                                return false;
-                            } else if element == target {
-                                return true;
-                            } else {
-                                it.next();
+                            match element.cmp(target) {
+                                std::cmp::Ordering::Greater => return false,
+                                std::cmp::Ordering::Equal => return true,
+                                _ => {
+                                    it.next();
+                                }
                             }
                         }
 

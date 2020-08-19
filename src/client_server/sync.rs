@@ -69,13 +69,14 @@ pub async fn sync_events_route(
 
         // They /sync response doesn't always return all messages, so we say the output is
         // limited unless there are events in non_timeline_pdus
-        //let mut limited = false;
+        let mut limited = false;
 
         let mut state_pdus = Vec::new();
         for pdu in non_timeline_pdus {
             if pdu.state_key.is_some() {
                 state_pdus.push(pdu);
             }
+            limited = true;
         }
 
         let mut send_member_count = false;
@@ -271,7 +272,7 @@ pub async fn sync_events_route(
                 notification_count,
             },
             timeline: sync_events::Timeline {
-                limited: joined_since_last_sync,
+                limited: limited || joined_since_last_sync,
                 prev_batch,
                 events: room_events,
             },

@@ -2,7 +2,7 @@ use crate::{Error, Result};
 use js_int::UInt;
 use ruma::{
     events::{
-        pdu::EventHash, room::member::MemberEventContent, AnyRoomEvent, AnyStateEvent,
+        pdu::EventHash, room::member::MemberEventContent, AnyEvent, AnyRoomEvent, AnyStateEvent,
         AnyStrippedStateEvent, AnySyncRoomEvent, AnySyncStateEvent, EventType, StateEvent,
     },
     EventId, Raw, RoomId, ServerName, UserId,
@@ -87,6 +87,28 @@ impl PduEvent {
             "sender": self.sender,
             "origin_server_ts": self.origin_server_ts,
             "unsigned": self.unsigned,
+        });
+
+        if let Some(state_key) = &self.state_key {
+            json["state_key"] = json!(state_key);
+        }
+        if let Some(redacts) = &self.redacts {
+            json["redacts"] = json!(redacts);
+        }
+
+        serde_json::from_value(json).expect("Raw::from_value always works")
+    }
+
+    /// This only works for events that are also AnyRoomEvents.
+    pub fn to_any_event(&self) -> Raw<AnyEvent> {
+        let mut json = json!({
+            "content": self.content,
+            "type": self.kind,
+            "event_id": self.event_id,
+            "sender": self.sender,
+            "origin_server_ts": self.origin_server_ts,
+            "unsigned": self.unsigned,
+            "room_id": self.room_id,
         });
 
         if let Some(state_key) = &self.state_key {
