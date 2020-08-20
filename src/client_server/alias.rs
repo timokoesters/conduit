@@ -1,11 +1,14 @@
 use super::State;
 use crate::{server_server, ConduitResult, Database, Error, Ruma};
-use ruma::api::{
-    client::{
-        error::ErrorKind,
-        r0::alias::{create_alias, delete_alias, get_alias},
+use ruma::{
+    api::{
+        client::{
+            error::ErrorKind,
+            r0::alias::{create_alias, delete_alias, get_alias},
+        },
+        federation,
     },
-    federation,
+    RoomAliasId,
 };
 
 #[cfg(feature = "conduit_bin")]
@@ -50,12 +53,19 @@ pub async fn get_alias_route(
     db: State<'_, Database>,
     body: Ruma<get_alias::IncomingRequest>,
 ) -> ConduitResult<get_alias::Response> {
-    if body.room_alias.server_name() != db.globals.server_name() {
+    get_alias_helper(db, &body.room_alias).await
+}
+
+pub async fn get_alias_helper(
+    db: State<'_, Database>,
+    room_alias: &RoomAliasId,
+) -> ConduitResult<get_alias::Response> {
+    if room_alias.server_name() != db.globals.server_name() {
         let response = server_server::send_request(
             &db,
-            body.room_alias.server_name().to_string(),
+            room_alias.server_name().to_string(),
             federation::query::get_room_information::v1::Request {
-                room_alias: body.room_alias.to_string(),
+                room_alias: room_alias.to_string(),
             },
         )
         .await?;
@@ -65,7 +75,7 @@ pub async fn get_alias_route(
 
     let room_id = db
         .rooms
-        .id_from_alias(&body.room_alias)?
+        .id_from_alias(&room_alias)?
         .ok_or(Error::BadRequest(
             ErrorKind::NotFound,
             "Room with alias not found.",

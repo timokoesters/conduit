@@ -8,13 +8,10 @@ use ruma::{
     api::{
         client::{
             error::ErrorKind,
-            r0::{
-                alias,
-                membership::{
-                    ban_user, forget_room, get_member_events, invite_user, join_room_by_id,
-                    join_room_by_id_or_alias, joined_members, joined_rooms, kick_user, leave_room,
-                    unban_user, IncomingThirdPartySigned,
-                },
+            r0::membership::{
+                ban_user, forget_room, get_member_events, invite_user, join_room_by_id,
+                join_room_by_id_or_alias, joined_members, joined_rooms, kick_user, leave_room,
+                unban_user, IncomingThirdPartySigned,
             },
         },
         federation,
@@ -58,24 +55,10 @@ pub async fn join_room_by_id_or_alias_route(
     let room_id = match RoomId::try_from(body.room_id_or_alias.clone()) {
         Ok(room_id) => room_id,
         Err(room_alias) => {
-            client_server::get_alias_route(
-                db,
-                Ruma {
-                    body: alias::get_alias::IncomingRequest::try_from(http::Request::new(
-                        serde_json::json!({ "room_alias": room_alias, })
-                            .to_string()
-                            .as_bytes()
-                            .to_vec(),
-                    ))
-                    .unwrap(),
-                    sender_id: body.sender_id.clone(),
-                    device_id: body.device_id.clone(),
-                    json_body: None,
-                },
-            )
-            .await?
-            .0
-            .room_id
+            client_server::get_alias_helper(db, &room_alias)
+                .await?
+                .0
+                .room_id
         }
     };
 
@@ -495,7 +478,7 @@ async fn join_room_by_id_helper(
                 room_id: room_id.clone(),
                 event_id,
                 pdu_stub: serde_json::from_value(join_event_stub_value)
-                    .expect("Raw::from_value always works"),
+                    .expect("we just created this event"),
             },
         )
         .await?;
