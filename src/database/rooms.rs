@@ -75,23 +75,23 @@ impl StateStore for Rooms {
             .map_err(|e| e.to_string())?
             .ok_or_else(|| "PDU via room_id and event_id not found in the db.".to_owned())?;
 
-        utils::deserialize(
+        serde_json::from_slice(
             &self
                 .pduid_pdu
                 .get(pid)
                 .map_err(|e| e.to_string())?
                 .ok_or_else(|| "PDU via pduid not found in db.".to_owned())?,
         )
+        .map_err(|e| e.to_string())
         .and_then(|pdu: StateEvent| {
             // conduit's PDU's always contain a room_id but some
             // of ruma's do not so this must be an Option
             if pdu.room_id() == Some(room_id) {
                 Ok(pdu)
             } else {
-                Err(Error::bad_database("Found PDU for incorrect room in db."))
+                Err("Found PDU for incorrect room in db.".into())
             }
         })
-        .map_err(|e| e.to_string())
     }
 }
 
@@ -1142,11 +1142,11 @@ impl Rooms {
         })
     }
 
-    pub fn search_pdus(
-        &self,
+    pub fn search_pdus<'a>(
+        &'a self,
         room_id: &RoomId,
         search_string: &str,
-    ) -> Result<(impl Iterator<Item = IVec>, Vec<String>)> {
+    ) -> Result<(impl Iterator<Item = IVec> + 'a, Vec<String>)> {
         let mut prefix = room_id.to_string().as_bytes().to_vec();
         prefix.push(0xff);
 
@@ -1155,7 +1155,7 @@ impl Rooms {
             .map(str::to_lowercase)
             .collect::<Vec<_>>();
 
-        let mut iterators = words.iter().map(|word| {
+        let iterators = words.clone().into_iter().map(move |word| {
             let mut prefix2 = prefix.clone();
             prefix2.extend_from_slice(word.as_bytes());
             prefix2.push(0xff);
@@ -1178,42 +1178,47 @@ impl Rooms {
                     Ok::<_, Error>(pdu_id)
                 })
                 .filter_map(|r| r.ok())
-                .peekable()
         });
 
-        let first_iterator = match iterators.next() {
-            Some(i) => i,
-            None => {
-                return Err(Error::BadRequest(
-                    ErrorKind::InvalidParam,
-                    "search_term needs to contain at least one word.",
-                ))
-            }
-        };
+        Ok((utils::common_elements(iterators).unwrap(), words))
+    }
 
-        let mut other_iterators = iterators.collect::<Vec<_>>();
+    pub fn get_shared_rooms<'a>(
+        &'a self,
+        users: Vec<UserId>,
+    ) -> impl Iterator<Item = Result<RoomId>> + 'a {
+        let iterators = users.into_iter().map(move |user_id| {
+            let mut prefix = user_id.as_bytes().to_vec();
+            prefix.push(0xff);
 
-        Ok((
-            first_iterator.filter(move |target| {
-                other_iterators
-                    .iter_mut()
-                    .map(|it| {
-                        while let Some(element) = it.peek() {
-                            match element.cmp(target) {
-                                std::cmp::Ordering::Greater => return false,
-                                std::cmp::Ordering::Equal => return true,
-                                _ => {
-                                    it.next();
-                                }
-                            }
-                        }
+            self.userroomid_joined
+                .scan_prefix(&prefix)
+                .keys()
+                .filter_map(|r| r.ok())
+                .map(|key| {
+                    let roomid_index = key
+                        .iter()
+                        .enumerate()
+                        .find(|(_, &b)| b == 0xff)
+                        .ok_or_else(|| Error::bad_database("Invalid userroomid_joined in db."))?
+                        .0
+                        + 1; // +1 because the room id starts AFTER the separator
 
-                        false
-                    })
-                    .all(|b| b)
-            }),
-            words,
-        ))
+                    let room_id = key.subslice(roomid_index, key.len() - roomid_index);
+
+                    Ok::<_, Error>(room_id)
+                })
+                .filter_map(|r| r.ok())
+        });
+
+        utils::common_elements(iterators)
+            .expect("users is not empty")
+            .map(|bytes| {
+                RoomId::try_from(utils::string_from_bytes(&*bytes).map_err(|_| {
+                    Error::bad_database("Invalid RoomId bytes in userroomid_joined")
+                })?)
+                .map_err(|_| Error::bad_database("Invalid RoomId in userroomid_joined."))
+            })
     }
 
     /// Returns an iterator over all joined members of a room.

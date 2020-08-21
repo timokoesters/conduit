@@ -1,7 +1,8 @@
-use crate::Error;
 use argon2::{Config, Variant};
 use rand::prelude::*;
+use sled::IVec;
 use std::{
+    cmp,
     convert::TryInto,
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -61,7 +62,28 @@ pub fn calculate_hash(password: &str) -> Result<String, argon2::Error> {
     argon2::hash_encoded(password.as_bytes(), salt.as_bytes(), &hashing_config)
 }
 
-pub fn deserialize<'de, T: serde::Deserialize<'de>>(val: &'de sled::IVec) -> Result<T, Error> {
-    serde_json::from_slice::<T>(val.as_ref())
-        .map_err(|_| Error::bad_database("Found invalid bytes as PDU in db."))
+pub fn common_elements(
+    mut iterators: impl Iterator<Item = impl Iterator<Item = IVec>>,
+) -> Option<impl Iterator<Item = IVec>> {
+    let first_iterator = iterators.next()?;
+    let mut other_iterators = iterators.map(|i| i.peekable()).collect::<Vec<_>>();
+
+    Some(first_iterator.filter(move |target| {
+        other_iterators
+            .iter_mut()
+            .map(|it| {
+                while let Some(element) = it.peek() {
+                    match element.cmp(target) {
+                        cmp::Ordering::Greater => return false,
+                        cmp::Ordering::Equal => return true,
+                        _ => {
+                            it.next();
+                        }
+                    }
+                }
+
+                false
+            })
+            .all(|b| b)
+    }))
 }

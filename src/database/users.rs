@@ -408,19 +408,7 @@ impl Users {
             &*serde_json::to_string(&device_keys).expect("DeviceKeys::to_string always works"),
         )?;
 
-        let count = globals.next_count()?.to_be_bytes();
-        for room_id in rooms.rooms_joined(&user_id) {
-            let mut key = room_id?.to_string().as_bytes().to_vec();
-            key.push(0xff);
-            key.extend_from_slice(&count);
-
-            self.keychangeid_userid.insert(key, &*user_id.to_string())?;
-        }
-
-        let mut key = user_id.to_string().as_bytes().to_vec();
-        key.push(0xff);
-        key.extend_from_slice(&count);
-        self.keychangeid_userid.insert(key, &*user_id.to_string())?;
+        self.mark_device_key_update(user_id, rooms, globals)?;
 
         Ok(())
     }
@@ -520,19 +508,7 @@ impl Users {
                 .insert(&*user_id.to_string(), user_signing_key_key)?;
         }
 
-        let count = globals.next_count()?.to_be_bytes();
-        for room_id in rooms.rooms_joined(&user_id) {
-            let mut key = room_id?.to_string().as_bytes().to_vec();
-            key.push(0xff);
-            key.extend_from_slice(&count);
-
-            self.keychangeid_userid.insert(key, &*user_id.to_string())?;
-        }
-
-        let mut key = user_id.to_string().as_bytes().to_vec();
-        key.push(0xff);
-        key.extend_from_slice(&count);
-        self.keychangeid_userid.insert(key, &*user_id.to_string())?;
+        self.mark_device_key_update(user_id, rooms, globals)?;
 
         Ok(())
     }
@@ -576,21 +552,7 @@ impl Users {
         )?;
 
         // TODO: Should we notify about this change?
-        let count = globals.next_count()?.to_be_bytes();
-        for room_id in rooms.rooms_joined(&target_id) {
-            let mut key = room_id?.to_string().as_bytes().to_vec();
-            key.push(0xff);
-            key.extend_from_slice(&count);
-
-            self.keychangeid_userid
-                .insert(key, &*target_id.to_string())?;
-        }
-
-        let mut key = target_id.to_string().as_bytes().to_vec();
-        key.push(0xff);
-        key.extend_from_slice(&count);
-        self.keychangeid_userid
-            .insert(key, &*target_id.to_string())?;
+        self.mark_device_key_update(target_id, rooms, globals)?;
 
         Ok(())
     }
@@ -626,6 +588,37 @@ impl Users {
                     })?,
                 )
             })
+    }
+
+    fn mark_device_key_update(
+        &self,
+        user_id: &UserId,
+        rooms: &super::rooms::Rooms,
+        globals: &super::globals::Globals,
+    ) -> Result<()> {
+        let count = globals.next_count()?.to_be_bytes();
+        for room_id in rooms.rooms_joined(&user_id).filter_map(|r| r.ok()) {
+            // Don't send key updates to unencrypted rooms
+            if rooms
+                .room_state_get(&room_id, &EventType::RoomEncryption, "")?
+                .is_none()
+            {
+                return Ok(());
+            }
+
+            let mut key = room_id.to_string().as_bytes().to_vec();
+            key.push(0xff);
+            key.extend_from_slice(&count);
+
+            self.keychangeid_userid.insert(key, &*user_id.to_string())?;
+        }
+
+        let mut key = user_id.to_string().as_bytes().to_vec();
+        key.push(0xff);
+        key.extend_from_slice(&count);
+        self.keychangeid_userid.insert(key, &*user_id.to_string())?;
+
+        Ok(())
     }
 
     pub fn get_device_keys(
