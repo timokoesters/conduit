@@ -19,16 +19,9 @@ pub fn search_events_route(
     let sender_id = body.sender_id.as_ref().expect("user is authenticated");
 
     let search_criteria = body.search_categories.room_events.as_ref().unwrap();
-    let filter = search_criteria
-        .filter
-        .as_ref()
-        .unwrap();
+    let filter = search_criteria.filter.as_ref().unwrap();
 
-    let room_id = filter.rooms
-        .as_ref()
-        .unwrap()
-        .first()
-        .unwrap();
+    let room_id = filter.rooms.as_ref().unwrap().first().unwrap();
 
     let limit = filter.limit.map_or(10, |l| u64::from(l) as usize);
 

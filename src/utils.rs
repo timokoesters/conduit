@@ -1,5 +1,6 @@
 use argon2::{Config, Variant};
 use rand::prelude::*;
+use sled::IVec;
 use std::{
     convert::TryInto,
     time::{SystemTime, UNIX_EPOCH},
@@ -58,4 +59,30 @@ pub fn calculate_hash(password: &str) -> Result<String, argon2::Error> {
 
     let salt = random_string(32);
     argon2::hash_encoded(password.as_bytes(), salt.as_bytes(), &hashing_config)
+}
+
+pub fn common_elements(
+    mut iterators: impl Iterator<Item = impl Iterator<Item = IVec>>,
+) -> Option<impl Iterator<Item = IVec>> {
+    let first_iterator = iterators.next()?;
+    let mut other_iterators = iterators.map(|i| i.peekable()).collect::<Vec<_>>();
+
+    Some(first_iterator.filter(move |target| {
+        other_iterators
+            .iter_mut()
+            .map(|it| {
+                while let Some(element) = it.peek() {
+                    if element > target {
+                        return false;
+                    } else if element == target {
+                        return true;
+                    } else {
+                        it.next();
+                    }
+                }
+
+                false
+            })
+            .all(|b| b)
+    }))
 }
