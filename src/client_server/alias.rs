@@ -53,11 +53,11 @@ pub async fn get_alias_route(
     db: State<'_, Database>,
     body: Ruma<get_alias::IncomingRequest>,
 ) -> ConduitResult<get_alias::Response> {
-    get_alias_helper(db, &body.room_alias).await
+    get_alias_helper(&db, &body.room_alias).await
 }
 
 pub async fn get_alias_helper(
-    db: State<'_, Database>,
+    db: &Database,
     room_alias: &RoomAliasId,
 ) -> ConduitResult<get_alias::Response> {
     if room_alias.server_name() != db.globals.server_name() {

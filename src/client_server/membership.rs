@@ -49,13 +49,12 @@ pub async fn join_room_by_id_route(
 )]
 pub async fn join_room_by_id_or_alias_route(
     db: State<'_, Database>,
-    db2: State<'_, Database>,
     body: Ruma<join_room_by_id_or_alias::IncomingRequest>,
 ) -> ConduitResult<join_room_by_id_or_alias::Response> {
     let room_id = match RoomId::try_from(body.room_id_or_alias.clone()) {
         Ok(room_id) => room_id,
         Err(room_alias) => {
-            client_server::get_alias_helper(db, &room_alias)
+            client_server::get_alias_helper(&db, &room_alias)
                 .await?
                 .0
                 .room_id
@@ -64,7 +63,7 @@ pub async fn join_room_by_id_or_alias_route(
 
     Ok(join_room_by_id_or_alias::Response {
         room_id: join_room_by_id_helper(
-            &db2,
+            &db,
             body.sender_id.as_ref(),
             &room_id,
             body.third_party_signed.as_ref(),
@@ -507,14 +506,13 @@ async fn join_room_by_id_helper(
             .collect::<Vec<_>>();
 
         // TODO make StateResolution's methods free functions ? or no self param ?
-        let sorted_events_ids = state_res::StateResolution::default()
-            .reverse_topological_power_sort(
-                &room_id,
-                &event_map.keys().cloned().collect::<Vec<_>>(),
-                &mut event_map,
-                &db.rooms,
-                &[], // TODO auth_diff: is this none since we have a set of resolved events we only want to sort
-            );
+        let sorted_events_ids = state_res::StateResolution::reverse_topological_power_sort(
+            &room_id,
+            &event_map.keys().cloned().collect::<Vec<_>>(),
+            &mut event_map,
+            &db.rooms,
+            &[], // TODO auth_diff: is this none since we have a set of resolved events we only want to sort
+        );
 
         for ev_id in &sorted_events_ids {
             // this is a `state_res::StateEvent` that holds a `ruma::Pdu`
