@@ -195,6 +195,7 @@ pub fn create_room_route(
             content: match preset {
                 create_room::RoomPreset::PublicChat => {
                     serde_json::to_value(guest_access::GuestAccessEventContent::new(
+                        // In a public room a joining is the only way to access
                         guest_access::GuestAccess::Forbidden,
                     ))
                     .expect("event is valid, we just created it")

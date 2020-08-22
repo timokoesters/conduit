@@ -720,7 +720,7 @@ impl Rooms {
                 }
                 EventType::RoomMember => event_auth::is_membership_change_allowed(
                     // TODO this is a bit of a hack but not sure how to have a type
-                    // declared in `state_res` crate be
+                    // declared in `state_res` crate easily convert to/from conduit::PduEvent
                     Requester {
                         prev_event_ids: prev_events.to_owned(),
                         room_id: &room_id,
