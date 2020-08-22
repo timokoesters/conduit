@@ -15,6 +15,7 @@ use ruma::{
     UserId,
 };
 
+use register::RegistrationKind;
 #[cfg(feature = "conduit_bin")]
 use rocket::{get, post};
 
@@ -83,12 +84,18 @@ pub fn register_route(
         ));
     }
 
+    let is_guest = matches!(body.kind, Some(RegistrationKind::Guest));
+
     // Validate user id
     let user_id = UserId::parse_with_server_name(
-        body.username
-            .clone()
-            .unwrap_or_else(|| utils::random_string(GUEST_NAME_LENGTH))
-            .to_lowercase(),
+        if is_guest {
+            utils::random_string(GUEST_NAME_LENGTH)
+        } else {
+            body.username.clone().ok_or_else(|| {
+                Error::BadRequest(ErrorKind::MissingParam, "Missing username field.")
+            })?
+        }
+        .to_lowercase(),
         db.globals.server_name(),
     )
     .ok()
@@ -131,7 +138,12 @@ pub fn register_route(
         return Err(Error::Uiaa(uiaainfo));
     }
 
-    let password = body.password.clone().unwrap_or_default();
+    let password = if is_guest {
+        None
+    } else {
+        body.password.clone()
+    }
+    .unwrap_or_default();
 
     // Create user
     db.users.create(&user_id, &password)?;
@@ -149,7 +161,7 @@ pub fn register_route(
         &db.globals,
     )?;
 
-    if body.inhibit_login {
+    if !is_guest && body.inhibit_login {
         return Ok(register::Response {
             access_token: None,
             user_id,
@@ -159,10 +171,12 @@ pub fn register_route(
     }
 
     // Generate new device id if the user didn't specify one
-    let device_id = body
-        .device_id
-        .clone()
-        .unwrap_or_else(|| utils::random_string(DEVICE_ID_LENGTH).into());
+    let device_id = if is_guest {
+        None
+    } else {
+        body.device_id.clone()
+    }
+    .unwrap_or_else(|| utils::random_string(DEVICE_ID_LENGTH).into());
 
     // Generate new token for the device
     let token = utils::random_string(TOKEN_LENGTH);
