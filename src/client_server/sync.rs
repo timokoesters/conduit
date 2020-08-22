@@ -380,31 +380,6 @@ pub async fn sync_events_route(
             .map(|pdu| pdu.to_sync_room_event())
             .collect();
 
-        // TODO: Only until leave point
-        let mut edus = db
-            .rooms
-            .edus
-            .roomlatests_since(&room_id, since)?
-            .filter_map(|r| r.ok()) // Filter out buggy events
-            .collect::<Vec<_>>();
-
-        if db
-            .rooms
-            .edus
-            .last_roomactive_update(&room_id, &db.globals)?
-            > since
-        {
-            edus.push(
-                serde_json::from_str(
-                    &serde_json::to_string(&AnySyncEphemeralRoomEvent::Typing(
-                        db.rooms.edus.roomactives_all(&room_id)?,
-                    ))
-                    .expect("event is valid, we just created it"),
-                )
-                .expect("event is valid, we just created it"),
-            );
-        }
-
         let left_room = sync_events::LeftRoom {
             account_data: sync_events::AccountData { events: Vec::new() },
             timeline: sync_events::Timeline {
@@ -414,6 +389,49 @@ pub async fn sync_events_route(
             },
             state: sync_events::State { events: Vec::new() },
         };
+
+        let mut left_since_last_sync = false;
+        for pdu in db.rooms.pdus_since(&sender_id, &room_id, since)? {
+            let pdu = pdu?;
+            if pdu.kind == EventType::RoomMember && pdu.state_key == Some(sender_id.to_string()) {
+                let content = serde_json::from_value::<
+                    Raw<ruma::events::room::member::MemberEventContent>,
+                >(pdu.content.clone())
+                .expect("Raw::from_value always works")
+                .deserialize()
+                .map_err(|_| Error::bad_database("Invalid PDU in database."))?;
+
+                if content.membership == MembershipState::Leave {
+                    left_since_last_sync = true;
+                    break;
+                }
+            }
+        }
+
+        if left_since_last_sync {
+            device_list_left.extend(
+                db.rooms
+                    .room_members(&room_id)
+                    .filter_map(|user_id| {
+                        Some(
+                            UserId::try_from(user_id.ok()?.clone())
+                                .map_err(|_| {
+                                    Error::bad_database("Invalid member event state key in db.")
+                                })
+                                .ok()?,
+                        )
+                    })
+                    .filter(|user_id| {
+                        // Don't send key updates from the sender to the sender
+                        sender_id != user_id
+                    })
+                    .filter(|user_id| {
+                        // Only send if the sender doesn't share any encrypted room with the target
+                        // anymore
+                        !share_encrypted_room(&db, sender_id, user_id, &room_id)
+                    }),
+            );
+        }
 
         if !left_room.is_empty() {
             left_rooms.insert(room_id.clone(), left_room);
@@ -461,7 +479,6 @@ pub async fn sync_events_route(
         }
     }
 
-    // TODO: mark users as left when WE left an encrypted room they were in
     for user_id in left_encrypted_users {
         // If the user doesn't share an encrypted room with the target anymore, we need to tell
         // them
