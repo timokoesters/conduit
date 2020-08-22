@@ -14,6 +14,17 @@ use std::{
     time::Duration,
 };
 
+/// # `GET /_matrix/client/r0/sync`
+///
+/// Synchronize the client's state with the latest state on the server.
+///
+/// - This endpoint takes a `since` parameter which should be the `next_batch` value from a
+/// previous request.
+/// - Calling this endpoint without a `since` parameter will return all recent events, the state
+/// of all rooms and more data. This should only be called on the initial login of the device.
+/// - To get incremental updates, you can call this endpoint with a `since` parameter. This will
+/// return all recent events, state updates and more data that happened since the last /sync
+/// request.
 #[cfg_attr(
     feature = "conduit_bin",
     get("/_matrix/client/r0/sync", data = "<body>")
