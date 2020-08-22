@@ -8,6 +8,7 @@ use ruma::{
     presence::PresenceState,
     Raw, RoomId, UserId,
 };
+use sled::transaction::Transactional;
 use std::{
     collections::HashMap,
     convert::{TryFrom, TryInto},
@@ -109,11 +110,16 @@ impl RoomEdus {
         room_active_id.push(0xff);
         room_active_id.extend_from_slice(&count);
 
-        self.roomactiveid_userid
-            .insert(&room_active_id, &*user_id.to_string().as_bytes())?;
-
-        self.roomid_lastroomactiveupdate
-            .insert(&room_id.to_string().as_bytes(), &count)?;
+        (&self.roomactiveid_userid, &self.roomid_lastroomactiveupdate).transaction(
+            |(roomactiveid_userid, roomid_lastroomactiveupdate)| {
+                // roomactiveid_userid.insert(&room_active_id, &*user_id.to_string().as_bytes())?;
+                // roomid_lastroomactiveupdate.insert(&room_id.to_string().as_bytes(), &count)?;
+                roomactiveid_userid
+                    .insert(room_active_id.as_slice(), &*user_id.to_string().as_bytes())?;
+                roomid_lastroomactiveupdate.insert(room_id.to_string().as_bytes(), &count)?;
+                Ok(())
+            },
+        )?;
 
         Ok(())
     }

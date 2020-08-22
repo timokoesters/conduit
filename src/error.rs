@@ -22,6 +22,11 @@ pub enum Error {
         #[from]
         source: sled::Error,
     },
+    #[error("There was a problem while writing to the database.")]
+    SledTransactionError {
+        #[from]
+        source: sled::transaction::TransactionError,
+    },
     #[error("Could not generate an image.")]
     ImageError {
         #[from]
