@@ -13,26 +13,26 @@ edition = "2018"
 
 [dependencies]
 # TODO: This can become optional as soon as proper configs are supported
-#rocket = { git = "https://github.com/SergioBenitez/Rocket.git", rev = "8d779caa22c63b15a6c3ceb75d8f6d4971b2eb67", features = ["tls"] } # Used to handle requests
-rocket = { git = "https://github.com/timokoesters/Rocket.git", branch = "empty_parameters", features = ["tls"] }
+#rocket = { git = "https://github.com/SergioBenitez/Rocket.git", rev = "8d779caa22c63b15a6c3ceb75d8f6d4971b2eb67", default-features=false, features = ["tls"] } # Used to handle requests
+rocket = { git = "https://github.com/timokoesters/Rocket.git", branch = "empty_parameters", default-features=false, features = ["tls"] }
 
 #ruma = { git = "https://github.com/ruma/ruma", features = ["rand", "client-api", "federation-api", "unstable-pre-spec", "unstable-synapse-quirks"], rev = "987d48666cf166cf12100b5dbc61b5e3385c4014" } # Used for matrix spec type definitions and helpers
 ruma = { git = "https://github.com/timokoesters/ruma", features = ["rand", "client-api", "federation-api", "unstable-pre-spec", "unstable-synapse-quirks"], branch = "timo-fixes" } # Used for matrix spec type definitions and helpers
 #ruma = { path = "../ruma/ruma", features = ["rand", "client-api", "federation-api", "unstable-pre-spec", "unstable-synapse-quirks"] }
-tokio = "0.2.22" # Used for long polling
-sled = "0.32.0" # Used for storing data permanently
-log = "0.4.8" # Used for emitting log entries
-http = "0.2.1" # Used for rocket<->ruma conversions
-directories = "2.0.2" # Used to find data directory for default db path
-js_int = "0.1.5" # Used for number types for ruma
-serde_json = { version = "1.0.53", features = ["raw_value"] } # Used for ruma wrapper
-serde = "1.0.111" # Used for pdu definition
-rand = "0.7.3" # Used for secure identifiers
-rust-argon2 = "0.8.2" # Used to hash passwords
-reqwest = "0.10.6" # Used to send requests
-thiserror = "1.0.19" # Used for conduit::Error type
-image = { version = "0.23.4", default-features = false, features = ["jpeg", "png", "gif"] } # Used to generate thumbnails for images
-base64 = "0.12.3" # Used to encode server public key
+tokio = "0.2.22"
+sled = "0.34.3"
+log = "0.4.11"
+http = "0.2.1"
+directories = "3.0.1"
+js_int = "0.1.9"
+serde_json = { version = "1.0.57", features = ["raw_value"] } # Used for ruma wrapper
+serde = "1.0.115"
+rand = "0.7.3"
+rust-argon2 = "0.8.2"
+reqwest = "0.10.7"
+thiserror = "1.0.20"
+image = { version = "0.23.8", default-features = false, features = ["jpeg", "png", "gif"] } # Used to generate thumbnails for images
+base64 = "0.12.3"
 
 [features]
 default = ["conduit_bin"]
