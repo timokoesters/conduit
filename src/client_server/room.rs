@@ -308,7 +308,7 @@ pub fn create_room_route(
 
     // Homeserver specific stuff
     if let Some(alias) = alias {
-        db.rooms.set_alias(&alias, Some(&room_id), &db.globals)?;
+        db.rooms.set_alias(&alias, Some(&room_id))?;
     }
 
     if let Some(room::Visibility::Public) = body.visibility {

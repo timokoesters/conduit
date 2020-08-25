@@ -621,7 +621,8 @@ impl Rooms {
             }
             _ => {}
         }
-        self.edus.private_read_set(&room_id, &sender, index, &globals)?;
+        self.edus
+            .private_read_set(&room_id, &sender, index, &globals)?;
 
         Ok(pdu.event_id)
     }
@@ -849,22 +850,30 @@ impl Rooms {
         Ok(())
     }
 
-    pub fn set_alias(
-        &self,
-        alias: &RoomAliasId,
-        room_id: Option<&RoomId>,
-        globals: &super::globals::Globals,
-    ) -> Result<()> {
+    /// Creates a new alias for a room or removes one alias from a room.
+    pub fn set_alias(&self, alias: &RoomAliasId, room_id: Option<&RoomId>) -> Result<()> {
         if let Some(room_id) = room_id {
-            // New alias
-            self.alias_roomid
-                .insert(alias.alias(), &*room_id.to_string())?;
+            // Insert new alias into alias_roomid tree
+            if let Some(old_roomid) = self
+                .alias_roomid
+                .insert(alias.alias(), &*room_id.to_string())?
+            {
+                // Remove old alias
+                let mut aliasid = old_roomid.to_vec();
+                aliasid.push(0xff);
+                aliasid.extend_from_slice(&alias.alias().as_bytes());
+                self.aliasid_alias.remove(aliasid)?;
+            }
+
+            // Insert new alias into aliasid_alias tree
             let mut aliasid = room_id.to_string().as_bytes().to_vec();
-            aliasid.extend_from_slice(&globals.next_count()?.to_be_bytes());
+            aliasid.push(0xff);
+            aliasid.extend_from_slice(&alias.alias().as_bytes());
             self.aliasid_alias.insert(aliasid, &*alias.alias())?;
         } else {
             // room_id=None means remove alias
-            let room_id = self
+            // Remove from alias_roomid tree
+            let old_roomid = self
                 .alias_roomid
                 .remove(alias.alias())?
                 .ok_or(Error::BadRequest(
@@ -872,9 +881,11 @@ impl Rooms {
                     "Alias does not exist.",
                 ))?;
 
-            for key in self.aliasid_alias.scan_prefix(room_id).keys() {
-                self.aliasid_alias.remove(key?)?;
-            }
+            // Remove from aliasid_alias tree
+            let mut aliasid = old_roomid.to_vec();
+            aliasid.push(0xff);
+            aliasid.extend_from_slice(alias.alias().as_bytes());
+            self.aliasid_alias.remove(aliasid)?;
         }
 
         Ok(())

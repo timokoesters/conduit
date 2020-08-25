@@ -23,8 +23,7 @@ pub fn create_alias_route(
         return Err(Error::Conflict("Alias already exists."));
     }
 
-    db.rooms
-        .set_alias(&body.room_alias, Some(&body.room_id), &db.globals)?;
+    db.rooms.set_alias(&body.room_alias, Some(&body.room_id))?;
 
     Ok(create_alias::Response.into())
 }
@@ -37,7 +36,7 @@ pub fn delete_alias_route(
     db: State<'_, Database>,
     body: Ruma<delete_alias::IncomingRequest>,
 ) -> ConduitResult<delete_alias::Response> {
-    db.rooms.set_alias(&body.room_alias, None, &db.globals)?;
+    db.rooms.set_alias(&body.room_alias, None)?;
 
     Ok(delete_alias::Response.into())
 }

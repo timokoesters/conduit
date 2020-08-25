@@ -92,7 +92,13 @@ impl RoomEdus {
     }
 
     /// Sets a private read marker at `count`.
-    pub fn private_read_set(&self, room_id: &RoomId, user_id: &UserId, count: u64, globals: &super::super::globals::Globals) -> Result<()> {
+    pub fn private_read_set(
+        &self,
+        room_id: &RoomId,
+        user_id: &UserId,
+        count: u64,
+        globals: &super::super::globals::Globals,
+    ) -> Result<()> {
         let mut key = room_id.to_string().as_bytes().to_vec();
         key.push(0xff);
         key.extend_from_slice(&user_id.to_string().as_bytes());

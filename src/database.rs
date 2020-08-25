@@ -90,7 +90,8 @@ impl Database {
                 edus: rooms::RoomEdus {
                     readreceiptid_readreceipt: db.open_tree("readreceiptid_readreceipt")?,
                     roomuserid_privateread: db.open_tree("roomuserid_privateread")?, // "Private" read receipt
-                    roomuserid_lastprivatereadupdate: db.open_tree("roomid_lastprivatereadupdate")?,
+                    roomuserid_lastprivatereadupdate: db
+                        .open_tree("roomid_lastprivatereadupdate")?,
                     typingid_userid: db.open_tree("typingid_userid")?,
                     roomid_lasttypingupdate: db.open_tree("roomid_lasttypingupdate")?,
                     presenceid_presence: db.open_tree("presenceid_presence")?,
