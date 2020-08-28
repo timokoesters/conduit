@@ -252,6 +252,7 @@ pub async fn sync_events_route(
                     (db.rooms
                         .pdus_since(&sender_id, &room_id, last_read)?
                         .filter_map(|pdu| pdu.ok()) // Filter out buggy events
+                        .filter(|pdu| &pdu.sender != sender_id)
                         .filter(|pdu| {
                             matches!(
                                 pdu.kind.clone(),
