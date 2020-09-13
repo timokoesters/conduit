@@ -306,37 +306,108 @@ pub async fn get_public_rooms_route(
     feature = "conduit_bin",
     put("/_matrix/federation/v1/send/<_>", data = "<body>")
 )]
-pub fn send_transaction_message_route<'a>(
+pub async fn send_transaction_message_route<'a>(
     db: State<'a, Database>,
     body: Ruma<send_transaction_message::v1::Request<'_>>,
 ) -> ConduitResult<send_transaction_message::v1::Response> {
-    //dbg!(&*body);
+    dbg!(&*body);
+
     for pdu in &body.pdus {
-        let mut value = serde_json::from_str(pdu.json().get())
-            .expect("converting raw jsons to values always works");
+        let (event_id, value) = process_incoming_pdu(pdu);
+        let event = serde_json::from_value::<state_res::StateEvent>(value.clone()).unwrap();
+        let room_id = event.room_id().expect("found PduStub event");
 
-        let event_id = EventId::try_from(&*format!(
-            "${}",
-            ruma::signatures::reference_hash(&value).expect("ruma can calculate reference hashes")
-        ))
-        .expect("ruma's reference hashes are valid event ids");
+        let our_current_state = db.rooms.room_state_full(room_id)?;
 
-        value
-            .as_object_mut()
-            .expect("ruma pdus are json objects")
-            .insert("event_id".to_owned(), event_id.to_string().into());
+        let get_state_response = send_request(
+            &db.globals,
+            body.body.origin,
+            ruma::api::federation::event::get_room_state::v1::Request {
+                room_id,
+                event_id: &event_id,
+            },
+        )
+        .await
+        .unwrap();
+        let their_current_state = get_state_response
+            .pdus
+            .iter()
+            .chain(get_state_response.auth_chain.iter()) // add auth events
+            .map(|pdu| {
+                let (event_id, json) = process_incoming_pdu(pdu);
+                (
+                    event_id,
+                    std::sync::Arc::new(
+                        serde_json::from_value::<state_res::StateEvent>(json)
+                            .expect("valid pdu json"),
+                    ),
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
 
-        let pdu = serde_json::from_value::<PduEvent>(value.clone())
-            .expect("all ruma pdus are conduit pdus");
-        if db.rooms.exists(&pdu.room_id)? {
-            let pdu_id = db
-                .rooms
-                .append_pdu(&pdu, &value, &db.globals, &db.account_data)?;
-            db.rooms.append_to_state(&pdu_id, &pdu)?;
+        let resolved = state_res::StateResolution::resolve(
+            event.room_id().unwrap(),
+            &ruma::RoomVersionId::Version5,
+            &[
+                our_current_state
+                    .iter()
+                    .map(|((ev, sk), v)| ((ev.clone(), Some(sk.to_owned())), v.event_id.clone()))
+                    .collect::<BTreeMap<_, _>>(),
+                // TODO we may not want the auth events chained in here for resolution?
+                their_current_state
+                    .iter()
+                    .map(|(_id, v)| ((v.kind(), v.state_key()), v.event_id().clone()))
+                    .collect::<BTreeMap<_, _>>(),
+            ],
+            Some(
+                our_current_state
+                    .iter()
+                    .map(|(_k, v)| (v.event_id.clone(), v.convert_for_state_res()))
+                    .chain(
+                        their_current_state
+                            .iter()
+                            .map(|(id, ev)| (id.clone(), ev.clone())),
+                    )
+                    .collect::<BTreeMap<_, _>>(),
+            ),
+            &db.rooms,
+        )
+        .expect("resolve failed");
+
+        if resolved.values().any(|id| &event_id == id) {
+            let pdu =
+                serde_json::from_value::<PduEvent>(value).expect("all ruma pdus are conduit pdus");
+            if db.rooms.exists(&pdu.room_id)? {
+                let pdu_id = db
+                    .rooms
+                    .append_pdu(&pdu, &value, &db.globals, &db.account_data)?;
+                db.rooms.append_to_state(&pdu_id, &pdu)?;
+            }
+        } else {
+            log::warn!("event failed state resolution")
         }
     }
     Ok(send_transaction_message::v1::Response {
         pdus: BTreeMap::new(),
     }
     .into())
+}
+
+/// Generates a correct eventId for the incoming pdu.
+///
+/// Returns a `state_res::StateEvent` which can be converted freely and has accessor methods.
+fn process_incoming_pdu(pdu: &ruma::Raw<ruma::events::pdu::Pdu>) -> (EventId, serde_json::Value) {
+    let mut value = serde_json::to_value(pdu.json().get()).expect("all ruma pdus are json values");
+    let event_id = EventId::try_from(&*format!(
+        "${}",
+        ruma::signatures::reference_hash(&value).expect("ruma can calculate reference hashes")
+    ))
+    .expect("ruma's reference hashes are valid event ids");
+
+    value
+        .as_object_mut()
+        .expect("ruma pdus are json objects")
+        .insert("event_id".to_owned(), event_id.to_string().into());
+
+    (event_id, value)
 }

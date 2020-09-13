@@ -246,7 +246,7 @@ impl From<&state_res::StateEvent> for PduEvent {
             content: pdu.content().clone(),
             state_key: Some(pdu.state_key()),
             prev_events: pdu.prev_event_ids(),
-            depth: pdu.depth().clone(),
+            depth: *pdu.depth(),
             auth_events: pdu.auth_events(),
             redacts: pdu.redacts().cloned(),
             unsigned: pdu.unsigned().clone().into_iter().collect(),

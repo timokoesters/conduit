@@ -69,3 +69,6 @@ required-features = ["conduit_bin"]
 [lib]
 name = "conduit"
 path = "src/lib.rs"
+
+[patch."https://github.com/timokoesters/ruma"]
+ruma = { path = "../ruma/ruma" }

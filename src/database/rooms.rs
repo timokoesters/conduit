@@ -435,7 +435,7 @@ impl Rooms {
         Ok(())
     }
 
-    /// Creates a new persisted data unit and adds it to a room.
+    /// Adds the given `pdu` to the room it belongs to.
     pub fn append_pdu(
         &self,
         pdu: &PduEvent,
