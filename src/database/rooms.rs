@@ -7,6 +7,7 @@ use log::error;
 use ring::digest;
 use ruma::{
     api::client::error::ErrorKind,
+    api::federation,
     events::{
         ignored_user_list,
         room::{
