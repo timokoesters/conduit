@@ -605,7 +605,9 @@ pub async fn sync_events_route(
             changed: device_list_updates.into_iter().collect(),
             left: device_list_left.into_iter().collect(),
         },
-        device_one_time_keys_count: if db.users.last_one_time_keys_update(sender_id)? > since || since == 0 {
+        device_one_time_keys_count: if db.users.last_one_time_keys_update(sender_id)? > since
+            || since == 0
+        {
             db.users.count_one_time_keys(sender_id, device_id)?
         } else {
             BTreeMap::new()
