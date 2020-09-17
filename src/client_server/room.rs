@@ -377,8 +377,7 @@ pub async fn upgrade_room_route(
     let sender_id = body.sender_id.as_ref().expect("user is authenticated");
 
     // Validate the room version requested
-    let new_version =
-        RoomVersionId::try_from(body.new_version.clone()).expect("invalid room version id");
+    let new_version = body.new_version.clone();
 
     if !matches!(
         new_version,

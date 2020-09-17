@@ -25,8 +25,8 @@ impl Sending {
                     Some(event) = &mut subscriber => {
                         let serverpduid = if let sled::Event::Insert {key, ..} = event {
                             key
-                        } else
-                        { return Err::<(), Error>(Error::bad_database("")); };
+                        } else { return Err::<(), Error>(Error::bad_database("")); };
+
                         let mut parts = serverpduid.splitn(2, |&b| b == 0xff);
                         let server = Box::<ServerName>::try_from(
                             utils::string_from_bytes(parts.next().expect("splitn will always return 1 or more elements"))
@@ -79,7 +79,7 @@ impl Sending {
     /*
      */
 
-    pub fn send_pdu(&self, server: Box<ServerName>, pdu_id: &[u8]) -> Result<()> {
+    pub fn send_pdu(&self, server: &ServerName, pdu_id: &[u8]) -> Result<()> {
         let mut key = server.as_bytes().to_vec();
         key.push(0xff);
         key.extend_from_slice(pdu_id);

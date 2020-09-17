@@ -17,13 +17,14 @@ use ruma::{
         },
         federation,
     },
-    events::pdu::Pdu,
-    events::{room::member, EventType},
+    events::{pdu::Pdu, room::member, EventType},
     EventId, Raw, RoomId, RoomVersionId, ServerName, UserId,
 };
 use state_res::StateEvent;
 use std::{
-    collections::BTreeMap, collections::HashMap, collections::HashSet, convert::TryFrom, sync::Arc,
+    collections::{BTreeMap, HashMap, HashSet},
+    convert::TryFrom,
+    sync::Arc,
 };
 
 #[cfg(feature = "conduit_bin")]
@@ -60,7 +61,16 @@ pub async fn join_room_by_id_or_alias_route(
         Err(room_alias) => {
             let response = client_server::get_alias_helper(&db, &room_alias).await?;
 
-            (response.0.servers, response.0.room_id)
+            (
+                response
+                    .0
+                    .servers
+                    .into_iter()
+                    .map(|s| Box::<ServerName>::try_from(s.as_str()))
+                    .collect::<std::result::Result<Vec<_>, _>>()
+                    .map_err(|_| Error::BadServerResponse("Invalid server name found"))?,
+                response.0.room_id,
+            )
         }
     };
 

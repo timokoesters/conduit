@@ -6,8 +6,7 @@ use crate::{pdu::PduBuilder, server_server, utils, Error, PduEvent, Result};
 use log::error;
 use ring::digest;
 use ruma::{
-    api::client::error::ErrorKind,
-    api::federation,
+    api::{client::error::ErrorKind, federation},
     events::{
         ignored_user_list,
         room::{
@@ -804,7 +803,7 @@ impl Rooms {
             .filter_map(|r| r.ok())
             .filter(|server| &**server != globals.server_name())
         {
-            sending.send_pdu(server, &pdu_id)?;
+            sending.send_pdu(&server, &pdu_id)?;
         }
 
         Ok(pdu.event_id)

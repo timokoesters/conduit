@@ -1,10 +1,11 @@
 use crate::Error;
 use js_int::UInt;
 use ruma::{
-    events::pdu::PduStub,
     events::{
-        pdu::EventHash, room::member::MemberEventContent, AnyEvent, AnyRoomEvent, AnyStateEvent,
-        AnyStrippedStateEvent, AnySyncRoomEvent, AnySyncStateEvent, EventType, StateEvent,
+        pdu::{EventHash, PduStub},
+        room::member::MemberEventContent,
+        AnyEvent, AnyRoomEvent, AnyStateEvent, AnyStrippedStateEvent, AnySyncRoomEvent,
+        AnySyncStateEvent, EventType, StateEvent,
     },
     EventId, Raw, RoomId, ServerKeyId, ServerName, UserId,
 };
