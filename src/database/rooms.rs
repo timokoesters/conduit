@@ -216,9 +216,9 @@ impl Rooms {
         );
 
         let mut events = StateMap::new();
-        for (event_type, state_key) in auth_events {
-            if let Some(pdu) = self.room_state_get(room_id, &event_type, &state_key)? {
-                events.insert((event_type, state_key), pdu);
+        for (event_type, key) in auth_events {
+            if let Some(pdu) = self.room_state_get(room_id, &event_type, &key)? {
+                events.insert((event_type, key), pdu);
             }
         }
         Ok(events)
