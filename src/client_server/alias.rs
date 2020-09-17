@@ -79,5 +79,5 @@ pub async fn get_alias_helper(
             "Room with alias not found.",
         ))?;
 
-    Ok(get_alias::Response::new(room_id, vec![db.globals.server_name().to_string()]).into())
+    Ok(get_alias::Response::new(room_id, vec![db.globals.server_name().to_owned()]).into())
 }

@@ -136,9 +136,9 @@ pub async fn get_public_rooms_filtered_helper(
             federation::directory::get_public_rooms_filtered::v1::Request {
                 limit,
                 since: since.as_deref(),
-                filter: Some(Filter {
+                filter: Filter {
                     generic_search_term: filter.generic_search_term.as_deref(),
-                }),
+                },
                 room_network: RoomNetwork::Matrix,
             },
         )

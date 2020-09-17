@@ -223,15 +223,12 @@ pub async fn get_public_rooms_filtered_route(
     db: State<'_, Database>,
     body: Ruma<get_public_rooms_filtered::v1::Request<'_>>,
 ) -> ConduitResult<get_public_rooms_filtered::v1::Response> {
-    let gen_filter = IncomingFilter {
-        generic_search_term: None,
-    };
     let response = client_server::get_public_rooms_filtered_helper(
         &db,
         None,
         body.limit,
         body.since.as_deref(),
-        &body.filter.as_ref().unwrap_or(&gen_filter),
+        &body.filter,
         &body.room_network,
     )
     .await?
@@ -316,10 +313,23 @@ pub async fn send_transaction_message_route<'a>(
 ) -> ConduitResult<send_transaction_message::v1::Response> {
     dbg!(&*body);
 
+    let mut resolved_map = BTreeMap::new();
     for pdu in &body.pdus {
         let (event_id, value) = process_incoming_pdu(pdu);
         let event = serde_json::from_value::<state_res::StateEvent>(value.clone()).unwrap();
         let room_id = event.room_id().expect("found PduStub event");
+
+        // if event.state_key().is_none() {
+        //     resolved_map.insert(event_id, Ok::<(), String>(()));
+        //     db.rooms.append_pdu(
+        //         &PduEvent::from(&event),
+        //         &value,
+        //         &db.globals,
+        //         &db.account_data,
+        //     )?;
+
+        //     continue;
+        // }
 
         let our_current_state = db.rooms.room_state_full(room_id)?;
 
@@ -349,13 +359,13 @@ pub async fn send_transaction_message_route<'a>(
             })
             .collect::<BTreeMap<_, _>>();
 
-        let resolved = state_res::StateResolution::resolve(
+        match state_res::StateResolution::resolve(
             event.room_id().unwrap(),
             &ruma::RoomVersionId::Version5,
             &[
                 our_current_state
                     .iter()
-                    .map(|((ev, sk), v)| ((ev.clone(), Some(sk.to_owned())), v.event_id.clone()))
+                    .map(|((ev, sk), v)| ((ev.clone(), sk.to_owned()), v.event_id.clone()))
                     .collect::<BTreeMap<_, _>>(),
                 // TODO we may not want the auth events chained in here for resolution?
                 their_current_state
@@ -375,26 +385,30 @@ pub async fn send_transaction_message_route<'a>(
                     .collect::<BTreeMap<_, _>>(),
             ),
             &db.rooms,
-        )
-        .expect("resolve failed");
-
-        if resolved.values().any(|id| &event_id == id) {
-            let pdu = serde_json::from_value::<PduEvent>(value.clone())
-                .expect("all ruma pdus are conduit pdus");
-            if db.rooms.exists(&pdu.room_id)? {
-                let pdu_id = db
-                    .rooms
-                    .append_pdu(&pdu, &value, &db.globals, &db.account_data)?;
-                db.rooms.append_to_state(&pdu_id, &pdu)?;
+        ) {
+            Ok(resolved) if resolved.values().any(|id| &event_id == id) => {
+                let pdu = serde_json::from_value::<PduEvent>(value.clone())
+                    .expect("all ruma pdus are conduit pdus");
+                if db.rooms.exists(&pdu.room_id)? {
+                    let pdu_id =
+                        db.rooms
+                            .append_pdu(&pdu, &value, &db.globals, &db.account_data)?;
+                    db.rooms.append_to_state(&pdu_id, &pdu)?;
+                    resolved_map.insert(event_id, Ok::<(), String>(()));
+                }
             }
-        } else {
-            log::warn!("event failed state resolution")
+            // If the eventId is not found in the resolved state auth has failed
+            Ok(_) => {
+                // TODO have state_res give the actual auth error in this case
+                resolved_map.insert(event_id, Err("This event failed authentication".into()));
+            }
+            Err(e) => {
+                resolved_map.insert(event_id, Err(e.to_string()));
+            }
         }
     }
-    Ok(send_transaction_message::v1::Response {
-        pdus: BTreeMap::new(),
-    }
-    .into())
+
+    Ok(send_transaction_message::v1::Response { pdus: resolved_map }.into())
 }
 
 /// Generates a correct eventId for the incoming pdu.
