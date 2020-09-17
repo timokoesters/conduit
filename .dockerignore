@@ -1,6 +1,6 @@
 # Local build and dev artifacts
 target
-sytest
+tests
 
 # Docker files
 Dockerfile*
@@ -21,7 +21,6 @@ docker-compose*
 
 # Toml files
 rustfmt.toml
-Rocket-example.toml
 
 # Documentation
 *.md
