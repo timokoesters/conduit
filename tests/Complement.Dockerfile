@@ -13,9 +13,16 @@ RUN cargo build
 
 FROM valkum/docker-rust-ci:latest
 WORKDIR /build
+
+RUN curl -OL "https://github.com/caddyserver/caddy/releases/download/v2.1.1/caddy_2.1.1_linux_amd64.tar.gz"
+RUN tar xzf caddy_2.1.1_linux_amd64.tar.gz
+
 COPY --from=builder /build/target/debug/conduit /conduit
 
 ENV SERVER_NAME=localhost
-EXPOSE 14004 8448
+COPY Rocket-example.toml Rocket.toml
+RUN sed -i "s/server_name: your.server.name/server_name: ${SERVER_NAME}/g" Rocket.toml
+RUN sed -i "s/port = 14004/port: 8008/g" Rocket.toml
 
-CMD sed "s/server_name: your.server.name/server_name: ${SERVER_NAME}/g" Rocket-example.toml Rocket.toml && /conduit
+EXPOSE 8008 8448
+CMD caddy --from 8448 --to localhost:8008 & && /conduit
