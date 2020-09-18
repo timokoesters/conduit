@@ -99,14 +99,26 @@ pub async fn set_displayname_route(
     feature = "conduit_bin",
     get("/_matrix/client/r0/profile/<_>/displayname", data = "<body>")
 )]
-pub fn get_displayname_route(
+pub async fn get_displayname_route(
     db: State<'_, Database>,
     body: Ruma<get_display_name::Request<'_>>,
 ) -> ConduitResult<get_display_name::Response> {
-    Ok(get_display_name::Response {
-        displayname: db.users.displayname(&body.user_id)?,
-    }
-    .into())
+    let displayname = if let Some(name) = db.users.displayname(&body.user_id)? {
+        Some(name)
+    } else {
+        crate::server_server::send_request(
+            &db.globals,
+            body.user_id.server_name().to_owned(),
+            ruma::api::federation::query::get_profile_information::v1::Request {
+                user_id: &body.user_id,
+                field: None,
+            },
+        )
+        .await
+        .unwrap()
+        .displayname
+    };
+    Ok(get_display_name::Response { displayname }.into())
 }
 
 #[cfg_attr(

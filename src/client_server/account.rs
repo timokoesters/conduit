@@ -131,16 +131,25 @@ pub fn register_route(
     };
 
     if let Some(auth) = &body.auth {
-        let (worked, uiaainfo) =
-            db.uiaa
-                .try_auth(&user_id, "".into(), auth, &uiaainfo, &db.users, &db.globals)?;
+        let (worked, uiaainfo) = db.uiaa.try_auth(
+            &user_id,
+            body.device_id.as_ref().unwrap_or(&"".into()),
+            auth,
+            &uiaainfo,
+            &db.users,
+            &db.globals,
+        )?;
         if !worked {
             return Err(Error::Uiaa(uiaainfo));
         }
     // Success!
     } else {
         uiaainfo.session = Some(utils::random_string(SESSION_ID_LENGTH));
-        db.uiaa.create(&user_id, "".into(), &uiaainfo)?;
+        db.uiaa.create(
+            &user_id,
+            body.device_id.as_ref().unwrap_or(&"".into()),
+            &uiaainfo,
+        )?;
         return Err(Error::Uiaa(uiaainfo));
     }
 
@@ -187,7 +196,7 @@ pub fn register_route(
     let device_id = if is_guest {
         None
     } else {
-        body.device_id.clone()
+        body.body.device_id.clone()
     }
     .unwrap_or_else(|| utils::random_string(DEVICE_ID_LENGTH).into());
 
