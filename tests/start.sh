@@ -18,7 +18,7 @@ location / {
 EOM
 
 sed  -i '/listen       80;/r '"$temp_file" /etc/nginx/conf.d/default.conf
-sed  -i 'd/listen       80;/' /etc/nginx/conf.d/default.conf
+sed  -i '/listen       80;/d' /etc/nginx/conf.d/default.conf
 
 nginx
 exec /workdir/conduit
