@@ -1,6 +1,7 @@
 # Local build and dev artifacts
 target
-tests
+tests/sytest
+tests/Complement.Dockerfile
 
 # Docker files
 Dockerfile*

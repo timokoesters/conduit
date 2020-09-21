@@ -11,13 +11,12 @@ ARG SCCACHE_S3_USE_SSL
 COPY . .
 RUN cargo build
 
-FROM valkum/docker-rust-ci:latest
+FROM nginx:latest
 WORKDIR /workdir
 
-RUN curl -OL "https://github.com/caddyserver/caddy/releases/download/v2.1.1/caddy_2.1.1_linux_amd64.tar.gz"
-RUN tar xzf caddy_2.1.1_linux_amd64.tar.gz
 
 COPY --from=builder /workdir/target/debug/conduit /workdir/conduit
+COPY tests/start.sh start.sh
 
 COPY Rocket-example.toml Rocket.toml
 
@@ -27,4 +26,4 @@ RUN sed -i "s/server_name = \"your.server.name\"/server_name = \"${SERVER_NAME}\
 RUN sed -i "s/port = 14004/port = 8008/g" Rocket.toml
 
 EXPOSE 8008 8448
-CMD /workdir/caddy reverse-proxy --from ${SERVER_NAME}:8448 --to localhost:8008 > /dev/null 2>&1 & /workdir/conduit
+CMD /workdir/start.sh
