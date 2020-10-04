@@ -16,7 +16,7 @@ pub struct Sending {
 }
 
 impl Sending {
-    pub fn start_handler(&self, globals: &super::globals::Globals, rooms: &super::rooms::Rooms) {
+    pub fn start_handler(&self, globals: &super::globals::Globals<'static>, rooms: &super::rooms::Rooms) {
         let servernamepduids = self.servernamepduids.clone();
         let servercurrentpdus = self.servercurrentpdus.clone();
         let rooms = rooms.clone();
@@ -174,7 +174,7 @@ impl Sending {
     async fn handle_event(
         server: Box<ServerName>,
         pdu_ids: Vec<IVec>,
-        globals: &super::globals::Globals,
+        globals: &super::globals::Globals<'static>,
         rooms: &super::rooms::Rooms,
     ) -> std::result::Result<
         (Box<ServerName>, send_transaction_message::v1::Response),

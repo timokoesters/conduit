@@ -30,7 +30,7 @@ impl Uiaa {
         auth: &IncomingAuthData,
         uiaainfo: &UiaaInfo,
         users: &super::users::Users,
-        globals: &super::globals::Globals,
+        globals: &super::globals::Globals<'_>,
     ) -> Result<(bool, UiaaInfo)> {
         if let IncomingAuthData::DirectRequest {
             kind,

@@ -20,7 +20,7 @@ impl KeyBackups {
         &self,
         user_id: &UserId,
         backup_metadata: &BackupAlgorithm,
-        globals: &super::globals::Globals,
+        globals: &super::globals::Globals<'_>,
     ) -> Result<String> {
         let version = globals.next_count()?.to_string();
 
@@ -65,7 +65,7 @@ impl KeyBackups {
         user_id: &UserId,
         version: &str,
         backup_metadata: &BackupAlgorithm,
-        globals: &super::globals::Globals,
+        globals: &super::globals::Globals<'_>,
     ) -> Result<String> {
         let mut key = user_id.to_string().as_bytes().to_vec();
         key.push(0xff);
@@ -130,7 +130,7 @@ impl KeyBackups {
         room_id: &RoomId,
         session_id: &str,
         key_data: &KeyData,
-        globals: &super::globals::Globals,
+        globals: &super::globals::Globals<'_>,
     ) -> Result<()> {
         let mut key = user_id.to_string().as_bytes().to_vec();
         key.push(0xff);

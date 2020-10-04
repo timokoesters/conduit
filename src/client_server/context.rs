@@ -11,7 +11,7 @@ use rocket::get;
     get("/_matrix/client/r0/rooms/<_>/context/<_>", data = "<body>")
 )]
 pub async fn get_context_route(
-    db: State<'_, Database>,
+    db: State<'_, Database<'_>>,
     body: Ruma<get_context::Request<'_>>,
 ) -> ConduitResult<get_context::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");

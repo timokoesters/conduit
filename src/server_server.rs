@@ -28,7 +28,7 @@ use std::{
 use trust_dns_resolver::AsyncResolver;
 
 pub async fn request_well_known(
-    globals: &crate::database::globals::Globals,
+    globals: &crate::database::globals::Globals<'static>,
     destination: &str,
 ) -> Option<String> {
     let body: serde_json::Value = serde_json::from_str(
@@ -50,7 +50,7 @@ pub async fn request_well_known(
 }
 
 pub async fn send_request<T: OutgoingRequest>(
-    globals: &crate::database::globals::Globals,
+    globals: &crate::database::globals::Globals<'static>,
     destination: Box<ServerName>,
     request: T,
 ) -> Result<T::IncomingResponse>
@@ -211,7 +211,7 @@ where
 }
 
 #[cfg_attr(feature = "conduit_bin", get("/_matrix/federation/v1/version"))]
-pub fn get_server_version(db: State<'_, Database>) -> ConduitResult<get_server_version::Response> {
+pub fn get_server_version(db: State<'_, Database<'_>>) -> ConduitResult<get_server_version::Response> {
     if !db.globals.federation_enabled() {
         return Err(Error::BadConfig("Federation is disabled."));
     }
@@ -226,7 +226,7 @@ pub fn get_server_version(db: State<'_, Database>) -> ConduitResult<get_server_v
 }
 
 #[cfg_attr(feature = "conduit_bin", get("/_matrix/key/v2/server"))]
-pub fn get_server_keys(db: State<'_, Database>) -> Json<String> {
+pub fn get_server_keys(db: State<'_, Database<'_>>) -> Json<String> {
     if !db.globals.federation_enabled() {
         // TODO: Use proper types
         return Json("Federation is disabled.".to_owned());
@@ -263,7 +263,7 @@ pub fn get_server_keys(db: State<'_, Database>) -> Json<String> {
 }
 
 #[cfg_attr(feature = "conduit_bin", get("/_matrix/key/v2/server/<_>"))]
-pub fn get_server_keys_deprecated(db: State<'_, Database>) -> Json<String> {
+pub fn get_server_keys_deprecated(db: State<'_, Database<'_>>) -> Json<String> {
     get_server_keys(db)
 }
 
@@ -272,7 +272,7 @@ pub fn get_server_keys_deprecated(db: State<'_, Database>) -> Json<String> {
     post("/_matrix/federation/v1/publicRooms", data = "<body>")
 )]
 pub async fn get_public_rooms_filtered_route(
-    db: State<'_, Database>,
+    db: State<'_, Database<'_>>,
     body: Ruma<get_public_rooms_filtered::v1::Request<'_>>,
 ) -> ConduitResult<get_public_rooms_filtered::v1::Response> {
     if !db.globals.federation_enabled() {
@@ -319,7 +319,7 @@ pub async fn get_public_rooms_filtered_route(
     get("/_matrix/federation/v1/publicRooms", data = "<body>")
 )]
 pub async fn get_public_rooms_route(
-    db: State<'_, Database>,
+    db: State<'_, Database<'_>>,
     body: Ruma<get_public_rooms::v1::Request<'_>>,
 ) -> ConduitResult<get_public_rooms::v1::Response> {
     if !db.globals.federation_enabled() {
@@ -366,7 +366,7 @@ pub async fn get_public_rooms_route(
     put("/_matrix/federation/v1/send/<_>", data = "<body>")
 )]
 pub fn send_transaction_message_route<'a>(
-    db: State<'a, Database>,
+    db: State<'a, Database<'_>>,
     body: Ruma<send_transaction_message::v1::Request<'_>>,
 ) -> ConduitResult<send_transaction_message::v1::Response> {
     if !db.globals.federation_enabled() {
@@ -419,7 +419,7 @@ pub fn send_transaction_message_route<'a>(
     post("/_matrix/federation/v1/get_missing_events/<_>", data = "<body>")
 )]
 pub fn get_missing_events_route<'a>(
-    db: State<'a, Database>,
+    db: State<'a, Database<'_>>,
     body: Ruma<get_missing_events::v1::Request<'_>>,
 ) -> ConduitResult<get_missing_events::v1::Response> {
     if !db.globals.federation_enabled() {
@@ -464,7 +464,7 @@ pub fn get_missing_events_route<'a>(
     get("/_matrix/federation/v1/query/profile", data = "<body>")
 )]
 pub fn get_profile_information_route<'a>(
-    db: State<'a, Database>,
+    db: State<'a, Database<'_>>,
     body: Ruma<get_profile_information::v1::Request<'_>>,
 ) -> ConduitResult<get_profile_information::v1::Response> {
     if !db.globals.federation_enabled() {
@@ -496,7 +496,7 @@ pub fn get_profile_information_route<'a>(
     get("/_matrix/federation/v2/invite/<_>/<_>", data = "<body>")
 )]
 pub fn get_user_devices_route<'a>(
-    db: State<'a, Database>,
+    db: State<'a, Database<'_>>,
     body: Ruma<membership::v1::Request<'_>>,
 ) -> ConduitResult<get_profile_information::v1::Response> {
     if !db.globals.federation_enabled() {

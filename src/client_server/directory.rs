@@ -32,7 +32,7 @@ use rocket::{get, post, put};
     post("/_matrix/client/r0/publicRooms", data = "<body>")
 )]
 pub async fn get_public_rooms_filtered_route(
-    db: State<'_, Database>,
+    db: State<'_, Database<'_>>,
     body: Ruma<get_public_rooms_filtered::Request<'_>>,
 ) -> ConduitResult<get_public_rooms_filtered::Response> {
     get_public_rooms_filtered_helper(
@@ -51,7 +51,7 @@ pub async fn get_public_rooms_filtered_route(
     get("/_matrix/client/r0/publicRooms", data = "<body>")
 )]
 pub async fn get_public_rooms_route(
-    db: State<'_, Database>,
+    db: State<'_, Database<'_>>,
     body: Ruma<get_public_rooms::Request<'_>>,
 ) -> ConduitResult<get_public_rooms::Response> {
     let response = get_public_rooms_filtered_helper(
@@ -79,7 +79,7 @@ pub async fn get_public_rooms_route(
     put("/_matrix/client/r0/directory/list/room/<_>", data = "<body>")
 )]
 pub async fn set_room_visibility_route(
-    db: State<'_, Database>,
+    db: State<'_, Database<'_>>,
     body: Ruma<set_room_visibility::Request<'_>>,
 ) -> ConduitResult<set_room_visibility::Response> {
     match body.visibility {
@@ -97,7 +97,7 @@ pub async fn set_room_visibility_route(
     get("/_matrix/client/r0/directory/list/room/<_>", data = "<body>")
 )]
 pub async fn get_room_visibility_route(
-    db: State<'_, Database>,
+    db: State<'_, Database<'_>>,
     body: Ruma<get_room_visibility::Request<'_>>,
 ) -> ConduitResult<get_room_visibility::Response> {
     Ok(get_room_visibility::Response {
@@ -111,7 +111,7 @@ pub async fn get_room_visibility_route(
 }
 
 pub async fn get_public_rooms_filtered_helper(
-    db: &Database,
+    db: &Database<'static>,
     server: Option<&ServerName>,
     limit: Option<js_int::UInt>,
     since: Option<&str>,

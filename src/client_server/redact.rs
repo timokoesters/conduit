@@ -13,7 +13,7 @@ use rocket::put;
     put("/_matrix/client/r0/rooms/<_>/redact/<_>/<_>", data = "<body>")
 )]
 pub async fn redact_event_route(
-    db: State<'_, Database>,
+    db: State<'_, Database<'_>>,
     body: Ruma<redact_event::Request<'_>>,
 ) -> ConduitResult<redact_event::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");

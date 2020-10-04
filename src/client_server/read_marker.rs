@@ -14,7 +14,7 @@ use std::{collections::BTreeMap, time::SystemTime};
     post("/_matrix/client/r0/rooms/<_>/read_markers", data = "<body>")
 )]
 pub async fn set_read_marker_route(
-    db: State<'_, Database>,
+    db: State<'_, Database<'_>>,
     body: Ruma<set_read_marker::Request<'_>>,
 ) -> ConduitResult<set_read_marker::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");

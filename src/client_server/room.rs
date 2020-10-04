@@ -21,7 +21,7 @@ use rocket::{get, post};
     post("/_matrix/client/r0/createRoom", data = "<body>")
 )]
 pub async fn create_room_route(
-    db: State<'_, Database>,
+    db: State<'_, Database<'_>>,
     body: Ruma<create_room::Request<'_>>,
 ) -> ConduitResult<create_room::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -333,7 +333,7 @@ pub async fn create_room_route(
     get("/_matrix/client/r0/rooms/<_>/event/<_>", data = "<body>")
 )]
 pub async fn get_room_event_route(
-    db: State<'_, Database>,
+    db: State<'_, Database<'_>>,
     body: Ruma<get_room_event::Request<'_>>,
 ) -> ConduitResult<get_room_event::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -360,7 +360,7 @@ pub async fn get_room_event_route(
     post("/_matrix/client/r0/rooms/<_room_id>/upgrade", data = "<body>")
 )]
 pub async fn upgrade_room_route(
-    db: State<'_, Database>,
+    db: State<'_, Database<'_>>,
     body: Ruma<upgrade_room::Request<'_>>,
     _room_id: String,
 ) -> ConduitResult<upgrade_room::Response> {

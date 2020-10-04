@@ -11,7 +11,7 @@ use rocket::put;
     put("/_matrix/client/r0/rooms/<_>/typing/<_>", data = "<body>")
 )]
 pub fn create_typing_event_route(
-    db: State<'_, Database>,
+    db: State<'_, Database<'_>>,
     body: Ruma<create_typing_event::Request<'_>>,
 ) -> ConduitResult<create_typing_event::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");

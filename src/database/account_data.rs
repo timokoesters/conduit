@@ -21,7 +21,7 @@ impl AccountData {
         user_id: &UserId,
         event_type: EventType,
         data: &T,
-        globals: &super::globals::Globals,
+        globals: &super::globals::Globals<'_>,
     ) -> Result<()> {
         let mut prefix = room_id
             .map(|r| r.to_string())

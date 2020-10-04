@@ -21,8 +21,8 @@ use ruma::{DeviceId, UserId};
 use std::{convert::TryFrom, fs::remove_dir_all};
 
 #[derive(Clone)]
-pub struct Database {
-    pub globals: globals::Globals,
+pub struct Database<'a> {
+    pub globals: globals::Globals<'a>,
     pub users: users::Users,
     pub uiaa: uiaa::Uiaa,
     pub rooms: rooms::Rooms,
@@ -35,7 +35,7 @@ pub struct Database {
     pub _db: sled::Db,
 }
 
-impl Database {
+impl Database<'static> {
     /// Tries to remove the old database but ignores all errors.
     pub fn try_remove(server_name: &str) -> Result<()> {
         let mut path = ProjectDirs::from("xyz", "koesters", "conduit")

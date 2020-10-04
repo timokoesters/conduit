@@ -11,7 +11,7 @@ use rocket::put;
     put("/_matrix/client/r0/presence/<_>/status", data = "<body>")
 )]
 pub async fn set_presence_route(
-    db: State<'_, Database>,
+    db: State<'_, Database<'_>>,
     body: Ruma<set_presence::Request<'_>>,
 ) -> ConduitResult<set_presence::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");

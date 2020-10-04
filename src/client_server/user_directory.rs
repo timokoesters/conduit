@@ -10,7 +10,7 @@ use rocket::post;
     post("/_matrix/client/r0/user_directory/search", data = "<body>")
 )]
 pub async fn search_users_route(
-    db: State<'_, Database>,
+    db: State<'_, Database<'_>>,
     body: Ruma<search_users::Request<'_>>,
 ) -> ConduitResult<search_users::Response> {
     let limit = u64::from(body.limit) as usize;

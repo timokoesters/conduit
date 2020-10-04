@@ -17,7 +17,7 @@ use rocket::{get, post, put};
     get("/_matrix/client/r0/pushrules", data = "<body>")
 )]
 pub async fn get_pushrules_all_route(
-    db: State<'_, Database>,
+    db: State<'_, Database<'_>>,
     body: Ruma<get_pushrules_all::Request>,
 ) -> ConduitResult<get_pushrules_all::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -41,7 +41,7 @@ pub async fn get_pushrules_all_route(
     //data = "<body>"
 ))]
 pub async fn set_pushrule_route(
-    db: State<'_, Database>,
+    db: State<'_, Database<'_>>,
     //body: Ruma<set_pushrule::Request>,
 ) -> ConduitResult<set_pushrule::Response> {
     // TODO
@@ -57,7 +57,7 @@ pub async fn set_pushrule_route(
     put("/_matrix/client/r0/pushrules/<_>/<_>/<_>/enabled")
 )]
 pub async fn set_pushrule_enabled_route(
-    db: State<'_, Database>,
+    db: State<'_, Database<'_>>,
 ) -> ConduitResult<set_pushrule_enabled::Response> {
     // TODO
     warn!("TODO: set_pushrule_enabled_route");
@@ -76,7 +76,7 @@ pub async fn get_pushers_route() -> ConduitResult<get_pushers::Response> {
 }
 
 #[cfg_attr(feature = "conduit_bin", post("/_matrix/client/r0/pushers/set"))]
-pub async fn set_pushers_route(db: State<'_, Database>) -> ConduitResult<get_pushers::Response> {
+pub async fn set_pushers_route(db: State<'_, Database<'_>>) -> ConduitResult<get_pushers::Response> {
     db.flush().await?;
 
     Ok(get_pushers::Response {

@@ -17,7 +17,7 @@ pub struct Admin {
 impl Admin {
     pub fn start_handler(
         &self,
-        db: super::Database,
+        db: super::Database<'static>,
         mut receiver: mpsc::UnboundedReceiver<AdminCommand>,
     ) {
         tokio::spawn(async move {

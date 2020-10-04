@@ -18,7 +18,7 @@ use rocket::{delete, get, post, put};
     post("/_matrix/client/unstable/room_keys/version", data = "<body>")
 )]
 pub async fn create_backup_route(
-    db: State<'_, Database>,
+    db: State<'_, Database<'_>>,
     body: Ruma<create_backup::Request>,
 ) -> ConduitResult<create_backup::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -36,7 +36,7 @@ pub async fn create_backup_route(
     put("/_matrix/client/unstable/room_keys/version/<_>", data = "<body>")
 )]
 pub async fn update_backup_route(
-    db: State<'_, Database>,
+    db: State<'_, Database<'_>>,
     body: Ruma<update_backup::Request<'_>>,
 ) -> ConduitResult<update_backup::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -53,7 +53,7 @@ pub async fn update_backup_route(
     get("/_matrix/client/unstable/room_keys/version", data = "<body>")
 )]
 pub async fn get_latest_backup_route(
-    db: State<'_, Database>,
+    db: State<'_, Database<'_>>,
     body: Ruma<get_latest_backup::Request>,
 ) -> ConduitResult<get_latest_backup::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -80,7 +80,7 @@ pub async fn get_latest_backup_route(
     get("/_matrix/client/unstable/room_keys/version/<_>", data = "<body>")
 )]
 pub async fn get_backup_route(
-    db: State<'_, Database>,
+    db: State<'_, Database<'_>>,
     body: Ruma<get_backup::Request<'_>>,
 ) -> ConduitResult<get_backup::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -106,7 +106,7 @@ pub async fn get_backup_route(
     delete("/_matrix/client/unstable/room_keys/version/<_>", data = "<body>")
 )]
 pub async fn delete_backup_route(
-    db: State<'_, Database>,
+    db: State<'_, Database<'_>>,
     body: Ruma<delete_backup::Request>,
 ) -> ConduitResult<delete_backup::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -124,7 +124,7 @@ pub async fn delete_backup_route(
     put("/_matrix/client/unstable/room_keys/keys", data = "<body>")
 )]
 pub async fn add_backup_keys_route(
-    db: State<'_, Database>,
+    db: State<'_, Database<'_>>,
     body: Ruma<add_backup_keys::Request<'_>>,
 ) -> ConduitResult<add_backup_keys::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -157,7 +157,7 @@ pub async fn add_backup_keys_route(
     put("/_matrix/client/unstable/room_keys/keys/<_>", data = "<body>")
 )]
 pub async fn add_backup_key_sessions_route(
-    db: State<'_, Database>,
+    db: State<'_, Database<'_>>,
     body: Ruma<add_backup_key_sessions::Request>,
 ) -> ConduitResult<add_backup_key_sessions::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -188,7 +188,7 @@ pub async fn add_backup_key_sessions_route(
     put("/_matrix/client/unstable/room_keys/keys/<_>/<_>", data = "<body>")
 )]
 pub async fn add_backup_key_session_route(
-    db: State<'_, Database>,
+    db: State<'_, Database<'_>>,
     body: Ruma<add_backup_key_session::Request>,
 ) -> ConduitResult<add_backup_key_session::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -216,7 +216,7 @@ pub async fn add_backup_key_session_route(
     get("/_matrix/client/unstable/room_keys/keys", data = "<body>")
 )]
 pub async fn get_backup_keys_route(
-    db: State<'_, Database>,
+    db: State<'_, Database<'_>>,
     body: Ruma<get_backup_keys::Request<'_>>,
 ) -> ConduitResult<get_backup_keys::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -231,7 +231,7 @@ pub async fn get_backup_keys_route(
     get("/_matrix/client/unstable/room_keys/keys/<_>", data = "<body>")
 )]
 pub async fn get_backup_key_sessions_route(
-    db: State<'_, Database>,
+    db: State<'_, Database<'_>>,
     body: Ruma<get_backup_key_sessions::Request>,
 ) -> ConduitResult<get_backup_key_sessions::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -248,7 +248,7 @@ pub async fn get_backup_key_sessions_route(
     get("/_matrix/client/unstable/room_keys/keys/<_>/<_>", data = "<body>")
 )]
 pub async fn get_backup_key_session_route(
-    db: State<'_, Database>,
+    db: State<'_, Database<'_>>,
     body: Ruma<get_backup_key_session::Request>,
 ) -> ConduitResult<get_backup_key_session::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -265,7 +265,7 @@ pub async fn get_backup_key_session_route(
     delete("/_matrix/client/unstable/room_keys/keys", data = "<body>")
 )]
 pub async fn delete_backup_keys_route(
-    db: State<'_, Database>,
+    db: State<'_, Database<'_>>,
     body: Ruma<delete_backup_keys::Request>,
 ) -> ConduitResult<delete_backup_keys::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -287,7 +287,7 @@ pub async fn delete_backup_keys_route(
     delete("/_matrix/client/unstable/room_keys/keys/<_>", data = "<body>")
 )]
 pub async fn delete_backup_key_sessions_route(
-    db: State<'_, Database>,
+    db: State<'_, Database<'_>>,
     body: Ruma<delete_backup_key_sessions::Request>,
 ) -> ConduitResult<delete_backup_key_sessions::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -309,7 +309,7 @@ pub async fn delete_backup_key_sessions_route(
     delete("/_matrix/client/unstable/room_keys/keys/<_>/<_>", data = "<body>")
 )]
 pub async fn delete_backup_key_session_route(
-    db: State<'_, Database>,
+    db: State<'_, Database<'_>>,
     body: Ruma<delete_backup_key_session::Request>,
 ) -> ConduitResult<delete_backup_key_session::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");

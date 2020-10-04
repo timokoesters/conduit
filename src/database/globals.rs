@@ -6,7 +6,7 @@ use std::{convert::TryInto, sync::Arc};
 pub const COUNTER: &str = "c";
 
 #[derive(Clone)]
-pub struct Globals {
+pub struct Globals<'a> {
     pub(super) globals: sled::Tree,
     keypair: Arc<ruma::signatures::Ed25519KeyPair>,
     reqwest_client: reqwest::Client,
@@ -15,9 +15,10 @@ pub struct Globals {
     registration_disabled: bool,
     encryption_disabled: bool,
     federation_enabled: bool,
+    jwt_decoding_key: Option<jsonwebtoken::DecodingKey<'a>>,
 }
 
-impl Globals {
+impl Globals<'_> {
     pub fn load(globals: sled::Tree, config: &rocket::Config) -> Result<Self> {
         let bytes = &*globals
             .update_and_fetch("keypair", utils::generate_keypair)?
@@ -53,14 +54,19 @@ impl Globals {
             }
         };
 
+        let jwt_decoding_key =
+            config.get_str("jwt_secret").map(|secret| jsonwebtoken::DecodingKey::from_secret(secret.as_bytes()).into_static()).ok();
+
         Ok(Self {
             globals,
             keypair: Arc::new(keypair),
             reqwest_client: reqwest::Client::new(),
             server_name: config
                 .get_str("server_name")
-                .unwrap_or("localhost")
-                .to_string()
+                .map(std::string::ToString::to_string)
+                .unwrap_or_else(|_| {
+                    std::env::var("SERVER_NAME").unwrap_or_else(|_| "localhost".to_string())
+                })
                 .try_into()
                 .map_err(|_| Error::BadConfig("Invalid server_name."))?,
             max_request_size: config
@@ -71,6 +77,7 @@ impl Globals {
             registration_disabled: config.get_bool("registration_disabled").unwrap_or(false),
             encryption_disabled: config.get_bool("encryption_disabled").unwrap_or(false),
             federation_enabled: config.get_bool("federation_enabled").unwrap_or(false),
+            jwt_decoding_key,
         })
     }
 
@@ -119,5 +126,9 @@ impl Globals {
 
     pub fn federation_enabled(&self) -> bool {
         self.federation_enabled
+    }
+
+    pub fn jwt_decoding_key(&self) -> Option<&jsonwebtoken::DecodingKey<'_>> {
+        self.jwt_decoding_key.as_ref()
     }
 }
