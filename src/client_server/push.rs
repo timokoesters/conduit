@@ -17,7 +17,7 @@ use rocket::{get, post, put};
     get("/_matrix/client/r0/pushrules", data = "<body>")
 )]
 pub fn get_pushrules_all_route(
-    db: State<'_, Database>,
+    db: State<'_, Database<'_>>,
     body: Ruma<get_pushrules_all::Request>,
 ) -> ConduitResult<get_pushrules_all::Response> {
     let sender_id = body.sender_id.as_ref().expect("user is authenticated");
@@ -40,7 +40,7 @@ pub fn get_pushrules_all_route(
     "/_matrix/client/r0/pushrules/<_>/<_>/<_>",
     //data = "<body>"
 ))]
-pub fn set_pushrule_route(//db: State<'_, Database>,
+pub fn set_pushrule_route(//db: State<'_, Database<'_>>,
     //body: Ruma<set_pushrule::Request>,
 ) -> ConduitResult<set_pushrule::Response> {
     // TODO

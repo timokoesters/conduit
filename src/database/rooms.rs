@@ -440,7 +440,7 @@ impl Rooms {
         pdu_json: &serde_json::Value,
         count: u64,
         pdu_id: IVec,
-        globals: &super::globals::Globals,
+        globals: &super::globals::Globals<'_>,
         account_data: &super::account_data::AccountData,
         sending: &super::sending::Sending,
     ) -> Result<()> {
@@ -609,7 +609,7 @@ impl Rooms {
         pdu_builder: PduBuilder,
         sender: &UserId,
         room_id: &RoomId,
-        globals: &super::globals::Globals,
+        globals: &super::globals::Globals<'_>,
         sending: &super::sending::Sending,
         account_data: &super::account_data::AccountData,
     ) -> Result<EventId> {
@@ -991,7 +991,7 @@ impl Rooms {
         member_content: member::MemberEventContent,
         sender: &UserId,
         account_data: &super::account_data::AccountData,
-        globals: &super::globals::Globals,
+        globals: &super::globals::Globals<'_>,
     ) -> Result<()> {
         let membership = member_content.membership;
 
@@ -1158,7 +1158,7 @@ impl Rooms {
         &self,
         alias: &RoomAliasId,
         room_id: Option<&RoomId>,
-        globals: &super::globals::Globals,
+        globals: &super::globals::Globals<'_>,
     ) -> Result<()> {
         if let Some(room_id) = room_id {
             // New alias

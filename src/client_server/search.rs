@@ -12,7 +12,7 @@ use std::collections::BTreeMap;
     post("/_matrix/client/r0/search", data = "<body>")
 )]
 pub fn search_events_route(
-    db: State<'_, Database>,
+    db: State<'_, Database<'_>>,
     body: Ruma<search_events::Request<'_>>,
 ) -> ConduitResult<search_events::Response> {
     let sender_id = body.sender_id.as_ref().expect("user is authenticated");

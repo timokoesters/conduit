@@ -23,7 +23,7 @@ use rocket::{get, post};
     post("/_matrix/client/r0/keys/upload", data = "<body>")
 )]
 pub fn upload_keys_route(
-    db: State<'_, Database>,
+    db: State<'_, Database<'_>>,
     body: Ruma<upload_keys::Request<'_>>,
 ) -> ConduitResult<upload_keys::Response> {
     let sender_id = body.sender_id.as_ref().expect("user is authenticated");
@@ -55,7 +55,7 @@ pub fn upload_keys_route(
     post("/_matrix/client/r0/keys/query", data = "<body>")
 )]
 pub fn get_keys_route(
-    db: State<'_, Database>,
+    db: State<'_, Database<'_>>,
     body: Ruma<get_keys::Request<'_>>,
 ) -> ConduitResult<get_keys::Response> {
     let sender_id = body.sender_id.as_ref().expect("user is authenticated");
@@ -135,7 +135,7 @@ pub fn get_keys_route(
     post("/_matrix/client/r0/keys/claim", data = "<body>")
 )]
 pub fn claim_keys_route(
-    db: State<'_, Database>,
+    db: State<'_, Database<'_>>,
     body: Ruma<claim_keys::Request>,
 ) -> ConduitResult<claim_keys::Response> {
     let mut one_time_keys = BTreeMap::new();
@@ -166,7 +166,7 @@ pub fn claim_keys_route(
     post("/_matrix/client/unstable/keys/device_signing/upload", data = "<body>")
 )]
 pub fn upload_signing_keys_route(
-    db: State<'_, Database>,
+    db: State<'_, Database<'_>>,
     body: Ruma<upload_signing_keys::Request<'_>>,
 ) -> ConduitResult<upload_signing_keys::Response> {
     let sender_id = body.sender_id.as_ref().expect("user is authenticated");
@@ -221,7 +221,7 @@ pub fn upload_signing_keys_route(
     post("/_matrix/client/unstable/keys/signatures/upload", data = "<body>")
 )]
 pub fn upload_signatures_route(
-    db: State<'_, Database>,
+    db: State<'_, Database<'_>>,
     body: Ruma<upload_signatures::Request>,
 ) -> ConduitResult<upload_signatures::Response> {
     let sender_id = body.sender_id.as_ref().expect("user is authenticated");
@@ -279,7 +279,7 @@ pub fn upload_signatures_route(
     get("/_matrix/client/r0/keys/changes", data = "<body>")
 )]
 pub fn get_key_changes_route(
-    db: State<'_, Database>,
+    db: State<'_, Database<'_>>,
     body: Ruma<get_key_changes::Request<'_>>,
 ) -> ConduitResult<get_key_changes::Response> {
     let sender_id = body.sender_id.as_ref().expect("user is authenticated");

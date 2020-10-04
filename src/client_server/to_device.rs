@@ -13,7 +13,7 @@ use rocket::put;
     put("/_matrix/client/r0/sendToDevice/<_>/<_>", data = "<body>")
 )]
 pub fn send_event_to_device_route(
-    db: State<'_, Database>,
+    db: State<'_, Database<'_>>,
     body: Ruma<send_event_to_device::Request<'_>>,
 ) -> ConduitResult<send_event_to_device::Response> {
     let sender_id = body.sender_id.as_ref().expect("user is authenticated");

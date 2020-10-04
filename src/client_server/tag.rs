@@ -14,7 +14,7 @@ use rocket::{delete, get, put};
     put("/_matrix/client/r0/user/<_>/rooms/<_>/tags/<_>", data = "<body>")
 )]
 pub fn update_tag_route(
-    db: State<'_, Database>,
+    db: State<'_, Database<'_>>,
     body: Ruma<create_tag::Request<'_>>,
 ) -> ConduitResult<create_tag::Response> {
     let sender_id = body.sender_id.as_ref().expect("user is authenticated");
@@ -48,7 +48,7 @@ pub fn update_tag_route(
     delete("/_matrix/client/r0/user/<_>/rooms/<_>/tags/<_>", data = "<body>")
 )]
 pub fn delete_tag_route(
-    db: State<'_, Database>,
+    db: State<'_, Database<'_>>,
     body: Ruma<delete_tag::Request<'_>>,
 ) -> ConduitResult<delete_tag::Response> {
     let sender_id = body.sender_id.as_ref().expect("user is authenticated");
@@ -79,7 +79,7 @@ pub fn delete_tag_route(
     get("/_matrix/client/r0/user/<_>/rooms/<_>/tags", data = "<body>")
 )]
 pub fn get_tags_route(
-    db: State<'_, Database>,
+    db: State<'_, Database<'_>>,
     body: Ruma<get_tags::Request<'_>>,
 ) -> ConduitResult<get_tags::Response> {
     let sender_id = body.sender_id.as_ref().expect("user is authenticated");

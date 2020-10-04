@@ -7,6 +7,13 @@ use ruma::{
     },
     UserId,
 };
+use serde::Deserialize;
+
+#[derive(Debug, Deserialize)]
+struct Claims {
+    sub: String,
+    exp: usize,
+}
 
 #[cfg(feature = "conduit_bin")]
 use rocket::{get, post};
@@ -35,44 +42,61 @@ pub fn get_login_types_route() -> ConduitResult<get_login_types::Response> {
     post("/_matrix/client/r0/login", data = "<body>")
 )]
 pub fn login_route(
-    db: State<'_, Database>,
+    db: State<'_, Database<'_>>,
     body: Ruma<login::Request<'_>>,
 ) -> ConduitResult<login::Response> {
     // Validate login method
-    let user_id =
-        // TODO: Other login methods
-        if let (login::IncomingUserInfo::MatrixId(username), login::IncomingLoginInfo::Password { password }) =
-            (&body.user, &body.login_info)
-        {
-            let user_id = UserId::parse_with_server_name(username.to_string(), db.globals.server_name())
-                .map_err(|_| Error::BadRequest(
-                    ErrorKind::InvalidUsername,
-                    "Username is invalid."
-                ))?;
-            let hash = db.users.password_hash(&user_id)?
-                .ok_or(Error::BadRequest(
-                    ErrorKind::Forbidden,
-                    "Wrong username or password."
-                ))?;
+    let user_id = match &body.login_info {
+        login::IncomingLoginInfo::Password { password } => {
+            let username = if let login::IncomingUserInfo::MatrixId(matrix_id) = &body.user {
+                matrix_id
+            } else {
+                return Err(Error::BadRequest(ErrorKind::Forbidden, "Bad login type."));
+            };
+            let user_id = UserId::parse_with_server_name(username.to_owned(), db.globals.server_name())
+                .map_err(|_| {
+                    Error::BadRequest(ErrorKind::InvalidUsername, "Username is invalid.")
+                })?;
+            let hash = db.users.password_hash(&user_id)?.ok_or(Error::BadRequest(
+                ErrorKind::Forbidden,
+                "Wrong username or password.",
+            ))?;
 
             if hash.is_empty() {
                 return Err(Error::BadRequest(
                     ErrorKind::UserDeactivated,
-                    "The user has been deactivated"
+                    "The user has been deactivated",
                 ));
             }
 
-            let hash_matches =
-                argon2::verify_encoded(&hash, password.as_bytes()).unwrap_or(false);
+            let hash_matches = argon2::verify_encoded(&hash, password.as_bytes()).unwrap_or(false);
 
             if !hash_matches {
-                return Err(Error::BadRequest(ErrorKind::Forbidden, "Wrong username or password."));
+                return Err(Error::BadRequest(
+                    ErrorKind::Forbidden,
+                    "Wrong username or password.",
+                ));
             }
 
             user_id
-        } else {
-            return Err(Error::BadRequest(ErrorKind::Forbidden, "Bad login type."));
-        };
+        }
+        login::IncomingLoginInfo::Token { token } => {
+            if let Some(jwt_decoding_key) = db.globals.jwt_decoding_key() {
+                let token = jsonwebtoken::decode::<Claims>(
+                    &token,
+                    &jwt_decoding_key,
+                    &jsonwebtoken::Validation::default(),
+                )
+                .map_err(|_| Error::BadRequest(ErrorKind::InvalidUsername, "Token is invalid."))?;
+                let username = token.claims.sub;
+                UserId::parse_with_server_name(username, db.globals.server_name()).map_err(|_| {
+                    Error::BadRequest(ErrorKind::InvalidUsername, "Username is invalid.")
+                })?
+            } else {
+                return Err(Error::BadRequest(ErrorKind::Unknown, "Token login is not supported (server has no jwt decoding key)."));
+            }
+        }
+    };
 
     // Generate new device id if the user didn't specify one
     let device_id = body
@@ -114,7 +138,7 @@ pub fn login_route(
     post("/_matrix/client/r0/logout", data = "<body>")
 )]
 pub fn logout_route(
-    db: State<'_, Database>,
+    db: State<'_, Database<'_>>,
     body: Ruma<logout::Request>,
 ) -> ConduitResult<logout::Response> {
     let sender_id = body.sender_id.as_ref().expect("user is authenticated");
@@ -139,7 +163,7 @@ pub fn logout_route(
     post("/_matrix/client/r0/logout/all", data = "<body>")
 )]
 pub fn logout_all_route(
-    db: State<'_, Database>,
+    db: State<'_, Database<'_>>,
     body: Ruma<logout_all::Request>,
 ) -> ConduitResult<logout_all::Response> {
     let sender_id = body.sender_id.as_ref().expect("user is authenticated");

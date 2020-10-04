@@ -17,7 +17,7 @@ use rocket::{delete, get, post, put};
     get("/_matrix/client/r0/devices", data = "<body>")
 )]
 pub fn get_devices_route(
-    db: State<'_, Database>,
+    db: State<'_, Database<'_>>,
     body: Ruma<get_devices::Request>,
 ) -> ConduitResult<get_devices::Response> {
     let sender_id = body.sender_id.as_ref().expect("user is authenticated");
@@ -36,7 +36,7 @@ pub fn get_devices_route(
     get("/_matrix/client/r0/devices/<_device_id>", data = "<body>")
 )]
 pub fn get_device_route(
-    db: State<'_, Database>,
+    db: State<'_, Database<'_>>,
     body: Ruma<get_device::Request<'_>>,
     _device_id: String,
 ) -> ConduitResult<get_device::Response> {
@@ -55,7 +55,7 @@ pub fn get_device_route(
     put("/_matrix/client/r0/devices/<_device_id>", data = "<body>")
 )]
 pub fn update_device_route(
-    db: State<'_, Database>,
+    db: State<'_, Database<'_>>,
     body: Ruma<update_device::Request<'_>>,
     _device_id: String,
 ) -> ConduitResult<update_device::Response> {
@@ -79,7 +79,7 @@ pub fn update_device_route(
     delete("/_matrix/client/r0/devices/<_device_id>", data = "<body>")
 )]
 pub fn delete_device_route(
-    db: State<'_, Database>,
+    db: State<'_, Database<'_>>,
     body: Ruma<delete_device::Request<'_>>,
     _device_id: String,
 ) -> ConduitResult<delete_device::Response> {
@@ -126,7 +126,7 @@ pub fn delete_device_route(
     post("/_matrix/client/r0/delete_devices", data = "<body>")
 )]
 pub fn delete_devices_route(
-    db: State<'_, Database>,
+    db: State<'_, Database<'_>>,
     body: Ruma<delete_devices::Request<'_>>,
 ) -> ConduitResult<delete_devices::Response> {
     let sender_id = body.sender_id.as_ref().expect("user is authenticated");

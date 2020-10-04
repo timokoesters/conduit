@@ -59,6 +59,8 @@ ring = "0.16.15"
 # Used when querying the SRV record of other servers
 trust-dns-resolver = "0.19.5"
 
+jsonwebtoken = "7.2.0"
+
 [features]
 default = ["conduit_bin"]
 conduit_bin = [] # TODO: add rocket to this when it is optional

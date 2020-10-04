@@ -32,7 +32,7 @@ impl RoomEdus {
         user_id: &UserId,
         room_id: &RoomId,
         event: EduEvent,
-        globals: &super::super::globals::Globals,
+        globals: &super::super::globals::Globals<'_>,
     ) -> Result<()> {
         let mut prefix = room_id.to_string().as_bytes().to_vec();
         prefix.push(0xff);
@@ -99,7 +99,7 @@ impl RoomEdus {
         room_id: &RoomId,
         user_id: &UserId,
         count: u64,
-        globals: &super::super::globals::Globals,
+        globals: &super::super::globals::Globals<'_>,
     ) -> Result<()> {
         let mut key = room_id.to_string().as_bytes().to_vec();
         key.push(0xff);
@@ -151,7 +151,7 @@ impl RoomEdus {
         user_id: &UserId,
         room_id: &RoomId,
         timeout: u64,
-        globals: &super::super::globals::Globals,
+        globals: &super::super::globals::Globals<'_>,
     ) -> Result<()> {
         let mut prefix = room_id.to_string().as_bytes().to_vec();
         prefix.push(0xff);
@@ -177,7 +177,7 @@ impl RoomEdus {
         &self,
         user_id: &UserId,
         room_id: &RoomId,
-        globals: &super::super::globals::Globals,
+        globals: &super::super::globals::Globals<'_>,
     ) -> Result<()> {
         let mut prefix = room_id.to_string().as_bytes().to_vec();
         prefix.push(0xff);
@@ -211,7 +211,7 @@ impl RoomEdus {
     fn typings_maintain(
         &self,
         room_id: &RoomId,
-        globals: &super::super::globals::Globals,
+        globals: &super::super::globals::Globals<'_>,
     ) -> Result<()> {
         let mut prefix = room_id.to_string().as_bytes().to_vec();
         prefix.push(0xff);
@@ -259,7 +259,7 @@ impl RoomEdus {
     pub fn last_typing_update(
         &self,
         room_id: &RoomId,
-        globals: &super::super::globals::Globals,
+        globals: &super::super::globals::Globals<'_>,
     ) -> Result<u64> {
         self.typings_maintain(room_id, globals)?;
 
@@ -313,7 +313,7 @@ impl RoomEdus {
         user_id: &UserId,
         room_id: &RoomId,
         presence: ruma::events::presence::PresenceEvent,
-        globals: &super::super::globals::Globals,
+        globals: &super::super::globals::Globals<'_>,
     ) -> Result<()> {
         // TODO: Remove old entry? Or maybe just wipe completely from time to time?
 
@@ -364,7 +364,7 @@ impl RoomEdus {
     pub fn presence_maintain(
         &self,
         rooms: &super::Rooms,
-        globals: &super::super::globals::Globals,
+        globals: &super::super::globals::Globals<'_>,
     ) -> Result<()> {
         let current_timestamp = utils::millis_since_unix_epoch();
 
@@ -431,7 +431,7 @@ impl RoomEdus {
         room_id: &RoomId,
         since: u64,
         rooms: &super::Rooms,
-        globals: &super::super::globals::Globals,
+        globals: &super::super::globals::Globals<'_>,
     ) -> Result<HashMap<UserId, PresenceEvent>> {
         self.presence_maintain(rooms, globals)?;
 

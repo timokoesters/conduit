@@ -57,7 +57,7 @@ where
         Box::pin(async move {
             let data = rocket::try_outcome!(outcome.owned());
             let db = request
-                .guard::<State<'_, crate::Database>>()
+                .guard::<State<'_, crate::Database<'_>>>()
                 .await
                 .expect("database was loaded");
 

@@ -30,7 +30,7 @@ use std::{
     get("/_matrix/client/r0/sync", data = "<body>")
 )]
 pub async fn sync_events_route(
-    db: State<'_, Database>,
+    db: State<'_, Database<'_>>,
     body: Ruma<sync_events::Request<'_>>,
 ) -> ConduitResult<sync_events::Response> {
     let sender_id = body.sender_id.as_ref().expect("user is authenticated");
@@ -643,7 +643,7 @@ pub async fn sync_events_route(
 }
 
 fn share_encrypted_room(
-    db: &Database,
+    db: &Database<'_>,
     sender_id: &UserId,
     user_id: &UserId,
     ignore_room: &RoomId,
