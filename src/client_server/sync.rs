@@ -93,7 +93,8 @@ pub async fn sync_events_route(
         let mut limited = false;
 
         let mut state_pdus = Vec::new();
-        for (_, pdu) in non_timeline_pdus {
+        for (pdu_id, pdu) in non_timeline_pdus {
+            dbg!((pdu_id, &pdu));
             if pdu.state_key.is_some() {
                 state_pdus.push(pdu);
             }
@@ -112,7 +113,7 @@ pub async fn sync_events_route(
         // with it. This can happen for the RoomCreate event, so all updates should arrive.
         let since_state_hash = db
             .rooms
-            .pdus_after(sender_id, &room_id, since) // - 1 So we can get the event at since
+            .pdus_after(sender_id, &room_id, since)
             .next()
             .map(|pdu| db.rooms.pdu_state_hash(&pdu.ok()?.0).ok()?);
 
@@ -211,9 +212,19 @@ pub async fn sync_events_route(
             }
         }
 
-        let joined_since_last_sync = since_sender_member.map_or(false, |member| {
+        let joined_since_last_sync = since_sender_member.clone().map_or(false, |member| {
             member.map_or(true, |member| member.membership != MembershipState::Join)
         });
+
+        if limited {
+            dbg!("LIMITED");
+        }
+
+        if joined_since_last_sync {
+            dbg!(&since_sender_member);
+            dbg!(&since_state_hash);
+            dbg!(&since_members);
+        }
 
         if joined_since_last_sync && encrypted_room || new_encrypted_room {
             // If the user is in a new encrypted room, give them all joined users

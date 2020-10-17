@@ -22,7 +22,10 @@ use ruma::{
     EventId, Raw, RoomId, RoomVersionId, ServerName, UserId,
 };
 use state_res::StateEvent;
-use std::{collections::BTreeMap, collections::HashMap, collections::HashSet, convert::TryFrom, iter, sync::Arc};
+use std::{
+    collections::BTreeMap, collections::HashMap, collections::HashSet, convert::TryFrom, iter,
+    sync::Arc,
+};
 
 #[cfg(feature = "conduit_bin")]
 use rocket::{get, post};

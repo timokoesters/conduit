@@ -62,6 +62,7 @@ trust-dns-resolver = "0.19.5"
 [features]
 default = ["conduit_bin"]
 conduit_bin = [] # TODO: add rocket to this when it is optional
+tls_vendored = ["reqwest/native-tls-vendored"]
 
 [[bin]]
 name = "conduit"
