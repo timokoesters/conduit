@@ -1,7 +1,9 @@
 use crate::Error;
 use ruma::{
-    api::{Outgoing, OutgoingRequest},
+    api::AuthScheme,
+    api::OutgoingRequest,
     identifiers::{DeviceId, UserId},
+    Outgoing,
 };
 use std::{convert::TryFrom, convert::TryInto, ops::Deref};
 
@@ -61,27 +63,30 @@ where
                 .await
                 .expect("database was loaded");
 
-            let (sender_user, sender_device) = if T::METADATA.requires_authentication {
-                // Get token from header or query value
-                let token = match request
-                    .headers()
-                    .get_one("Authorization")
-                    .map(|s| s[7..].to_owned()) // Split off "Bearer "
-                    .or_else(|| request.get_query_value("access_token").and_then(|r| r.ok()))
-                {
-                    // TODO: M_MISSING_TOKEN
-                    None => return Failure((Status::Unauthorized, ())),
-                    Some(token) => token,
-                };
+            let (sender_user, sender_device) = match T::METADATA.authentication {
+                AuthScheme::AccessToken => {
+                    // Get token from header or query value
+                    let token = match request
+                        .headers()
+                        .get_one("Authorization")
+                        .map(|s| s[7..].to_owned()) // Split off "Bearer "
+                        .or_else(|| request.get_query_value("access_token").and_then(|r| r.ok()))
+                    {
+                        // TODO: M_MISSING_TOKEN
+                        None => return Failure((Status::Unauthorized, ())),
+                        Some(token) => token,
+                    };
 
-                // Check if token is valid
-                match db.users.find_from_token(&token).unwrap() {
-                    // TODO: M_UNKNOWN_TOKEN
-                    None => return Failure((Status::Unauthorized, ())),
-                    Some((user_id, device_id)) => (Some(user_id), Some(device_id.into())),
+                    // Check if token is valid
+                    match db.users.find_from_token(&token).unwrap() {
+                        // TODO: M_UNKNOWN_TOKEN
+                        None => return Failure((Status::Unauthorized, ())),
+                        Some((user_id, device_id)) => (Some(user_id), Some(device_id.into())),
+                    }
                 }
-            } else {
-                (None, None)
+                AuthScheme::None => (None, None),
+                AuthScheme::ServerSignatures => (None, None),
+                AuthScheme::QueryOnlyAccessToken => (None, None),
             };
 
             let mut http_request = http::Request::builder()

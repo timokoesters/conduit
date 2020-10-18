@@ -11,7 +11,7 @@ use ruma::{
             uiaa::{AuthFlow, UiaaInfo},
         },
     },
-    encryption::IncomingUnsignedDeviceInfo,
+    encryption::UnsignedDeviceInfo,
 };
 use std::collections::{BTreeMap, HashSet};
 
@@ -24,7 +24,7 @@ use rocket::{get, post};
 )]
 pub async fn upload_keys_route(
     db: State<'_, Database>,
-    body: Ruma<upload_keys::Request<'_>>,
+    body: Ruma<upload_keys::Request>,
 ) -> ConduitResult<upload_keys::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
     let sender_device = body.sender_device.as_ref().expect("user is authenticated");
@@ -94,7 +94,7 @@ pub async fn get_keys_route(
                             Error::bad_database("all_device_keys contained nonexistent device.")
                         })?;
 
-                    keys.unsigned = IncomingUnsignedDeviceInfo {
+                    keys.unsigned = UnsignedDeviceInfo {
                         device_display_name: metadata.display_name,
                     };
 
@@ -113,7 +113,7 @@ pub async fn get_keys_route(
                         ),
                     )?;
 
-                    keys.unsigned = IncomingUnsignedDeviceInfo {
+                    keys.unsigned = UnsignedDeviceInfo {
                         device_display_name: metadata.display_name,
                     };
 

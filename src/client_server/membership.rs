@@ -17,13 +17,14 @@ use ruma::{
         },
         federation,
     },
-    events::pdu::Pdu,
-    events::{room::member, EventType},
+    events::{pdu::Pdu, room::member, EventType},
     EventId, Raw, RoomId, RoomVersionId, ServerName, UserId,
 };
 use state_res::StateEvent;
 use std::{
-    collections::BTreeMap, collections::HashMap, collections::HashSet, convert::TryFrom, iter,
+    collections::{BTreeMap, HashMap, HashSet},
+    convert::{TryFrom, TryInto},
+    iter,
     sync::Arc,
 };
 
@@ -471,6 +472,10 @@ async fn join_room_by_id_helper(
 
         let (make_join_response, remote_server) = make_join_response_and_server?;
 
+        let room_version = make_join_response
+            .room_version
+            .unwrap_or(RoomVersionId::Version2);
+
         let mut join_event_stub_value =
             serde_json::from_str::<serde_json::Value>(make_join_response.event.json().get())
                 .map_err(|_| {
@@ -507,8 +512,16 @@ async fn join_room_by_id_helper(
         // Generate event id
         let event_id = EventId::try_from(&*format!(
             "${}",
-            ruma::signatures::reference_hash(&join_event_stub_value)
-                .expect("ruma can calculate reference hashes")
+            ruma::signatures::reference_hash(
+                &join_event_stub_value
+                    .try_into()
+                    .map_err(|_| Error::BadRequest(
+                        ErrorKind::InvalidParam,
+                        "Join event is not valid json."
+                    ))?,
+                &room_version
+            )
+            .expect("ruma can calculate reference hashes")
         ))
         .expect("ruma's reference hashes are valid event ids");
 
@@ -520,6 +533,7 @@ async fn join_room_by_id_helper(
             db.globals.server_name().as_str(),
             db.globals.keypair(),
             &mut join_event_stub_value,
+            &room_version,
         )
         .expect("event is valid, we just created it");
 
@@ -542,11 +556,11 @@ async fn join_room_by_id_helper(
         .await?;
 
         let add_event_id = |pdu: &Raw<Pdu>| {
-            let mut value = serde_json::from_str(pdu.json().get())
+            let mut value = serde_json::from_str::<serde_json::Value>(pdu.json().get())
                 .expect("converting raw jsons to values always works");
             let event_id = EventId::try_from(&*format!(
                 "${}",
-                ruma::signatures::reference_hash(&value)
+                ruma::signatures::reference_hash(&value, &room_version)
                     .expect("ruma can calculate reference hashes")
             ))
             .expect("ruma's reference hashes are valid event ids");

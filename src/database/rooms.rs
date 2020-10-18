@@ -15,7 +15,7 @@ use ruma::{
         },
         EventType,
     },
-    EventId, Raw, RoomAliasId, RoomId, ServerName, UserId,
+    EventId, Raw, RoomAliasId, RoomId, RoomVersionId, ServerName, UserId,
 };
 use sled::IVec;
 use state_res::{event_auth, Error as StateError, Requester, StateEvent, StateMap, StateStore};
@@ -815,13 +815,14 @@ impl Rooms {
             globals.server_name().as_str(),
             globals.keypair(),
             &mut pdu_json,
+            &RoomVersionId::Version6,
         )
         .expect("event is valid, we just created it");
 
         // Generate event id
         pdu.event_id = EventId::try_from(&*format!(
             "${}",
-            ruma::signatures::reference_hash(&pdu_json)
+            ruma::signatures::reference_hash(&pdu_json, &RoomVersionId::Version6)
                 .expect("ruma can calculate reference hashes")
         ))
         .expect("ruma's reference hashes are valid event ids");

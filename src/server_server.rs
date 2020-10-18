@@ -17,7 +17,7 @@ use ruma::{
         OutgoingRequest,
     },
     directory::{IncomingFilter, IncomingRoomNetwork},
-    EventId, ServerName,
+    EventId, RoomVersionId, ServerName,
 };
 use std::{
     collections::BTreeMap,
@@ -375,12 +375,13 @@ pub fn send_transaction_message_route<'a>(
 
     //dbg!(&*body);
     for pdu in &body.pdus {
-        let mut value = serde_json::from_str(pdu.json().get())
+        let mut value = serde_json::from_str::<serde_json::Value>(pdu.json().get())
             .expect("converting raw jsons to values always works");
 
         let event_id = EventId::try_from(&*format!(
             "${}",
-            ruma::signatures::reference_hash(&value).expect("ruma can calculate reference hashes")
+            ruma::signatures::reference_hash(&value, &RoomVersionId::Version6)
+                .expect("ruma can calculate reference hashes")
         ))
         .expect("ruma's reference hashes are valid event ids");
 

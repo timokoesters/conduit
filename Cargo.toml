@@ -18,12 +18,12 @@ edition = "2018"
 rocket = { git = "https://github.com/timokoesters/Rocket.git", branch = "empty_parameters", default-features = false, features = ["tls"] }
 
 # Used for matrix spec type definitions and helpers
-#ruma = { git = "https://github.com/ruma/ruma", features = ["rand", "client-api", "federation-api", "unstable-pre-spec", "unstable-synapse-quirks"], rev = "aff914050eb297bd82b8aafb12158c88a9e480e1" }
-ruma = { git = "https://github.com/timokoesters/ruma", features = ["rand", "client-api", "federation-api", "unstable-exhaustive-types", "unstable-pre-spec", "unstable-synapse-quirks"], branch = "timo-fed-fixes" }
+ruma = { git = "https://github.com/ruma/ruma", features = ["rand", "client-api", "federation-api", "unstable-pre-spec", "unstable-synapse-quirks", "unstable-exhaustive-types"], rev = "f85d98f557b457fdf9846b851055a5fbab2eeee2" }
+#ruma = { git = "https://github.com/timokoesters/ruma", features = ["rand", "client-api", "federation-api", "unstable-exhaustive-types", "unstable-pre-spec", "unstable-synapse-quirks"], branch = "timo-fed-fixes" }
 #ruma = { path = "../ruma/ruma", features = ["unstable-exhaustive-types", "rand", "client-api", "federation-api", "unstable-pre-spec", "unstable-synapse-quirks"] }
 
 # Used when doing state resolution
-state-res = { git = "https://github.com/timokoesters/state-res", branch = "spec-comp", features = ["unstable-pre-spec"] }
+state-res = { git = "https://github.com/timokoesters/state-res", branch = "spec-comp-ruma-master", features = ["unstable-pre-spec"] }
 #state-res = { path = "../state-res", features = ["unstable-pre-spec"] }
 
 # Used for long polling

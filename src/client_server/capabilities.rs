@@ -1,5 +1,8 @@
 use crate::ConduitResult;
-use ruma::{api::client::r0::capabilities::get_capabilities, RoomVersionId};
+use ruma::{
+    api::client::r0::capabilities::get_capabilities::{self, ChangePasswordCapability},
+    RoomVersionId,
+};
 use std::collections::BTreeMap;
 
 #[cfg(feature = "conduit_bin")]
@@ -22,11 +25,11 @@ pub async fn get_capabilities_route() -> ConduitResult<get_capabilities::Respons
 
     Ok(get_capabilities::Response {
         capabilities: get_capabilities::Capabilities {
-            change_password: None, // None means it is possible
-            room_versions: Some(get_capabilities::RoomVersionsCapability {
-                default: "6".to_owned(),
+            change_password: ChangePasswordCapability { enabled: true },
+            room_versions: get_capabilities::RoomVersionsCapability {
+                default: RoomVersionId::Version6,
                 available,
-            }),
+            },
             custom_capabilities: BTreeMap::new(),
         },
     }

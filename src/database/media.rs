@@ -5,7 +5,7 @@ use std::mem;
 
 pub struct FileMeta {
     pub filename: Option<String>,
-    pub content_type: String,
+    pub content_type: Option<String>,
     pub file: Vec<u8>,
 }
 
@@ -19,7 +19,7 @@ impl Media {
         &self,
         mxc: String,
         filename: &Option<&str>,
-        content_type: &str,
+        content_type: Option<&str>,
         file: &[u8],
     ) -> Result<()> {
         let mut key = mxc.as_bytes().to_vec();
@@ -29,7 +29,7 @@ impl Media {
         key.push(0xff);
         key.extend_from_slice(filename.as_ref().map(|f| f.as_bytes()).unwrap_or_default());
         key.push(0xff);
-        key.extend_from_slice(content_type.as_bytes());
+        key.extend_from_slice(content_type.map(|c| c.as_bytes()).unwrap_or(&[]));
 
         self.mediaid_file.insert(key, file)?;
 
@@ -41,7 +41,7 @@ impl Media {
         &self,
         mxc: String,
         filename: &Option<String>,
-        content_type: &str,
+        content_type: Option<&str>,
         width: u32,
         height: u32,
         file: &[u8],
@@ -53,7 +53,7 @@ impl Media {
         key.push(0xff);
         key.extend_from_slice(filename.as_ref().map(|f| f.as_bytes()).unwrap_or_default());
         key.push(0xff);
-        key.extend_from_slice(content_type.as_bytes());
+        key.extend_from_slice(content_type.map(|c| c.as_bytes()).unwrap_or(&[]));
 
         self.mediaid_file.insert(key, file)?;
 
@@ -72,12 +72,17 @@ impl Media {
             let (key, file) = r?;
             let mut parts = key.rsplit(|&b| b == 0xff);
 
-            let content_type = utils::string_from_bytes(
-                parts
-                    .next()
-                    .ok_or_else(|| Error::bad_database("Media ID in db is invalid."))?,
-            )
-            .map_err(|_| Error::bad_database("Content type in mediaid_file is invalid unicode."))?;
+            let content_type = parts
+                .next()
+                .ok_or_else(|| Error::bad_database("Media ID in db is invalid."))?;
+
+            let content_type_parsed = if content_type.is_empty() {
+                None
+            } else {
+                Some(utils::string_from_bytes(content_type).map_err(|_| {
+                    Error::bad_database("Content type in mediaid_file is invalid unicode.")
+                })?)
+            };
 
             let filename_bytes = parts
                 .next()
@@ -93,7 +98,7 @@ impl Media {
 
             Ok(Some(FileMeta {
                 filename,
-                content_type,
+                content_type: content_type_parsed,
                 file: file.to_vec(),
             }))
         } else {
@@ -147,12 +152,17 @@ impl Media {
             let (key, file) = r?;
             let mut parts = key.rsplit(|&b| b == 0xff);
 
-            let content_type = utils::string_from_bytes(
-                parts
-                    .next()
-                    .ok_or_else(|| Error::bad_database("Invalid Media ID in db"))?,
-            )
-            .map_err(|_| Error::bad_database("Content type in mediaid_file is invalid unicode."))?;
+            let content_type = parts
+                .next()
+                .ok_or_else(|| Error::bad_database("Media ID in db is invalid."))?;
+
+            let content_type_parsed = if content_type.is_empty() {
+                None
+            } else {
+                Some(utils::string_from_bytes(content_type).map_err(|_| {
+                    Error::bad_database("Content type in mediaid_file is invalid unicode.")
+                })?)
+            };
 
             let filename_bytes = parts
                 .next()
@@ -169,7 +179,7 @@ impl Media {
 
             Ok(Some(FileMeta {
                 filename,
-                content_type,
+                content_type: content_type_parsed,
                 file: file.to_vec(),
             }))
         } else if let Some(r) = self.mediaid_file.scan_prefix(&original_prefix).next() {
@@ -178,12 +188,17 @@ impl Media {
             let (key, file) = r?;
             let mut parts = key.rsplit(|&b| b == 0xff);
 
-            let content_type = utils::string_from_bytes(
-                parts
-                    .next()
-                    .ok_or_else(|| Error::bad_database("Media ID in db is invalid."))?,
-            )
-            .map_err(|_| Error::bad_database("Content type in mediaid_file is invalid unicode."))?;
+            let content_type = parts
+                .next()
+                .ok_or_else(|| Error::bad_database("Media ID in db is invalid."))?;
+
+            let content_type_parsed = if content_type.is_empty() {
+                None
+            } else {
+                Some(utils::string_from_bytes(content_type).map_err(|_| {
+                    Error::bad_database("Content type in mediaid_file is invalid unicode.")
+                })?)
+            };
 
             let filename_bytes = parts
                 .next()
@@ -269,7 +284,7 @@ impl Media {
 
                 Ok(Some(FileMeta {
                     filename,
-                    content_type,
+                    content_type: content_type_parsed,
                     file: thumbnail_bytes.to_vec(),
                 }))
             } else {

@@ -199,9 +199,7 @@ impl PduEvent {
         serde_json::from_value(json).expect("Raw::from_value always works")
     }
 
-    pub fn convert_to_outgoing_federation_event(
-        mut pdu_json: serde_json::Value,
-    ) -> Raw<ruma::events::pdu::PduStub> {
+    pub fn convert_to_outgoing_federation_event<T>(mut pdu_json: serde_json::Value) -> Raw<T> {
         if let Some(unsigned) = pdu_json
             .as_object_mut()
             .expect("json is object")
