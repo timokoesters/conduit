@@ -17,13 +17,12 @@ example) and register on the `https://conduit.koesters.xyz` homeserver.
 
 #### How can I deploy my own?
 
-##### From source
+##### Deploy
 
-Clone the repo, build it with `cargo build --release` and call the binary
-(target/release/conduit) from somewhere like a systemd script. [Read
-more](DEPLOY_FROM_SOURCE.md)
+Download or compile a conduit binary and call it from somewhere like a systemd script. [Read
+more](DEPLOY.md)
 
-##### Using Docker
+##### Deploy using Docker
 
 Pull and run the docker image with
 

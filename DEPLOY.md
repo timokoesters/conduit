@@ -7,15 +7,24 @@ Make sure you have `libssl-dev` and `pkg-config` installed and the [rust toolcha
 
 ## Install Conduit
 
+You have to download the binary that fits your machine. Run `uname -m` to see what you need:
+- x84_64: `https://conduit.rs/master/x86_64/conduit-bin`
+- armv7: `https://conduit.rs/master/armv7/conduit-bin`
+- armv8: `https://conduit.rs/master/armv8/conduit-bin`
+- arm: `https://conduit.rs/master/arm/conduit-bin`
+
 ```bash
 $ sudo useradd -m conduit
-$ sudo -u conduit cargo install --git "https://git.koesters.xyz/timo/conduit.git"
+$ sudo -u conduit wget <url> -O /home/conduit/conduit-bin && chmod +x /home/conduit/conduit-bin
 ```
 
 
 ## Setup systemd service
 
-In this guide, we set up a systemd service for Conduit, so it's easy to start, stop Conduit and set it to autostart when your server reboots. Paste the default systemd service below and configure it to fit your setup (in /etc/systemd/system/conduit.service).
+In this guide, we set up a systemd service for Conduit, so it's easy to
+start/stop Conduit and set it to autostart when your server reboots. Paste the
+default systemd service you can find below into
+`/etc/systemd/system/conduit.service` and configure it to fit your setup.
 
 ```systemd
 [Unit]
@@ -38,7 +47,7 @@ User=conduit
 Group=conduit
 Type=simple
 Restart=always
-ExecStart=/home/conduit/.cargo/bin/conduit
+ExecStart=/home/conduit/conduit-bin
 
 [Install]
 WantedBy=multi-user.target
@@ -92,12 +101,12 @@ $ sudo certbot -d conduit.koesters.xyz
 
 ## You're done!
 
-Now you can start Conduit with
+Now you can start Conduit with:
 ```bash
 $ sudo systemctl start conduit
 ```
 
-and set it to start automatically when your system boots with
+Set it to start automatically when your system boots with:
 ```bash
 $ sudo systemctl enable conduit
 ```
