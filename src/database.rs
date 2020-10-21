@@ -139,6 +139,7 @@ impl Database {
             },
             sending: sending::Sending {
                 serverpduids: db.open_tree("serverpduids")?,
+                server_currenttransaction: db.open_tree("server_currenttransaction")?,
             },
             _db: db,
         })
