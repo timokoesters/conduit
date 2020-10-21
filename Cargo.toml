@@ -29,7 +29,7 @@ state-res = { git = "https://github.com/timokoesters/state-res", branch = "spec-
 # Used for long polling
 tokio = "0.2.22"
 # Used for storing data permanently
-sled = "0.34.4"
+sled = { version = "0.34.4", default-features = false }
 # Used for emitting log entries
 log = "0.4.11"
 # Used for rocket<->ruma conversions

@@ -10,12 +10,11 @@ pub mod users;
 
 use crate::{Error, Result};
 use directories::ProjectDirs;
-use log::info;
-use std::fs::remove_dir_all;
-
 use futures::StreamExt;
+use log::info;
 use rocket::{futures, Config};
 use ruma::{DeviceId, UserId};
+use std::{convert::TryFrom, fs::remove_dir_all};
 
 pub struct Database {
     pub globals: globals::Globals,
@@ -66,7 +65,19 @@ impl Database {
                     .to_owned())
             })?;
 
-        let db = sled::open(&path)?;
+        let db = sled::Config::default()
+            .path(&path)
+            .cache_capacity(
+                u64::try_from(
+                    config
+                        .get_int("cache_capacity")
+                        .unwrap_or(1024 * 1024 * 1024),
+                )
+                .map_err(|_| Error::BadConfig("Cache capacity needs to be a u64."))?,
+            )
+            .print_profile_on_drop(false)
+            .open()?;
+
         info!("Opened sled database at {}", path);
 
         Ok(Self {
