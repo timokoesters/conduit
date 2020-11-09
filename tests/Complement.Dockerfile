@@ -32,7 +32,9 @@ RUN echo '{"apps":{"http":{"https_port":8448,"servers":{"srv0":{"listen":[":8448
  
 EXPOSE 8008 8448
 
-CMD sed -i "s/server_name = \"your.server.name\"/server_name = \"${SERVER_NAME}\"/g" Rocket.toml && \
+CMD ([ -z "${COMPLEMENT_CA}" ] && echo "Error: Need Complement CA support" && true) || \
+    sed -i "s/server_name = \"your.server.name\"/server_name = \"${SERVER_NAME}\"/g" Rocket.toml && \
     sed -i "s/your.server.name/${SERVER_NAME}/g" caddy.json && \
     /workdir/caddy start --config caddy.json > /dev/null && \
     /workdir/conduit
+    
