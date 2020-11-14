@@ -1,6 +1,13 @@
+use std::{time::Duration, collections::HashMap, sync::RwLock, time::Instant};
+
 use log::error;
-use ruma::api::client::{error::ErrorKind, r0::uiaa::UiaaInfo};
+use ruma::{
+    api::client::{error::ErrorKind, r0::uiaa::UiaaInfo},
+    events::room::message,
+};
 use thiserror::Error;
+
+use crate::{database::admin::AdminCommand, Database};
 
 #[cfg(feature = "conduit_bin")]
 use {
@@ -53,6 +60,11 @@ impl Error {
         error!("BadDatabase: {}", message);
         Self::BadDatabase(message)
     }
+
+    pub fn bad_config(message: &'static str) -> Self {
+        error!("BadConfig: {}", message);
+        Self::BadConfig(message)
+    }
 }
 
 #[cfg(feature = "conduit_bin")]
@@ -94,4 +106,51 @@ where
         })
         .respond_to(r)
     }
+}
+
+pub struct ConduitLogger {
+    pub db: Database,
+    pub last_logs: RwLock<HashMap<String, Instant>>,
+}
+
+impl log::Log for ConduitLogger {
+    fn enabled(&self, _metadata: &log::Metadata<'_>) -> bool {
+        true
+    }
+
+    fn log(&self, record: &log::Record<'_>) {
+        let output = format!("{} - {}", record.level(), record.args());
+
+        println!("{}", output);
+
+        if self.enabled(record.metadata())
+            && record
+                .module_path()
+                .map_or(false, |path| path.starts_with("conduit::"))
+        {
+            if self
+                .last_logs
+                .read()
+                .unwrap()
+                .get(&output)
+                .map_or(false, |i| i.elapsed() < Duration::from_secs(60 * 30))
+            {
+                return;
+            }
+
+            if let Ok(mut_last_logs) = &mut self.last_logs.try_write() {
+                mut_last_logs.insert(output.clone(), Instant::now());
+            }
+
+            self.db.admin.send(AdminCommand::SendTextMessage(
+                message::TextMessageEventContent {
+                    body: output,
+                    formatted: None,
+                    relates_to: None,
+                },
+            ));
+        }
+    }
+
+    fn flush(&self) {}
 }

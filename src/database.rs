@@ -39,7 +39,7 @@ impl Database {
     /// Tries to remove the old database but ignores all errors.
     pub fn try_remove(server_name: &str) -> Result<()> {
         let mut path = ProjectDirs::from("xyz", "koesters", "conduit")
-            .ok_or(Error::BadConfig(
+            .ok_or_else(|| Error::bad_config(
                 "The OS didn't return a valid home directory path.",
             ))?
             .data_dir()
@@ -59,7 +59,7 @@ impl Database {
             .map(|x| Ok::<_, Error>(x.to_owned()))
             .unwrap_or_else(|_| {
                 let path = ProjectDirs::from("xyz", "koesters", "conduit")
-                    .ok_or(Error::BadConfig(
+                    .ok_or_else(|| Error::bad_config(
                         "The OS didn't return a valid home directory path.",
                     ))?
                     .data_dir()
@@ -67,7 +67,7 @@ impl Database {
 
                 Ok(path
                     .to_str()
-                    .ok_or(Error::BadConfig("Database path contains invalid unicode."))?
+                    .ok_or_else(|| Error::bad_config("Database path contains invalid unicode."))?
                     .to_owned())
             })?;
 
@@ -79,7 +79,7 @@ impl Database {
                         .get_int("cache_capacity")
                         .unwrap_or(1024 * 1024 * 1024),
                 )
-                .map_err(|_| Error::BadConfig("Cache capacity needs to be a u64."))?,
+                .map_err(|_| Error::bad_config("Cache capacity needs to be a u64."))?,
             )
             .print_profile_on_drop(false)
             .open()?;

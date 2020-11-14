@@ -35,7 +35,7 @@ impl Admin {
                         .expect("#admins:server_name is a valid room alias"),
                 )
                 .unwrap()
-                .ok_or_else(|| Error::BadConfig("Conduit instance does not have an #admins room."))
+                .ok_or_else(|| Error::bad_config("Conduit instance does not have an #admins room."))
                 .unwrap();
 
             loop {

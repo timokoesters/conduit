@@ -97,7 +97,7 @@ where
             handle.read_to_end(&mut body).await.unwrap();
 
             let http_request = http_request.body(body.clone()).unwrap();
-            log::info!("{:?}", http_request);
+            log::debug!("{:?}", http_request);
 
             match <T as Outgoing>::Incoming::try_from(http_request) {
                 Ok(t) => Success(Ruma {

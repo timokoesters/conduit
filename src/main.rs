@@ -11,7 +11,8 @@ mod ruma_wrapper;
 mod utils;
 
 pub use database::Database;
-pub use error::{Error, Result};
+pub use error::{ConduitLogger, Error, Result};
+use log::LevelFilter;
 pub use pdu::PduEvent;
 pub use rocket::State;
 pub use ruma_wrapper::{ConduitResult, Ruma, RumaResponse};
@@ -19,6 +20,9 @@ pub use ruma_wrapper::{ConduitResult, Ruma, RumaResponse};
 use rocket::{fairing::AdHoc, routes};
 
 fn setup_rocket() -> rocket::Rocket {
+    // Force log level off, so we can use our own logger
+    std::env::set_var("ROCKET_LOG", "off");
+
     rocket::ignite()
         .mount(
             "/",
@@ -133,6 +137,12 @@ fn setup_rocket() -> rocket::Rocket {
             let data = Database::load_or_create(rocket.config().await).expect("valid config");
 
             data.sending.start_handler(&data.globals, &data.rooms);
+            log::set_boxed_logger(Box::new(ConduitLogger {
+                db: data.clone(),
+                last_logs: Default::default(),
+            }))
+            .unwrap();
+            log::set_max_level(LevelFilter::Info);
 
             Ok(rocket.manage(data))
         }))
@@ -140,10 +150,5 @@ fn setup_rocket() -> rocket::Rocket {
 
 #[rocket::main]
 async fn main() {
-    // Default log level
-    if std::env::var("ROCKET_LOG").is_err() {
-        std::env::set_var("ROCKET_LOG", "critical");
-    }
-
     setup_rocket().launch().await.unwrap();
 }

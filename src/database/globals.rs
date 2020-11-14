@@ -62,12 +62,12 @@ impl Globals {
                 .unwrap_or("localhost")
                 .to_string()
                 .try_into()
-                .map_err(|_| Error::BadConfig("Invalid server_name."))?,
+                .map_err(|_| Error::bad_config("Invalid server_name."))?,
             max_request_size: config
                 .get_int("max_request_size")
                 .unwrap_or(20 * 1024 * 1024) // Default to 20 MB
                 .try_into()
-                .map_err(|_| Error::BadConfig("Invalid max_request_size."))?,
+                .map_err(|_| Error::bad_config("Invalid max_request_size."))?,
             registration_disabled: config.get_bool("registration_disabled").unwrap_or(false),
             encryption_disabled: config.get_bool("encryption_disabled").unwrap_or(false),
             federation_enabled: config.get_bool("federation_enabled").unwrap_or(false),

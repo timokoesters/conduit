@@ -58,12 +58,12 @@ where
     T: Debug,
 {
     if !globals.federation_enabled() {
-        return Err(Error::BadConfig("Federation is disabled."));
+        return Err(Error::bad_config("Federation is disabled."));
     }
 
     let resolver = AsyncResolver::tokio_from_system_conf()
         .await
-        .map_err(|_| Error::BadConfig("Failed to set up trust dns resolver with system config."))?;
+        .map_err(|_| Error::bad_config("Failed to set up trust dns resolver with system config."))?;
 
     let mut host = None;
 
@@ -213,7 +213,7 @@ where
 #[cfg_attr(feature = "conduit_bin", get("/_matrix/federation/v1/version"))]
 pub fn get_server_version(db: State<'_, Database>) -> ConduitResult<get_server_version::Response> {
     if !db.globals.federation_enabled() {
-        return Err(Error::BadConfig("Federation is disabled."));
+        return Err(Error::bad_config("Federation is disabled."));
     }
 
     Ok(get_server_version::Response {
@@ -276,7 +276,7 @@ pub async fn get_public_rooms_filtered_route(
     body: Ruma<get_public_rooms_filtered::v1::Request<'_>>,
 ) -> ConduitResult<get_public_rooms_filtered::v1::Response> {
     if !db.globals.federation_enabled() {
-        return Err(Error::BadConfig("Federation is disabled."));
+        return Err(Error::bad_config("Federation is disabled."));
     }
 
     let response = client_server::get_public_rooms_filtered_helper(
@@ -323,7 +323,7 @@ pub async fn get_public_rooms_route(
     body: Ruma<get_public_rooms::v1::Request<'_>>,
 ) -> ConduitResult<get_public_rooms::v1::Response> {
     if !db.globals.federation_enabled() {
-        return Err(Error::BadConfig("Federation is disabled."));
+        return Err(Error::bad_config("Federation is disabled."));
     }
 
     let response = client_server::get_public_rooms_filtered_helper(
@@ -370,7 +370,7 @@ pub fn send_transaction_message_route<'a>(
     body: Ruma<send_transaction_message::v1::Request<'_>>,
 ) -> ConduitResult<send_transaction_message::v1::Response> {
     if !db.globals.federation_enabled() {
-        return Err(Error::BadConfig("Federation is disabled."));
+        return Err(Error::bad_config("Federation is disabled."));
     }
 
     //dbg!(&*body);
@@ -423,7 +423,7 @@ pub fn get_missing_events_route<'a>(
     body: Ruma<get_missing_events::v1::Request<'_>>,
 ) -> ConduitResult<get_missing_events::v1::Response> {
     if !db.globals.federation_enabled() {
-        return Err(Error::BadConfig("Federation is disabled."));
+        return Err(Error::bad_config("Federation is disabled."));
     }
 
     let mut queued_events = body.latest_events.clone();
@@ -468,7 +468,7 @@ pub fn get_profile_information_route<'a>(
     body: Ruma<get_profile_information::v1::Request<'_>>,
 ) -> ConduitResult<get_profile_information::v1::Response> {
     if !db.globals.federation_enabled() {
-        return Err(Error::BadConfig("Federation is disabled."));
+        return Err(Error::bad_config("Federation is disabled."));
     }
 
     let mut displayname = None;
@@ -500,7 +500,7 @@ pub fn get_user_devices_route<'a>(
     body: Ruma<membership::v1::Request<'_>>,
 ) -> ConduitResult<get_profile_information::v1::Response> {
     if !db.globals.federation_enabled() {
-        return Err(Error::BadConfig("Federation is disabled."));
+        return Err(Error::bad_config("Federation is disabled."));
     }
 
     let mut displayname = None;
