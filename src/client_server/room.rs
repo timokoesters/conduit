@@ -1,5 +1,6 @@
 use super::State;
 use crate::{pdu::PduBuilder, ConduitResult, Database, Error, Ruma};
+use log::info;
 use ruma::{
     api::client::{
         error::ErrorKind,
@@ -322,6 +323,8 @@ pub async fn create_room_route(
     if body.visibility == room::Visibility::Public {
         db.rooms.set_public(&room_id, true)?;
     }
+
+    info!("{} created a room", sender_user);
 
     db.flush().await?;
 

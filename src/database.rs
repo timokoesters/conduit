@@ -39,9 +39,7 @@ impl Database {
     /// Tries to remove the old database but ignores all errors.
     pub fn try_remove(server_name: &str) -> Result<()> {
         let mut path = ProjectDirs::from("xyz", "koesters", "conduit")
-            .ok_or_else(|| Error::bad_config(
-                "The OS didn't return a valid home directory path.",
-            ))?
+            .ok_or_else(|| Error::bad_config("The OS didn't return a valid home directory path."))?
             .data_dir()
             .to_path_buf();
         path.push(server_name);
@@ -59,9 +57,9 @@ impl Database {
             .map(|x| Ok::<_, Error>(x.to_owned()))
             .unwrap_or_else(|_| {
                 let path = ProjectDirs::from("xyz", "koesters", "conduit")
-                    .ok_or_else(|| Error::bad_config(
-                        "The OS didn't return a valid home directory path.",
-                    ))?
+                    .ok_or_else(|| {
+                        Error::bad_config("The OS didn't return a valid home directory path.")
+                    })?
                     .data_dir()
                     .join(server_name);
 

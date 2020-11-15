@@ -1,5 +1,6 @@
 use super::{State, DEVICE_ID_LENGTH, TOKEN_LENGTH};
 use crate::{utils, ConduitResult, Database, Error, Ruma};
+use log::info;
 use ruma::{
     api::client::{
         error::ErrorKind,
@@ -92,6 +93,8 @@ pub async fn login_route(
         &token,
         body.initial_device_display_name.clone(),
     )?;
+
+    info!("{} logged in", user_id);
 
     db.flush().await?;
 

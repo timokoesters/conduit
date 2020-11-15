@@ -61,9 +61,9 @@ where
         return Err(Error::bad_config("Federation is disabled."));
     }
 
-    let resolver = AsyncResolver::tokio_from_system_conf()
-        .await
-        .map_err(|_| Error::bad_config("Failed to set up trust dns resolver with system config."))?;
+    let resolver = AsyncResolver::tokio_from_system_conf().await.map_err(|_| {
+        Error::bad_config("Failed to set up trust dns resolver with system config.")
+    })?;
 
     let mut host = None;
 

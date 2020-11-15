@@ -1,5 +1,6 @@
 use super::State;
 use crate::{server_server, ConduitResult, Database, Error, Result, Ruma};
+use log::info;
 use ruma::{
     api::{
         client::{
@@ -82,8 +83,13 @@ pub async fn set_room_visibility_route(
     db: State<'_, Database>,
     body: Ruma<set_room_visibility::Request<'_>>,
 ) -> ConduitResult<set_room_visibility::Response> {
+    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
+
     match body.visibility {
-        room::Visibility::Public => db.rooms.set_public(&body.room_id, true)?,
+        room::Visibility::Public => {
+            db.rooms.set_public(&body.room_id, true)?;
+            info!("{} made {} public", sender_user, body.room_id);
+        }
         room::Visibility::Private => db.rooms.set_public(&body.room_id, false)?,
     }
 

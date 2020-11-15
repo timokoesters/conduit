@@ -2,6 +2,7 @@ use std::{collections::BTreeMap, convert::TryInto};
 
 use super::{State, DEVICE_ID_LENGTH, SESSION_ID_LENGTH, TOKEN_LENGTH};
 use crate::{pdu::PduBuilder, utils, ConduitResult, Database, Error, Ruma};
+use log::info;
 use ruma::{
     api::client::{
         error::ErrorKind,
@@ -510,6 +511,8 @@ pub async fn register_route(
         )?;
     }
 
+    info!("{} registered on this server", user_id);
+
     db.flush().await?;
 
     Ok(register::Response {
@@ -685,6 +688,8 @@ pub async fn deactivate_route(
 
     // Remove devices and mark account as deactivated
     db.users.deactivate_account(&sender_user)?;
+
+    info!("{} deactivated their account", sender_user);
 
     db.flush().await?;
 
