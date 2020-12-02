@@ -1,6 +1,7 @@
 use std::convert::{TryFrom, TryInto};
 
-use crate::{pdu::PduBuilder, Error};
+use crate::pdu::PduBuilder;
+use log::warn;
 use rocket::futures::{channel::mpsc, stream::StreamExt};
 use ruma::{events::room::message, events::EventType, UserId};
 use tokio::select;
@@ -34,9 +35,11 @@ impl Admin {
                         .try_into()
                         .expect("#admins:server_name is a valid room alias"),
                 )
-                .unwrap()
-                .ok_or_else(|| Error::bad_config("Conduit instance does not have an #admins room."))
                 .unwrap();
+
+            if conduit_room.is_none() {
+                warn!("Conduit instance does not have an #admins room. Logging to that room will not work.");
+            }
 
             loop {
                 select! {
@@ -45,21 +48,23 @@ impl Admin {
                             AdminCommand::SendTextMessage(message) => {
                                 println!("{:?}", message);
 
-                                db.rooms.build_and_append_pdu(
-                                    PduBuilder {
-                                        event_type: EventType::RoomMessage,
-                                        content: serde_json::to_value(message).expect("event is valid, we just created it"),
-                                        unsigned: None,
-                                        state_key: None,
-                                        redacts: None,
-                                    },
-                                    &conduit_user,
-                                    &conduit_room,
-                                    &db.globals,
-                                    &db.sending,
-                                    &db.admin,
-                                    &db.account_data,
-                                ).unwrap();
+                                if let Some(conduit_room) = &conduit_room {
+                                    db.rooms.build_and_append_pdu(
+                                        PduBuilder {
+                                            event_type: EventType::RoomMessage,
+                                            content: serde_json::to_value(message).expect("event is valid, we just created it"),
+                                            unsigned: None,
+                                            state_key: None,
+                                            redacts: None,
+                                        },
+                                        &conduit_user,
+                                        &conduit_room,
+                                        &db.globals,
+                                        &db.sending,
+                                        &db.admin,
+                                        &db.account_data,
+                                    ).unwrap();
+                                }
                             }
                         }
                     }
