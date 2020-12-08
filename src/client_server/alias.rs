@@ -1,7 +1,8 @@
 use super::State;
-use crate::{server_server, ConduitResult, Database, Error, Ruma};
+use crate::{appservice_server, server_server, ConduitResult, Database, Error, Ruma};
 use ruma::{
     api::{
+        appservice,
         client::{
             error::ErrorKind,
             r0::alias::{create_alias, delete_alias, get_alias},
@@ -75,13 +76,37 @@ pub async fn get_alias_helper(
         return Ok(get_alias::Response::new(response.room_id, response.servers).into());
     }
 
-    let room_id = db
-        .rooms
-        .id_from_alias(&room_alias)?
-        .ok_or(Error::BadRequest(
-            ErrorKind::NotFound,
-            "Room with alias not found.",
-        ))?;
+    let mut room_id = None;
+    match db.rooms.id_from_alias(&room_alias)? {
+        Some(r) => room_id = Some(r),
+        None => {
+            for (_id, registration) in db.appservice.iter_all().filter_map(|r| r.ok()) {
+                if appservice_server::send_request(
+                    &db.globals,
+                    registration,
+                    appservice::query::query_room_alias::v1::Request { room_alias },
+                )
+                .await
+                .is_ok()
+                {
+                    room_id = Some(db.rooms.id_from_alias(&room_alias)?.ok_or_else(|| {
+                        Error::bad_config("Appservice lied to us. Room does not exist.")
+                    })?);
+                    break;
+                }
+            }
+        }
+    };
+
+    let room_id = match room_id {
+        Some(room_id) => room_id,
+        None => {
+            return Err(Error::BadRequest(
+                ErrorKind::NotFound,
+                "Room with alias not found.",
+            ))
+        }
+    };
 
     Ok(get_alias::Response::new(room_id, vec![db.globals.server_name().to_owned()]).into())
 }

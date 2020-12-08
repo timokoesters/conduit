@@ -36,16 +36,6 @@ use super::admin::AdminCommand;
 /// hashing the entire state.
 pub type StateHashId = IVec;
 
-/// An enum that represents the two valid states when searching
-/// for an events "parent".
-///
-/// An events parent is any event we are aware of that is part of
-/// the events `prev_events` array.
-pub(crate) enum ClosestParent {
-    Append,
-    Insert(u64),
-}
-
 #[derive(Clone)]
 pub struct Rooms {
     pub edus: edus::RoomEdus,
@@ -411,54 +401,6 @@ impl Rooms {
         }
     }
 
-    /// Recursively search for a PDU from our DB that is also in the
-    /// `prev_events` field of the incoming PDU.
-    ///
-    /// First we check if the last PDU inserted to the given room is a parent
-    /// if not we recursively check older `prev_events` to insert the incoming
-    /// event after.
-    pub(crate) fn get_latest_pduid_before(
-        &self,
-        room: &RoomId,
-        incoming_prev_ids: &[EventId],
-        their_state: &BTreeMap<EventId, Arc<StateEvent>>,
-    ) -> Result<Option<ClosestParent>> {
-        match self.pduid_pdu.scan_prefix(room.as_bytes()).last() {
-            Some(Ok(val))
-                if incoming_prev_ids.contains(
-                    &serde_json::from_slice::<PduEvent>(&val.1)
-                        .map_err(|_| {
-                            Error::bad_database("last DB entry contains invalid PDU bytes")
-                        })?
-                        .event_id,
-                ) =>
-            {
-                Ok(Some(ClosestParent::Append))
-            }
-            _ => {
-                let mut prev_ids = incoming_prev_ids.to_vec();
-                while let Some(id) = prev_ids.pop() {
-                    match self.get_pdu_id(&id)? {
-                        Some(pdu_id) => {
-                            return Ok(Some(ClosestParent::Insert(self.pdu_count(&pdu_id)?)));
-                        }
-                        None => {
-                            prev_ids.extend(their_state.get(&id).map_or(
-                                Err(Error::BadServerResponse(
-                                    "Failed to find previous event for PDU in state",
-                                )),
-                                // `prev_event_ids` will return an empty Vec instead of failing
-                                // so it works perfect for our use here
-                                |pdu| Ok(pdu.prev_event_ids()),
-                            )?);
-                        }
-                    }
-                }
-                Ok(None)
-            }
-        }
-    }
-
     /// Returns the leaf pdus of a room.
     pub fn get_pdu_leaves(&self, room_id: &RoomId) -> Result<Vec<EventId>> {
         let mut prefix = room_id.as_bytes().to_vec();
@@ -583,18 +525,59 @@ impl Rooms {
                             .as_ref()
                             == Some(&pdu.room_id)
                     {
-                        let mut parts = body.split_whitespace().skip(1);
+                        let mut lines = body.lines();
+                        let command_line = lines.next().expect("each string has at least one line");
+                        let body = lines.collect::<Vec<_>>();
+
+                        let mut parts = command_line.split_whitespace().skip(1);
                         if let Some(command) = parts.next() {
                             let args = parts.collect::<Vec<_>>();
 
-                            admin.send(AdminCommand::SendTextMessage(
-                                message::TextMessageEventContent {
-                                    body: format!("Command: {}, Args: {:?}", command, args),
-                                    formatted: None,
-                                    relates_to: None,
-                                    new_content: None,
-                                },
-                            ));
+                            match command {
+                                "register_appservice" => {
+                                    if body.len() > 2
+                                        && body[0].trim() == "```"
+                                        && body.last().unwrap().trim() == "```"
+                                    {
+                                        let appservice_config = body[1..body.len() - 1].join("\n");
+                                        let parsed_config = serde_yaml::from_str::<serde_yaml::Value>(
+                                            &appservice_config,
+                                        );
+                                        match parsed_config {
+                                            Ok(yaml) => {
+                                                admin.send(AdminCommand::RegisterAppservice(yaml));
+                                            }
+                                            Err(e) => {
+                                                admin.send(AdminCommand::SendMessage(
+                                                    message::MessageEventContent::text_plain(
+                                                        format!(
+                                                            "Could not parse appservice config: {}",
+                                                            e
+                                                        ),
+                                                    ),
+                                                ));
+                                            }
+                                        }
+                                    } else {
+                                        admin.send(AdminCommand::SendMessage(
+                                            message::MessageEventContent::text_plain(
+                                                "Expected code block in command body.",
+                                            ),
+                                        ));
+                                    }
+                                }
+                                "list_appservices" => {
+                                    admin.send(AdminCommand::ListAppservices);
+                                }
+                                _ => {
+                                    admin.send(AdminCommand::SendMessage(
+                                        message::MessageEventContent::text_plain(format!(
+                                            "Command: {}, Args: {:?}",
+                                            command, args
+                                        )),
+                                    ));
+                                }
+                            }
                         }
                     }
                 }
@@ -675,6 +658,7 @@ impl Rooms {
         sending: &super::sending::Sending,
         admin: &super::admin::Admin,
         account_data: &super::account_data::AccountData,
+        appservice: &super::appservice::Appservice,
     ) -> Result<EventId> {
         let PduBuilder {
             event_type,
@@ -921,6 +905,10 @@ impl Rooms {
             .filter(|server| &**server != globals.server_name())
         {
             sending.send_pdu(&server, &pdu_id)?;
+        }
+
+        for appservice in appservice.iter_all().filter_map(|r| r.ok()) {
+            sending.send_pdu_appservice(&appservice.0, &pdu_id)?;
         }
 
         Ok(pdu.event_id)

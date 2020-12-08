@@ -290,7 +290,12 @@ impl Media {
                     file: thumbnail_bytes.to_vec(),
                 }))
             } else {
-                Ok(None)
+                // Couldn't parse file to generate thumbnail, send original
+                Ok(Some(FileMeta {
+                    filename,
+                    content_type,
+                    file: file.to_vec(),
+                }))
             }
         } else {
             Ok(None)

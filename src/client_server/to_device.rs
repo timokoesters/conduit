@@ -17,7 +17,7 @@ pub async fn send_event_to_device_route(
     body: Ruma<send_event_to_device::Request<'_>>,
 ) -> ConduitResult<send_event_to_device::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
-    let sender_device = body.sender_device.as_ref().expect("user is authenticated");
+    let sender_device = body.sender_device.as_deref();
 
     // Check if this is a new transaction id
     if db

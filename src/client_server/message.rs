@@ -22,7 +22,7 @@ pub async fn send_message_event_route(
     body: Ruma<send_message_event::Request<'_>>,
 ) -> ConduitResult<send_message_event::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
-    let sender_device = body.sender_device.as_ref().expect("user is authenticated");
+    let sender_device = body.sender_device.as_deref();
 
     // Check if this is a new transaction id
     if let Some(response) =
@@ -69,6 +69,7 @@ pub async fn send_message_event_route(
         &db.sending,
         &db.admin,
         &db.account_data,
+        &db.appservice,
     )?;
 
     db.transaction_ids.add_txnid(

@@ -142,8 +142,8 @@ impl log::Log for ConduitLogger {
                 mut_last_logs.insert(output.clone(), Instant::now());
             }
 
-            self.db.admin.send(AdminCommand::SendTextMessage(
-                message::TextMessageEventContent::plain(output),
+            self.db.admin.send(AdminCommand::SendMessage(
+                message::MessageEventContent::text_plain(output),
             ));
         }
     }

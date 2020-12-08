@@ -10,7 +10,9 @@ use ruma::{
 use tokio::select;
 
 pub enum AdminCommand {
-    SendTextMessage(message::TextMessageEventContent),
+    RegisterAppservice(serde_yaml::Value),
+    ListAppservices,
+    SendMessage(message::MessageEventContent),
 }
 
 #[derive(Clone)]
@@ -44,28 +46,49 @@ impl Admin {
                 warn!("Conduit instance does not have an #admins room. Logging to that room will not work.");
             }
 
+            let send_message = |message: message::MessageEventContent| {
+                if let Some(conduit_room) = &conduit_room {
+                    db.rooms
+                        .build_and_append_pdu(
+                            PduBuilder {
+                                event_type: EventType::RoomMessage,
+                                content: serde_json::to_value(message)
+                                    .expect("event is valid, we just created it"),
+                                unsigned: None,
+                                state_key: None,
+                                redacts: None,
+                            },
+                            &conduit_user,
+                            &conduit_room,
+                            &db.globals,
+                            &db.sending,
+                            &db.admin,
+                            &db.account_data,
+                            &db.appservice,
+                        )
+                        .unwrap();
+                }
+            };
+
             loop {
                 select! {
                     Some(event) = receiver.next() => {
                         match event {
-                            AdminCommand::SendTextMessage(message) => {
-                                if let Some(conduit_room) = &conduit_room {
-                                    db.rooms.build_and_append_pdu(
-                                        PduBuilder {
-                                            event_type: EventType::RoomMessage,
-                                            content: serde_json::to_value(message).expect("event is valid, we just created it"),
-                                            unsigned: None,
-                                            state_key: None,
-                                            redacts: None,
-                                        },
-                                        &conduit_user,
-                                        &conduit_room,
-                                        &db.globals,
-                                        &db.sending,
-                                        &db.admin,
-                                        &db.account_data,
-                                    ).unwrap();
-                                }
+                            AdminCommand::RegisterAppservice(yaml) => {
+                                db.appservice.register_appservice(yaml).unwrap(); // TODO handle error
+                            }
+                            AdminCommand::ListAppservices => {
+                                let appservices = db.appservice.iter_ids().collect::<Vec<_>>();
+                                let count = appservices.len();
+                                let output = format!(
+                                    "Appservices ({}): {}",
+                                    count,
+                                    appservices.into_iter().filter_map(|r| r.ok()).collect::<Vec<_>>().join(", ")
+                                );
+                                send_message(message::MessageEventContent::text_plain(output));
+                            }
+                            AdminCommand::SendMessage(message) => {
+                                send_message(message);
                             }
                         }
                     }

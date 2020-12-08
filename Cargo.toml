@@ -18,14 +18,14 @@ rocket = { git = "https://github.com/SergioBenitez/Rocket.git", rev = "1f1f44f33
 #rocket = { git = "https://github.com/timokoesters/Rocket.git", branch = "empty_parameters", default-features = false, features = ["tls"] }
 
 # Used for matrix spec type definitions and helpers
-ruma = { git = "https://github.com/ruma/ruma", features = ["rand", "client-api", "federation-api", "unstable-pre-spec", "unstable-synapse-quirks", "unstable-exhaustive-types"], rev = "e8882fe8142d7b55ed4c8ccc6150946945f9e237" }
+ruma = { git = "https://github.com/ruma/ruma", features = ["rand", "client-api", "federation-api", "unstable-pre-spec", "unstable-synapse-quirks", "unstable-exhaustive-types"], rev = "cc07d26af688697229b3710178460ac5ffe657a4" }
 # ruma = { git = "https://github.com/DevinR528/ruma", features = ["rand", "client-api", "federation-api", "unstable-exhaustive-types", "unstable-pre-spec", "unstable-synapse-quirks"], branch = "unstable-join" }
 # ruma = { path = "../ruma/ruma", features = ["unstable-exhaustive-types", "rand", "client-api", "federation-api", "unstable-pre-spec", "unstable-synapse-quirks"] }
 
 # Used when doing state resolution
 # state-res = { git = "https://github.com/timokoesters/state-res", branch = "spec-comp", features = ["unstable-pre-spec"] }
-state-res = { git = "https://github.com/ruma/state-res", branch = "timo-spec-comp", features = ["unstable-pre-spec", "gen-eventid"] }
-# state-res = { path = "../../state-res", features = ["unstable-pre-spec", "gen-eventid"] }
+#state-res = { git = "https://github.com/ruma/state-res", branch = "timo-spec-comp", features = ["unstable-pre-spec", "gen-eventid"] }
+state-res = { path = "../state-res", features = ["unstable-pre-spec", "gen-eventid"] }
 
 # Used for long polling and federation sender, should be the same as rocket::tokio
 tokio = { version = "0.2.23" }
@@ -41,6 +41,8 @@ directories = "3.0.1"
 js_int = "0.1.9"
 # Used for ruma wrapper
 serde_json = { version = "1.0.60", features = ["raw_value"] }
+# Used for appservice registration files
+serde_yaml = "0.8.14"
 # Used for pdu definition
 serde = "1.0.117"
 # Used for secure identifiers

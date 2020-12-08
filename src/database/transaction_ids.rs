@@ -11,13 +11,13 @@ impl TransactionIds {
     pub fn add_txnid(
         &self,
         user_id: &UserId,
-        device_id: &DeviceId,
+        device_id: Option<&DeviceId>,
         txn_id: &str,
         data: &[u8],
     ) -> Result<()> {
         let mut key = user_id.as_bytes().to_vec();
         key.push(0xff);
-        key.extend_from_slice(device_id.as_bytes());
+        key.extend_from_slice(device_id.map(|d| d.as_bytes()).unwrap_or_default());
         key.push(0xff);
         key.extend_from_slice(txn_id.as_bytes());
 
@@ -29,12 +29,12 @@ impl TransactionIds {
     pub fn existing_txnid(
         &self,
         user_id: &UserId,
-        device_id: &DeviceId,
+        device_id: Option<&DeviceId>,
         txn_id: &str,
     ) -> Result<Option<IVec>> {
         let mut key = user_id.as_bytes().to_vec();
         key.push(0xff);
-        key.extend_from_slice(device_id.as_bytes());
+        key.extend_from_slice(device_id.map(|d| d.as_bytes()).unwrap_or_default());
         key.push(0xff);
         key.extend_from_slice(txn_id.as_bytes());
 

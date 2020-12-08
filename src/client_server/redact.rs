@@ -35,6 +35,7 @@ pub async fn redact_event_route(
         &db.sending,
         &db.admin,
         &db.account_data,
+        &db.appservice,
     )?;
 
     db.flush().await?;

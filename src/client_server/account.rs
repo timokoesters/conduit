@@ -139,18 +139,20 @@ pub async fn register_route(
         auth_error: None,
     };
 
-    if let Some(auth) = &body.auth {
-        let (worked, uiaainfo) =
-            db.uiaa
-                .try_auth(&user_id, "".into(), auth, &uiaainfo, &db.users, &db.globals)?;
-        if !worked {
+    if !body.from_appservice {
+        if let Some(auth) = &body.auth {
+            let (worked, uiaainfo) =
+                db.uiaa
+                    .try_auth(&user_id, "".into(), auth, &uiaainfo, &db.users, &db.globals)?;
+            if !worked {
+                return Err(Error::Uiaa(uiaainfo));
+            }
+        // Success!
+        } else {
+            uiaainfo.session = Some(utils::random_string(SESSION_ID_LENGTH));
+            db.uiaa.create(&user_id, "".into(), &uiaainfo)?;
             return Err(Error::Uiaa(uiaainfo));
         }
-    // Success!
-    } else {
-        uiaainfo.session = Some(utils::random_string(SESSION_ID_LENGTH));
-        db.uiaa.create(&user_id, "".into(), &uiaainfo)?;
-        return Err(Error::Uiaa(uiaainfo));
     }
 
     if missing_username {
@@ -241,6 +243,7 @@ pub async fn register_route(
             &db.sending,
             &db.admin,
             &db.account_data,
+            &db.appservice,
         )?;
 
         // 2. Make conduit bot join
@@ -265,6 +268,7 @@ pub async fn register_route(
             &db.sending,
             &db.admin,
             &db.account_data,
+            &db.appservice,
         )?;
 
         // 3. Power levels
@@ -302,6 +306,7 @@ pub async fn register_route(
             &db.sending,
             &db.admin,
             &db.account_data,
+            &db.appservice,
         )?;
 
         // 4.1 Join Rules
@@ -322,6 +327,7 @@ pub async fn register_route(
             &db.sending,
             &db.admin,
             &db.account_data,
+            &db.appservice,
         )?;
 
         // 4.2 History Visibility
@@ -344,6 +350,7 @@ pub async fn register_route(
             &db.sending,
             &db.admin,
             &db.account_data,
+            &db.appservice,
         )?;
 
         // 4.3 Guest Access
@@ -364,6 +371,7 @@ pub async fn register_route(
             &db.sending,
             &db.admin,
             &db.account_data,
+            &db.appservice,
         )?;
 
         // 6. Events implied by name and topic
@@ -386,6 +394,7 @@ pub async fn register_route(
             &db.sending,
             &db.admin,
             &db.account_data,
+            &db.appservice,
         )?;
 
         db.rooms.build_and_append_pdu(
@@ -405,6 +414,7 @@ pub async fn register_route(
             &db.sending,
             &db.admin,
             &db.account_data,
+            &db.appservice,
         )?;
 
         // Room alias
@@ -430,6 +440,7 @@ pub async fn register_route(
             &db.sending,
             &db.admin,
             &db.account_data,
+            &db.appservice,
         )?;
 
         db.rooms.set_alias(&alias, Some(&room_id), &db.globals)?;
@@ -456,6 +467,7 @@ pub async fn register_route(
             &db.sending,
             &db.admin,
             &db.account_data,
+            &db.appservice,
         )?;
         db.rooms.build_and_append_pdu(
             PduBuilder {
@@ -478,6 +490,7 @@ pub async fn register_route(
             &db.sending,
             &db.admin,
             &db.account_data,
+            &db.appservice,
         )?;
 
         // Send welcome message
@@ -506,6 +519,7 @@ pub async fn register_route(
             &db.sending,
             &db.admin,
             &db.account_data,
+        &db.appservice,
         )?;
     }
 
@@ -681,6 +695,7 @@ pub async fn deactivate_route(
             &db.sending,
             &db.admin,
             &db.account_data,
+            &db.appservice,
         )?;
     }
 

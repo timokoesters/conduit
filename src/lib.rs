@@ -1,3 +1,4 @@
+pub mod appservice_server;
 pub mod client_server;
 mod database;
 mod error;

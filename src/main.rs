@@ -2,6 +2,7 @@
 
 pub mod client_server;
 pub mod server_server;
+pub mod appservice_server;
 
 mod database;
 mod error;
@@ -139,7 +140,7 @@ fn setup_rocket() -> rocket::Rocket {
                     .await
                     .expect("config is valid");
 
-            data.sending.start_handler(&data.globals, &data.rooms);
+            data.sending.start_handler(&data.globals, &data.rooms, &data.appservice);
             log::set_boxed_logger(Box::new(ConduitLogger {
                 db: data.clone(),
                 last_logs: Default::default(),

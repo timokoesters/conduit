@@ -1,10 +1,10 @@
 use crate::{database::Config, utils, Error, Result};
-use trust_dns_resolver::TokioAsyncResolver;
-use std::collections::HashMap;
 use log::error;
 use ruma::ServerName;
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::RwLock;
+use trust_dns_resolver::TokioAsyncResolver;
 
 pub const COUNTER: &str = "c";
 
@@ -59,9 +59,11 @@ impl Globals {
             config,
             keypair: Arc::new(keypair),
             reqwest_client: reqwest::Client::new(),
-            dns_resolver: TokioAsyncResolver::tokio_from_system_conf().await.map_err(|_| {
-                Error::bad_config("Failed to set up trust dns resolver with system config.")
-            })?,
+            dns_resolver: TokioAsyncResolver::tokio_from_system_conf()
+                .await
+                .map_err(|_| {
+                    Error::bad_config("Failed to set up trust dns resolver with system config.")
+                })?,
             actual_destination_cache: Arc::new(RwLock::new(HashMap::new())),
         })
     }

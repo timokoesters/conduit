@@ -63,8 +63,8 @@ pub async fn send_state_event_for_empty_key_route(
     let Ruma {
         body,
         sender_user,
-        sender_device: _,
         json_body,
+        ..
     } = body;
 
     let json = serde_json::from_str::<serde_json::Value>(
@@ -288,6 +288,7 @@ pub async fn send_state_event_for_key_helper(
         &db.sending,
         &db.admin,
         &db.account_data,
+        &db.appservice,
     )?;
 
     Ok(event_id)

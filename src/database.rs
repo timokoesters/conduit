@@ -1,5 +1,6 @@
 pub mod account_data;
 pub mod admin;
+pub mod appservice;
 pub mod globals;
 pub mod key_backups;
 pub mod media;
@@ -16,6 +17,8 @@ use log::info;
 use rocket::futures::{self, channel::mpsc};
 use ruma::{DeviceId, ServerName, UserId};
 use serde::Deserialize;
+use std::collections::HashMap;
+use std::sync::{Arc, RwLock};
 use std::{convert::TryInto, fs::remove_dir_all};
 
 #[derive(Clone, Deserialize)]
@@ -59,6 +62,7 @@ pub struct Database {
     pub transaction_ids: transaction_ids::TransactionIds,
     pub sending: sending::Sending,
     pub admin: admin::Admin,
+    pub appservice: appservice::Appservice,
     pub _db: sled::Db,
 }
 
@@ -179,6 +183,10 @@ impl Database {
             },
             admin: admin::Admin {
                 sender: admin_sender,
+            },
+            appservice: appservice::Appservice {
+                cached_registrations: Arc::new(RwLock::new(HashMap::new())),
+                id_appserviceregistrations: db.open_tree("id_appserviceregistrations")?,
             },
             _db: db,
         };
