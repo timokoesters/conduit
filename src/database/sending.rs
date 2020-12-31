@@ -21,8 +21,10 @@ use tokio::sync::Semaphore;
 #[derive(Clone)]
 pub struct Sending {
     /// The state for a given state hash.
-    pub(super) servernamepduids: sled::Tree, // ServernamePduId = (+)ServerName + PduId
-    pub(super) servercurrentpdus: sled::Tree, // ServerCurrentPdus = (+)ServerName + PduId (pduid can be empty for reservation)
+    // EduHint = (t + TypingUserId) or (r + ReadReceiptUserId) or (p + PresenceUserId)
+    pub(super) servernameevents: sled::Tree, // ServernameEvents = (+)ServerName (Appservices start with a plus) + PduId or EduHints
+    // EduEvents = json of all edu events for this transaction
+    pub(super) servercurrentevents: sled::Tree, // ServerCurrentEvents = (+)ServerName + PduId (pduid can be empty for reservation) or EduEvents
     pub(super) maximum_requests: Arc<Semaphore>,
 }
 
