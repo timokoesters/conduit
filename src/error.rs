@@ -1,4 +1,8 @@
-use std::{collections::HashMap, sync::RwLock, time::Duration, time::Instant};
+use std::{
+    collections::HashMap,
+    sync::RwLock,
+    time::{Duration, Instant},
+};
 
 use log::error;
 use ruma::{
@@ -121,10 +125,11 @@ impl log::Log for ConduitLogger {
     fn log(&self, record: &log::Record<'_>) {
         let output = format!("{} - {}", record.level(), record.args());
 
+        let match_mod_path =
+            |path: &str| path.starts_with("conduit::") || path.starts_with("state");
+
         if self.enabled(record.metadata())
-            && (record
-                .module_path()
-                .map_or(false, |path| path.starts_with("conduit::"))
+            && (record.module_path().map_or(false, match_mod_path)
                 || record
                     .module_path()
                     .map_or(true, |path| !path.starts_with("rocket::")) // Rockets logs are annoying

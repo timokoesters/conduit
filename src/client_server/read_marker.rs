@@ -2,7 +2,8 @@ use super::State;
 use crate::{ConduitResult, Database, Error, Ruma};
 use ruma::{
     api::client::{
-        error::ErrorKind, r0::capabilities::get_capabilities, r0::read_marker::set_read_marker,
+        error::ErrorKind,
+        r0::{capabilities::get_capabilities, read_marker::set_read_marker},
     },
     events::{AnyEphemeralRoomEvent, AnyEvent, EventType},
 };

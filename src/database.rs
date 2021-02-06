@@ -4,6 +4,7 @@ pub mod appservice;
 pub mod globals;
 pub mod key_backups;
 pub mod media;
+pub mod pusher;
 pub mod rooms;
 pub mod sending;
 pub mod transaction_ids;
@@ -17,12 +18,14 @@ use log::info;
 use rocket::futures::{self, channel::mpsc};
 use ruma::{DeviceId, ServerName, UserId};
 use serde::Deserialize;
-use std::collections::HashMap;
-use std::fs::remove_dir_all;
-use std::sync::{Arc, RwLock};
+use std::{
+    collections::HashMap,
+    fs::remove_dir_all,
+    sync::{Arc, RwLock},
+};
 use tokio::sync::Semaphore;
 
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct Config {
     server_name: Box<ServerName>,
     database_path: String,
@@ -73,6 +76,7 @@ pub struct Database {
     pub sending: sending::Sending,
     pub admin: admin::Admin,
     pub appservice: appservice::Appservice,
+    pub pusher: pusher::PushData,
     pub _db: sled::Db,
 }
 
@@ -101,7 +105,11 @@ impl Database {
         let (admin_sender, admin_receiver) = mpsc::unbounded();
 
         let db = Self {
-            globals: globals::Globals::load(db.open_tree("global")?, config).await?,
+            globals: globals::Globals::load(
+                db.open_tree("global")?,
+                db.open_tree("servertimeout_signingkey")?,
+                config,
+            )?,
             users: users::Users {
                 userid_password: db.open_tree("userid_password")?,
                 userid_displayname: db.open_tree("userid_displayname")?,
@@ -154,6 +162,7 @@ impl Database {
                 stateid_pduid: db.open_tree("stateid_pduid")?,
                 pduid_statehash: db.open_tree("pduid_statehash")?,
                 roomid_statehash: db.open_tree("roomid_statehash")?,
+                pduid_outlierpdu: db.open_tree("pduid_outlierpdu")?,
             },
             account_data: account_data::AccountData {
                 roomuserdataid_accountdata: db.open_tree("roomuserdataid_accountdata")?,
@@ -181,6 +190,7 @@ impl Database {
                 cached_registrations: Arc::new(RwLock::new(HashMap::new())),
                 id_appserviceregistrations: db.open_tree("id_appserviceregistrations")?,
             },
+            pusher: pusher::PushData::new(&db)?,
             _db: db,
         };
 

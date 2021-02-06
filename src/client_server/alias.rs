@@ -70,7 +70,7 @@ pub async fn get_alias_helper(
             .sending
             .send_federation_request(
                 &db.globals,
-                room_alias.server_name().to_owned(),
+                room_alias.server_name(),
                 federation::query::get_room_information::v1::Request { room_alias },
             )
             .await?;

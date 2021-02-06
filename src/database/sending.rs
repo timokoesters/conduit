@@ -1,43 +1,53 @@
 use std::{
     collections::HashMap,
     convert::TryFrom,
-    fmt::Debug,
+    fmt::{Debug, Display, Formatter},
     sync::Arc,
     time::{Duration, Instant, SystemTime},
 };
 
-use crate::{appservice_server, server_server, utils, Error, PduEvent, Result};
+use crate::{appservice_server, server_server, utils, Database, Error, PduEvent, Result};
 use federation::transactions::send_transaction_message;
 use log::{error, info};
 use rocket::futures::stream::{FuturesUnordered, StreamExt};
 use ruma::{
     api::{appservice, federation, OutgoingRequest},
-    ServerName,
+    events::{push_rules, EventType},
+    uint, ServerName, UInt,
 };
 use sled::IVec;
-use tokio::select;
-use tokio::sync::Semaphore;
+use tokio::{select, sync::Semaphore};
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum OutgoingKind {
+    Appservice(Box<ServerName>),
+    Push(Vec<u8>),
+    Normal(Box<ServerName>),
+}
+
+impl Display for OutgoingKind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            OutgoingKind::Appservice(name) => f.write_str(name.as_str()),
+            OutgoingKind::Normal(name) => f.write_str(name.as_str()),
+            OutgoingKind::Push(_) => f.write_str("Push notification TODO"),
+        }
+    }
+}
 
 #[derive(Clone)]
 pub struct Sending {
     /// The state for a given state hash.
-    pub(super) servernamepduids: sled::Tree, // ServernamePduId = (+)ServerName + PduId
-    pub(super) servercurrentpdus: sled::Tree, // ServerCurrentPdus = (+)ServerName + PduId (pduid can be empty for reservation)
+    pub(super) servernamepduids: sled::Tree, // ServernamePduId = (+ / $)ServerName / UserId + PduId
+    pub(super) servercurrentpdus: sled::Tree, // ServerCurrentPdus = (+ / $)ServerName / UserId + PduId (pduid can be empty for reservation)
     pub(super) maximum_requests: Arc<Semaphore>,
 }
 
 impl Sending {
-    pub fn start_handler(
-        &self,
-        globals: &super::globals::Globals,
-        rooms: &super::rooms::Rooms,
-        appservice: &super::appservice::Appservice,
-    ) {
+    pub fn start_handler(&self, db: &Database) {
         let servernamepduids = self.servernamepduids.clone();
         let servercurrentpdus = self.servercurrentpdus.clone();
-        let rooms = rooms.clone();
-        let globals = globals.clone();
-        let appservice = appservice.clone();
+        let db = db.clone();
 
         tokio::spawn(async move {
             let mut futures = FuturesUnordered::new();
@@ -45,45 +55,49 @@ impl Sending {
             // Retry requests we could not finish yet
             let mut current_transactions = HashMap::new();
 
-            for (server, pdu, is_appservice) in servercurrentpdus
+            for (outgoing_kind, pdu) in servercurrentpdus
                 .iter()
                 .filter_map(|r| r.ok())
                 .filter_map(|(key, _)| Self::parse_servercurrentpdus(key).ok())
-                .filter(|(_, pdu, _)| !pdu.is_empty()) // Skip reservation key
+                .filter(|(_, pdu)| !pdu.is_empty()) // Skip reservation key
                 .take(50)
             // This should not contain more than 50 anyway
             {
                 current_transactions
-                    .entry((server, is_appservice))
+                    .entry(outgoing_kind)
                     .or_insert_with(Vec::new)
                     .push(pdu);
             }
 
-            for ((server, is_appservice), pdus) in current_transactions {
-                futures.push(Self::handle_event(
-                    server,
-                    is_appservice,
-                    pdus,
-                    &globals,
-                    &rooms,
-                    &appservice,
-                ));
+            for (outgoing_kind, pdus) in current_transactions {
+                futures.push(Self::handle_event(outgoing_kind, pdus, &db));
             }
 
-            let mut last_failed_try: HashMap<Box<ServerName>, (u32, Instant)> = HashMap::new();
+            let mut last_failed_try: HashMap<OutgoingKind, (u32, Instant)> = HashMap::new();
 
             let mut subscriber = servernamepduids.watch_prefix(b"");
             loop {
                 select! {
                     Some(response) = futures.next() => {
                         match response {
-                            Ok((server, is_appservice)) => {
-                                let mut prefix = if is_appservice {
-                                    "+".as_bytes().to_vec()
-                                } else {
-                                    Vec::new()
+                            Ok(outgoing_kind) => {
+                                let mut prefix = match &outgoing_kind {
+                                    OutgoingKind::Appservice(server) => {
+                                        let mut p = b"+".to_vec();
+                                        p.extend_from_slice(server.as_bytes());
+                                        p
+                                    }
+                                    OutgoingKind::Push(id) => {
+                                        let mut p = b"$".to_vec();
+                                        p.extend_from_slice(&id);
+                                        p
+                                    },
+                                    OutgoingKind::Normal(server) => {
+                                        let mut p = vec![];
+                                        p.extend_from_slice(server.as_bytes());
+                                        p
+                                    },
                                 };
-                                prefix.extend_from_slice(server.as_bytes());
                                 prefix.push(0xff);
 
                                 for key in servercurrentpdus
@@ -116,23 +130,41 @@ impl Sending {
                                         servernamepduids.remove(&current_key).unwrap();
                                     }
 
-                                    futures.push(Self::handle_event(server, is_appservice, new_pdus, &globals, &rooms, &appservice));
+                                    futures.push(
+                                        Self::handle_event(
+                                            outgoing_kind.clone(),
+                                            new_pdus,
+                                            &db,
+                                        )
+                                    );
                                 } else {
                                     servercurrentpdus.remove(&prefix).unwrap();
                                     // servercurrentpdus with the prefix should be empty now
                                 }
                             }
-                            Err((server, is_appservice, e)) => {
-                                info!("Couldn't send transaction to {}\n{}", server, e);
-                                let mut prefix = if is_appservice {
-                                    "+".as_bytes().to_vec()
-                                } else {
-                                    Vec::new()
+                            Err((outgoing_kind, e)) => {
+                                info!("Couldn't send transaction to {}\n{}", outgoing_kind, e);
+                                let mut prefix = match &outgoing_kind {
+                                    OutgoingKind::Appservice(serv) => {
+                                        let mut p = b"+".to_vec();
+                                        p.extend_from_slice(serv.as_bytes());
+                                        p
+                                    },
+                                    OutgoingKind::Push(id) => {
+                                        let mut p = b"$".to_vec();
+                                        p.extend_from_slice(&id);
+                                        p
+                                    },
+                                    OutgoingKind::Normal(serv) => {
+                                        let mut p = vec![];
+                                        p.extend_from_slice(serv.as_bytes());
+                                        p
+                                    },
                                 };
-                                prefix.extend_from_slice(server.as_bytes());
+
                                 prefix.push(0xff);
 
-                                last_failed_try.insert(server.clone(), match last_failed_try.get(&server) {
+                                last_failed_try.insert(outgoing_kind.clone(), match last_failed_try.get(&outgoing_kind) {
                                     Some(last_failed) => {
                                         (last_failed.0+1, Instant::now())
                                     },
@@ -149,48 +181,65 @@ impl Sending {
                             let servernamepduid = key.clone();
                             let mut parts = servernamepduid.splitn(2, |&b| b == 0xff);
 
-                            if let Some((server, is_appservice, pdu_id)) = utils::string_from_bytes(
+                            let exponential_backoff = |(tries, instant): &(u32, Instant)| {
+                                // Fail if a request has failed recently (exponential backoff)
+                                let mut min_elapsed_duration = Duration::from_secs(60) * (*tries) * (*tries);
+                                if min_elapsed_duration > Duration::from_secs(60*60*24) {
+                                    min_elapsed_duration = Duration::from_secs(60*60*24);
+                                }
+
+                                instant.elapsed() < min_elapsed_duration
+                            };
+                            if let Some((outgoing_kind, pdu_id)) = utils::string_from_bytes(
                                     parts
                                         .next()
                                         .expect("splitn will always return 1 or more elements"),
                                 )
-                                .map_err(|_| Error::bad_database("ServerName in servernamepduid bytes are invalid."))
-                                .map(|server_str| {
+                                .map_err(|_| Error::bad_database("[Utf8] ServerName in servernamepduid bytes are invalid."))
+                                .and_then(|ident_str| {
                                     // Appservices start with a plus
-                                    if server_str.starts_with("+") {
-                                        (server_str[1..].to_owned(), true)
+                                    Ok(if ident_str.starts_with('+') {
+                                        OutgoingKind::Appservice(
+                                            Box::<ServerName>::try_from(&ident_str[1..])
+                                                .map_err(|_| Error::bad_database("ServerName in servernamepduid is invalid."))?
+                                        )
+                                    } else if ident_str.starts_with('$') {
+                                        OutgoingKind::Push(ident_str[1..].as_bytes().to_vec())
                                     } else {
-                                        (server_str, false)
-                                    }
+                                        OutgoingKind::Normal(
+                                            Box::<ServerName>::try_from(ident_str)
+                                                .map_err(|_| Error::bad_database("ServerName in servernamepduid is invalid."))?
+                                        )
+                                    })
                                 })
-                                .and_then(|(server_str, is_appservice)| Box::<ServerName>::try_from(server_str)
-                                    .map_err(|_| Error::bad_database("ServerName in servernamepduid is invalid.")).map(|s| (s, is_appservice)))
-                                .ok()
-                                .and_then(|(server, is_appservice)| parts
+                                .and_then(|outgoing_kind| parts
                                     .next()
                                     .ok_or_else(|| Error::bad_database("Invalid servernamepduid in db."))
-                                    .ok()
-                                    .map(|pdu_id| (server, is_appservice, pdu_id))
+                                    .map(|pdu_id| (outgoing_kind, pdu_id))
                                 )
-                                .filter(|(server, is_appservice, _)| {
-                                    if last_failed_try.get(server).map_or(false, |(tries, instant)| {
-                                        // Fail if a request has failed recently (exponential backoff)
-                                        let mut min_elapsed_duration = Duration::from_secs(60) * *tries * *tries;
-                                        if min_elapsed_duration > Duration::from_secs(60*60*24) {
-                                            min_elapsed_duration = Duration::from_secs(60*60*24);
-                                        }
-
-                                        instant.elapsed() < min_elapsed_duration
-                                    }) {
+                                .ok()
+                                .filter(|(outgoing_kind, _)| {
+                                    if last_failed_try.get(outgoing_kind).map_or(false, exponential_backoff) {
                                         return false;
                                     }
 
-                                    let mut prefix = if *is_appservice {
-                                        "+".as_bytes().to_vec()
-                                    } else {
-                                        Vec::new()
+                                    let mut prefix = match outgoing_kind {
+                                        OutgoingKind::Appservice(serv) => {
+                                            let mut p = b"+".to_vec();
+                                            p.extend_from_slice(serv.as_bytes());
+                                            p
+                                    },
+                                        OutgoingKind::Push(id) => {
+                                            let mut p = b"$".to_vec();
+                                            p.extend_from_slice(&id);
+                                            p
+                                        },
+                                        OutgoingKind::Normal(serv) => {
+                                            let mut p = vec![];
+                                            p.extend_from_slice(serv.as_bytes());
+                                            p
+                                        },
                                     };
-                                    prefix.extend_from_slice(server.as_bytes());
                                     prefix.push(0xff);
 
                                     servercurrentpdus
@@ -201,13 +250,35 @@ impl Sending {
                                 servercurrentpdus.insert(&key, &[]).unwrap();
                                 servernamepduids.remove(&key).unwrap();
 
-                                futures.push(Self::handle_event(server, is_appservice, vec![pdu_id.into()], &globals, &rooms, &appservice));
+                                futures.push(
+                                    Self::handle_event(
+                                        outgoing_kind,
+                                        vec![pdu_id.into()],
+                                        &db,
+                                    )
+                                );
                             }
                         }
                     }
                 }
             }
         });
+    }
+
+    pub fn send_push_pdu(&self, pdu_id: &[u8]) -> Result<()> {
+        // Make sure we don't cause utf8 errors when parsing to a String...
+        let pduid = String::from_utf8_lossy(pdu_id).as_bytes().to_vec();
+
+        // these are valid ServerName chars
+        // (byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'.')
+        let mut key = b"$".to_vec();
+        // keep each pdu push unique
+        key.extend_from_slice(pduid.as_slice());
+        key.push(0xff);
+        key.extend_from_slice(pdu_id);
+        self.servernamepduids.insert(key, b"")?;
+
+        Ok(())
     }
 
     pub fn send_pdu(&self, server: &ServerName, pdu_id: &[u8]) -> Result<()> {
@@ -220,7 +291,7 @@ impl Sending {
     }
 
     pub fn send_pdu_appservice(&self, appservice_id: &str, pdu_id: &[u8]) -> Result<()> {
-        let mut key = "+".as_bytes().to_vec();
+        let mut key = b"+".to_vec();
         key.extend_from_slice(appservice_id.as_bytes());
         key.push(0xff);
         key.extend_from_slice(pdu_id);
@@ -229,96 +300,195 @@ impl Sending {
         Ok(())
     }
 
+    // TODO this is the whole DB but is it better to clone smaller parts than the whole thing??
     async fn handle_event(
-        server: Box<ServerName>,
-        is_appservice: bool,
+        kind: OutgoingKind,
         pdu_ids: Vec<IVec>,
-        globals: &super::globals::Globals,
-        rooms: &super::rooms::Rooms,
-        appservice: &super::appservice::Appservice,
-    ) -> std::result::Result<(Box<ServerName>, bool), (Box<ServerName>, bool, Error)> {
-        if is_appservice {
-            let pdu_jsons = pdu_ids
-                .iter()
-                .map(|pdu_id| {
-                    Ok::<_, (Box<ServerName>, Error)>(
-                        rooms
-                            .get_pdu_from_id(pdu_id)
-                            .map_err(|e| (server.clone(), e))?
-                            .ok_or_else(|| {
-                                (
-                                    server.clone(),
-                                    Error::bad_database(
-                                        "Event in servernamepduids not found in db.",
-                                    ),
-                                )
-                            })?
-                            .to_any_event(),
-                    )
-                })
-                .filter_map(|r| r.ok())
-                .collect::<Vec<_>>();
-            appservice_server::send_request(
-                &globals,
-                appservice
-                    .get_registration(server.as_str())
-                    .unwrap()
-                    .unwrap(), // TODO: handle error
-                appservice::event::push_events::v1::Request {
-                    events: &pdu_jsons,
-                    txn_id: &utils::random_string(16),
-                },
-            )
-            .await
-            .map(|_response| (server.clone(), is_appservice))
-            .map_err(|e| (server, is_appservice, e))
-        } else {
-            let pdu_jsons = pdu_ids
-                .iter()
-                .map(|pdu_id| {
-                    Ok::<_, (Box<ServerName>, Error)>(
-                        // TODO: check room version and remove event_id if needed
-                        serde_json::from_str(
-                            PduEvent::convert_to_outgoing_federation_event(
-                                rooms
-                                    .get_pdu_json_from_id(pdu_id)
-                                    .map_err(|e| (server.clone(), e))?
-                                    .ok_or_else(|| {
-                                        (
-                                            server.clone(),
-                                            Error::bad_database(
-                                                "Event in servernamepduids not found in db.",
-                                            ),
-                                        )
-                                    })?,
-                            )
-                            .json()
-                            .get(),
+        db: &Database,
+    ) -> std::result::Result<OutgoingKind, (OutgoingKind, Error)> {
+        match kind {
+            OutgoingKind::Appservice(server) => {
+                let pdu_jsons = pdu_ids
+                    .iter()
+                    .map(|pdu_id| {
+                        Ok::<_, (Box<ServerName>, Error)>(
+                            db.rooms
+                                .get_pdu_from_id(pdu_id)
+                                .map_err(|e| (server.clone(), e))?
+                                .ok_or_else(|| {
+                                    (
+                                        server.clone(),
+                                        Error::bad_database(
+                                            "[Appservice] Event in servernamepduids not found in ",
+                                        ),
+                                    )
+                                })?
+                                .to_any_event(),
                         )
-                        .expect("Raw<..> is always valid"),
-                    )
-                })
-                .filter_map(|r| r.ok())
-                .collect::<Vec<_>>();
+                    })
+                    .filter_map(|r| r.ok())
+                    .collect::<Vec<_>>();
+                appservice_server::send_request(
+                    &db.globals,
+                    db.appservice
+                        .get_registration(server.as_str())
+                        .unwrap()
+                        .unwrap(), // TODO: handle error
+                    appservice::event::push_events::v1::Request {
+                        events: &pdu_jsons,
+                        txn_id: &utils::random_string(16),
+                    },
+                )
+                .await
+                .map(|_response| OutgoingKind::Appservice(server.clone()))
+                .map_err(|e| (OutgoingKind::Appservice(server.clone()), e))
+            }
+            OutgoingKind::Push(id) => {
+                let pdus = pdu_ids
+                    .iter()
+                    .map(|pdu_id| {
+                        Ok::<_, (Vec<u8>, Error)>(
+                            db.rooms
+                                .get_pdu_from_id(pdu_id)
+                                .map_err(|e| (id.clone(), e))?
+                                .ok_or_else(|| {
+                                    (
+                                        id.clone(),
+                                        Error::bad_database(
+                                            "[Push] Event in servernamepduids not found in db.",
+                                        ),
+                                    )
+                                })?,
+                        )
+                    })
+                    .filter_map(|r| r.ok())
+                    .collect::<Vec<_>>();
 
-            server_server::send_request(
-                &globals,
-                server.clone(),
-                send_transaction_message::v1::Request {
-                    origin: globals.server_name(),
-                    pdus: &pdu_jsons,
-                    edus: &[],
-                    origin_server_ts: SystemTime::now(),
-                    transaction_id: &utils::random_string(16),
-                },
-            )
-            .await
-            .map(|_response| (server.clone(), is_appservice))
-            .map_err(|e| (server, is_appservice, e))
+                for pdu in &pdus {
+                    // Redacted events are not notification targets (we don't send push for them)
+                    if pdu.unsigned.get("redacted_because").is_some() {
+                        continue;
+                    }
+
+                    // Skip events that came from the admin room
+                    if db
+                        .rooms
+                        .room_aliases(&pdu.room_id)
+                        .any(|alias| match alias {
+                            Ok(a) => a.as_str().starts_with("#admins:"),
+                            _ => false,
+                        })
+                        || pdu.sender.as_str().starts_with("@conduit:")
+                    {
+                        continue;
+                    }
+
+                    for user in db.rooms.room_members(&pdu.room_id) {
+                        let user = user.map_err(|e| (OutgoingKind::Push(id.clone()), e))?;
+
+                        // Don't notify the user of their own events
+                        if user == pdu.sender {
+                            continue;
+                        }
+
+                        let pushers = db
+                            .pusher
+                            .get_pusher(&user)
+                            .map_err(|e| (OutgoingKind::Push(id.clone()), e))?;
+
+                        let rules_for_user = db
+                            .account_data
+                            .get::<push_rules::PushRulesEvent>(None, &user, EventType::PushRules)
+                            .map_err(|e| (OutgoingKind::Push(id.clone()), e))?
+                            .map(|ev| ev.content.global)
+                            .unwrap_or_else(|| crate::push_rules::default_pushrules(&user));
+
+                        let unread: UInt = if let Some(last_read) = db
+                            .rooms
+                            .edus
+                            .private_read_get(&pdu.room_id, &user)
+                            .map_err(|e| (OutgoingKind::Push(id.clone()), e))?
+                        {
+                            (db.rooms
+                                .pdus_since(&user, &pdu.room_id, last_read)
+                                .map_err(|e| (OutgoingKind::Push(id.clone()), e))?
+                                .filter_map(|pdu| pdu.ok()) // Filter out buggy events
+                                .filter(|(_, pdu)| {
+                                    matches!(
+                                        pdu.kind.clone(),
+                                        EventType::RoomMessage | EventType::RoomEncrypted
+                                    )
+                                })
+                                .count() as u32)
+                                .into()
+                        } else {
+                            // Just return zero unread messages
+                            uint!(0)
+                        };
+
+                        crate::database::pusher::send_push_notice(
+                            &user,
+                            unread,
+                            &pushers,
+                            rules_for_user,
+                            pdu,
+                            db,
+                        )
+                        .await
+                        .map_err(|e| (OutgoingKind::Push(id.clone()), e))?;
+                    }
+                }
+
+                Ok(OutgoingKind::Push(id))
+            }
+            OutgoingKind::Normal(server) => {
+                let pdu_jsons = pdu_ids
+                    .iter()
+                    .map(|pdu_id| {
+                        Ok::<_, (OutgoingKind, Error)>(
+                            // TODO: check room version and remove event_id if needed
+                            serde_json::from_str(
+                                PduEvent::convert_to_outgoing_federation_event(
+                                    db.rooms
+                                        .get_pdu_json_from_id(pdu_id)
+                                        .map_err(|e| (OutgoingKind::Normal(server.clone()), e))?
+                                        .ok_or_else(|| {
+                                            (
+                                                OutgoingKind::Normal(server.clone()),
+                                                Error::bad_database(
+                                                    "[Normal] Event in servernamepduids not found in db.",
+                                                ),
+                                            )
+                                        })?,
+                                )
+                                .json()
+                                .get(),
+                            )
+                            .expect("Raw<..> is always valid"),
+                        )
+                    })
+                    .filter_map(|r| r.ok())
+                    .collect::<Vec<_>>();
+
+                server_server::send_request(
+                    &db.globals,
+                    &*server,
+                    send_transaction_message::v1::Request {
+                        origin: db.globals.server_name(),
+                        pdus: &pdu_jsons,
+                        edus: &[],
+                        origin_server_ts: SystemTime::now(),
+                        transaction_id: &utils::random_string(16),
+                    },
+                )
+                .await
+                .map(|_response| OutgoingKind::Normal(server.clone()))
+                .map_err(|e| (OutgoingKind::Normal(server.clone()), e))
+            }
         }
     }
 
-    fn parse_servercurrentpdus(key: IVec) -> Result<(Box<ServerName>, IVec, bool)> {
+    fn parse_servercurrentpdus(key: IVec) -> Result<(OutgoingKind, IVec)> {
         let mut parts = key.splitn(2, |&b| b == 0xff);
         let server = parts.next().expect("splitn always returns one element");
         let pdu = parts
@@ -330,25 +500,32 @@ impl Sending {
         })?;
 
         // Appservices start with a plus
-        let (server, is_appservice) = if server.starts_with("+") {
-            (&server[1..], true)
+        Ok::<_, Error>(if server.starts_with('+') {
+            (
+                OutgoingKind::Appservice(Box::<ServerName>::try_from(server).map_err(|_| {
+                    Error::bad_database("Invalid server string in server_currenttransaction")
+                })?),
+                IVec::from(pdu),
+            )
+        } else if server.starts_with('$') {
+            (
+                OutgoingKind::Push(server.as_bytes().to_vec()),
+                IVec::from(pdu),
+            )
         } else {
-            (&*server, false)
-        };
-
-        Ok::<_, Error>((
-            Box::<ServerName>::try_from(server).map_err(|_| {
-                Error::bad_database("Invalid server string in server_currenttransaction")
-            })?,
-            IVec::from(pdu),
-            is_appservice,
-        ))
+            (
+                OutgoingKind::Normal(Box::<ServerName>::try_from(server).map_err(|_| {
+                    Error::bad_database("Invalid server string in server_currenttransaction")
+                })?),
+                IVec::from(pdu),
+            )
+        })
     }
 
     pub async fn send_federation_request<T: OutgoingRequest>(
         &self,
         globals: &crate::database::globals::Globals,
-        destination: Box<ServerName>,
+        destination: &ServerName,
         request: T,
     ) -> Result<T::IncomingResponse>
     where

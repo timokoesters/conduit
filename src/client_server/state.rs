@@ -284,11 +284,7 @@ pub async fn send_state_event_for_key_helper(
         },
         &sender_user,
         &room_id,
-        &db.globals,
-        &db.sending,
-        &db.admin,
-        &db.account_data,
-        &db.appservice,
+        &db,
     )?;
 
     Ok(event_id)

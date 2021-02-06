@@ -1,6 +1,6 @@
 use crate::Error;
 use ruma::{
-    api::{AuthScheme, OutgoingRequest},
+    api::{AuthScheme, IncomingRequest, OutgoingRequest},
     identifiers::{DeviceId, UserId},
     Outgoing,
 };
@@ -29,7 +29,7 @@ use {
 
 /// This struct converts rocket requests into ruma structs by converting them into http requests
 /// first.
-pub struct Ruma<T: Outgoing> {
+pub struct Ruma<T: Outgoing + OutgoingRequest> {
     pub body: T::Incoming,
     pub sender_user: Option<UserId>,
     pub sender_device: Option<Box<DeviceId>>,
@@ -40,10 +40,7 @@ pub struct Ruma<T: Outgoing> {
 #[cfg(feature = "conduit_bin")]
 impl<'a, T: Outgoing + OutgoingRequest> FromTransformedData<'a> for Ruma<T>
 where
-    <T as Outgoing>::Incoming: TryFrom<http::request::Request<std::vec::Vec<u8>>> + std::fmt::Debug,
-    <<T as Outgoing>::Incoming as std::convert::TryFrom<
-        http::request::Request<std::vec::Vec<u8>>,
-    >>::Error: std::fmt::Debug,
+    T::Incoming: IncomingRequest,
 {
     type Error = ();
     type Owned = Data;
@@ -152,8 +149,7 @@ where
 
             let http_request = http_request.body(body.clone()).unwrap();
             debug!("{:?}", http_request);
-
-            match <T as Outgoing>::Incoming::try_from(http_request) {
+            match <T::Incoming as IncomingRequest>::try_from_http_request(http_request) {
                 Ok(t) => Success(Ruma {
                     body: t,
                     sender_user,
@@ -173,7 +169,7 @@ where
     }
 }
 
-impl<T: Outgoing> Deref for Ruma<T> {
+impl<T: Outgoing + OutgoingRequest> Deref for Ruma<T> {
     type Target = T::Incoming;
 
     fn deref(&self) -> &Self::Target {

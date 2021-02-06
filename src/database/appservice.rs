@@ -1,6 +1,8 @@
 use crate::{utils, Error, Result};
-use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::{
+    collections::HashMap,
+    sync::{Arc, RwLock},
+};
 
 #[derive(Clone)]
 pub struct Appservice {

@@ -23,12 +23,12 @@ port = 6167
 max_request_size = 20_000_000 # in bytes
 
 # Disable registration. No new users will be able to register on this server
-#registration_disabled = false
+#allow_registration = false
 
 # Disable encryption, so no new encrypted rooms can be created
 # Note: existing rooms will continue to work
-#encryption_disabled = false
-#federation_disabled = false
+#allow_encryption = false
+#allow_federation = false
 
 #cache_capacity = 1073741824 # in bytes, 1024 * 1024 * 1024
 #max_concurrent_requests = 4 # How many requests Conduit sends to other servers at the same time

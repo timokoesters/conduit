@@ -63,11 +63,7 @@ pub async fn set_displayname_route(
             },
             &sender_user,
             &room_id,
-            &db.globals,
-            &db.sending,
-            &db.admin,
-            &db.account_data,
-            &db.appservice,
+            &db,
         )?;
 
         // Presence update
@@ -160,11 +156,7 @@ pub async fn set_avatar_url_route(
             },
             &sender_user,
             &room_id,
-            &db.globals,
-            &db.sending,
-            &db.admin,
-            &db.account_data,
-            &db.appservice,
+            &db,
         )?;
 
         // Presence update

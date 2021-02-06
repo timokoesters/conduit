@@ -1,5 +1,4 @@
 use crate::{utils, Error, Result};
-use js_int::UInt;
 use ruma::{
     events::{
         presence::{PresenceEvent, PresenceEventContent},
@@ -7,7 +6,7 @@ use ruma::{
     },
     presence::PresenceState,
     serde::Raw,
-    RoomId, UserId,
+    RoomId, UInt, UserId,
 };
 use std::{
     collections::HashMap,

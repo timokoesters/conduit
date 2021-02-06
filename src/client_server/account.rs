@@ -239,11 +239,7 @@ pub async fn register_route(
             },
             &conduit_user,
             &room_id,
-            &db.globals,
-            &db.sending,
-            &db.admin,
-            &db.account_data,
-            &db.appservice,
+            &db,
         )?;
 
         // 2. Make conduit bot join
@@ -264,11 +260,7 @@ pub async fn register_route(
             },
             &conduit_user,
             &room_id,
-            &db.globals,
-            &db.sending,
-            &db.admin,
-            &db.account_data,
-            &db.appservice,
+            &db,
         )?;
 
         // 3. Power levels
@@ -302,11 +294,7 @@ pub async fn register_route(
             },
             &conduit_user,
             &room_id,
-            &db.globals,
-            &db.sending,
-            &db.admin,
-            &db.account_data,
-            &db.appservice,
+            &db,
         )?;
 
         // 4.1 Join Rules
@@ -323,11 +311,7 @@ pub async fn register_route(
             },
             &conduit_user,
             &room_id,
-            &db.globals,
-            &db.sending,
-            &db.admin,
-            &db.account_data,
-            &db.appservice,
+            &db,
         )?;
 
         // 4.2 History Visibility
@@ -346,11 +330,7 @@ pub async fn register_route(
             },
             &conduit_user,
             &room_id,
-            &db.globals,
-            &db.sending,
-            &db.admin,
-            &db.account_data,
-            &db.appservice,
+            &db,
         )?;
 
         // 4.3 Guest Access
@@ -367,11 +347,7 @@ pub async fn register_route(
             },
             &conduit_user,
             &room_id,
-            &db.globals,
-            &db.sending,
-            &db.admin,
-            &db.account_data,
-            &db.appservice,
+            &db,
         )?;
 
         // 6. Events implied by name and topic
@@ -390,11 +366,7 @@ pub async fn register_route(
             },
             &conduit_user,
             &room_id,
-            &db.globals,
-            &db.sending,
-            &db.admin,
-            &db.account_data,
-            &db.appservice,
+            &db,
         )?;
 
         db.rooms.build_and_append_pdu(
@@ -410,11 +382,7 @@ pub async fn register_route(
             },
             &conduit_user,
             &room_id,
-            &db.globals,
-            &db.sending,
-            &db.admin,
-            &db.account_data,
-            &db.appservice,
+            &db,
         )?;
 
         // Room alias
@@ -436,11 +404,7 @@ pub async fn register_route(
             },
             &conduit_user,
             &room_id,
-            &db.globals,
-            &db.sending,
-            &db.admin,
-            &db.account_data,
-            &db.appservice,
+            &db,
         )?;
 
         db.rooms.set_alias(&alias, Some(&room_id), &db.globals)?;
@@ -463,11 +427,7 @@ pub async fn register_route(
             },
             &conduit_user,
             &room_id,
-            &db.globals,
-            &db.sending,
-            &db.admin,
-            &db.account_data,
-            &db.appservice,
+            &db,
         )?;
         db.rooms.build_and_append_pdu(
             PduBuilder {
@@ -486,11 +446,7 @@ pub async fn register_route(
             },
             &user_id,
             &room_id,
-            &db.globals,
-            &db.sending,
-            &db.admin,
-            &db.account_data,
-            &db.appservice,
+            &db,
         )?;
 
         // Send welcome message
@@ -515,11 +471,7 @@ pub async fn register_route(
             },
             &conduit_user,
             &room_id,
-            &db.globals,
-            &db.sending,
-            &db.admin,
-            &db.account_data,
-        &db.appservice,
+            &db,
         )?;
     }
 
@@ -691,11 +643,7 @@ pub async fn deactivate_route(
             },
             &sender_user,
             &room_id,
-            &db.globals,
-            &db.sending,
-            &db.admin,
-            &db.account_data,
-            &db.appservice,
+            &db,
         )?;
     }
 
@@ -711,3 +659,17 @@ pub async fn deactivate_route(
     }
     .into())
 }
+
+/*/
+#[cfg_attr(
+    feature = "conduit_bin",
+    get("/_matrix/client/r0/account/3pid", data = "<body>")
+)]
+pub async fn third_party_route(
+    body: Ruma<account::add_3pid::Request<'_>>,
+) -> ConduitResult<account::add_3pid::Response> {
+    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
+
+    Ok(account::add_3pid::Response::default().into())
+}
+*/

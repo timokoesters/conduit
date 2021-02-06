@@ -5,10 +5,11 @@ use ruma::{
         error::ErrorKind,
         r0::push::{
             delete_pushrule, get_pushers, get_pushrule, get_pushrule_actions, get_pushrule_enabled,
-            get_pushrules_all, set_pushrule, set_pushrule_actions, set_pushrule_enabled, RuleKind,
+            get_pushrules_all, set_pusher, set_pushrule, set_pushrule_actions,
+            set_pushrule_enabled, RuleKind,
         },
     },
-    events::EventType,
+    events::{push_rules, EventType},
     push::{
         ConditionalPushRuleInit, ContentPushRule, OverridePushRule, PatternedPushRuleInit,
         RoomPushRule, SenderPushRule, SimplePushRuleInit, UnderridePushRule,
@@ -30,7 +31,7 @@ pub async fn get_pushrules_all_route(
 
     let event = db
         .account_data
-        .get::<ruma::events::push_rules::PushRulesEvent>(None, &sender_user, EventType::PushRules)?
+        .get::<push_rules::PushRulesEvent>(None, &sender_user, EventType::PushRules)?
         .ok_or(Error::BadRequest(
             ErrorKind::NotFound,
             "PushRules event not found.",
@@ -54,7 +55,7 @@ pub async fn get_pushrule_route(
 
     let event = db
         .account_data
-        .get::<ruma::events::push_rules::PushRulesEvent>(None, &sender_user, EventType::PushRules)?
+        .get::<push_rules::PushRulesEvent>(None, &sender_user, EventType::PushRules)?
         .ok_or(Error::BadRequest(
             ErrorKind::NotFound,
             "PushRules event not found.",
@@ -93,7 +94,10 @@ pub async fn get_pushrule_route(
     if let Some(rule) = rule {
         Ok(get_pushrule::Response { rule }.into())
     } else {
-        Err(Error::BadRequest(ErrorKind::NotFound, "Push rule not found.").into())
+        Err(Error::BadRequest(
+            ErrorKind::NotFound,
+            "Push rule not found.",
+        ))
     }
 }
 
@@ -116,7 +120,7 @@ pub async fn set_pushrule_route(
 
     let mut event = db
         .account_data
-        .get::<ruma::events::push_rules::PushRulesEvent>(None, &sender_user, EventType::PushRules)?
+        .get::<push_rules::PushRulesEvent>(None, &sender_user, EventType::PushRules)?
         .ok_or(Error::BadRequest(
             ErrorKind::NotFound,
             "PushRules event not found.",
@@ -262,7 +266,7 @@ pub async fn get_pushrule_actions_route(
 
     let mut event = db
         .account_data
-        .get::<ruma::events::push_rules::PushRulesEvent>(None, &sender_user, EventType::PushRules)?
+        .get::<push_rules::PushRulesEvent>(None, &sender_user, EventType::PushRules)?
         .ok_or(Error::BadRequest(
             ErrorKind::NotFound,
             "PushRules event not found.",
@@ -325,7 +329,7 @@ pub async fn set_pushrule_actions_route(
 
     let mut event = db
         .account_data
-        .get::<ruma::events::push_rules::PushRulesEvent>(None, &sender_user, EventType::PushRules)?
+        .get::<push_rules::PushRulesEvent>(None, &sender_user, EventType::PushRules)?
         .ok_or(Error::BadRequest(
             ErrorKind::NotFound,
             "PushRules event not found.",
@@ -428,7 +432,7 @@ pub async fn get_pushrule_enabled_route(
 
     let mut event = db
         .account_data
-        .get::<ruma::events::push_rules::PushRulesEvent>(None, &sender_user, EventType::PushRules)?
+        .get::<push_rules::PushRulesEvent>(None, &sender_user, EventType::PushRules)?
         .ok_or(Error::BadRequest(
             ErrorKind::NotFound,
             "PushRules event not found.",
@@ -488,7 +492,7 @@ pub async fn set_pushrule_enabled_route(
 
     let mut event = db
         .account_data
-        .get::<ruma::events::push_rules::PushRulesEvent>(None, &sender_user, EventType::PushRules)?
+        .get::<push_rules::PushRulesEvent>(None, &sender_user, EventType::PushRules)?
         .ok_or(Error::BadRequest(
             ErrorKind::NotFound,
             "PushRules event not found.",
@@ -591,7 +595,7 @@ pub async fn delete_pushrule_route(
 
     let mut event = db
         .account_data
-        .get::<ruma::events::push_rules::PushRulesEvent>(None, &sender_user, EventType::PushRules)?
+        .get::<push_rules::PushRulesEvent>(None, &sender_user, EventType::PushRules)?
         .ok_or(Error::BadRequest(
             ErrorKind::NotFound,
             "PushRules event not found.",
@@ -665,20 +669,36 @@ pub async fn delete_pushrule_route(
     Ok(delete_pushrule::Response.into())
 }
 
-#[cfg_attr(feature = "conduit_bin", get("/_matrix/client/r0/pushers"))]
-pub async fn get_pushers_route() -> ConduitResult<get_pushers::Response> {
+#[cfg_attr(
+    feature = "conduit_bin",
+    get("/_matrix/client/r0/pushers", data = "<body>")
+)]
+pub async fn get_pushers_route(
+    db: State<'_, Database>,
+    body: Ruma<get_pushers::Request>,
+) -> ConduitResult<get_pushers::Response> {
+    let sender = body.sender_user.as_ref().expect("authenticated endpoint");
+
     Ok(get_pushers::Response {
-        pushers: Vec::new(),
+        pushers: db.pusher.get_pusher(sender)?,
     }
     .into())
 }
 
-#[cfg_attr(feature = "conduit_bin", post("/_matrix/client/r0/pushers/set"))]
-pub async fn set_pushers_route(db: State<'_, Database>) -> ConduitResult<get_pushers::Response> {
+#[cfg_attr(
+    feature = "conduit_bin",
+    post("/_matrix/client/r0/pushers/set", data = "<body>")
+)]
+pub async fn set_pushers_route(
+    db: State<'_, Database>,
+    body: Ruma<set_pusher::Request>,
+) -> ConduitResult<set_pusher::Response> {
+    let sender = body.sender_user.as_ref().expect("authenticated endpoint");
+    let pusher = body.pusher.clone();
+
+    db.pusher.set_pusher(sender, pusher)?;
+
     db.flush().await?;
 
-    Ok(get_pushers::Response {
-        pushers: Vec::new(),
-    }
-    .into())
+    Ok(set_pusher::Response::default().into())
 }
