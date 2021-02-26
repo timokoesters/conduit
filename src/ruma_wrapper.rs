@@ -82,9 +82,7 @@ where
                         registration
                             .get("as_token")
                             .and_then(|as_token| as_token.as_str())
-                            .map_or(false, |as_token| {
-                                dbg!(token.as_deref()) == dbg!(Some(as_token))
-                            })
+                            .map_or(false, |as_token| token.as_deref() == Some(as_token))
                     }) {
                 match T::METADATA.authentication {
                     AuthScheme::AccessToken | AuthScheme::QueryOnlyAccessToken => {

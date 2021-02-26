@@ -796,7 +796,7 @@ impl Rooms {
                             "Membership can't be the first event",
                         ))?)?
                         .map(|pdu| pdu.convert_for_state_res());
-                    event_auth::valid_membership_change(
+                    dbg!(event_auth::valid_membership_change(
                         // TODO this is a bit of a hack but not sure how to have a type
                         // declared in `state_res` crate easily convert to/from conduit::PduEvent
                         Requester {
@@ -808,13 +808,13 @@ impl Rooms {
                         },
                         prev_event,
                         None, // TODO: third party invite
-                        &auth_events
+                        dbg!(&auth_events
                             .iter()
                             .map(|((ty, key), pdu)| {
                                 Ok(((ty.clone(), key.clone()), pdu.convert_for_state_res()))
                             })
-                            .collect::<Result<StateMap<_>>>()?,
-                    )
+                            .collect::<Result<StateMap<_>>>()?),
+                    ))
                     .map_err(|e| {
                         log::error!("{}", e);
                         Error::Conflict("Found incoming PDU with invalid data.")
