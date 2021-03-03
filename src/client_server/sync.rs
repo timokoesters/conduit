@@ -698,7 +698,8 @@ pub async fn sync_events_route(
         if duration.as_secs() > 30 {
             duration = Duration::from_secs(30);
         }
-        let mut delay = tokio::time::delay_for(duration);
+        let delay = tokio::time::sleep(duration);
+        tokio::pin!(delay);
         tokio::select! {
             _ = &mut delay => {}
             _ = watcher => {}

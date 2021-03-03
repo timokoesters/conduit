@@ -14,7 +14,7 @@ edition = "2018"
 [dependencies]
 # Used to handle requests
 # TODO: This can become optional as soon as proper configs are supported
-rocket = { git = "https://github.com/SergioBenitez/Rocket.git", rev = "1f1f44f336e5a172361fc1860461bb03667b1ed2", features = ["tls"] } # Used to handle requests
+rocket = { git = "https://github.com/SergioBenitez/Rocket.git", rev = "93e62c86eddf7cc9a7fc40b044182f83f0d7d92a", features = ["tls"] } # Used to handle requests
 #rocket = { git = "https://github.com/timokoesters/Rocket.git", branch = "empty_parameters", default-features = false, features = ["tls"] }
 
 # Used for matrix spec type definitions and helpers
@@ -28,7 +28,7 @@ state-res = { git = "https://github.com/ruma/state-res", branch = "timo-spec-com
 #state-res = { path = "../state-res", features = ["unstable-pre-spec", "gen-eventid"] }
 
 # Used for long polling and federation sender, should be the same as rocket::tokio
-tokio = { version = "0.2.23" }
+tokio = { version = "1.2.0" }
 # Used for storing data permanently
 sled = { version = "0.34.6", default-features = false }
 # Used for emitting log entries

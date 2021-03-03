@@ -7,7 +7,6 @@ use ruma::{
     events::{room::message, EventType},
     UserId,
 };
-use tokio::select;
 
 pub enum AdminCommand {
     RegisterAppservice(serde_yaml::Value),
@@ -71,7 +70,7 @@ impl Admin {
             };
 
             loop {
-                select! {
+                tokio::select! {
                     Some(event) = receiver.next() => {
                         match event {
                             AdminCommand::RegisterAppservice(yaml) => {
