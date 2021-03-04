@@ -554,6 +554,12 @@ pub async fn send_transaction_message_route<'a>(
         // TODO: redact event if hashing fails
         let (event_id, value) = crate::pdu::process_incoming_pdu(pdu);
 
+        // Skip the pdu if we already know about it
+        if db.rooms.get_pdu_id(&event_id)?.is_some() {
+            resolved_map.insert(event_id, Err("We already know about this event".into()));
+            continue;
+        }
+
         let pdu = serde_json::from_value::<PduEvent>(
             serde_json::to_value(&value).expect("CanonicalJsonObj is a valid JsonValue"),
         )
