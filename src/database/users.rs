@@ -1,5 +1,4 @@
 use crate::{utils, Error, Result};
-use js_int::UInt;
 use ruma::{
     api::client::{
         error::ErrorKind,
@@ -11,7 +10,7 @@ use ruma::{
     encryption::DeviceKeys,
     events::{AnyToDeviceEvent, EventType},
     serde::Raw,
-    DeviceId, DeviceKeyAlgorithm, DeviceKeyId, UserId,
+    DeviceId, DeviceKeyAlgorithm, DeviceKeyId, UInt, UserId,
 };
 use std::{collections::BTreeMap, convert::TryFrom, mem, time::SystemTime};
 

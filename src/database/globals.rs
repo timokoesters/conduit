@@ -73,11 +73,9 @@ impl Globals {
             config,
             keypair: Arc::new(keypair),
             reqwest_client,
-            dns_resolver: TokioAsyncResolver::tokio_from_system_conf()
-                .await
-                .map_err(|_| {
-                    Error::bad_config("Failed to set up trust dns resolver with system config.")
-                })?,
+            dns_resolver: TokioAsyncResolver::tokio_from_system_conf().map_err(|_| {
+                Error::bad_config("Failed to set up trust dns resolver with system config.")
+            })?,
             actual_destination_cache: Arc::new(RwLock::new(HashMap::new())),
             jwt_decoding_key,
         })

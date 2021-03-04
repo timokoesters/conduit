@@ -21,7 +21,7 @@ use ruma::{
         EventType,
     },
     serde::Raw,
-    ServerName,
+    ServerName, UInt,
 };
 
 #[cfg(feature = "conduit_bin")]
@@ -128,7 +128,7 @@ pub async fn get_room_visibility_route(
 pub async fn get_public_rooms_filtered_helper(
     db: &Database,
     server: Option<&ServerName>,
-    limit: Option<js_int::UInt>,
+    limit: Option<UInt>,
     since: Option<&str>,
     filter: &IncomingFilter,
     _network: &IncomingRoomNetwork,

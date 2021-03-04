@@ -28,41 +28,39 @@ state-res = { git = "https://github.com/ruma/state-res", branch = "timo-spec-com
 #state-res = { path = "../state-res", features = ["unstable-pre-spec", "gen-eventid"] }
 
 # Used for long polling and federation sender, should be the same as rocket::tokio
-tokio = { version = "1.2.0" }
+tokio = "1.2.0"
 # Used for storing data permanently
 sled = { version = "0.34.6", default-features = false }
 # Used for emitting log entries
-log = "0.4.11"
+log = "0.4.14"
 # Used for rocket<->ruma conversions
-http = "0.2.1"
+http = "0.2.3"
 # Used to find data directory for default db path
 directories = "3.0.1"
-# Used for number types for ruma
-js_int = "0.1.9"
 # Used for ruma wrapper
-serde_json = { version = "1.0.60", features = ["raw_value"] }
+serde_json = { version = "1.0.64", features = ["raw_value"] }
 # Used for appservice registration files
-serde_yaml = "0.8.14"
+serde_yaml = "0.8.17"
 # Used for pdu definition
-serde = "1.0.117"
+serde = "1.0.123"
 # Used for secure identifiers
-rand = "0.7.3"
+rand = "0.8.3"
 # Used to hash passwords
 rust-argon2 = "0.8.3"
 # Used to send requests
-reqwest = "0.10.9"
+reqwest = "0.11.1"
 # Used for conduit::Error type
-thiserror = "1.0.22"
+thiserror = "1.0.24"
 # Used to generate thumbnails for images
-image = { version = "0.23.12", default-features = false, features = ["jpeg", "png", "gif"] }
+image = { version = "0.23.14", default-features = false, features = ["jpeg", "png", "gif"] }
 # Used to encode server public key
 base64 = "0.13.0"
 # Used when hashing the state
-ring = "0.16.19"
+ring = "0.16.20"
 # Used when querying the SRV record of other servers
-trust-dns-resolver = "0.19.6"
+trust-dns-resolver = "0.20.0"
 # Used to find matching events for appservices
-regex = "1.4.2"
+regex = "1.4.3"
 # jwt jsonwebtokens
 jsonwebtoken = "7.2.0"
 # Performance measurements

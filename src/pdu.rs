@@ -1,12 +1,11 @@
 use crate::Error;
-use js_int::UInt;
 use ruma::{
     events::{
         pdu::EventHash, room::member::MemberEventContent, AnyEvent, AnyRoomEvent, AnyStateEvent,
         AnyStrippedStateEvent, AnySyncRoomEvent, AnySyncStateEvent, EventType, StateEvent,
     },
     serde::{to_canonical_value, CanonicalJsonObject, CanonicalJsonValue, Raw},
-    EventId, RoomId, RoomVersionId, ServerName, ServerSigningKeyId, UserId,
+    EventId, RoomId, RoomVersionId, ServerName, ServerSigningKeyId, UInt, UserId,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
