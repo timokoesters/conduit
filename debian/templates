@@ -1,0 +1,21 @@
+Template: matrix-conduit/hostname
+Type: string
+Default: localhost
+Description: The server (host)name of the Matrix homeserver
+ This is the hostname the homeserver will be reachable at via a client.
+ .
+ If set to "localhost", you can connect with a client locally and clients
+ from other hosts and also other homeservers will not be able to reach you!
+
+Template: matrix-conduit/address
+Type: string
+Default: 127.0.0.1
+Description: The listen address of the Matrix homeserver
+ This is the address the homeserver will listen on. Leave it set to 127.0.0.1
+ when using a reverse proxy.
+
+Template: matrix-conduit/port
+Type: string
+Default: 14004
+Description: The port of the Matrix homeserver
+ This port is most often just accessed by a reverse proxy.

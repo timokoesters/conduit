@@ -12,6 +12,7 @@ use rocket::put;
     feature = "conduit_bin",
     put("/_matrix/client/r0/rooms/<_>/redact/<_>/<_>", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn redact_event_route(
     db: State<'_, Database>,
     body: Ruma<redact_event::Request<'_>>,

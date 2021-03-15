@@ -1,23 +1,13 @@
 use crate::{Database, Error, PduEvent, Result};
 use log::{error, info, warn};
-use ruma::{
-    api::{
+use ruma::{UInt, UserId, api::{
         client::r0::push::{Pusher, PusherKind},
         push_gateway::send_event_notification::{
             self,
             v1::{Device, Notification, NotificationCounts, NotificationPriority},
         },
         OutgoingRequest,
-    },
-    events::room::{
-        member::{MemberEventContent, MembershipState},
-        message::{MessageEventContent, TextMessageEventContent},
-        power_levels::PowerLevelsEventContent,
-    },
-    events::EventType,
-    push::{Action, PushCondition, PushFormat, Ruleset, Tweak},
-    uint, UInt, UserId,
-};
+    }, events::EventType, events::room::{member::{MemberEventContent, MembershipState}, message::{MessageEventContent, MessageType, TextMessageEventContent}, power_levels::PowerLevelsEventContent}, push::{Action, PushCondition, PushFormat, Ruleset, Tweak}, uint};
 
 use std::{convert::TryFrom, fmt::Debug, time::Duration};
 
@@ -265,8 +255,8 @@ pub async fn send_push_notice(
                             .map_err(|_| {
                                 Error::bad_database("PDU contained bad message content")
                             })?;
-                    if let MessageEventContent::Text(TextMessageEventContent { body, .. }) =
-                        &msg_content
+                    if let MessageType::Text(TextMessageEventContent { body, .. }) =
+                        &msg_content.msgtype
                     {
                         if body.contains(user.localpart()) {
                             let tweaks = rule
@@ -305,8 +295,8 @@ pub async fn send_push_notice(
                             .map_err(|_| {
                                 Error::bad_database("PDU contained bad message content")
                             })?;
-                    if let MessageEventContent::Text(TextMessageEventContent { body, .. }) =
-                        &msg_content
+                    if let MessageType::Text(TextMessageEventContent { body, .. }) =
+                        &msg_content.msgtype
                     {
                         let power_level_cmp = |pl: PowerLevelsEventContent| {
                             &pl.notifications.room
@@ -346,8 +336,8 @@ pub async fn send_push_notice(
                             .map_err(|_| {
                                 Error::bad_database("PDU contained bad message content")
                             })?;
-                    if let MessageEventContent::Text(TextMessageEventContent { body, .. }) =
-                        &msg_content
+                    if let MessageType::Text(TextMessageEventContent { body, .. }) =
+                        &msg_content.msgtype
                     {
                         if body.contains(user.localpart()) {
                             let tweaks = rule

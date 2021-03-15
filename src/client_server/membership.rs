@@ -4,7 +4,7 @@ use crate::{
     pdu::{PduBuilder, PduEvent},
     utils, ConduitResult, Database, Error, Result, Ruma,
 };
-use log::warn;
+use log::{info, warn};
 use ruma::{
     api::{
         client::{
@@ -21,11 +21,9 @@ use ruma::{
     serde::{to_canonical_value, CanonicalJsonObject, Raw},
     EventId, RoomId, RoomVersionId, ServerName, UserId,
 };
-use state_res::Event;
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, HashMap},
     convert::TryFrom,
-    iter,
     sync::Arc,
 };
 
@@ -36,6 +34,7 @@ use rocket::{get, post};
     feature = "conduit_bin",
     post("/_matrix/client/r0/rooms/<_>/join", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn join_room_by_id_route(
     db: State<'_, Database>,
     body: Ruma<join_room_by_id::Request<'_>>,
@@ -54,6 +53,7 @@ pub async fn join_room_by_id_route(
     feature = "conduit_bin",
     post("/_matrix/client/r0/join/<_>", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn join_room_by_id_or_alias_route(
     db: State<'_, Database>,
     body: Ruma<join_room_by_id_or_alias::Request<'_>>,
@@ -88,6 +88,7 @@ pub async fn join_room_by_id_or_alias_route(
     feature = "conduit_bin",
     post("/_matrix/client/r0/rooms/<_>/leave", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn leave_room_route(
     db: State<'_, Database>,
     body: Ruma<leave_room::Request<'_>>,
@@ -136,6 +137,7 @@ pub async fn leave_room_route(
     feature = "conduit_bin",
     post("/_matrix/client/r0/rooms/<_>/invite", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn invite_user_route(
     db: State<'_, Database>,
     body: Ruma<invite_user::Request<'_>>,
@@ -175,6 +177,7 @@ pub async fn invite_user_route(
     feature = "conduit_bin",
     post("/_matrix/client/r0/rooms/<_>/kick", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn kick_user_route(
     db: State<'_, Database>,
     body: Ruma<kick_user::Request<'_>>,
@@ -224,6 +227,7 @@ pub async fn kick_user_route(
     feature = "conduit_bin",
     post("/_matrix/client/r0/rooms/<_>/ban", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn ban_user_route(
     db: State<'_, Database>,
     body: Ruma<ban_user::Request<'_>>,
@@ -280,6 +284,7 @@ pub async fn ban_user_route(
     feature = "conduit_bin",
     post("/_matrix/client/r0/rooms/<_>/unban", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn unban_user_route(
     db: State<'_, Database>,
     body: Ruma<unban_user::Request<'_>>,
@@ -328,6 +333,7 @@ pub async fn unban_user_route(
     feature = "conduit_bin",
     post("/_matrix/client/r0/rooms/<_>/forget", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn forget_room_route(
     db: State<'_, Database>,
     body: Ruma<forget_room::Request<'_>>,
@@ -345,6 +351,7 @@ pub async fn forget_room_route(
     feature = "conduit_bin",
     get("/_matrix/client/r0/joined_rooms", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn joined_rooms_route(
     db: State<'_, Database>,
     body: Ruma<joined_rooms::Request>,
@@ -365,6 +372,7 @@ pub async fn joined_rooms_route(
     feature = "conduit_bin",
     get("/_matrix/client/r0/rooms/<_>/members", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn get_member_events_route(
     db: State<'_, Database>,
     body: Ruma<get_member_events::Request<'_>>,
@@ -394,6 +402,7 @@ pub async fn get_member_events_route(
     feature = "conduit_bin",
     get("/_matrix/client/r0/rooms/<_>/joined_members", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn joined_members_route(
     db: State<'_, Database>,
     body: Ruma<joined_members::Request<'_>>,
@@ -428,6 +437,7 @@ pub async fn joined_members_route(
     Ok(joined_members::Response { joined }.into())
 }
 
+#[tracing::instrument(skip(db))]
 async fn join_room_by_id_helper(
     db: &Database,
     sender_user: Option<&UserId>,
@@ -555,23 +565,22 @@ async fn join_room_by_id_helper(
             Ok((event_id, value))
         };
 
-        let room_state = send_join_response.room_state.state.iter().map(add_event_id);
+        let count = db.globals.next_count()?;
 
-        let state_events = room_state
-            .clone()
-            .map(|pdu: Result<(EventId, CanonicalJsonObject)>| Ok(pdu?.0))
-            .chain(iter::once(Ok(event_id.clone()))) // Add join event we just created
-            .collect::<Result<HashSet<EventId>>>()?;
+        let mut pdu_id = room_id.as_bytes().to_vec();
+        pdu_id.push(0xff);
+        pdu_id.extend_from_slice(&count.to_be_bytes());
 
-        let auth_chain = send_join_response
+        let pdu = PduEvent::from_id_val(&event_id, join_event.clone())
+            .map_err(|_| Error::BadServerResponse("Invalid PDU in send_join response."))?;
+
+        let mut state = HashMap::new();
+
+        for pdu in send_join_response
             .room_state
-            .auth_chain
+            .state
             .iter()
-            .map(add_event_id);
-
-        let mut event_map = room_state
-            .chain(auth_chain)
-            .chain(iter::once(Ok((event_id, join_event)))) // Add join event we just created
+            .map(add_event_id)
             .map(|r| {
                 let (event_id, value) = r?;
                 PduEvent::from_id_val(&event_id, value.clone())
@@ -581,103 +590,78 @@ async fn join_room_by_id_helper(
                         Error::BadServerResponse("Invalid PDU in send_join response.")
                     })
             })
-            .collect::<Result<BTreeMap<EventId, Arc<PduEvent>>>>()?;
-
-        let control_events = event_map
-            .values()
-            .filter(|pdu| state_res::is_power_event(pdu))
-            .map(|pdu| pdu.event_id.clone())
-            .collect::<Vec<_>>();
-
-        // These events are not guaranteed to be sorted but they are resolved according to spec
-        // we auth them anyways to weed out faulty/malicious server. The following is basically the
-        // full state resolution algorithm.
-        let event_ids = event_map.keys().cloned().collect::<Vec<_>>();
-
-        let sorted_control_events = state_res::StateResolution::reverse_topological_power_sort(
-            &room_id,
-            &control_events,
-            &mut event_map,
-            &event_ids,
-        );
-
-        // Auth check each event against the "partial" state created by the preceding events
-        let resolved_control_events = state_res::StateResolution::iterative_auth_check(
-            room_id,
-            &RoomVersionId::Version6,
-            &sorted_control_events,
-            &BTreeMap::new(), // We have no "clean/resolved" events to add (these extend the `resolved_control_events`)
-            &mut event_map,
-        )
-        .expect("iterative auth check failed on resolved events");
-
-        // This removes the control events that failed auth, leaving the resolved
-        // to be mainline sorted. In the actual `state_res::StateResolution::resolve`
-        // function both are removed since these are all events we don't know of
-        // we must keep track of everything to add to our DB.
-        let events_to_sort = event_map
-            .keys()
-            .filter(|id| {
-                !sorted_control_events.contains(id)
-                    || resolved_control_events.values().any(|rid| *id == rid)
-            })
-            .cloned()
-            .collect::<Vec<_>>();
-
-        let power_level =
-            resolved_control_events.get(&(EventType::RoomPowerLevels, Some("".to_string())));
-        // Sort the remaining non control events
-        let sorted_event_ids = state_res::StateResolution::mainline_sort(
-            room_id,
-            &events_to_sort,
-            power_level,
-            &mut event_map,
-        );
-
-        let resolved_events = state_res::StateResolution::iterative_auth_check(
-            room_id,
-            &RoomVersionId::Version6,
-            &sorted_event_ids,
-            &resolved_control_events,
-            &mut event_map,
-        )
-        .expect("iterative auth check failed on resolved events");
-
-        let mut state = HashMap::new();
-
-        // filter the events that failed the auth check keeping the remaining events
-        // sorted correctly
-        for ev_id in sorted_event_ids
-            .iter()
-            .filter(|id| resolved_events.values().any(|rid| rid == *id))
         {
-            let pdu = event_map
-                .get(ev_id)
-                .expect("Found event_id in sorted events that is not in resolved state");
+            let (id, pdu) = pdu?;
+            info!("adding {} to outliers: {:#?}", id, pdu);
+            db.rooms.add_pdu_outlier(&pdu)?;
+            if let Some(state_key) = &pdu.state_key {
+                if pdu.kind == EventType::RoomMember {
+                    let target_user_id = UserId::try_from(state_key.clone()).map_err(|_| {
+                        Error::BadServerResponse("Invalid user id in send_join response.")
+                    })?;
 
-            // We do not rebuild the PDU in this case only insert to DB
-            let count = db.globals.next_count()?;
-            let mut pdu_id = room_id.as_bytes().to_vec();
-            pdu_id.push(0xff);
-            pdu_id.extend_from_slice(&count.to_be_bytes());
-            db.rooms.append_pdu(
-                &pdu,
-                utils::to_canonical_object(&**pdu).expect("Pdu is valid canonical object"),
-                count,
-                pdu_id.clone().into(),
-                // TODO: can we simplify the DAG or should we copy it exactly??
-                &pdu.prev_events,
-                &db,
-            )?;
-
-            if state_events.contains(ev_id) {
-                if let Some(key) = &pdu.state_key {
-                    state.insert((pdu.kind(), key.to_string()), pdu_id);
+                    // Update our membership info, we do this here incase a user is invited
+                    // and immediately leaves we need the DB to record the invite event for auth
+                    db.rooms.update_membership(
+                        &pdu.room_id,
+                        &target_user_id,
+                        serde_json::from_value::<member::MemberEventContent>(pdu.content.clone())
+                            .map_err(|_| {
+                            Error::BadRequest(
+                                ErrorKind::InvalidParam,
+                                "Invalid member event content.",
+                            )
+                        })?,
+                        &pdu.sender,
+                        &db.account_data,
+                        &db.globals,
+                    )?;
                 }
+                let mut long_id = room_id.as_bytes().to_vec();
+                long_id.push(0xff);
+                long_id.extend_from_slice(id.as_bytes());
+                state.insert((pdu.kind.clone(), state_key.clone()), long_id);
             }
         }
 
+        state.insert(
+            (
+                pdu.kind.clone(),
+                pdu.state_key.clone().expect("join event has state key"),
+            ),
+            pdu_id.clone(),
+        );
+
         db.rooms.force_state(room_id, state, &db.globals)?;
+
+        for pdu in send_join_response
+            .room_state
+            .auth_chain
+            .iter()
+            .map(add_event_id)
+            .map(|r| {
+                let (event_id, value) = r?;
+                PduEvent::from_id_val(&event_id, value.clone())
+                    .map(|ev| (event_id, Arc::new(ev)))
+                    .map_err(|e| {
+                        warn!("{:?}: {}", value, e);
+                        Error::BadServerResponse("Invalid PDU in send_join response.")
+                    })
+            })
+        {
+            let (id, pdu) = pdu?;
+            info!("adding {} to outliers: {:#?}", id, pdu);
+            db.rooms.add_pdu_outlier(&pdu)?;
+        }
+
+        db.rooms.append_pdu(
+            &pdu,
+            utils::to_canonical_object(&pdu).expect("Pdu is valid canonical object"),
+            db.globals.next_count()?,
+            pdu_id.into(),
+            &[pdu.event_id.clone()],
+            db,
+        )?;
     } else {
         let event = member::MemberEventContent {
             membership: member::MembershipState::Join,

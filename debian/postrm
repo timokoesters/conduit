@@ -1,0 +1,22 @@
+#!/bin/sh
+set -e
+
+CONDUIT_CONFIG_PATH=/etc/matrix-conduit
+CONDUIT_DATABASE_PATH=/var/lib/matrix-conduit
+
+case $1 in
+  purge)
+    # Per https://www.debian.org/doc/debian-policy/ch-files.html#behavior
+    # "configuration files must be preserved when the package is removed, and
+    #  only deleted when the package is purged."
+    if [ -d "$CONDUIT_CONFIG_PATH" ]; then
+      rm -r "$CONDUIT_CONFIG_PATH"
+    fi
+
+    if [ -d "$CONDUIT_DATABASE_PATH" ]; then
+      rm -r "$CONDUIT_DATABASE_PATH"
+    fi
+    ;;
+esac
+
+#DEBHELPER#

@@ -9,6 +9,7 @@ use rocket::post;
     feature = "conduit_bin",
     post("/_matrix/client/r0/user_directory/search", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn search_users_route(
     db: State<'_, Database>,
     body: Ruma<search_users::Request<'_>>,

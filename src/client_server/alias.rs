@@ -1,5 +1,6 @@
 use super::State;
 use crate::{ConduitResult, Database, Error, Ruma};
+use regex::Regex;
 use ruma::{
     api::{
         appservice,
@@ -19,6 +20,7 @@ use rocket::{delete, get, put};
     feature = "conduit_bin",
     put("/_matrix/client/r0/directory/room/<_>", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn create_alias_route(
     db: State<'_, Database>,
     body: Ruma<create_alias::Request<'_>>,
@@ -39,6 +41,7 @@ pub async fn create_alias_route(
     feature = "conduit_bin",
     delete("/_matrix/client/r0/directory/room/<_>", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn delete_alias_route(
     db: State<'_, Database>,
     body: Ruma<delete_alias::Request<'_>>,
@@ -54,6 +57,7 @@ pub async fn delete_alias_route(
     feature = "conduit_bin",
     get("/_matrix/client/r0/directory/room/<_>", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn get_alias_route(
     db: State<'_, Database>,
     body: Ruma<get_alias::Request<'_>>,
@@ -83,15 +87,23 @@ pub async fn get_alias_helper(
         Some(r) => room_id = Some(r),
         None => {
             for (_id, registration) in db.appservice.iter_all().filter_map(|r| r.ok()) {
-                if db
-                    .sending
-                    .send_appservice_request(
-                        &db.globals,
-                        registration,
-                        appservice::query::query_room_alias::v1::Request { room_alias },
-                    )
-                    .await
-                    .is_ok()
+                let aliases = registration
+                    .get("namespaces")
+                    .and_then(|ns| ns.get("aliases"))
+                    .and_then(|users| users.get("regex"))
+                    .and_then(|regex| regex.as_str())
+                    .and_then(|regex| Regex::new(regex).ok());
+
+                if aliases.map_or(false, |aliases| aliases.is_match(room_alias.as_str()))
+                    && db
+                        .sending
+                        .send_appservice_request(
+                            &db.globals,
+                            registration,
+                            appservice::query::query_room_alias::v1::Request { room_alias },
+                        )
+                        .await
+                        .is_ok()
                 {
                     room_id = Some(db.rooms.id_from_alias(&room_alias)?.ok_or_else(|| {
                         Error::bad_config("Appservice lied to us. Room does not exist.")

@@ -5,6 +5,7 @@ use ruma::api::client::r0::filter::{self, create_filter, get_filter};
 use rocket::{get, post};
 
 #[cfg_attr(feature = "conduit_bin", get("/_matrix/client/r0/user/<_>/filter/<_>"))]
+#[tracing::instrument]
 pub async fn get_filter_route() -> ConduitResult<get_filter::Response> {
     // TODO
     Ok(get_filter::Response::new(filter::IncomingFilterDefinition {
@@ -18,6 +19,7 @@ pub async fn get_filter_route() -> ConduitResult<get_filter::Response> {
 }
 
 #[cfg_attr(feature = "conduit_bin", post("/_matrix/client/r0/user/<_>/filter"))]
+#[tracing::instrument]
 pub async fn create_filter_route() -> ConduitResult<create_filter::Response> {
     // TODO
     Ok(create_filter::Response::new(utils::random_string(10)).into())

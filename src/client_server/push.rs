@@ -23,6 +23,7 @@ use rocket::{delete, get, post, put};
     feature = "conduit_bin",
     get("/_matrix/client/r0/pushrules", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn get_pushrules_all_route(
     db: State<'_, Database>,
     body: Ruma<get_pushrules_all::Request>,
@@ -47,6 +48,7 @@ pub async fn get_pushrules_all_route(
     feature = "conduit_bin",
     get("/_matrix/client/r0/pushrules/<_>/<_>/<_>", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn get_pushrule_route(
     db: State<'_, Database>,
     body: Ruma<get_pushrule::Request<'_>>,
@@ -105,6 +107,7 @@ pub async fn get_pushrule_route(
     feature = "conduit_bin",
     put("/_matrix/client/r0/pushrules/<_>/<_>/<_>", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn set_pushrule_route(
     db: State<'_, Database>,
     body: Ruma<set_pushrule::Request<'_>>,
@@ -251,6 +254,7 @@ pub async fn set_pushrule_route(
     feature = "conduit_bin",
     get("/_matrix/client/r0/pushrules/<_>/<_>/<_>/actions", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn get_pushrule_actions_route(
     db: State<'_, Database>,
     body: Ruma<get_pushrule_actions::Request<'_>>,
@@ -314,6 +318,7 @@ pub async fn get_pushrule_actions_route(
     feature = "conduit_bin",
     put("/_matrix/client/r0/pushrules/<_>/<_>/<_>/actions", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn set_pushrule_actions_route(
     db: State<'_, Database>,
     body: Ruma<set_pushrule_actions::Request<'_>>,
@@ -417,6 +422,7 @@ pub async fn set_pushrule_actions_route(
     feature = "conduit_bin",
     get("/_matrix/client/r0/pushrules/<_>/<_>/<_>/enabled", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn get_pushrule_enabled_route(
     db: State<'_, Database>,
     body: Ruma<get_pushrule_enabled::Request<'_>>,
@@ -477,6 +483,7 @@ pub async fn get_pushrule_enabled_route(
     feature = "conduit_bin",
     put("/_matrix/client/r0/pushrules/<_>/<_>/<_>/enabled", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn set_pushrule_enabled_route(
     db: State<'_, Database>,
     body: Ruma<set_pushrule_enabled::Request<'_>>,
@@ -492,7 +499,7 @@ pub async fn set_pushrule_enabled_route(
 
     let mut event = db
         .account_data
-        .get::<push_rules::PushRulesEvent>(None, &sender_user, EventType::PushRules)?
+        .get::<ruma::events::push_rules::PushRulesEvent>(None, &sender_user, EventType::PushRules)?
         .ok_or(Error::BadRequest(
             ErrorKind::NotFound,
             "PushRules event not found.",
@@ -580,6 +587,7 @@ pub async fn set_pushrule_enabled_route(
     feature = "conduit_bin",
     delete("/_matrix/client/r0/pushrules/<_>/<_>/<_>", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn delete_pushrule_route(
     db: State<'_, Database>,
     body: Ruma<delete_pushrule::Request<'_>>,
@@ -673,6 +681,7 @@ pub async fn delete_pushrule_route(
     feature = "conduit_bin",
     get("/_matrix/client/r0/pushers", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn get_pushers_route(
     db: State<'_, Database>,
     body: Ruma<get_pushers::Request>,
@@ -689,6 +698,7 @@ pub async fn get_pushers_route(
     feature = "conduit_bin",
     post("/_matrix/client/r0/pushers/set", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn set_pushers_route(
     db: State<'_, Database>,
     body: Ruma<set_pusher::Request>,

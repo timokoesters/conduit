@@ -30,17 +30,22 @@ pub struct Config {
     server_name: Box<ServerName>,
     database_path: String,
     #[serde(default = "default_cache_capacity")]
-    cache_capacity: u64,
+    cache_capacity: u32,
     #[serde(default = "default_max_request_size")]
     max_request_size: u32,
     #[serde(default = "default_max_concurrent_requests")]
     max_concurrent_requests: u16,
-    #[serde(default)]
+    #[serde(default = "true_fn")]
     allow_registration: bool,
     #[serde(default = "true_fn")]
     allow_encryption: bool,
     #[serde(default = "false_fn")]
     allow_federation: bool,
+    #[serde(default = "false_fn")]
+    pub allow_jaeger: bool,
+    jwt_secret: Option<String>,
+    #[serde(default = "Vec::new")]
+    trusted_servers: Vec<Box<ServerName>>,
 }
 
 fn false_fn() -> bool {
@@ -51,7 +56,7 @@ fn true_fn() -> bool {
     true
 }
 
-fn default_cache_capacity() -> u64 {
+fn default_cache_capacity() -> u32 {
     1024 * 1024 * 1024
 }
 
@@ -97,8 +102,7 @@ impl Database {
     pub async fn load_or_create(config: Config) -> Result<Self> {
         let db = sled::Config::default()
             .path(&config.database_path)
-            .cache_capacity(config.cache_capacity)
-            .print_profile_on_drop(false)
+            .cache_capacity(config.cache_capacity as u64)
             .open()?;
 
         info!("Opened sled database at {}", config.database_path);
@@ -163,7 +167,8 @@ impl Database {
                 stateid_pduid: db.open_tree("stateid_pduid")?,
                 pduid_statehash: db.open_tree("pduid_statehash")?,
                 roomid_statehash: db.open_tree("roomid_statehash")?,
-                pduid_outlierpdu: db.open_tree("pduid_outlierpdu")?,
+                eventid_outlierpdu: db.open_tree("roomeventid_outlierpdu")?,
+                prevevent_parent: db.open_tree("prevevent_parent")?,
             },
             account_data: account_data::AccountData {
                 roomuserdataid_accountdata: db.open_tree("roomuserdataid_accountdata")?,

@@ -42,7 +42,7 @@ impl<'a, T: Outgoing + OutgoingRequest> FromTransformedData<'a> for Ruma<T>
 where
     T::Incoming: IncomingRequest,
 {
-    type Error = (); // TODO: Better error handling
+    type Error = ();
     type Owned = Data;
     type Borrowed = Self::Owned;
 
@@ -102,7 +102,8 @@ where
                         );
 
                         if !db.users.exists(&user_id).unwrap() {
-                            return Failure((Status::Unauthorized, ()));
+                            // Forbidden
+                            return Failure((Status::raw(580), ()));
                         }
 
                         // TODO: Check if appservice is allowed to be that user
@@ -116,15 +117,15 @@ where
                     AuthScheme::AccessToken | AuthScheme::QueryOnlyAccessToken => {
                         if let Some(token) = token {
                             match db.users.find_from_token(&token).unwrap() {
-                                // TODO: M_UNKNOWN_TOKEN
-                                None => return Failure((Status::Unauthorized, ())),
+                                // Unknown Token
+                                None => return Failure((Status::raw(581), ())),
                                 Some((user_id, device_id)) => {
                                     (Some(user_id), Some(device_id.into()), false)
                                 }
                             }
                         } else {
-                            // TODO: M_MISSING_TOKEN
-                            return Failure((Status::Unauthorized, ()));
+                            // Missing Token
+                            return Failure((Status::raw(582), ()));
                         }
                     }
                     AuthScheme::ServerSignatures => (None, None, false),
@@ -159,7 +160,7 @@ where
                 }),
                 Err(e) => {
                     warn!("{:?}", e);
-                    Failure((Status::BadRequest, ()))
+                    Failure((Status::raw(583), ()))
                 }
             }
         })

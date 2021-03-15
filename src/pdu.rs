@@ -4,7 +4,7 @@ use ruma::{
         pdu::EventHash, room::member::MemberEventContent, AnyEvent, AnyRoomEvent, AnyStateEvent,
         AnyStrippedStateEvent, AnySyncRoomEvent, AnySyncStateEvent, EventType, StateEvent,
     },
-    serde::{CanonicalJsonObject, CanonicalJsonValue, Raw},
+    serde::{to_canonical_value, CanonicalJsonObject, CanonicalJsonValue, Raw},
     EventId, RoomId, RoomVersionId, ServerName, ServerSigningKeyId, UInt, UserId,
 };
 use serde::{Deserialize, Serialize};
@@ -34,6 +34,7 @@ pub struct PduEvent {
 }
 
 impl PduEvent {
+    #[tracing::instrument(skip(self))]
     pub fn redact(&mut self, reason: &PduEvent) -> crate::Result<()> {
         self.unsigned.clear();
 
@@ -80,6 +81,7 @@ impl PduEvent {
         Ok(())
     }
 
+    #[tracing::instrument(skip(self))]
     pub fn to_sync_room_event(&self) -> Raw<AnySyncRoomEvent> {
         let mut json = json!({
             "content": self.content,
@@ -101,6 +103,7 @@ impl PduEvent {
     }
 
     /// This only works for events that are also AnyRoomEvents.
+    #[tracing::instrument(skip(self))]
     pub fn to_any_event(&self) -> Raw<AnyEvent> {
         let mut json = json!({
             "content": self.content,
@@ -122,6 +125,7 @@ impl PduEvent {
         serde_json::from_value(json).expect("Raw::from_value always works")
     }
 
+    #[tracing::instrument(skip(self))]
     pub fn to_room_event(&self) -> Raw<AnyRoomEvent> {
         let mut json = json!({
             "content": self.content,
@@ -143,6 +147,7 @@ impl PduEvent {
         serde_json::from_value(json).expect("Raw::from_value always works")
     }
 
+    #[tracing::instrument(skip(self))]
     pub fn to_state_event(&self) -> Raw<AnyStateEvent> {
         let json = json!({
             "content": self.content,
@@ -158,20 +163,27 @@ impl PduEvent {
         serde_json::from_value(json).expect("Raw::from_value always works")
     }
 
+    #[tracing::instrument(skip(self))]
     pub fn to_sync_state_event(&self) -> Raw<AnySyncStateEvent> {
-        let json = json!({
-            "content": self.content,
-            "type": self.kind,
-            "event_id": self.event_id,
-            "sender": self.sender,
-            "origin_server_ts": self.origin_server_ts,
-            "unsigned": self.unsigned,
-            "state_key": self.state_key,
-        });
+        let json = format!(
+            r#"{{"content":{},"type":"{}","event_id":"{}","sender":"{}","origin_server_ts":{},"unsigned":{},"state_key":"{}"}}"#,
+            self.content,
+            self.kind,
+            self.event_id,
+            self.sender,
+            self.origin_server_ts,
+            serde_json::to_string(&self.unsigned).expect("Map::to_string always works"),
+            self.state_key
+                .as_ref()
+                .expect("state events have state keys")
+        );
 
-        serde_json::from_value(json).expect("Raw::from_value always works")
+        Raw::from_json(
+            serde_json::value::RawValue::from_string(json).expect("our string is valid json"),
+        )
     }
 
+    #[tracing::instrument(skip(self))]
     pub fn to_stripped_state_event(&self) -> Raw<AnyStrippedStateEvent> {
         let json = json!({
             "content": self.content,
@@ -183,6 +195,7 @@ impl PduEvent {
         serde_json::from_value(json).expect("Raw::from_value always works")
     }
 
+    #[tracing::instrument(skip(self))]
     pub fn to_member_event(&self) -> Raw<StateEvent<MemberEventContent>> {
         let json = json!({
             "content": self.content,
@@ -200,6 +213,7 @@ impl PduEvent {
     }
 
     /// This does not return a full `Pdu` it is only to satisfy ruma's types.
+    #[tracing::instrument]
     pub fn convert_to_outgoing_federation_event(
         mut pdu_json: CanonicalJsonObject,
     ) -> Raw<ruma::events::pdu::Pdu> {
@@ -228,7 +242,7 @@ impl PduEvent {
     ) -> Result<Self, serde_json::Error> {
         json.insert(
             "event_id".to_string(),
-            ruma::serde::to_canonical_value(event_id).expect("event_id is a valid Value"),
+            to_canonical_value(event_id).expect("event_id is a valid Value"),
         );
 
         serde_json::from_value(serde_json::to_value(json).expect("valid JSON"))

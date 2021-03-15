@@ -22,6 +22,7 @@ use rocket::{get, post};
     feature = "conduit_bin",
     post("/_matrix/client/r0/keys/upload", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn upload_keys_route(
     db: State<'_, Database>,
     body: Ruma<upload_keys::Request>,
@@ -70,6 +71,7 @@ pub async fn upload_keys_route(
     feature = "conduit_bin",
     post("/_matrix/client/r0/keys/query", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn get_keys_route(
     db: State<'_, Database>,
     body: Ruma<get_keys::Request<'_>>,
@@ -150,6 +152,7 @@ pub async fn get_keys_route(
     feature = "conduit_bin",
     post("/_matrix/client/r0/keys/claim", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn claim_keys_route(
     db: State<'_, Database>,
     body: Ruma<claim_keys::Request>,
@@ -183,6 +186,7 @@ pub async fn claim_keys_route(
     feature = "conduit_bin",
     post("/_matrix/client/unstable/keys/device_signing/upload", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn upload_signing_keys_route(
     db: State<'_, Database>,
     body: Ruma<upload_signing_keys::Request<'_>>,
@@ -240,6 +244,7 @@ pub async fn upload_signing_keys_route(
     feature = "conduit_bin",
     post("/_matrix/client/unstable/keys/signatures/upload", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn upload_signatures_route(
     db: State<'_, Database>,
     body: Ruma<upload_signatures::Request>,
@@ -300,6 +305,7 @@ pub async fn upload_signatures_route(
     feature = "conduit_bin",
     get("/_matrix/client/r0/keys/changes", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn get_key_changes_route(
     db: State<'_, Database>,
     body: Ruma<get_key_changes::Request<'_>>,

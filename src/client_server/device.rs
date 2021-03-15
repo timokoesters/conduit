@@ -16,6 +16,7 @@ use rocket::{delete, get, post, put};
     feature = "conduit_bin",
     get("/_matrix/client/r0/devices", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn get_devices_route(
     db: State<'_, Database>,
     body: Ruma<get_devices::Request>,
@@ -35,6 +36,7 @@ pub async fn get_devices_route(
     feature = "conduit_bin",
     get("/_matrix/client/r0/devices/<_>", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn get_device_route(
     db: State<'_, Database>,
     body: Ruma<get_device::Request<'_>>,
@@ -53,6 +55,7 @@ pub async fn get_device_route(
     feature = "conduit_bin",
     put("/_matrix/client/r0/devices/<_>", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn update_device_route(
     db: State<'_, Database>,
     body: Ruma<update_device::Request<'_>>,
@@ -78,6 +81,7 @@ pub async fn update_device_route(
     feature = "conduit_bin",
     delete("/_matrix/client/r0/devices/<_>", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn delete_device_route(
     db: State<'_, Database>,
     body: Ruma<delete_device::Request<'_>>,
@@ -126,6 +130,7 @@ pub async fn delete_device_route(
     feature = "conduit_bin",
     post("/_matrix/client/r0/delete_devices", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn delete_devices_route(
     db: State<'_, Database>,
     body: Ruma<delete_devices::Request<'_>>,

@@ -6,9 +6,12 @@ use std::{
     time::{Duration, Instant, SystemTime},
 };
 
-use crate::{appservice_server, server_server, utils, Database, Error, PduEvent, Result};
+use crate::{
+    appservice_server, database::pusher, server_server, utils, Database, Error, PduEvent, Result,
+};
 use federation::transactions::send_transaction_message;
-use log::info;
+use log::{info, warn};
+use ring::digest;
 use rocket::futures::stream::{FuturesUnordered, StreamExt};
 use ruma::{
     api::{appservice, federation, OutgoingRequest},
@@ -37,30 +40,71 @@ impl Sending {
     pub fn start_handler(&self, db: &Database) {
         let servernamepduids = self.servernamepduids.clone();
         let servercurrentpdus = self.servercurrentpdus.clone();
+
         let db = db.clone();
 
         tokio::spawn(async move {
             let mut futures = FuturesUnordered::new();
 
             // Retry requests we could not finish yet
-            let mut current_transactions = HashMap::new();
+            let mut current_transactions = HashMap::<OutgoingKind, Vec<IVec>>::new();
 
-            for (outgoing_kind, pdu) in servercurrentpdus
+            for (key, outgoing_kind, pdu) in servercurrentpdus
                 .iter()
                 .filter_map(|r| r.ok())
-                .filter_map(|(key, _)| Self::parse_servercurrentpdus(key).ok())
-                .filter(|(_, pdu)| !pdu.is_empty()) // Skip reservation key
-                .take(50)
-            // This should not contain more than 50 anyway
+                .filter_map(|(key, _)| {
+                    Self::parse_servercurrentpdus(&key)
+                        .ok()
+                        .map(|(k, p)| (key, k, p))
+                })
             {
-                current_transactions
+                match outgoing_kind {
+                    OutgoingKind::Appservice(_) => {}
+                    OutgoingKind::Push(_) => {}
+                    OutgoingKind::Normal(_) => {}
+                }
+                if pdu.is_empty() {
+                    // Remove old reservation key
+                    servercurrentpdus.remove(key).unwrap();
+                    continue;
+                }
+
+                let entry = current_transactions
                     .entry(outgoing_kind)
-                    .or_insert_with(Vec::new)
-                    .push(pdu);
+                    .or_insert_with(Vec::new);
+
+                if entry.len() > 30 {
+                    warn!("Dropping some current pdus because too many were queued. This should not happen.");
+                    servercurrentpdus.remove(key).unwrap();
+                    continue;
+                }
+
+                entry.push(pdu);
             }
 
             for (outgoing_kind, pdus) in current_transactions {
-                futures.push(Self::handle_event(outgoing_kind, pdus, &db));
+                // Create new reservation
+                let mut prefix = match &outgoing_kind {
+                    OutgoingKind::Appservice(server) => {
+                        let mut p = b"+".to_vec();
+                        p.extend_from_slice(server.as_bytes());
+                        p
+                    }
+                    OutgoingKind::Push(id) => {
+                        let mut p = b"$".to_vec();
+                        p.extend_from_slice(&id);
+                        p
+                    }
+                    OutgoingKind::Normal(server) => {
+                        let mut p = vec![];
+                        p.extend_from_slice(server.as_bytes());
+                        p
+                    }
+                };
+                prefix.push(0xff);
+                servercurrentpdus.insert(prefix, &[]).unwrap();
+
+                futures.push(Self::handle_event(outgoing_kind.clone(), pdus, &db));
             }
 
             let mut last_failed_try: HashMap<OutgoingKind, (u32, Instant)> = HashMap::new();
@@ -109,7 +153,7 @@ impl Sending {
                                     .map(|k| {
                                         k.subslice(prefix.len(), k.len() - prefix.len())
                                     })
-                                    .take(50)
+                                    .take(30)
                                     .collect::<Vec<_>>();
 
                                 if !new_pdus.is_empty() {
@@ -255,6 +299,7 @@ impl Sending {
         });
     }
 
+    #[tracing::instrument(skip(self))]
     pub fn send_push_pdu(&self, pdu_id: &[u8]) -> Result<()> {
         // Make sure we don't cause utf8 errors when parsing to a String...
         let pduid = String::from_utf8_lossy(pdu_id).as_bytes().to_vec();
@@ -273,6 +318,7 @@ impl Sending {
         Ok(())
     }
 
+    #[tracing::instrument(skip(self))]
     pub fn send_pdu(&self, server: &ServerName, pdu_id: &[u8]) -> Result<()> {
         let mut key = server.as_bytes().to_vec();
         key.push(0xff);
@@ -282,6 +328,7 @@ impl Sending {
         Ok(())
     }
 
+    #[tracing::instrument(skip(self))]
     pub fn send_pdu_appservice(&self, appservice_id: &str, pdu_id: &[u8]) -> Result<()> {
         let mut key = b"+".to_vec();
         key.extend_from_slice(appservice_id.as_bytes());
@@ -292,13 +339,21 @@ impl Sending {
         Ok(())
     }
 
-    // TODO this is the whole DB but is it better to clone smaller parts than the whole thing??
+    #[tracing::instrument]
+    fn calculate_hash(keys: &[IVec]) -> Vec<u8> {
+        // We only hash the pdu's event ids, not the whole pdu
+        let bytes = keys.join(&0xff);
+        let hash = digest::digest(&digest::SHA256, &bytes);
+        hash.as_ref().to_owned()
+    }
+
+    #[tracing::instrument(skip(db))]
     async fn handle_event(
         kind: OutgoingKind,
         pdu_ids: Vec<IVec>,
         db: &Database,
     ) -> std::result::Result<OutgoingKind, (OutgoingKind, Error)> {
-        match dbg!(kind) {
+        match dbg!(&kind) {
             OutgoingKind::Appservice(server) => {
                 let pdu_jsons = pdu_ids
                     .iter()
@@ -320,7 +375,8 @@ impl Sending {
                     })
                     .filter_map(|r| r.ok())
                     .collect::<Vec<_>>();
-                appservice_server::send_request(
+                let permit = db.sending.maximum_requests.acquire().await;
+                let response = appservice_server::send_request(
                     &db.globals,
                     db.appservice
                         .get_registration(server.as_str())
@@ -328,12 +384,19 @@ impl Sending {
                         .unwrap(), // TODO: handle error
                     appservice::event::push_events::v1::Request {
                         events: &pdu_jsons,
-                        txn_id: &utils::random_string(16),
+                        txn_id: &base64::encode_config(
+                            Self::calculate_hash(&pdu_ids),
+                            base64::URL_SAFE_NO_PAD,
+                        ),
                     },
                 )
                 .await
-                .map(|_response| OutgoingKind::Appservice(server.clone()))
-                .map_err(|e| (OutgoingKind::Appservice(server.clone()), e))
+                .map(|_response| kind.clone())
+                .map_err(|e| (kind, e));
+
+                drop(permit);
+
+                response
             }
             OutgoingKind::Push(id) => {
                 let pdus = pdu_ids
@@ -403,22 +466,23 @@ impl Sending {
                             uint!(0)
                         };
 
-                        dbg!(
-                            crate::database::pusher::send_push_notice(
-                                &user,
-                                unread,
-                                &pushers,
-                                rules_for_user,
-                                pdu,
-                                db,
-                            )
-                            .await
+                        let permit = db.sending.maximum_requests.acquire().await;
+                        let _response = pusher::send_push_notice(
+                            &user,
+                            unread,
+                            &pushers,
+                            rules_for_user,
+                            pdu,
+                            db,
                         )
-                        .map_err(|e| (OutgoingKind::Push(id.clone()), e))?;
+                        .await
+                        .map(|_response| kind.clone())
+                        .map_err(|e| (kind.clone(), e));
+
+                        drop(permit);
                     }
                 }
-
-                Ok(OutgoingKind::Push(id))
+                Ok(OutgoingKind::Push(id.clone()))
             }
             OutgoingKind::Normal(server) => {
                 let pdu_jsons = pdu_ids
@@ -449,7 +513,10 @@ impl Sending {
                     .filter_map(|r| r.ok())
                     .collect::<Vec<_>>();
 
-                server_server::send_request(
+                let permit = db.sending.maximum_requests.acquire().await;
+
+                info!("sending pdus to {}: {:#?}", server, pdu_jsons);
+                let response = server_server::send_request(
                     &db.globals,
                     &*server,
                     send_transaction_message::v1::Request {
@@ -457,17 +524,27 @@ impl Sending {
                         pdus: &pdu_jsons,
                         edus: &[],
                         origin_server_ts: SystemTime::now(),
-                        transaction_id: &utils::random_string(16),
+                        transaction_id: &base64::encode_config(
+                            Self::calculate_hash(&pdu_ids),
+                            base64::URL_SAFE_NO_PAD,
+                        ),
                     },
                 )
                 .await
-                .map(|_response| OutgoingKind::Normal(server.clone()))
-                .map_err(|e| (OutgoingKind::Normal(server.clone()), e))
+                .map(|response| {
+                    info!("server response: {:?}", response);
+                    kind.clone()
+                })
+                .map_err(|e| (kind, e));
+
+                drop(permit);
+
+                response
             }
         }
     }
 
-    fn parse_servercurrentpdus(key: IVec) -> Result<(OutgoingKind, IVec)> {
+    fn parse_servercurrentpdus(key: &IVec) -> Result<(OutgoingKind, IVec)> {
         let mut parts = key.splitn(2, |&b| b == 0xff);
         let server = parts.next().expect("splitn always returns one element");
         let pdu = parts
@@ -501,6 +578,7 @@ impl Sending {
         })
     }
 
+    #[tracing::instrument(skip(self, globals))]
     pub async fn send_federation_request<T: OutgoingRequest>(
         &self,
         globals: &crate::database::globals::Globals,
@@ -517,6 +595,7 @@ impl Sending {
         response
     }
 
+    #[tracing::instrument(skip(self, globals))]
     pub async fn send_appservice_request<T: OutgoingRequest>(
         &self,
         globals: &crate::database::globals::Globals,

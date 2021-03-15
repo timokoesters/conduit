@@ -17,6 +17,7 @@ use rocket::{delete, get, post, put};
     feature = "conduit_bin",
     post("/_matrix/client/unstable/room_keys/version", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn create_backup_route(
     db: State<'_, Database>,
     body: Ruma<create_backup::Request>,
@@ -35,6 +36,7 @@ pub async fn create_backup_route(
     feature = "conduit_bin",
     put("/_matrix/client/unstable/room_keys/version/<_>", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn update_backup_route(
     db: State<'_, Database>,
     body: Ruma<update_backup::Request<'_>>,
@@ -52,6 +54,7 @@ pub async fn update_backup_route(
     feature = "conduit_bin",
     get("/_matrix/client/unstable/room_keys/version", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn get_latest_backup_route(
     db: State<'_, Database>,
     body: Ruma<get_latest_backup::Request>,
@@ -79,6 +82,7 @@ pub async fn get_latest_backup_route(
     feature = "conduit_bin",
     get("/_matrix/client/unstable/room_keys/version/<_>", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn get_backup_route(
     db: State<'_, Database>,
     body: Ruma<get_backup::Request<'_>>,
@@ -105,6 +109,7 @@ pub async fn get_backup_route(
     feature = "conduit_bin",
     delete("/_matrix/client/unstable/room_keys/version/<_>", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn delete_backup_route(
     db: State<'_, Database>,
     body: Ruma<delete_backup::Request<'_>>,
@@ -123,6 +128,7 @@ pub async fn delete_backup_route(
     feature = "conduit_bin",
     put("/_matrix/client/unstable/room_keys/keys", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn add_backup_keys_route(
     db: State<'_, Database>,
     body: Ruma<add_backup_keys::Request<'_>>,
@@ -156,6 +162,7 @@ pub async fn add_backup_keys_route(
     feature = "conduit_bin",
     put("/_matrix/client/unstable/room_keys/keys/<_>", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn add_backup_key_sessions_route(
     db: State<'_, Database>,
     body: Ruma<add_backup_key_sessions::Request<'_>>,
@@ -187,6 +194,7 @@ pub async fn add_backup_key_sessions_route(
     feature = "conduit_bin",
     put("/_matrix/client/unstable/room_keys/keys/<_>/<_>", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn add_backup_key_session_route(
     db: State<'_, Database>,
     body: Ruma<add_backup_key_session::Request<'_>>,
@@ -215,6 +223,7 @@ pub async fn add_backup_key_session_route(
     feature = "conduit_bin",
     get("/_matrix/client/unstable/room_keys/keys", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn get_backup_keys_route(
     db: State<'_, Database>,
     body: Ruma<get_backup_keys::Request<'_>>,
@@ -230,6 +239,7 @@ pub async fn get_backup_keys_route(
     feature = "conduit_bin",
     get("/_matrix/client/unstable/room_keys/keys/<_>", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn get_backup_key_sessions_route(
     db: State<'_, Database>,
     body: Ruma<get_backup_key_sessions::Request<'_>>,
@@ -247,6 +257,7 @@ pub async fn get_backup_key_sessions_route(
     feature = "conduit_bin",
     get("/_matrix/client/unstable/room_keys/keys/<_>/<_>", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn get_backup_key_session_route(
     db: State<'_, Database>,
     body: Ruma<get_backup_key_session::Request<'_>>,
@@ -270,6 +281,7 @@ pub async fn get_backup_key_session_route(
     feature = "conduit_bin",
     delete("/_matrix/client/unstable/room_keys/keys", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn delete_backup_keys_route(
     db: State<'_, Database>,
     body: Ruma<delete_backup_keys::Request<'_>>,
@@ -292,6 +304,7 @@ pub async fn delete_backup_keys_route(
     feature = "conduit_bin",
     delete("/_matrix/client/unstable/room_keys/keys/<_>", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn delete_backup_key_sessions_route(
     db: State<'_, Database>,
     body: Ruma<delete_backup_key_sessions::Request<'_>>,
@@ -314,6 +327,7 @@ pub async fn delete_backup_key_sessions_route(
     feature = "conduit_bin",
     delete("/_matrix/client/unstable/room_keys/keys/<_>/<_>", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn delete_backup_key_session_route(
     db: State<'_, Database>,
     body: Ruma<delete_backup_key_session::Request<'_>>,

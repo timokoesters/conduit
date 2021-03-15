@@ -11,6 +11,7 @@ use std::collections::BTreeMap;
     feature = "conduit_bin",
     post("/_matrix/client/r0/search", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn search_events_route(
     db: State<'_, Database>,
     body: Ruma<search_events::Request<'_>>,

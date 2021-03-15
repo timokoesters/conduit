@@ -70,6 +70,7 @@ impl RoomEdus {
     }
 
     /// Returns an iterator over the most recent read_receipts in a room that happened after the event with id `since`.
+    #[tracing::instrument(skip(self))]
     pub fn readreceipts_since(
         &self,
         room_id: &RoomId,
@@ -115,6 +116,7 @@ impl RoomEdus {
     }
 
     /// Returns the private read marker.
+    #[tracing::instrument(skip(self))]
     pub fn private_read_get(&self, room_id: &RoomId, user_id: &UserId) -> Result<Option<u64>> {
         let mut key = room_id.to_string().as_bytes().to_vec();
         key.push(0xff);
@@ -256,6 +258,7 @@ impl RoomEdus {
     }
 
     /// Returns the count of the last typing update in this room.
+    #[tracing::instrument(skip(self, globals))]
     pub fn last_typing_update(
         &self,
         room_id: &RoomId,
@@ -339,6 +342,7 @@ impl RoomEdus {
     }
 
     /// Resets the presence timeout, so the user will stay in their current presence state.
+    #[tracing::instrument(skip(self))]
     pub fn ping_presence(&self, user_id: &UserId) -> Result<()> {
         self.userid_lastpresenceupdate.insert(
             &user_id.to_string().as_bytes(),
@@ -429,6 +433,7 @@ impl RoomEdus {
     }
 
     /// Returns an iterator over the most recent presence updates that happened after the event with id `since`.
+    #[tracing::instrument(skip(self, globals, rooms))]
     pub fn presence_since(
         &self,
         room_id: &RoomId,

@@ -11,7 +11,7 @@ import sys
 # The main complexity is grouping tests sensibly into features like 'Registration'
 # and 'Federation'. Then it just checks the ones which are passing and calculates
 # percentages for each group. Produces results like:
-#
+# 
 # Client-Server APIs: 29% (196/666 tests)
 # -------------------
 #   Registration             :  62% (20/32 tests)
@@ -28,11 +28,13 @@ import sys
 #    ✓ POST /register can create a user
 #    ✓ POST /register downcases capitals in usernames
 #    ...
-#
+# 
 # You can also tack `-v` on to see exactly which tests each category falls under.
 
 test_mappings = {
     "nsp": "Non-Spec API",
+    "unk": "Unknown API (no group specified)",
+    "app": "Application Services API",
     "f": "Federation", # flag to mark test involves federation
 
     "federation_apis": {
@@ -50,6 +52,7 @@ test_mappings = {
         "fpb": "Public Room API",
         "fdk": "Device Key APIs",
         "fed": "Federation API",
+		"fsd": "Send-to-Device APIs",
     },
 
     "client_apis": {
@@ -61,6 +64,8 @@ test_mappings = {
         "pro": "Profile",
         "dev": "Devices",
         "dvk": "Device Keys",
+        "dkb": "Device Key Backup",
+        "xsk": "Cross-signing Keys",
         "pre": "Presence",
         "crm": "Create Room",
         "syn": "Sync API",
@@ -98,7 +103,7 @@ test_mappings = {
         "adm": "Server Admin API",
         "ign": "Ignore Users",
         "udr": "User Directory APIs",
-        "app": "Application Services API",
+		"jso": "Enforced canonical JSON",
     },
 }
 
@@ -156,20 +161,22 @@ def print_stats(header_name, gid_to_tests, gid_to_name, verbose):
     total_tests = 0
     for gid, tests in gid_to_tests.items():
         group_total = len(tests)
+        if group_total == 0:
+            continue
         group_passing = 0
         test_names_and_marks = []
         for name, passing in tests.items():
             if passing:
                 group_passing += 1
             test_names_and_marks.append(f"{'✓' if passing else '×'} {name}")
-
+            
         total_tests += group_total
         total_passing += group_passing
         pct = "{0:.0f}%".format(group_passing/group_total * 100)
         line = "%s: %s (%d/%d tests)" % (gid_to_name[gid].ljust(25, ' '), pct.rjust(4, ' '), group_passing, group_total)
         subsections.append(line)
         subsection_test_names[line] = test_names_and_marks
-
+    
     pct = "{0:.0f}%".format(total_passing/total_tests * 100)
     print("%s: %s (%d/%d tests)" % (header_name, pct, total_passing, total_tests))
     print("-" * (len(header_name)+1))
@@ -186,7 +193,6 @@ def main(results_tap_path, verbose):
     test_name_to_group_id = {}
     fed_tests = set()
     client_tests = set()
-    groupless_tests = set()
     with open("./are-we-synapse-yet.list", "r") as f:
         for line in f.readlines():
             test_name = " ".join(line.split(" ")[1:]).strip()
@@ -212,8 +218,12 @@ def main(results_tap_path, verbose):
             #   test_name: OK
             # }
         },
+        "appservice": {
+            "app": {},
+        },
         "nonspec": {
-            "nsp": {}
+            "nsp": {},
+            "unk": {}
         },
     }
     with open(results_tap_path, "r") as f:
@@ -224,10 +234,11 @@ def main(results_tap_path, verbose):
             name = test_result["name"]
             group_id = test_name_to_group_id.get(name)
             if not group_id:
-                groupless_tests.add(name)
-                # raise Exception("The test '%s' doesn't have a group" % (name,))
+                summary["nonspec"]["unk"][name] = test_result["ok"]
             if group_id == "nsp":
                 summary["nonspec"]["nsp"][name] = test_result["ok"]
+            elif group_id == "app":
+                summary["appservice"]["app"][name] = test_result["ok"]
             elif group_id in test_mappings["federation_apis"]:
                 group = summary["federation"].get(group_id, {})
                 group[name] = test_result["ok"]
@@ -243,12 +254,7 @@ def main(results_tap_path, verbose):
     print_stats("Non-Spec APIs", summary["nonspec"], test_mappings, verbose)
     print_stats("Client-Server APIs", summary["client"], test_mappings["client_apis"], verbose)
     print_stats("Federation APIs", summary["federation"], test_mappings["federation_apis"], verbose)
-    if verbose:
-        print("The following tests don't have a group:")
-        for name in groupless_tests:
-            print("  %s" % (name,))
-    else:
-        print("%d tests don't have a group" % len(groupless_tests))
+    print_stats("Application Services APIs", summary["appservice"], test_mappings, verbose)
 
 
 

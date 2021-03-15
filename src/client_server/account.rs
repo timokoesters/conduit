@@ -40,6 +40,7 @@ const GUEST_NAME_LENGTH: usize = 10;
     feature = "conduit_bin",
     get("/_matrix/client/r0/register/available", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn get_register_available_route(
     db: State<'_, Database>,
     body: Ruma<get_username_availability::Request<'_>>,
@@ -82,6 +83,7 @@ pub async fn get_register_available_route(
     feature = "conduit_bin",
     post("/_matrix/client/r0/register", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn register_route(
     db: State<'_, Database>,
     body: Ruma<register::Request<'_>>,
@@ -453,16 +455,9 @@ pub async fn register_route(
         db.rooms.build_and_append_pdu(
             PduBuilder {
                 event_type: EventType::RoomMessage,
-                content: serde_json::to_value(message::MessageEventContent::Text(
-                    message::TextMessageEventContent {
-                        body: "Thanks for trying out Conduit! This software is still in development, so expect many bugs and missing features. If you have federation enabled, you can join the Conduit chat room by typing `/join #conduit:matrix.org`. **Important: Please don't join any other Matrix rooms over federation without permission from the room's admins.** Some actions might trigger bugs in other server implementations, breaking the chat for everyone else.".to_owned(),
-                        formatted: Some(message::FormattedBody {
-                            format: message::MessageFormat::Html,
-                            body: "Thanks for trying out Conduit! This software is still in development, so expect many bugs and missing features. If you have federation enabled, you can join the Conduit chat room by typing <code>/join #conduit:matrix.org</code>. <strong>Important: Please don't join any other Matrix rooms over federation without permission from the room's admins.</strong> Some actions might trigger bugs in other server implementations, breaking the chat for everyone else.".to_owned(),
-                        }),
-                        relates_to: None,
-                        new_content: None,
-                    },
+                content: serde_json::to_value(message::MessageEventContent::text_html(
+                        "Thanks for trying out Conduit! This software is still in development, so expect many bugs and missing features. If you have federation enabled, you can join the Conduit chat room by typing `/join #conduit:matrix.org`. **Important: Please don't join any other Matrix rooms over federation without permission from the room's admins.** Some actions might trigger bugs in other server implementations, breaking the chat for everyone else.".to_owned(),
+                        "Thanks for trying out Conduit! This software is still in development, so expect many bugs and missing features. If you have federation enabled, you can join the Conduit chat room by typing <code>/join #conduit:matrix.org</code>. <strong>Important: Please don't join any other Matrix rooms over federation without permission from the room's admins.</strong> Some actions might trigger bugs in other server implementations, breaking the chat for everyone else.".to_owned(),
                 ))
                 .expect("event is valid, we just created it"),
                 unsigned: None,
@@ -498,6 +493,7 @@ pub async fn register_route(
     feature = "conduit_bin",
     post("/_matrix/client/r0/account/password", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn change_password_route(
     db: State<'_, Database>,
     body: Ruma<change_password::Request<'_>>,
@@ -536,16 +532,16 @@ pub async fn change_password_route(
 
     db.users.set_password(&sender_user, &body.new_password)?;
 
-    // TODO: Read logout_devices field when it's available and respect that, currently not supported in Ruma
-    // See: https://github.com/ruma/ruma/issues/107
-    // Logout all devices except the current one
-    for id in db
-        .users
-        .all_device_ids(&sender_user)
-        .filter_map(|id| id.ok())
-        .filter(|id| id != sender_device)
-    {
-        db.users.remove_device(&sender_user, &id)?;
+    if body.logout_devices {
+        // Logout all devices except the current one
+        for id in db
+            .users
+            .all_device_ids(&sender_user)
+            .filter_map(|id| id.ok())
+            .filter(|id| id != sender_device)
+        {
+            db.users.remove_device(&sender_user, &id)?;
+        }
     }
 
     db.flush().await?;
@@ -562,6 +558,7 @@ pub async fn change_password_route(
     feature = "conduit_bin",
     get("/_matrix/client/r0/account/whoami", data = "<body>")
 )]
+#[tracing::instrument(skip(body))]
 pub async fn whoami_route(body: Ruma<whoami::Request>) -> ConduitResult<whoami::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
     Ok(whoami::Response {
@@ -582,6 +579,7 @@ pub async fn whoami_route(body: Ruma<whoami::Request>) -> ConduitResult<whoami::
     feature = "conduit_bin",
     post("/_matrix/client/r0/account/deactivate", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn deactivate_route(
     db: State<'_, Database>,
     body: Ruma<deactivate::Request<'_>>,

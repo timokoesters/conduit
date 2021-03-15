@@ -10,6 +10,7 @@ use rocket::put;
     feature = "conduit_bin",
     put("/_matrix/client/r0/presence/<_>/status", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn set_presence_route(
     db: State<'_, Database>,
     body: Ruma<set_presence::Request<'_>>,

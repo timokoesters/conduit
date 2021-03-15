@@ -10,6 +10,7 @@ use rocket::put;
     feature = "conduit_bin",
     put("/_matrix/client/r0/rooms/<_>/typing/<_>", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub fn create_typing_event_route(
     db: State<'_, Database>,
     body: Ruma<create_typing_event::Request<'_>>,

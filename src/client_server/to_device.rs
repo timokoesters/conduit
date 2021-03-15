@@ -12,6 +12,7 @@ use rocket::put;
     feature = "conduit_bin",
     put("/_matrix/client/r0/sendToDevice/<_>/<_>", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn send_event_to_device_route(
     db: State<'_, Database>,
     body: Ruma<send_event_to_device::Request<'_>>,

@@ -30,6 +30,9 @@ max_request_size = 20_000_000 # in bytes
 #allow_encryption = false
 #allow_federation = false
 
+# Enable jaeger to support monitoring and troubleshooting through jaeger
+#allow_jaeger = false
+
 #cache_capacity = 1073741824 # in bytes, 1024 * 1024 * 1024
 #max_concurrent_requests = 4 # How many requests Conduit sends to other servers at the same time
 #workers = 4 # default: cpu core count * 2

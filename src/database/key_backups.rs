@@ -2,7 +2,7 @@ use crate::{utils, Error, Result};
 use ruma::{
     api::client::{
         error::ErrorKind,
-        r0::backup::{BackupAlgorithm, KeyData, Sessions},
+        r0::backup::{BackupAlgorithm, KeyBackupData, RoomKeyBackup},
     },
     RoomId, UserId,
 };
@@ -129,7 +129,7 @@ impl KeyBackups {
         version: &str,
         room_id: &RoomId,
         session_id: &str,
-        key_data: &KeyData,
+        key_data: &KeyBackupData,
         globals: &super::globals::Globals,
     ) -> Result<()> {
         let mut key = user_id.to_string().as_bytes().to_vec();
@@ -153,7 +153,7 @@ impl KeyBackups {
 
         self.backupkeyid_backup.insert(
             &key,
-            &*serde_json::to_string(&key_data).expect("KeyData::to_string always works"),
+            &*serde_json::to_string(&key_data).expect("KeyBackupData::to_string always works"),
         )?;
 
         Ok(())
@@ -182,13 +182,17 @@ impl KeyBackups {
         .to_string())
     }
 
-    pub fn get_all(&self, user_id: &UserId, version: &str) -> Result<BTreeMap<RoomId, Sessions>> {
+    pub fn get_all(
+        &self,
+        user_id: &UserId,
+        version: &str,
+    ) -> Result<BTreeMap<RoomId, RoomKeyBackup>> {
         let mut prefix = user_id.to_string().as_bytes().to_vec();
         prefix.push(0xff);
         prefix.extend_from_slice(version.as_bytes());
         prefix.push(0xff);
 
-        let mut rooms = BTreeMap::<RoomId, Sessions>::new();
+        let mut rooms = BTreeMap::<RoomId, RoomKeyBackup>::new();
 
         for result in self.backupkeyid_backup.scan_prefix(&prefix).map(|r| {
             let (key, value) = r?;
@@ -211,15 +215,16 @@ impl KeyBackups {
             )
             .map_err(|_| Error::bad_database("backupkeyid_backup room_id is invalid room id."))?;
 
-            let key_data = serde_json::from_slice(&value)
-                .map_err(|_| Error::bad_database("KeyData in backupkeyid_backup is invalid."))?;
+            let key_data = serde_json::from_slice(&value).map_err(|_| {
+                Error::bad_database("KeyBackupData in backupkeyid_backup is invalid.")
+            })?;
 
             Ok::<_, Error>((room_id, session_id, key_data))
         }) {
             let (room_id, session_id, key_data) = result?;
             rooms
                 .entry(room_id)
-                .or_insert_with(|| Sessions {
+                .or_insert_with(|| RoomKeyBackup {
                     sessions: BTreeMap::new(),
                 })
                 .sessions
@@ -234,7 +239,7 @@ impl KeyBackups {
         user_id: &UserId,
         version: &str,
         room_id: &RoomId,
-    ) -> BTreeMap<String, KeyData> {
+    ) -> BTreeMap<String, KeyBackupData> {
         let mut prefix = user_id.to_string().as_bytes().to_vec();
         prefix.push(0xff);
         prefix.extend_from_slice(version.as_bytes());
@@ -257,7 +262,7 @@ impl KeyBackups {
                     })?;
 
                 let key_data = serde_json::from_slice(&value).map_err(|_| {
-                    Error::bad_database("KeyData in backupkeyid_backup is invalid.")
+                    Error::bad_database("KeyBackupData in backupkeyid_backup is invalid.")
                 })?;
 
                 Ok::<_, Error>((session_id, key_data))
@@ -272,7 +277,7 @@ impl KeyBackups {
         version: &str,
         room_id: &RoomId,
         session_id: &str,
-    ) -> Result<Option<KeyData>> {
+    ) -> Result<Option<KeyBackupData>> {
         let mut key = user_id.to_string().as_bytes().to_vec();
         key.push(0xff);
         key.extend_from_slice(version.as_bytes());
@@ -284,8 +289,9 @@ impl KeyBackups {
         self.backupkeyid_backup
             .get(&key)?
             .map(|value| {
-                serde_json::from_slice(&value)
-                    .map_err(|_| Error::bad_database("KeyData in backupkeyid_backup is invalid."))
+                serde_json::from_slice(&value).map_err(|_| {
+                    Error::bad_database("KeyBackupData in backupkeyid_backup is invalid.")
+                })
             })
             .transpose()
     }

@@ -22,6 +22,7 @@ use rocket::{get, post};
     feature = "conduit_bin",
     post("/_matrix/client/r0/createRoom", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn create_room_route(
     db: State<'_, Database>,
     body: Ruma<create_room::Request<'_>>,
@@ -306,6 +307,7 @@ pub async fn create_room_route(
     feature = "conduit_bin",
     get("/_matrix/client/r0/rooms/<_>/event/<_>", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn get_room_event_route(
     db: State<'_, Database>,
     body: Ruma<get_room_event::Request<'_>>,
@@ -333,6 +335,7 @@ pub async fn get_room_event_route(
     feature = "conduit_bin",
     post("/_matrix/client/r0/rooms/<_room_id>/upgrade", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn upgrade_room_route(
     db: State<'_, Database>,
     body: Ruma<upgrade_room::Request<'_>>,

@@ -15,6 +15,7 @@ use rocket::get;
 /// Note: Unstable features are used while developing new features. Clients should avoid using
 /// unstable features in their stable releases
 #[cfg_attr(feature = "conduit_bin", get("/_matrix/client/versions"))]
+#[tracing::instrument]
 pub async fn get_supported_versions_route() -> ConduitResult<get_supported_versions::Response> {
     let mut resp =
         get_supported_versions::Response::new(vec!["r0.5.0".to_owned(), "r0.6.0".to_owned()]);

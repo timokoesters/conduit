@@ -74,6 +74,7 @@ impl AccountData {
     }
 
     /// Returns all changes to the account data that happened after `since`.
+    #[tracing::instrument(skip(self))]
     pub fn changes_since(
         &self,
         room_id: Option<&RoomId>,

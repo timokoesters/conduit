@@ -13,6 +13,7 @@ use rocket::{delete, get, put};
     feature = "conduit_bin",
     put("/_matrix/client/r0/user/<_>/rooms/<_>/tags/<_>", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn update_tag_route(
     db: State<'_, Database>,
     body: Ruma<create_tag::Request<'_>>,
@@ -49,6 +50,7 @@ pub async fn update_tag_route(
     feature = "conduit_bin",
     delete("/_matrix/client/r0/user/<_>/rooms/<_>/tags/<_>", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn delete_tag_route(
     db: State<'_, Database>,
     body: Ruma<delete_tag::Request<'_>>,
@@ -82,6 +84,7 @@ pub async fn delete_tag_route(
     feature = "conduit_bin",
     get("/_matrix/client/r0/user/<_>/rooms/<_>/tags", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn get_tags_route(
     db: State<'_, Database>,
     body: Ruma<get_tags::Request<'_>>,

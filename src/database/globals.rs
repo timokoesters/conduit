@@ -14,20 +14,26 @@ use trust_dns_resolver::TokioAsyncResolver;
 pub const COUNTER: &str = "c";
 
 pub type DestinationCache = Arc<RwLock<HashMap<Box<ServerName>, (String, Option<String>)>>>;
+type WellKnownMap = HashMap<Box<ServerName>, (String, Option<String>)>;
 
 #[derive(Clone)]
 pub struct Globals {
+    pub actual_destination_cache: Arc<RwLock<WellKnownMap>>, // actual_destination, host
     pub(super) globals: sled::Tree,
     config: Config,
     keypair: Arc<ruma::signatures::Ed25519KeyPair>,
     reqwest_client: reqwest::Client,
-    pub actual_destination_cache: DestinationCache, // actual_destination, host
     dns_resolver: TokioAsyncResolver,
-    pub(super) servertimeout_signingkey: sled::Tree, // ServerName -> algorithm:key + pubkey
+    jwt_decoding_key: Option<jsonwebtoken::DecodingKey<'static>>,
+    pub(super) servertimeout_signingkey: sled::Tree, // ServerName + Timeout Timestamp -> algorithm:key + pubkey
 }
 
 impl Globals {
-    pub fn load(globals: sled::Tree, server_keys: sled::Tree, config: Config) -> Result<Self> {
+    pub fn load(
+        globals: sled::Tree,
+        servertimeout_signingkey: sled::Tree,
+        config: Config,
+    ) -> Result<Self> {
         let bytes = &*globals
             .update_and_fetch("keypair", utils::generate_keypair)?
             .expect("utils::generate_keypair always returns Some");
@@ -69,6 +75,11 @@ impl Globals {
             .build()
             .unwrap();
 
+        let jwt_decoding_key = config
+            .jwt_secret
+            .as_ref()
+            .map(|secret| jsonwebtoken::DecodingKey::from_secret(secret.as_bytes()).into_static());
+
         Ok(Self {
             globals,
             config,
@@ -78,7 +89,8 @@ impl Globals {
                 Error::bad_config("Failed to set up trust dns resolver with system config.")
             })?,
             actual_destination_cache: Arc::new(RwLock::new(HashMap::new())),
-            servertimeout_signingkey: server_keys,
+            servertimeout_signingkey,
+            jwt_decoding_key,
         })
     }
 
@@ -129,8 +141,16 @@ impl Globals {
         self.config.allow_federation
     }
 
+    pub fn trusted_servers(&self) -> &[Box<ServerName>] {
+        &self.config.trusted_servers
+    }
+
     pub fn dns_resolver(&self) -> &TokioAsyncResolver {
         &self.dns_resolver
+    }
+
+    pub fn jwt_decoding_key(&self) -> Option<&jsonwebtoken::DecodingKey<'_>> {
+        self.jwt_decoding_key.as_ref()
     }
 
     /// TODO: the key valid until timestamp is only honored in room version > 4
@@ -138,37 +158,31 @@ impl Globals {
     ///
     /// This doesn't actually check that the keys provided are newer than the old set.
     pub fn add_signing_key(&self, origin: &ServerName, keys: &ServerSigningKeys) -> Result<()> {
-        // Remove outdated keys
-        let now = crate::utils::millis_since_unix_epoch();
-        for item in self.servertimeout_signingkey.scan_prefix(origin.as_bytes()) {
-            let (k, _) = item?;
-            let valid_until = k
-                .splitn(2, |&b| b == 0xff)
-                .nth(1)
-                .map(crate::utils::u64_from_bytes)
-                .ok_or_else(|| Error::bad_database("Invalid signing keys."))?
-                .map_err(|_| Error::bad_database("Invalid signing key valid until bytes"))?;
+        let mut key1 = origin.as_bytes().to_vec();
+        key1.push(0xff);
 
-            if now > valid_until {
-                self.servertimeout_signingkey.remove(k)?;
-            }
-        }
+        let mut key2 = key1.clone();
 
-        let mut key = origin.as_bytes().to_vec();
-        key.push(0xff);
-        key.extend_from_slice(
-            &(keys
-                .valid_until_ts
-                .duration_since(std::time::UNIX_EPOCH)
-                .expect("time is valid")
-                .as_millis() as u64)
-                .to_be_bytes(),
-        );
+        let ts = keys
+            .valid_until_ts
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("time is valid")
+            .as_millis() as u64;
+
+        key1.extend_from_slice(&ts.to_be_bytes());
+        key2.extend_from_slice(&(ts + 1).to_be_bytes());
 
         self.servertimeout_signingkey.insert(
-            key,
+            key1,
             serde_json::to_vec(&keys.verify_keys).expect("ServerSigningKeys are a valid string"),
         )?;
+
+        self.servertimeout_signingkey.insert(
+            key2,
+            serde_json::to_vec(&keys.old_verify_keys)
+                .expect("ServerSigningKeys are a valid string"),
+        )?;
+
         Ok(())
     }
 
@@ -177,7 +191,10 @@ impl Globals {
         &self,
         origin: &ServerName,
     ) -> Result<BTreeMap<ServerSigningKeyId, VerifyKey>> {
+        let mut response = BTreeMap::new();
+
         let now = crate::utils::millis_since_unix_epoch();
+
         for item in self.servertimeout_signingkey.scan_prefix(origin.as_bytes()) {
             let (k, bytes) = item?;
             let valid_until = k
@@ -188,10 +205,11 @@ impl Globals {
                 .map_err(|_| Error::bad_database("Invalid signing key valid until bytes"))?;
             // If these keys are still valid use em!
             if valid_until > now {
-                return serde_json::from_slice(&bytes)
-                    .map_err(|_| Error::bad_database("Invalid BTreeMap<> of signing keys"));
+                let btree: BTreeMap<_, _> = serde_json::from_slice(&bytes)
+                    .map_err(|_| Error::bad_database("Invalid BTreeMap<> of signing keys"))?;
+                response.extend(btree);
             }
         }
-        Ok(BTreeMap::default())
+        Ok(response)
     }
 }

@@ -4,7 +4,7 @@ description = "A Matrix homeserver written in Rust"
 license = "Apache-2.0"
 authors = ["timokoesters <timo@koesters.xyz>"]
 homepage = "https://conduit.rs"
-repository = "https://git.koesters.xyz/timo/conduit"
+repository = "https://gitlab.com/famedly/conduit"
 readme = "README.md"
 version = "0.1.0"
 edition = "2018"
@@ -14,55 +14,64 @@ edition = "2018"
 [dependencies]
 # Used to handle requests
 # TODO: This can become optional as soon as proper configs are supported
-rocket = { git = "https://github.com/SergioBenitez/Rocket.git", rev = "c24f15c18f02319be83af4f3c1951dc220b52c5e", features = ["tls"] } # Used to handle requests
+rocket = { git = "https://github.com/SergioBenitez/Rocket.git", rev = "93e62c86eddf7cc9a7fc40b044182f83f0d7d92a", features = ["tls"] } # Used to handle requests
 #rocket = { git = "https://github.com/timokoesters/Rocket.git", branch = "empty_parameters", default-features = false, features = ["tls"] }
 
 # Used for matrix spec type definitions and helpers
-ruma = { git = "https://github.com/ruma/ruma", features = ["rand", "appservice-api", "client-api", "federation-api", "push-gateway-api", "unstable-pre-spec", "unstable-synapse-quirks", "unstable-exhaustive-types"], rev = "bba442580d6cd7ed990b2b63387eed2238cbadc8" }
+#ruma = { git = "https://github.com/ruma/ruma", features = ["rand", "appservice-api", "client-api", "federation-api", "unstable-pre-spec", "unstable-synapse-quirks", "unstable-exhaustive-types"], rev = "0a10afe6dacc2b7a50a8002c953d10b7fb4e37bc" }
 # ruma = { git = "https://github.com/DevinR528/ruma", features = ["rand", "client-api", "federation-api", "unstable-exhaustive-types", "unstable-pre-spec", "unstable-synapse-quirks"], branch = "verified-export" }
-# ruma = { path = "../ruma/ruma", features = ["unstable-exhaustive-types", "rand", "client-api", "federation-api", "unstable-pre-spec", "unstable-synapse-quirks"] }
+ruma = { path = "../ruma/ruma", features = ["unstable-exhaustive-types", "rand", "client-api", "federation-api", "push-gateway-api", "unstable-pre-spec", "unstable-synapse-quirks"] }
 
 # Used when doing state resolution
 # state-res = { git = "https://github.com/timokoesters/state-res", branch = "timo-spec-comp", features = ["unstable-pre-spec"] }
 # TODO: remove the gen-eventid feature
-state-res = { git = "https://github.com/ruma/state-res", rev = "791c66d73cf064d09db0cdf767d5fef43a343425", features = ["unstable-pre-spec", "gen-eventid"] }
-# state-res = { path = "../../state-res", features = ["unstable-pre-spec", "gen-eventid"] }
+#state-res = { git = "https://github.com/ruma/state-res", branch = "main", features = ["unstable-pre-spec", "gen-eventid"] }
+# state-res = { git = "https://github.com/ruma/state-res", rev = "791c66d73cf064d09db0cdf767d5fef43a343425", features = ["unstable-pre-spec", "gen-eventid"] }
+state-res = { path = "../state-res", features = ["unstable-pre-spec", "gen-eventid"] }
 
 # Used for long polling and federation sender, should be the same as rocket::tokio
-tokio = { version = "1.1.0", features = ["macros", "time", "sync"] }
+tokio = "1.2.0"
 # Used for storing data permanently
 sled = { version = "0.34.6", default-features = false }
 # Used for emitting log entries
-log = "0.4.11"
+log = "0.4.14"
 # Used for rocket<->ruma conversions
 http = "0.2.3"
 # Used to find data directory for default db path
 directories = "3.0.1"
-
 # Used for ruma wrapper
-serde_json = { version = "1.0.60", features = ["raw_value"] }
+serde_json = { version = "1.0.64", features = ["raw_value"] }
 # Used for appservice registration files
-serde_yaml = "0.8.14"
+serde_yaml = "0.8.17"
 # Used for pdu definition
-serde = "1.0.117"
+serde = "1.0.123"
 # Used for secure identifiers
-rand = "0.7.3"
+rand = "0.8.3"
 # Used to hash passwords
 rust-argon2 = "0.8.3"
 # Used to send requests
-reqwest = "0.11.0"
+reqwest = { version = "0.11.1" }
 # Used for conduit::Error type
-thiserror = "1.0.22"
+thiserror = "1.0.24"
 # Used to generate thumbnails for images
-image = { version = "0.23.12", default-features = false, features = ["jpeg", "png", "gif"] }
+image = { version = "0.23.14", default-features = false, features = ["jpeg", "png", "gif"] }
 # Used to encode server public key
 base64 = "0.13.0"
 # Used when hashing the state
-ring = "0.16.19"
+ring = "0.16.20"
 # Used when querying the SRV record of other servers
 trust-dns-resolver = "0.20.0"
 # Used to find matching events for appservices
-regex = "1.4.2"
+regex = "1.4.3"
+# jwt jsonwebtokens
+jsonwebtoken = "7.2.0"
+# Performance measurements
+tracing = "0.1.25"
+opentelemetry = "0.12.0"
+tracing-subscriber = "0.2.16"
+tracing-opentelemetry = "0.11.0"
+opentelemetry-jaeger = "0.11.0"
+pretty_env_logger = "0.4.0"
 
 [features]
 default = ["conduit_bin"]
@@ -77,3 +86,26 @@ required-features = ["conduit_bin"]
 [lib]
 name = "conduit"
 path = "src/lib.rs"
+
+[package.metadata.deb]
+name = "matrix-conduit"
+maintainer = "Paul van Tilburg <paul@luon.net>"
+copyright = "2020, Timo Kösters <timo@koesters.xyz>"
+license-file = ["LICENSE", "3"]
+depends = "$auto, ca-certificates"
+extended-description = """\
+A fast Matrix homeserver that is optimized for smaller, personal servers, \
+instead of a server that has high scalability."""
+section = "net"
+priority = "optional"
+assets = [
+  ["debian/env.local", "etc/matrix-conduit/local", "644"],
+  ["debian/README.Debian", "usr/share/doc/matrix-conduit/", "644"],
+  ["README.md", "usr/share/doc/matrix-conduit/", "644"],
+  ["target/release/conduit", "usr/sbin/matrix-conduit", "755"],
+]
+conf-files = [
+  "/etc/matrix-conduit/local"
+]
+maintainer-scripts = "debian/"
+systemd-units = { unit-name = "matrix-conduit" }

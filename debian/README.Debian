@@ -1,0 +1,29 @@
+Conduit for Debian
+==================
+
+Configuration
+-------------
+
+When installed, Debconf handles the configuration of the homeserver (host)name,
+the address and port it listens on. These configuration variables end up in
+/etc/matrix-conduit/debian.
+
+You can tweak more detailed settings by uncommenting and setting the variables
+in /etc/matrix-conduit/local. This involves settings such as the maximum file
+size for download/upload, enabling federation, etc.
+
+Running
+-------
+
+The package uses the matrix-conduit.service systemd unit file to start and
+stop Conduit. It loads the configuration files mentioned above to set up the
+environment before running the server.
+
+This package assumes by default that Conduit is placed behind a reverse proxy
+such as Apache or nginx. This default deployment entails just listening on
+127.0.0.1 and the free port 14004 and is reachable via a client using the URL
+http://localhost:14004.
+
+At a later stage this packaging may support also setting up TLS and running
+stand-alone.  In this case, however, you need to set up some certificates and
+renewal, for it to work properly.

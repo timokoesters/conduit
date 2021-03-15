@@ -6,6 +6,7 @@ use std::time::Duration;
 use rocket::get;
 
 #[cfg_attr(feature = "conduit_bin", get("/_matrix/client/r0/voip/turnServer"))]
+#[tracing::instrument]
 pub async fn turn_server_route() -> ConduitResult<get_turn_server_info::Response> {
     Ok(get_turn_server_info::Response {
         username: "".to_owned(),

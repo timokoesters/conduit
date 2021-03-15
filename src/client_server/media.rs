@@ -12,6 +12,7 @@ use std::convert::TryInto;
 const MXC_LENGTH: usize = 32;
 
 #[cfg_attr(feature = "conduit_bin", get("/_matrix/media/r0/config"))]
+#[tracing::instrument(skip(db))]
 pub async fn get_media_config_route(
     db: State<'_, Database>,
 ) -> ConduitResult<get_media_config::Response> {
@@ -25,6 +26,7 @@ pub async fn get_media_config_route(
     feature = "conduit_bin",
     post("/_matrix/media/r0/upload", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn create_content_route(
     db: State<'_, Database>,
     body: Ruma<create_content::Request<'_>>,
@@ -54,6 +56,7 @@ pub async fn create_content_route(
     feature = "conduit_bin",
     get("/_matrix/media/r0/download/<_>/<_>", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn get_content_route(
     db: State<'_, Database>,
     body: Ruma<get_content::Request<'_>>,
@@ -103,6 +106,7 @@ pub async fn get_content_route(
     feature = "conduit_bin",
     get("/_matrix/media/r0/thumbnail/<_>/<_>", data = "<body>")
 )]
+#[tracing::instrument(skip(db, body))]
 pub async fn get_content_thumbnail_route(
     db: State<'_, Database>,
     body: Ruma<get_content_thumbnail::Request<'_>>,
