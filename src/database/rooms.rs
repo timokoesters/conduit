@@ -1795,7 +1795,7 @@ impl Rooms {
             .filter_map(|event| event.get("sender").cloned())
             .filter_map(|sender| sender.as_str().map(|s| s.to_owned()))
             .filter_map(|sender| UserId::try_from(sender).ok())
-            .map(|user| user.server_name().to_owned());
+            .map(|user| user.server_name().to_owned()).collect::<HashSet<_>>();
 
         for remote_server in servers {
             let make_leave_response = db

@@ -22,7 +22,11 @@ use ruma::{
     serde::{to_canonical_value, CanonicalJsonObject, Raw},
     EventId, RoomId, RoomVersionId, ServerName, UserId,
 };
-use std::{collections::BTreeMap, convert::TryFrom, sync::RwLock};
+use std::{
+    collections::{BTreeMap, HashSet},
+    convert::TryFrom,
+    sync::RwLock,
+};
 
 #[cfg(feature = "conduit_bin")]
 use rocket::{get, post};
@@ -36,11 +40,29 @@ pub async fn join_room_by_id_route(
     db: State<'_, Database>,
     body: Ruma<join_room_by_id::Request<'_>>,
 ) -> ConduitResult<join_room_by_id::Response> {
+    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
+
+    let mut servers = db
+        .rooms
+        .invite_state(&sender_user, &body.room_id)?
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|event| {
+            serde_json::from_str::<serde_json::Value>(&event.json().to_string()).ok()
+        })
+        .filter_map(|event| event.get("sender").cloned())
+        .filter_map(|sender| sender.as_str().map(|s| s.to_owned()))
+        .filter_map(|sender| UserId::try_from(sender).ok())
+        .map(|user| user.server_name().to_owned())
+        .collect::<HashSet<_>>();
+
+    servers.insert(body.room_id.server_name().to_owned());
+
     join_room_by_id_helper(
         &db,
         body.sender_user.as_ref(),
         &body.room_id,
-        &[body.room_id.server_name().to_owned()],
+        &servers,
         body.third_party_signed.as_ref(),
     )
     .await
@@ -55,12 +77,31 @@ pub async fn join_room_by_id_or_alias_route(
     db: State<'_, Database>,
     body: Ruma<join_room_by_id_or_alias::Request<'_>>,
 ) -> ConduitResult<join_room_by_id_or_alias::Response> {
+    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
+
     let (servers, room_id) = match RoomId::try_from(body.room_id_or_alias.clone()) {
-        Ok(room_id) => (vec![room_id.server_name().to_owned()], room_id),
+        Ok(room_id) => {
+            let mut servers = db
+                .rooms
+                .invite_state(&sender_user, &room_id)?
+                .unwrap_or_default()
+                .iter()
+                .filter_map(|event| {
+                    serde_json::from_str::<serde_json::Value>(&event.json().to_string()).ok()
+                })
+                .filter_map(|event| event.get("sender").cloned())
+                .filter_map(|sender| sender.as_str().map(|s| s.to_owned()))
+                .filter_map(|sender| UserId::try_from(sender).ok())
+                .map(|user| user.server_name().to_owned())
+                .collect::<HashSet<_>>();
+
+            servers.insert(room_id.server_name().to_owned());
+            (servers, room_id)
+        }
         Err(room_alias) => {
             let response = client_server::get_alias_helper(&db, &room_alias).await?;
 
-            (response.0.servers, response.0.room_id)
+            (response.0.servers.into_iter().collect(), response.0.room_id)
         }
     };
 
@@ -406,7 +447,7 @@ async fn join_room_by_id_helper(
     db: &Database,
     sender_user: Option<&UserId>,
     room_id: &RoomId,
-    servers: &[Box<ServerName>],
+    servers: &HashSet<Box<ServerName>>,
     _third_party_signed: Option<&IncomingThirdPartySigned>,
 ) -> ConduitResult<join_room_by_id::Response> {
     let sender_user = sender_user.expect("user is authenticated");
@@ -417,12 +458,12 @@ async fn join_room_by_id_helper(
             "No server available to assist in joining.",
         ));
 
-        for remote_server in servers {
+        for remote_server in dbg!(servers) {
             let make_join_response = db
                 .sending
                 .send_federation_request(
                     &db.globals,
-                    remote_server,
+                    dbg!(remote_server),
                     federation::membership::create_join_event_template::v1::Request {
                         room_id,
                         user_id: sender_user,
@@ -433,7 +474,7 @@ async fn join_room_by_id_helper(
 
             make_join_response_and_server = make_join_response.map(|r| (r, remote_server));
 
-            if make_join_response_and_server.is_ok() {
+            if dbg!(&make_join_response_and_server).is_ok() {
                 break;
             }
         }
