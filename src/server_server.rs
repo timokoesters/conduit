@@ -1188,48 +1188,47 @@ pub(crate) fn fetch_and_handle_events<'a>(
         let mut pdus = vec![];
         for id in events {
             // a. Look at auth cache
-            let pdu =
-                match auth_cache.get(id) {
+            let pdu = match auth_cache.get(id) {
+                Some(pdu) => {
+                    debug!("Found {} in cache", id);
+                    // We already have the auth chain for events in cache
+                    pdu.clone()
+                }
+                // b. Look in the main timeline (pduid_pdu tree)
+                // c. Look at outlier pdu tree
+                // (get_pdu checks both)
+                None => match db.rooms.get_pdu(&id)? {
                     Some(pdu) => {
-                        debug!("Found {} in cache", id);
-                        // We already have the auth chain for events in cache
-                        pdu.clone()
+                        debug!("Found {} in db", id);
+                        // We need to fetch the auth chain
+                        let _ = fetch_and_handle_events(
+                            db,
+                            origin,
+                            &pdu.auth_events,
+                            pub_key_map,
+                            auth_cache,
+                        )
+                        .await?;
+                        Arc::new(pdu)
                     }
-                    // b. Look in the main timeline (pduid_pdu tree)
-                    // c. Look at outlier pdu tree
-                    // (get_pdu checks both)
-                    None => match db.rooms.get_pdu(&id)? {
-                        Some(pdu) => {
-                            debug!("Found {} in db", id);
-                            // We need to fetch the auth chain
-                            let _ = fetch_and_handle_events(
-                                db,
+                    None => {
+                        // d. Ask origin server over federation
+                        debug!("Fetching {} over federation.", id);
+                        match db
+                            .sending
+                            .send_federation_request(
+                                &db.globals,
                                 origin,
-                                &pdu.auth_events,
-                                pub_key_map,
-                                auth_cache,
+                                get_event::v1::Request { event_id: &id },
                             )
-                            .await?;
-                            Arc::new(pdu)
-                        }
-                        None => {
-                            // d. Ask origin server over federation
-                            debug!("Fetching {} over federation.", id);
-                            match db
-                                .sending
-                                .send_federation_request(
-                                    &db.globals,
-                                    origin,
-                                    get_event::v1::Request { event_id: &id },
-                                )
-                                .await
-                            {
-                                Ok(res) => {
-                                    debug!("Got {} over federation: {:?}", id, res);
-                                    let (event_id, value) =
-                                        crate::pdu::gen_event_id_canonical_json(&res.pdu)?;
-                                    // This will also fetch the auth chain
-                                    match handle_incoming_pdu(
+                            .await
+                        {
+                            Ok(res) => {
+                                debug!("Got {} over federation: {:?}", id, res);
+                                let (event_id, mut value) =
+                                    crate::pdu::gen_event_id_canonical_json(&res.pdu)?;
+                                // This will also fetch the auth chain
+                                match handle_incoming_pdu(
                                     origin,
                                     &event_id,
                                     value.clone(),
@@ -1240,25 +1239,31 @@ pub(crate) fn fetch_and_handle_events<'a>(
                                 )
                                 .await
                                 {
-                                    Ok(_) => Arc::new(serde_json::from_value(
-                                        serde_json::to_value(value)
-                                            .expect("canonicaljsonobject is valid value"),
-                                    )
-                                    .expect("This is possible because handle_incoming_pdu worked")),
+                                    Ok(_) => {
+                                        value.insert(
+                                            "event_id".to_owned(),
+                                            to_canonical_value(&event_id)
+                                                .expect("EventId is a valid CanonicalJsonValue"),
+                                        );
+
+                                        Arc::new(serde_json::from_value(
+                                            serde_json::to_value(value).expect("canonicaljsonobject is valid value"),
+                                        ).expect("This is possible because handle_incoming_pdu worked"))
+                                    }
                                     Err(e) => {
                                         warn!("Authentication of event {} failed: {:?}", id, e);
                                         continue;
                                     }
                                 }
-                                }
-                                Err(_) => {
-                                    warn!("Failed to fetch event: {}", id);
-                                    continue;
-                                }
+                            }
+                            Err(_) => {
+                                warn!("Failed to fetch event: {}", id);
+                                continue;
                             }
                         }
-                    },
-                };
+                    }
+                },
+            };
             auth_cache.entry(id.clone()).or_insert_with(|| pdu.clone());
             pdus.push(pdu);
         }
