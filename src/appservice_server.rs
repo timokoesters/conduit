@@ -22,28 +22,33 @@ where
     let destination = registration.get("url").unwrap().as_str().unwrap();
     let hs_token = registration.get("hs_token").unwrap().as_str().unwrap();
 
-    let mut http_request = request
-        .try_into_http_request::<BytesMut>(&destination, SendAccessToken::IfRequired(""))
-        .unwrap()
-        .map(|body| body.freeze());
+    globals
+        .reqwest_client()
+        .send_customized_matrix_request(
+            &destination,
+            SendAccessToken::IfRequired(""),
+            request,
+            |http_request| {
+                let mut parts = http_request.uri().clone().into_parts();
+                let old_path_and_query = parts.path_and_query.unwrap().as_str().to_owned();
+                let symbol = if old_path_and_query.contains('?') {
+                    "&"
+                } else {
+                    "?"
+                };
 
-    let mut parts = http_request.uri().clone().into_parts();
-    let old_path_and_query = parts.path_and_query.unwrap().as_str().to_owned();
-    let symbol = if old_path_and_query.contains('?') {
-        "&"
-    } else {
-        "?"
-    };
+                parts.path_and_query =
+                    Some((old_path_and_query + symbol + "access_token=" + hs_token).parse()?);
+                *http_request.uri_mut() = parts.try_into()?;
 
-    parts.path_and_query = Some(
-        (old_path_and_query + symbol + "access_token=" + hs_token)
-            .parse()
-            .unwrap(),
-    );
-    *http_request.uri_mut() = parts.try_into().expect("our manipulation is always valid");
-
-    let mut reqwest_request = reqwest::Request::try_from(http_request)
-        .expect("all http requests are valid reqwest requests");
+                Ok(())
+            },
+        )
+        .await
+        .map_err(|e| {
+            warn!("Appservice error: {}", e);
+            Error::BadServerResponse("Server returned an error.")
+        })?;
 
     *reqwest_request.timeout_mut() = Some(Duration::from_secs(30));
 
