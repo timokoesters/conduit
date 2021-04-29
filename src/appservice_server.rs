@@ -1,6 +1,5 @@
 use crate::{utils, Error, Result};
 use bytes::BytesMut;
-use http::header::{HeaderValue, CONTENT_TYPE};
 use log::warn;
 use ruma::api::{IncomingResponse, OutgoingRequest, SendAccessToken};
 use std::{
@@ -39,11 +38,6 @@ where
             .unwrap(),
     );
     *http_request.uri_mut() = parts.try_into().expect("our manipulation is always valid");
-
-    http_request.headers_mut().insert(
-        CONTENT_TYPE,
-        HeaderValue::from_str("application/json").unwrap(),
-    );
 
     let mut reqwest_request = reqwest::Request::try_from(http_request)
         .expect("all http requests are valid reqwest requests");
