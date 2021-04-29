@@ -8,9 +8,11 @@ use ruma::{
             set_room_account_data,
         },
     },
-    events::{custom::CustomEventContent, BasicEvent},
+    events::{custom::CustomEventContent, AnyBasicEventContent, BasicEvent},
     serde::Raw,
 };
+use serde::Deserialize;
+use serde_json::value::RawValue as RawJsonValue;
 
 #[cfg(feature = "conduit_bin")]
 use rocket::{get, put};
@@ -91,14 +93,17 @@ pub async fn get_global_account_data_route(
 ) -> ConduitResult<get_global_account_data::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
-    let data = db
+    let event = db
         .account_data
-        .get::<Raw<ruma::events::AnyBasicEvent>>(None, sender_user, body.event_type.clone().into())?
+        .get::<Box<RawJsonValue>>(None, sender_user, body.event_type.clone().into())?
         .ok_or(Error::BadRequest(ErrorKind::NotFound, "Data not found."))?;
-
     db.flush().await?;
 
-    Ok(get_global_account_data::Response { account_data: data }.into())
+    let account_data = serde_json::from_str::<ExtractEventContent>(event.get())
+        .expect("event to contain a content field")
+        .content;
+
+    Ok(get_global_account_data::Response { account_data }.into())
 }
 
 #[cfg_attr(
@@ -115,16 +120,24 @@ pub async fn get_room_account_data_route(
 ) -> ConduitResult<get_room_account_data::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
-    let data = db
+    let event = db
         .account_data
-        .get::<Raw<ruma::events::AnyBasicEvent>>(
+        .get::<Box<RawJsonValue>>(
             Some(&body.room_id),
             sender_user,
             body.event_type.clone().into(),
         )?
         .ok_or(Error::BadRequest(ErrorKind::NotFound, "Data not found."))?;
-
     db.flush().await?;
 
-    Ok(get_room_account_data::Response { account_data: data }.into())
+    let account_data = serde_json::from_str::<ExtractEventContent>(event.get())
+        .expect("event to contain a content field")
+        .content;
+
+    Ok(get_room_account_data::Response { account_data }.into())
+}
+
+#[derive(Deserialize)]
+struct ExtractEventContent {
+    content: Raw<AnyBasicEventContent>,
 }
