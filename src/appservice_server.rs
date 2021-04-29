@@ -1,7 +1,10 @@
 use crate::{utils, Error, Result};
 use bytes::BytesMut;
 use log::warn;
-use ruma::api::{IncomingResponse, OutgoingRequest, SendAccessToken};
+use ruma::{
+    api::{IncomingResponse, OutgoingRequest, SendAccessToken},
+    client::HttpClientExt,
+};
 use std::{
     convert::{TryFrom, TryInto},
     fmt::Debug,

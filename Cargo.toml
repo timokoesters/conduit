@@ -18,7 +18,7 @@ rocket = { git = "https://github.com/SergioBenitez/Rocket.git", rev = "801e04bd5
 #rocket = { git = "https://github.com/timokoesters/Rocket.git", branch = "empty_parameters", default-features = false, features = ["tls"] }
 
 # Used for matrix spec type definitions and helpers
-ruma = { git = "https://github.com/ruma/ruma", rev = "bdb38279c34e423a80533f3f7b0c8cada238559f", features = ["compat", "rand", "appservice-api-c", "client-api", "federation-api", "push-gateway-api-c", "unstable-pre-spec", "unstable-exhaustive-types"] }
+ruma = { git = "https://github.com/ruma/ruma", rev = "bdb38279c34e423a80533f3f7b0c8cada238559f", features = ["client", "compat", "rand", "appservice-api-c", "client-api", "federation-api", "push-gateway-api-c", "unstable-pre-spec", "unstable-exhaustive-types"] }
 #ruma = { git = "https://github.com/timokoesters/ruma", rev = "220d5b4a76b3b781f7f8297fbe6b14473b04214b", features = ["compat", "rand", "appservice-api-c", "client-api", "federation-api", "push-gateway-api-c", "unstable-pre-spec", "unstable-exhaustive-types"] }
 #ruma = { path = "../ruma/ruma", features = ["compat", "rand", "appservice-api-c", "client-api", "federation-api", "push-gateway-api-c", "unstable-pre-spec", "unstable-exhaustive-types"] }
 
