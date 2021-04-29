@@ -49,8 +49,9 @@ pub async fn set_displayname_route(
                                 )?
                                 .ok_or_else(|| {
                                     Error::bad_database(
-                                "Tried to send displayname update for user not in the room.",
-                            )
+                                        "Tried to send displayname update for user not in the \
+                                         room.",
+                                    )
                                 })?
                                 .content,
                         )
@@ -149,8 +150,9 @@ pub async fn set_avatar_url_route(
                                 )?
                                 .ok_or_else(|| {
                                     Error::bad_database(
-                                "Tried to send displayname update for user not in the room.",
-                            )
+                                        "Tried to send displayname update for user not in the \
+                                         room.",
+                                    )
                                 })?
                                 .content,
                         )
