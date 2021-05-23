@@ -9,7 +9,7 @@ use regex::Regex;
 use rocket::{response::content::Json, State};
 use ruma::{
     api::{
-        client::error::ErrorKind,
+        client::error::{Error as RumaError, ErrorKind},
         federation::{
             device::get_devices::{self, v1::UserDevice},
             directory::{get_public_rooms, get_public_rooms_filtered},
@@ -27,7 +27,7 @@ use ruma::{
             query::{get_profile_information, get_room_information},
             transactions::{edu::Edu, send_transaction_message},
         },
-        IncomingResponse, OutgoingRequest, OutgoingResponse, SendAccessToken,
+        EndpointError, IncomingResponse, OutgoingRequest, OutgoingResponse, SendAccessToken,
     },
     directory::{IncomingFilter, IncomingRoomNetwork},
     events::{
@@ -261,12 +261,20 @@ where
                 );
             }
 
-            let response = T::IncomingResponse::try_from_http_response(
-                http_response_builder
-                    .body(body)
-                    .expect("reqwest body is valid http body"),
-            );
-            response.map_err(|_| Error::BadServerResponse("Server returned bad response."))
+            let http_response = http_response_builder
+                .body(body)
+                .expect("reqwest body is valid http body");
+
+            if status == 200 {
+                let response = T::IncomingResponse::try_from_http_response(http_response);
+                response.map_err(|_| Error::BadServerResponse("Server returned bad 200 response."))
+            } else {
+                Err(Error::FederationError(destination.to_owned(), 
+                    RumaError::try_from_http_response(http_response).map_err(|_| {
+                        Error::BadServerResponse("Server returned bad error response.")
+                    })?,
+                ))
+            }
         }
         Err(e) => Err(e.into()),
     }

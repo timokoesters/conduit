@@ -1,5 +1,8 @@
 use log::{error, warn};
-use ruma::api::client::{error::ErrorKind, r0::uiaa::UiaaInfo};
+use ruma::{ServerName, api::client::{
+    error::{Error as RumaError, ErrorKind},
+    r0::uiaa::UiaaInfo,
+}};
 use thiserror::Error;
 
 #[cfg(feature = "conduit_bin")]
@@ -10,7 +13,7 @@ use {
         response::{self, Responder},
         Request,
     },
-    ruma::api::client::{error::Error as RumaError, r0::uiaa::UiaaResponse},
+    ruma::api::client::r0::uiaa::UiaaResponse,
 };
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -32,6 +35,8 @@ pub enum Error {
         #[from]
         source: reqwest::Error,
     },
+    #[error("{0}")]
+    FederationError(Box<ServerName>, RumaError),
     #[error("{0}")]
     BadServerResponse(&'static str),
     #[error("{0}")]
@@ -66,8 +71,13 @@ where
     'o: 'r,
 {
     fn respond_to(self, r: &'r Request<'_>) -> response::Result<'o> {
-        if let Self::Uiaa(uiaainfo) = &self {
-            return RumaResponse::from(UiaaResponse::AuthResponse(uiaainfo.clone())).respond_to(r);
+        if let Self::Uiaa(uiaainfo) = self {
+            return RumaResponse::from(UiaaResponse::AuthResponse(uiaainfo)).respond_to(r);
+        }
+
+        if let Self::FederationError(origin, mut error) = self {
+            error.message = format!("Answer from {}: {}", origin, error.message);
+            return RumaResponse::from(error).respond_to(r);
         }
 
         let message = format!("{}", self);
