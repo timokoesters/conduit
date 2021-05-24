@@ -212,8 +212,8 @@ async fn main() {
         let rocket = setup_rocket(raw_config, db);
         rocket.launch().await.unwrap();
     } else {
-        std::env::set_var("CONDUIT_LOG", config.log);
-        pretty_env_logger::init_custom_env("CONDUIT_LOG");
+        std::env::set_var("RUST_LOG", config.log);
+        tracing_subscriber::fmt::init();
 
         let rocket = setup_rocket(raw_config, db);
         rocket.launch().await.unwrap();
