@@ -63,7 +63,7 @@ pub async fn set_room_account_data_route(
 ) -> ConduitResult<set_room_account_data::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
-    let data = serde_json::from_str(body.data.get())
+    let data = serde_json::from_str::<serde_json::Value>(body.data.get())
         .map_err(|_| Error::BadRequest(ErrorKind::BadJson, "Data is invalid."))?;
 
     let event_type = body.event_type.to_string();
