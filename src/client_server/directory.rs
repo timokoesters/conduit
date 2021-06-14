@@ -315,6 +315,36 @@ pub async fn get_public_rooms_filtered_helper(
             Ok(chunk)
         })
         .filter_map(|r: Result<_>| r.ok()) // Filter out buggy rooms
+        .filter(|chunk| {
+            if let Some(query) = filter
+                .generic_search_term
+                .as_ref()
+                .map(|q| q.to_lowercase())
+            {
+                if let Some(name) = &chunk.name {
+                    if name.to_lowercase().contains(&query) {
+                        return true;
+                    }
+                }
+
+                if let Some(topic) = &chunk.topic {
+                    if topic.to_lowercase().contains(&query) {
+                        return true;
+                    }
+                }
+
+                if let Some(canonical_alias) = &chunk.canonical_alias {
+                    if canonical_alias.as_str().to_lowercase().contains(&query) {
+                        return true;
+                    }
+                }
+
+                false
+            } else {
+                // No search term
+                true
+            }
+        })
         // We need to collect all, so we can sort by member count
         .collect::<Vec<_>>();
 
