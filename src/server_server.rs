@@ -14,6 +14,7 @@ use ruma::{
             r0::to_device,
         },
         federation::{
+            authorization::get_event_authorization,
             device::get_devices::{self, v1::UserDevice},
             directory::{get_public_rooms, get_public_rooms_filtered},
             discovery::{
@@ -1823,6 +1824,50 @@ pub fn get_missing_events_route(
     }
 
     Ok(get_missing_events::v1::Response { events }.into())
+}
+
+#[cfg_attr(
+    feature = "conduit_bin",
+    get("/_matrix/federation/v1/event_auth/<_>/<_>", data = "<body>")
+)]
+#[tracing::instrument(skip(db, body))]
+pub fn get_event_authorization_route(
+    db: State<'_, Arc<Database>>,
+    body: Ruma<get_event_authorization::v1::Request<'_>>,
+) -> ConduitResult<get_event_authorization::v1::Response> {
+    if !db.globals.allow_federation() {
+        return Err(Error::bad_config("Federation is disabled."));
+    }
+
+    let mut auth_chain = Vec::new();
+    let mut auth_chain_ids = BTreeSet::<EventId>::new();
+    let mut todo = BTreeSet::new();
+    todo.insert(body.event_id.clone());
+
+    while let Some(event_id) = todo.iter().next().cloned() {
+        if let Some(pdu) = db.rooms.get_pdu(&event_id)? {
+            todo.extend(
+                pdu.auth_events
+                    .clone()
+                    .into_iter()
+                    .collect::<BTreeSet<_>>()
+                    .difference(&auth_chain_ids)
+                    .cloned(),
+            );
+            auth_chain_ids.extend(pdu.auth_events.into_iter());
+
+            let pdu_json = PduEvent::convert_to_outgoing_federation_event(
+                db.rooms.get_pdu_json(&event_id)?.unwrap(),
+            );
+            auth_chain.push(pdu_json);
+        } else {
+            warn!("Could not find pdu mentioned in auth events.");
+        }
+
+        todo.remove(&event_id);
+    }
+
+    Ok(get_event_authorization::v1::Response { auth_chain }.into())
 }
 
 #[cfg_attr(
