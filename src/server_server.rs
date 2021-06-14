@@ -20,7 +20,7 @@ use ruma::{
                 get_remote_server_keys, get_server_keys, get_server_version, ServerSigningKeys,
                 VerifyKey,
             },
-            event::{get_event, get_missing_events, get_room_state_ids},
+            event::{get_event, get_missing_events, get_room_state, get_room_state_ids},
             keys::{claim_keys, get_keys},
             membership::{
                 create_invite,
@@ -1825,6 +1825,69 @@ pub fn get_missing_events_route(
     }
 
     Ok(get_missing_events::v1::Response { events }.into())
+}
+
+#[cfg_attr(
+    feature = "conduit_bin",
+    get("/_matrix/federation/v1/state/<_>", data = "<body>")
+)]
+#[tracing::instrument(skip(db, body))]
+pub fn get_room_state_route(
+    db: State<'_, Arc<Database>>,
+    body: Ruma<get_room_state::v1::Request<'_>>,
+) -> ConduitResult<get_room_state::v1::Response> {
+    if !db.globals.allow_federation() {
+        return Err(Error::bad_config("Federation is disabled."));
+    }
+
+    let shortstatehash = db
+        .rooms
+        .pdu_shortstatehash(&body.event_id)?
+        .ok_or(Error::BadRequest(
+            ErrorKind::NotFound,
+            "Pdu state not found.",
+        ))?;
+
+    let pdus = db
+        .rooms
+        .state_full_ids(shortstatehash)?
+        .into_iter()
+        .map(|id| {
+            PduEvent::convert_to_outgoing_federation_event(
+                db.rooms.get_pdu_json(&id).unwrap().unwrap(),
+            )
+        })
+        .collect();
+
+    let mut auth_chain = Vec::new();
+    let mut auth_chain_ids = BTreeSet::<EventId>::new();
+    let mut todo = BTreeSet::new();
+    todo.insert(body.event_id.clone());
+
+    while let Some(event_id) = todo.iter().next().cloned() {
+        if let Some(pdu) = db.rooms.get_pdu(&event_id)? {
+            todo.extend(
+                pdu.auth_events
+                    .clone()
+                    .into_iter()
+                    .collect::<BTreeSet<_>>()
+                    .difference(&auth_chain_ids)
+                    .cloned(),
+            );
+            auth_chain_ids.extend(pdu.auth_events.into_iter());
+
+            let pdu_json = PduEvent::convert_to_outgoing_federation_event(
+                db.rooms.get_pdu_json(&event_id)?.unwrap(),
+            );
+            auth_chain.push(pdu_json);
+        } else {
+            warn!("Could not find pdu mentioned in auth events.");
+        }
+
+        todo.remove(&event_id);
+    }
+
+    Ok(get_room_state::v1::Response { auth_chain, pdus }.into())
 }
 
 #[cfg_attr(
