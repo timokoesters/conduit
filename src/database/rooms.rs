@@ -1497,7 +1497,7 @@ impl Rooms {
         prefix.push(0xff);
 
         let mut current = prefix.clone();
-        current.extend_from_slice(&until.to_be_bytes());
+        current.extend_from_slice(&(until.saturating_sub(1)).to_be_bytes()); // -1 because we don't want event at `until`
 
         let current: &[u8] = &current;
 

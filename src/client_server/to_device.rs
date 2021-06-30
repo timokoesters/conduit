@@ -19,7 +19,9 @@ pub async fn send_event_to_device_route(
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
     let sender_device = body.sender_device.as_deref();
 
+    // TODO: uncomment when https://github.com/vector-im/element-android/issues/3589 is solved
     // Check if this is a new transaction id
+    /*
     if db
         .transaction_ids
         .existing_txnid(sender_user, sender_device, &body.txn_id)?
@@ -27,6 +29,7 @@ pub async fn send_event_to_device_route(
     {
         return Ok(send_event_to_device::Response.into());
     }
+    */
 
     for (target_user_id, map) in &body.messages {
         for (target_device_id_maybe, event) in map {
