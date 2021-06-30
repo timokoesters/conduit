@@ -111,7 +111,7 @@ impl Tree for SledEngineTree {
         backwards: bool,
     ) -> Box<dyn Iterator<Item = (Box<[u8]>, Box<[u8]>)>> {
         let iter = if backwards {
-            self.0.range(..from)
+            self.0.range(..=from)
         } else {
             self.0.range(from..)
         };

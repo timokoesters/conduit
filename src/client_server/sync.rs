@@ -88,7 +88,9 @@ pub async fn sync_events_route(
 
     let we_have_to_wait = rx.borrow().is_none();
     if we_have_to_wait {
-        let _ = rx.changed().await;
+        if let Err(e) = rx.changed().await {
+            error!("Error waiting for sync: {}", e);
+        }
     }
 
     let result = match rx

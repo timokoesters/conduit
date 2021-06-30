@@ -726,10 +726,9 @@ impl Users {
         json.insert("sender".to_owned(), sender.to_string().into());
         json.insert("content".to_owned(), content);
 
-        self.todeviceid_events.insert(
-            &key,
-            &serde_json::to_vec(&json).expect("Map::to_vec always works"),
-        )?;
+        let value = serde_json::to_vec(&json).expect("Map::to_vec always works");
+
+        self.todeviceid_events.insert(&key, &value)?;
 
         Ok(())
     }
@@ -774,7 +773,7 @@ impl Users {
 
         for (key, _) in self
             .todeviceid_events
-            .iter_from(&last, true)
+            .iter_from(&last, true) // this includes last
             .take_while(move |(k, _)| k.starts_with(&prefix))
             .map(|(key, _)| {
                 Ok::<_, Error>((
