@@ -668,11 +668,10 @@ impl Rooms {
         &self,
         pdu: &PduEvent,
         mut pdu_json: CanonicalJsonObject,
-        count: u64,
-        pdu_id: &[u8],
         leaves: &[EventId],
         db: &Database,
-    ) -> Result<()> {
+    ) -> Result<Vec<u8>> {
+        // returns pdu id
         // Make unsigned fields correct. This is not properly documented in the spec, but state
         // events need to have previous content in the unsigned field, so clients can easily
         // interpret things like membership changes
@@ -710,20 +709,30 @@ impl Rooms {
 
         self.replace_pdu_leaves(&pdu.room_id, leaves)?;
 
+        let count1 = db.globals.next_count()?;
         // Mark as read first so the sending client doesn't get a notification even if appending
         // fails
         self.edus
-            .private_read_set(&pdu.room_id, &pdu.sender, count, &db.globals)?;
+            .private_read_set(&pdu.room_id, &pdu.sender, count1, &db.globals)?;
         self.reset_notification_counts(&pdu.sender, &pdu.room_id)?;
 
+        let count2 = db.globals.next_count()?;
+        let mut pdu_id = pdu.room_id.as_bytes().to_vec();
+        pdu_id.push(0xff);
+        pdu_id.extend_from_slice(&count2.to_be_bytes());
+
+        // There's a brief moment of time here where the count is updated but the pdu does not
+        // exist. This could theoretically lead to dropped pdus, but it's extremely rare
+
         self.pduid_pdu.insert(
-            pdu_id,
+            &pdu_id,
             &serde_json::to_vec(&pdu_json).expect("CanonicalJsonObject is always a valid"),
         )?;
 
         // This also replaces the eventid of any outliers with the correct
         // pduid, removing the place holder.
-        self.eventid_pduid.insert(pdu.event_id.as_bytes(), pdu_id)?;
+        self.eventid_pduid
+            .insert(pdu.event_id.as_bytes(), &pdu_id)?;
 
         // See if the event matches any known pushers
         for user in db
@@ -911,7 +920,7 @@ impl Rooms {
             _ => {}
         }
 
-        Ok(())
+        Ok(pdu_id)
     }
 
     pub fn reset_notification_counts(&self, user_id: &UserId, room_id: &RoomId) -> Result<()> {
@@ -1356,11 +1365,9 @@ impl Rooms {
         // pdu without it's state. This is okay because append_pdu can't fail.
         let statehashid = self.append_to_state(&pdu, &db.globals)?;
 
-        self.append_pdu(
+        let pdu_id = self.append_pdu(
             &pdu,
             pdu_json,
-            count,
-            &pdu_id,
             // Since this PDU references all pdu_leaves we can update the leaves
             // of the room
             &[pdu.event_id.clone()],

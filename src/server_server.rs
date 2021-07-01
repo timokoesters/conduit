@@ -1592,21 +1592,14 @@ pub(crate) fn append_incoming_pdu(
     new_room_leaves: HashSet<EventId>,
     state: &StateMap<Arc<PduEvent>>,
 ) -> Result<Vec<u8>> {
-    let count = db.globals.next_count()?;
-    let mut pdu_id = pdu.room_id.as_bytes().to_vec();
-    pdu_id.push(0xff);
-    pdu_id.extend_from_slice(&count.to_be_bytes());
-
     // We append to state before appending the pdu, so we don't have a moment in time with the
     // pdu without it's state. This is okay because append_pdu can't fail.
     db.rooms
         .set_event_state(&pdu.event_id, state, &db.globals)?;
 
-    db.rooms.append_pdu(
+    let pdu_id = db.rooms.append_pdu(
         pdu,
         pdu_json,
-        count,
-        &pdu_id,
         &new_room_leaves.into_iter().collect::<Vec<_>>(),
         &db,
     )?;

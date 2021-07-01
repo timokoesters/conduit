@@ -318,6 +318,7 @@ where
             }),
             Err(e) => {
                 warn!("{:?}", e);
+                // Bad Json
                 Failure((Status::raw(583), ()))
             }
         }
