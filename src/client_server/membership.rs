@@ -619,16 +619,9 @@ async fn join_room_by_id_helper(
         // pdu without it's state. This is okay because append_pdu can't fail.
         let statehashid = db.rooms.append_to_state(&pdu, &db.globals)?;
 
-        let count = db.globals.next_count()?;
-        let mut pdu_id = room_id.as_bytes().to_vec();
-        pdu_id.push(0xff);
-        pdu_id.extend_from_slice(&count.to_be_bytes());
-
         db.rooms.append_pdu(
             &pdu,
             utils::to_canonical_object(&pdu).expect("Pdu is valid canonical object"),
-            count,
-            &pdu_id,
             &[pdu.event_id.clone()],
             db,
         )?;
