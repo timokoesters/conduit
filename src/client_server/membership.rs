@@ -902,19 +902,37 @@ pub async fn invite_helper(
         )
         .map_err(|_| Error::BadRequest(ErrorKind::InvalidParam, "Origin field is invalid."))?;
 
-        let pdu_id =
-            server_server::handle_incoming_pdu(&origin, &event_id, value, true, &db, &pub_key_map)
-                .await
-                .map_err(|_| {
-                    Error::BadRequest(
-                        ErrorKind::InvalidParam,
-                        "Error while handling incoming PDU.",
-                    )
-                })?
-                .ok_or(Error::BadRequest(
-                    ErrorKind::InvalidParam,
-                    "Could not accept incoming PDU as timeline event.",
-                ))?;
+        let mutex = Arc::clone(
+            db.globals
+                .roomid_mutex
+                .write()
+                .unwrap()
+                .entry(room_id.clone())
+                .or_default(),
+        );
+        let mutex_lock = mutex.lock().await;
+
+        let pdu_id = server_server::handle_incoming_pdu(
+            &origin,
+            &event_id,
+            &room_id,
+            value,
+            true,
+            &db,
+            &pub_key_map,
+        )
+        .await
+        .map_err(|_| {
+            Error::BadRequest(
+                ErrorKind::InvalidParam,
+                "Error while handling incoming PDU.",
+            )
+        })?
+        .ok_or(Error::BadRequest(
+            ErrorKind::InvalidParam,
+            "Could not accept incoming PDU as timeline event.",
+        ))?;
+        drop(mutex_lock);
 
         for server in db
             .rooms

@@ -5,7 +5,7 @@ use ruma::{
         client::r0::sync::sync_events,
         federation::discovery::{ServerSigningKeys, VerifyKey},
     },
-    DeviceId, EventId, MilliSecondsSinceUnixEpoch, ServerName, ServerSigningKeyId, UserId,
+    DeviceId, EventId, MilliSecondsSinceUnixEpoch, RoomId, ServerName, ServerSigningKeyId, UserId,
 };
 use rustls::{ServerCertVerifier, WebPKIVerifier};
 use std::{
@@ -16,7 +16,7 @@ use std::{
     sync::{Arc, RwLock},
     time::{Duration, Instant},
 };
-use tokio::sync::{broadcast, Semaphore};
+use tokio::sync::{broadcast, Mutex, Semaphore};
 use trust_dns_resolver::TokioAsyncResolver;
 
 use super::abstraction::Tree;
@@ -39,6 +39,7 @@ pub struct Globals {
     pub bad_event_ratelimiter: Arc<RwLock<BTreeMap<EventId, RateLimitState>>>,
     pub bad_signature_ratelimiter: Arc<RwLock<BTreeMap<Vec<String>, RateLimitState>>>,
     pub servername_ratelimiter: Arc<RwLock<BTreeMap<Box<ServerName>, Arc<Semaphore>>>>,
+    pub roomid_mutex: RwLock<BTreeMap<RoomId, Arc<Mutex<()>>>>,
     pub sync_receivers: RwLock<
         BTreeMap<
             (UserId, Box<DeviceId>),
@@ -191,6 +192,7 @@ impl Globals {
             bad_event_ratelimiter: Arc::new(RwLock::new(BTreeMap::new())),
             bad_signature_ratelimiter: Arc::new(RwLock::new(BTreeMap::new())),
             servername_ratelimiter: Arc::new(RwLock::new(BTreeMap::new())),
+            roomid_mutex: RwLock::new(BTreeMap::new()),
             sync_receivers: RwLock::new(BTreeMap::new()),
             rotate: RotationHandler::new(),
         };
