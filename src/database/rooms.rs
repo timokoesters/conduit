@@ -20,12 +20,7 @@ use ruma::{
     state_res::{self, Event, RoomVersion, StateMap},
     uint, EventId, RoomAliasId, RoomId, RoomVersionId, ServerName, UserId,
 };
-use std::{
-    collections::{BTreeMap, HashMap, HashSet},
-    convert::{TryFrom, TryInto},
-    mem,
-    sync::{Arc, RwLock},
-};
+use std::{collections::{BTreeMap, BTreeSet, HashMap, HashSet}, convert::{TryFrom, TryInto}, mem, sync::{Arc, RwLock}};
 
 use super::{abstraction::Tree, admin::AdminCommand, pusher};
 
@@ -89,7 +84,7 @@ pub struct Rooms {
 impl Rooms {
     /// Builds a StateMap by iterating over all keys that start
     /// with state_hash, this gives the full state for the given state_hash.
-    pub fn state_full_ids(&self, shortstatehash: u64) -> Result<Vec<EventId>> {
+    pub fn state_full_ids(&self, shortstatehash: u64) -> Result<BTreeSet<EventId>> {
         Ok(self
             .stateid_shorteventid
             .scan_prefix(shortstatehash.to_be_bytes().to_vec())
@@ -1217,6 +1212,7 @@ impl Rooms {
             state_key,
             redacts,
         } = pdu_builder;
+
         // TODO: Make sure this isn't called twice in parallel
         let prev_events = self
             .get_pdu_leaves(&room_id)?
