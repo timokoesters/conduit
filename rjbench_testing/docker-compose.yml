@@ -1,0 +1,32 @@
+# Conduit
+version: '3'
+
+services:
+    homeserver:
+        image: ubuntu:21.04
+        restart: unless-stopped
+        working_dir: "/srv/conduit"
+        entrypoint: /srv/conduit/conduit
+        ports:
+            - 8448:8000
+        volumes:
+            - ../target/db:/srv/conduit/.local/share/conduit
+            - ../target/debug/conduit:/srv/conduit/conduit
+            - ./conduit.toml:/srv/conduit/conduit.toml:ro
+        environment:
+            # CONDUIT_SERVER_NAME: localhost:8000  # replace with your own name
+            # CONDUIT_TRUSTED_SERVERS: '["matrix.org"]'
+            ### Uncomment and change values as desired
+            # CONDUIT_ADDRESS: 127.0.0.1
+            # CONDUIT_PORT: 8000
+            CONDUIT_CONFIG: '/srv/conduit/conduit.toml'
+            # Available levels are: error, warn, info, debug, trace - more info at: https://docs.rs/env_logger/*/env_logger/#enabling-logging
+            # CONDUIT_LOG: debug  # default is: "info,rocket=off,_=off,sled=off"
+            # CONDUIT_ALLOW_JAEGER: 'false'
+            # CONDUIT_ALLOW_REGISTRATION : 'false'
+            # CONDUIT_ALLOW_ENCRYPTION: 'false'
+            # CONDUIT_ALLOW_FEDERATION: 'false'
+            # CONDUIT_DATABASE_PATH: /srv/conduit/.local/share/conduit
+            # CONDUIT_WORKERS: 10
+            # CONDUIT_MAX_REQUEST_SIZE: 20_000_000  # in bytes, ~20 MB
+

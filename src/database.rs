@@ -84,10 +84,13 @@ fn default_log() -> String {
 }
 
 #[cfg(feature = "sled")]
-pub type Engine = abstraction::SledEngine;
+pub type Engine = abstraction::sled::SledEngine;
 
 #[cfg(feature = "rocksdb")]
-pub type Engine = abstraction::RocksDbEngine;
+pub type Engine = abstraction::rocksdb::RocksDbEngine;
+
+#[cfg(feature = "sqlite")]
+pub type Engine = abstraction::sqlite::SqliteEngine;
 
 pub struct Database {
     pub globals: globals::Globals,

@@ -1078,13 +1078,13 @@ impl Rooms {
                 .scan_prefix(old_shortstatehash.clone())
                 // Chop the old_shortstatehash out leaving behind the short state key
                 .map(|(k, v)| (k[old_shortstatehash.len()..].to_vec(), v))
-                .collect::<HashMap<Vec<u8>, Box<[u8]>>>()
+                .collect::<HashMap<Vec<u8>, Vec<u8>>>()
         } else {
             HashMap::new()
         };
 
         if let Some(state_key) = &new_pdu.state_key {
-            let mut new_state: HashMap<Vec<u8>, Box<[u8]>> = old_state;
+            let mut new_state: HashMap<Vec<u8>, Vec<u8>> = old_state;
 
             let mut new_state_key = new_pdu.kind.as_ref().as_bytes().to_vec();
             new_state_key.push(0xff);
@@ -1209,13 +1209,13 @@ impl Rooms {
             redacts,
         } = pdu_builder;
         // TODO: Make sure this isn't called twice in parallel
-        let prev_events = self
+        let prev_events = dbg!(self
             .get_pdu_leaves(&room_id)?
             .into_iter()
             .take(20)
-            .collect::<Vec<_>>();
+            .collect::<Vec<_>>());
 
-        let create_event = self.room_state_get(&room_id, &EventType::RoomCreate, "")?;
+        let create_event = dbg!(self.room_state_get(&room_id, &EventType::RoomCreate, ""))?;
 
         let create_event_content = create_event
             .as_ref()
@@ -1450,7 +1450,7 @@ impl Rooms {
         &'a self,
         user_id: &UserId,
         room_id: &RoomId,
-    ) -> impl Iterator<Item = Result<(Box<[u8]>, PduEvent)>> + 'a {
+    ) -> impl Iterator<Item = Result<(Vec<u8>, PduEvent)>> + 'a {
         self.pdus_since(user_id, room_id, 0)
     }
 
@@ -1462,7 +1462,7 @@ impl Rooms {
         user_id: &UserId,
         room_id: &RoomId,
         since: u64,
-    ) -> impl Iterator<Item = Result<(Box<[u8]>, PduEvent)>> + 'a {
+    ) -> impl Iterator<Item = Result<(Vec<u8>, PduEvent)>> + 'a {
         let mut prefix = room_id.as_bytes().to_vec();
         prefix.push(0xff);
 
@@ -1491,7 +1491,7 @@ impl Rooms {
         user_id: &UserId,
         room_id: &RoomId,
         until: u64,
-    ) -> impl Iterator<Item = Result<(Box<[u8]>, PduEvent)>> + 'a {
+    ) -> impl Iterator<Item = Result<(Vec<u8>, PduEvent)>> + 'a {
         // Create the first part of the full pdu id
         let mut prefix = room_id.as_bytes().to_vec();
         prefix.push(0xff);
@@ -1523,7 +1523,7 @@ impl Rooms {
         user_id: &UserId,
         room_id: &RoomId,
         from: u64,
-    ) -> impl Iterator<Item = Result<(Box<[u8]>, PduEvent)>> + 'a {
+    ) -> impl Iterator<Item = Result<(Vec<u8>, PduEvent)>> + 'a {
         // Create the first part of the full pdu id
         let mut prefix = room_id.as_bytes().to_vec();
         prefix.push(0xff);

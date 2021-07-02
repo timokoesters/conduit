@@ -127,7 +127,7 @@ impl AccountData {
         room_id: Option<&RoomId>,
         user_id: &UserId,
         kind: &EventType,
-    ) -> Result<Option<(Box<[u8]>, Box<[u8]>)>> {
+    ) -> Result<Option<(Vec<u8>, Vec<u8>)>> {
         let mut prefix = room_id
             .map(|r| r.to_string())
             .unwrap_or_default()

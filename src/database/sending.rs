@@ -357,7 +357,7 @@ impl Sending {
     }
 
     #[tracing::instrument(skip(self))]
-    pub fn send_push_pdu(&self, pdu_id: &[u8], senderkey: Box<[u8]>) -> Result<()> {
+    pub fn send_push_pdu(&self, pdu_id: &[u8], senderkey: Vec<u8>) -> Result<()> {
         let mut key = b"$".to_vec();
         key.extend_from_slice(&senderkey);
         key.push(0xff);

@@ -73,7 +73,7 @@ impl PushData {
     pub fn get_pusher_senderkeys<'a>(
         &'a self,
         sender: &UserId,
-    ) -> impl Iterator<Item = Box<[u8]>> + 'a {
+    ) -> impl Iterator<Item = Vec<u8>> + 'a {
         let mut prefix = sender.as_bytes().to_vec();
         prefix.push(0xff);
 

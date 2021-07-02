@@ -35,6 +35,12 @@ pub enum Error {
         #[from]
         source: rocksdb::Error,
     },
+    #[cfg(feature = "sqlite")]
+    #[error("There was a problem with the connection to the sqlite database: {source}")]
+    SqliteError {
+        #[from]
+        source: rusqlite::Error,
+    },
     #[error("Could not generate an image.")]
     ImageError {
         #[from]
