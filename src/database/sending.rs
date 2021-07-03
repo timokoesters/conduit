@@ -30,7 +30,7 @@ use ruma::{
     receipt::ReceiptType,
     MilliSecondsSinceUnixEpoch, ServerName, UInt, UserId,
 };
-use tokio::{select, sync::Semaphore};
+use tokio::{select, sync::{Semaphore, RwLock}};
 
 use super::abstraction::Tree;
 
@@ -90,7 +90,7 @@ enum TransactionStatus {
 }
 
 impl Sending {
-    pub fn start_handler(&self, db: Arc<Database>, mut receiver: mpsc::UnboundedReceiver<Vec<u8>>) {
+    pub fn start_handler(&self, db: Arc<RwLock<Database>>, mut receiver: mpsc::UnboundedReceiver<Vec<u8>>) {
         tokio::spawn(async move {
             let mut futures = FuturesUnordered::new();
 
@@ -98,8 +98,11 @@ impl Sending {
 
             // Retry requests we could not finish yet
             let mut initial_transactions = HashMap::<OutgoingKind, Vec<SendingEventType>>::new();
+
+            let guard = db.read().await;
+
             for (key, outgoing_kind, event) in
-                db.sending
+                guard.sending
                     .servercurrentevents
                     .iter()
                     .filter_map(|(key, _)| {
@@ -117,17 +120,19 @@ impl Sending {
                         "Dropping some current events: {:?} {:?} {:?}",
                         key, outgoing_kind, event
                     );
-                    db.sending.servercurrentevents.remove(&key).unwrap();
+                    guard.sending.servercurrentevents.remove(&key).unwrap();
                     continue;
                 }
 
                 entry.push(event);
             }
 
+            drop(guard);
+
             for (outgoing_kind, events) in initial_transactions {
                 current_transaction_status
                     .insert(outgoing_kind.get_prefix(), TransactionStatus::Running);
-                futures.push(Self::handle_events(outgoing_kind.clone(), events, &db));
+                futures.push(Self::handle_events(outgoing_kind.clone(), events, Arc::clone(&db)));
             }
 
             loop {
@@ -135,15 +140,17 @@ impl Sending {
                     Some(response) = futures.next() => {
                         match response {
                             Ok(outgoing_kind) => {
+                                let guard = db.read().await;
+
                                 let prefix = outgoing_kind.get_prefix();
-                                for (key, _) in db.sending.servercurrentevents
+                                for (key, _) in guard.sending.servercurrentevents
                                     .scan_prefix(prefix.clone())
                                 {
-                                    db.sending.servercurrentevents.remove(&key).unwrap();
+                                    guard.sending.servercurrentevents.remove(&key).unwrap();
                                 }
 
                                 // Find events that have been added since starting the last request
-                                let new_events = db.sending.servernamepduids
+                                let new_events = guard.sending.servernamepduids
                                     .scan_prefix(prefix.clone())
                                     .map(|(k, _)| {
                                         SendingEventType::Pdu(k[prefix.len()..].to_vec())
@@ -161,17 +168,19 @@ impl Sending {
                                             SendingEventType::Pdu(b) |
                                             SendingEventType::Edu(b) => {
                                                 current_key.extend_from_slice(&b);
-                                                db.sending.servercurrentevents.insert(&current_key, &[]).unwrap();
-                                                db.sending.servernamepduids.remove(&current_key).unwrap();
+                                                guard.sending.servercurrentevents.insert(&current_key, &[]).unwrap();
+                                                guard.sending.servernamepduids.remove(&current_key).unwrap();
                                              }
                                         }
                                     }
+
+                                    drop(guard);
 
                                     futures.push(
                                         Self::handle_events(
                                             outgoing_kind.clone(),
                                             new_events,
-                                            &db,
+                                            Arc::clone(&db),
                                         )
                                     );
                                 } else {
@@ -192,13 +201,15 @@ impl Sending {
                     },
                     Some(key) = receiver.next() => {
                         if let Ok((outgoing_kind, event)) = Self::parse_servercurrentevent(&key) {
+                            let guard = db.read().await;
+
                             if let Ok(Some(events)) = Self::select_events(
                                 &outgoing_kind,
                                 vec![(event, key)],
                                 &mut current_transaction_status,
-                                &db
+                                &guard
                             ) {
-                                futures.push(Self::handle_events(outgoing_kind, events, &db));
+                                futures.push(Self::handle_events(outgoing_kind, events, Arc::clone(&db)));
                             }
                         }
                     }
@@ -403,8 +414,10 @@ impl Sending {
     async fn handle_events(
         kind: OutgoingKind,
         events: Vec<SendingEventType>,
-        db: &Database,
+        db: Arc<RwLock<Database>>,
     ) -> std::result::Result<OutgoingKind, (OutgoingKind, Error)> {
+        let db = db.read().await;
+
         match &kind {
             OutgoingKind::Appservice(server) => {
                 let mut pdu_jsons = Vec::new();
@@ -543,7 +556,7 @@ impl Sending {
                         &pusher,
                         rules_for_user,
                         &pdu,
-                        db,
+                        &db,
                     )
                     .await
                     .map(|_response| kind.clone())

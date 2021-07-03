@@ -1,5 +1,8 @@
 use super::State;
-use crate::{client_server::invite_helper, pdu::PduBuilder, ConduitResult, Database, Error, Ruma};
+use crate::{
+    client_server::invite_helper, database::ReadGuard, pdu::PduBuilder, ConduitResult, Database,
+    Error, Ruma,
+};
 use log::info;
 use ruma::{
     api::client::{
@@ -24,7 +27,7 @@ use rocket::{get, post};
 )]
 #[tracing::instrument(skip(db, body))]
 pub async fn create_room_route(
-    db: State<'_, Arc<Database>>,
+    db: ReadGuard,
     body: Ruma<create_room::Request<'_>>,
 ) -> ConduitResult<create_room::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -294,7 +297,7 @@ pub async fn create_room_route(
 )]
 #[tracing::instrument(skip(db, body))]
 pub async fn get_room_event_route(
-    db: State<'_, Arc<Database>>,
+    db: ReadGuard,
     body: Ruma<get_room_event::Request<'_>>,
 ) -> ConduitResult<get_room_event::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -322,7 +325,7 @@ pub async fn get_room_event_route(
 )]
 #[tracing::instrument(skip(db, body))]
 pub async fn upgrade_room_route(
-    db: State<'_, Arc<Database>>,
+    db: ReadGuard,
     body: Ruma<upgrade_room::Request<'_>>,
     _room_id: String,
 ) -> ConduitResult<upgrade_room::Response> {

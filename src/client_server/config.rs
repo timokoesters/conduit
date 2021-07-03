@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use super::State;
-use crate::{ConduitResult, Database, Error, Ruma};
+use crate::{database::ReadGuard, ConduitResult, Database, Error, Ruma};
 use ruma::{
     api::client::{
         error::ErrorKind,
@@ -25,7 +25,7 @@ use rocket::{get, put};
 )]
 #[tracing::instrument(skip(db, body))]
 pub async fn set_global_account_data_route(
-    db: State<'_, Arc<Database>>,
+    db: ReadGuard,
     body: Ruma<set_global_account_data::Request<'_>>,
 ) -> ConduitResult<set_global_account_data::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -60,7 +60,7 @@ pub async fn set_global_account_data_route(
 )]
 #[tracing::instrument(skip(db, body))]
 pub async fn set_room_account_data_route(
-    db: State<'_, Arc<Database>>,
+    db: ReadGuard,
     body: Ruma<set_room_account_data::Request<'_>>,
 ) -> ConduitResult<set_room_account_data::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -92,7 +92,7 @@ pub async fn set_room_account_data_route(
 )]
 #[tracing::instrument(skip(db, body))]
 pub async fn get_global_account_data_route(
-    db: State<'_, Arc<Database>>,
+    db: ReadGuard,
     body: Ruma<get_global_account_data::Request<'_>>,
 ) -> ConduitResult<get_global_account_data::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -119,7 +119,7 @@ pub async fn get_global_account_data_route(
 )]
 #[tracing::instrument(skip(db, body))]
 pub async fn get_room_account_data_route(
-    db: State<'_, Arc<Database>>,
+    db: ReadGuard,
     body: Ruma<get_room_account_data::Request<'_>>,
 ) -> ConduitResult<get_room_account_data::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");

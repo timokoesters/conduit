@@ -12,7 +12,7 @@ mod pdu;
 mod ruma_wrapper;
 mod utils;
 
-use std::sync::Arc;
+use std::{sync::{Arc, Weak}, time::{Duration, Instant}};
 
 use database::Config;
 pub use database::Database;
@@ -30,10 +30,14 @@ use rocket::{
     },
     routes, Request,
 };
+use tokio::{
+    sync::RwLock,
+    time::{interval, Interval},
+};
 use tracing::span;
 use tracing_subscriber::{prelude::*, Registry};
 
-fn setup_rocket(config: Figment, data: Arc<Database>) -> rocket::Rocket<rocket::Build> {
+fn setup_rocket(config: Figment, data: Arc<RwLock<Database>>) -> rocket::Rocket<rocket::Build> {
     rocket::custom(config)
         .manage(data)
         .mount(
@@ -200,6 +204,31 @@ async fn main() {
     let db = Database::load_or_create(config.clone())
         .await
         .expect("config is valid");
+
+    {
+        let weak: Weak<RwLock<Database>> = Arc::downgrade(&db);
+
+        tokio::spawn(async {
+            let weak = weak;
+
+            let mut i = interval(Duration::from_secs(10));
+
+            loop {
+                i.tick().await;
+
+                if let Some(arc) = Weak::upgrade(&weak) {
+                    log::warn!("wal-trunc: locking...");
+                    let guard = arc.write().await;
+                    log::warn!("wal-trunc: locked, flushing...");
+                    let start = Instant::now();
+                    guard.flush_wal();
+                    log::warn!("wal-trunc: locked, flushed in {:?}", start.elapsed());
+                } else {
+                    break;
+                }
+            }
+        });
+    }
 
     if config.allow_jaeger {
         let (tracer, _uninstall) = opentelemetry_jaeger::new_pipeline()

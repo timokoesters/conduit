@@ -59,6 +59,7 @@ $RECYCLE.BIN/
 # Conduit
 Rocket.toml
 conduit.toml
+conduit.db
 
 # Etc.
 **/*.rs.bk

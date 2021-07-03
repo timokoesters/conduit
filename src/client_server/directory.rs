@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use super::State;
-use crate::{ConduitResult, Database, Error, Result, Ruma};
+use crate::{database::ReadGuard, ConduitResult, Database, Error, Result, Ruma};
 use log::info;
 use ruma::{
     api::{
@@ -35,7 +35,7 @@ use rocket::{get, post, put};
 )]
 #[tracing::instrument(skip(db, body))]
 pub async fn get_public_rooms_filtered_route(
-    db: State<'_, Arc<Database>>,
+    db: ReadGuard,
     body: Ruma<get_public_rooms_filtered::Request<'_>>,
 ) -> ConduitResult<get_public_rooms_filtered::Response> {
     get_public_rooms_filtered_helper(
@@ -55,7 +55,7 @@ pub async fn get_public_rooms_filtered_route(
 )]
 #[tracing::instrument(skip(db, body))]
 pub async fn get_public_rooms_route(
-    db: State<'_, Arc<Database>>,
+    db: ReadGuard,
     body: Ruma<get_public_rooms::Request<'_>>,
 ) -> ConduitResult<get_public_rooms::Response> {
     let response = get_public_rooms_filtered_helper(
@@ -84,7 +84,7 @@ pub async fn get_public_rooms_route(
 )]
 #[tracing::instrument(skip(db, body))]
 pub async fn set_room_visibility_route(
-    db: State<'_, Arc<Database>>,
+    db: ReadGuard,
     body: Ruma<set_room_visibility::Request<'_>>,
 ) -> ConduitResult<set_room_visibility::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -114,7 +114,7 @@ pub async fn set_room_visibility_route(
 )]
 #[tracing::instrument(skip(db, body))]
 pub async fn get_room_visibility_route(
-    db: State<'_, Arc<Database>>,
+    db: ReadGuard,
     body: Ruma<get_room_visibility::Request<'_>>,
 ) -> ConduitResult<get_room_visibility::Response> {
     Ok(get_room_visibility::Response {

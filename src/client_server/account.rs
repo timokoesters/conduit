@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, convert::TryInto, sync::Arc};
 
 use super::{State, DEVICE_ID_LENGTH, SESSION_ID_LENGTH, TOKEN_LENGTH};
-use crate::{pdu::PduBuilder, utils, ConduitResult, Database, Error, Ruma};
+use crate::{database::ReadGuard, pdu::PduBuilder, utils, ConduitResult, Database, Error, Ruma};
 use log::info;
 use ruma::{
     api::client::{
@@ -42,7 +42,7 @@ const GUEST_NAME_LENGTH: usize = 10;
 )]
 #[tracing::instrument(skip(db, body))]
 pub async fn get_register_available_route(
-    db: State<'_, Arc<Database>>,
+    db: ReadGuard,
     body: Ruma<get_username_availability::Request<'_>>,
 ) -> ConduitResult<get_username_availability::Response> {
     // Validate user id
@@ -85,7 +85,7 @@ pub async fn get_register_available_route(
 )]
 #[tracing::instrument(skip(db, body))]
 pub async fn register_route(
-    db: State<'_, Arc<Database>>,
+    db: ReadGuard,
     body: Ruma<register::Request<'_>>,
 ) -> ConduitResult<register::Response> {
     if !db.globals.allow_registration() && !body.from_appservice {
@@ -496,7 +496,7 @@ pub async fn register_route(
 )]
 #[tracing::instrument(skip(db, body))]
 pub async fn change_password_route(
-    db: State<'_, Arc<Database>>,
+    db: ReadGuard,
     body: Ruma<change_password::Request<'_>>,
 ) -> ConduitResult<change_password::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -588,7 +588,7 @@ pub async fn whoami_route(body: Ruma<whoami::Request>) -> ConduitResult<whoami::
 )]
 #[tracing::instrument(skip(db, body))]
 pub async fn deactivate_route(
-    db: State<'_, Arc<Database>>,
+    db: ReadGuard,
     body: Ruma<deactivate::Request<'_>>,
 ) -> ConduitResult<deactivate::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");

@@ -10,6 +10,7 @@ use ruma::{
     events::{room::message, EventType},
     UserId,
 };
+use tokio::sync::RwLock;
 
 pub enum AdminCommand {
     RegisterAppservice(serde_yaml::Value),
@@ -25,20 +26,22 @@ pub struct Admin {
 impl Admin {
     pub fn start_handler(
         &self,
-        db: Arc<Database>,
+        db: Arc<RwLock<Database>>,
         mut receiver: mpsc::UnboundedReceiver<AdminCommand>,
     ) {
         tokio::spawn(async move {
             // TODO: Use futures when we have long admin commands
             //let mut futures = FuturesUnordered::new();
 
-            let conduit_user = UserId::try_from(format!("@conduit:{}", db.globals.server_name()))
+            let guard = db.read().await;
+
+            let conduit_user = UserId::try_from(format!("@conduit:{}", guard.globals.server_name()))
                 .expect("@conduit:server_name is valid");
 
-            let conduit_room = db
+            let conduit_room = guard
                 .rooms
                 .id_from_alias(
-                    &format!("#admins:{}", db.globals.server_name())
+                    &format!("#admins:{}", guard.globals.server_name())
                         .try_into()
                         .expect("#admins:server_name is a valid room alias"),
                 )
@@ -48,24 +51,10 @@ impl Admin {
                 warn!("Conduit instance does not have an #admins room. Logging to that room will not work. Restart Conduit after creating a user to fix this.");
             }
 
+            drop(guard);
+
             let send_message = |message: message::MessageEventContent| {
-                if let Some(conduit_room) = &conduit_room {
-                    db.rooms
-                        .build_and_append_pdu(
-                            PduBuilder {
-                                event_type: EventType::RoomMessage,
-                                content: serde_json::to_value(message)
-                                    .expect("event is valid, we just created it"),
-                                unsigned: None,
-                                state_key: None,
-                                redacts: None,
-                            },
-                            &conduit_user,
-                            &conduit_room,
-                            &db,
-                        )
-                        .unwrap();
-                }
+
             };
 
             loop {
@@ -73,10 +62,10 @@ impl Admin {
                     Some(event) = receiver.next() => {
                         match event {
                             AdminCommand::RegisterAppservice(yaml) => {
-                                db.appservice.register_appservice(yaml).unwrap(); // TODO handle error
+                                db.read().await.appservice.register_appservice(yaml).unwrap(); // TODO handle error
                             }
                             AdminCommand::ListAppservices => {
-                                if let Ok(appservices) = db.appservice.iter_ids().map(|ids| ids.collect::<Vec<_>>()) {
+                                if let Ok(appservices) = db.read().await.appservice.iter_ids().map(|ids| ids.collect::<Vec<_>>()) {
                                     let count = appservices.len();
                                     let output = format!(
                                         "Appservices ({}): {}",
@@ -89,7 +78,24 @@ impl Admin {
                                 }
                             }
                             AdminCommand::SendMessage(message) => {
-                                send_message(message);
+                                if let Some(conduit_room) = &conduit_room {
+                                    let guard = db.read().await;
+                                    guard.rooms
+                                        .build_and_append_pdu(
+                                            PduBuilder {
+                                                event_type: EventType::RoomMessage,
+                                                content: serde_json::to_value(message)
+                                                    .expect("event is valid, we just created it"),
+                                                unsigned: None,
+                                                state_key: None,
+                                                redacts: None,
+                                            },
+                                            &conduit_user,
+                                            &conduit_room,
+                                            &guard,
+                                        )
+                                        .unwrap();
+                                }
                             }
                         }
                     }

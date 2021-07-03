@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use super::State;
-use crate::{ConduitResult, Database, Error, Ruma};
+use crate::{database::ReadGuard, ConduitResult, Database, Error, Ruma};
 use ruma::api::client::{
     error::ErrorKind,
     r0::backup::{
@@ -21,7 +21,7 @@ use rocket::{delete, get, post, put};
 )]
 #[tracing::instrument(skip(db, body))]
 pub async fn create_backup_route(
-    db: State<'_, Arc<Database>>,
+    db: ReadGuard,
     body: Ruma<create_backup::Request>,
 ) -> ConduitResult<create_backup::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -40,7 +40,7 @@ pub async fn create_backup_route(
 )]
 #[tracing::instrument(skip(db, body))]
 pub async fn update_backup_route(
-    db: State<'_, Arc<Database>>,
+    db: ReadGuard,
     body: Ruma<update_backup::Request<'_>>,
 ) -> ConduitResult<update_backup::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -58,7 +58,7 @@ pub async fn update_backup_route(
 )]
 #[tracing::instrument(skip(db, body))]
 pub async fn get_latest_backup_route(
-    db: State<'_, Arc<Database>>,
+    db: ReadGuard,
     body: Ruma<get_latest_backup::Request>,
 ) -> ConduitResult<get_latest_backup::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -86,7 +86,7 @@ pub async fn get_latest_backup_route(
 )]
 #[tracing::instrument(skip(db, body))]
 pub async fn get_backup_route(
-    db: State<'_, Arc<Database>>,
+    db: ReadGuard,
     body: Ruma<get_backup::Request<'_>>,
 ) -> ConduitResult<get_backup::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -113,7 +113,7 @@ pub async fn get_backup_route(
 )]
 #[tracing::instrument(skip(db, body))]
 pub async fn delete_backup_route(
-    db: State<'_, Arc<Database>>,
+    db: ReadGuard,
     body: Ruma<delete_backup::Request<'_>>,
 ) -> ConduitResult<delete_backup::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -132,7 +132,7 @@ pub async fn delete_backup_route(
 )]
 #[tracing::instrument(skip(db, body))]
 pub async fn add_backup_keys_route(
-    db: State<'_, Arc<Database>>,
+    db: ReadGuard,
     body: Ruma<add_backup_keys::Request<'_>>,
 ) -> ConduitResult<add_backup_keys::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -166,7 +166,7 @@ pub async fn add_backup_keys_route(
 )]
 #[tracing::instrument(skip(db, body))]
 pub async fn add_backup_key_sessions_route(
-    db: State<'_, Arc<Database>>,
+    db: ReadGuard,
     body: Ruma<add_backup_key_sessions::Request<'_>>,
 ) -> ConduitResult<add_backup_key_sessions::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -198,7 +198,7 @@ pub async fn add_backup_key_sessions_route(
 )]
 #[tracing::instrument(skip(db, body))]
 pub async fn add_backup_key_session_route(
-    db: State<'_, Arc<Database>>,
+    db: ReadGuard,
     body: Ruma<add_backup_key_session::Request<'_>>,
 ) -> ConduitResult<add_backup_key_session::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -227,7 +227,7 @@ pub async fn add_backup_key_session_route(
 )]
 #[tracing::instrument(skip(db, body))]
 pub async fn get_backup_keys_route(
-    db: State<'_, Arc<Database>>,
+    db: ReadGuard,
     body: Ruma<get_backup_keys::Request<'_>>,
 ) -> ConduitResult<get_backup_keys::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -243,7 +243,7 @@ pub async fn get_backup_keys_route(
 )]
 #[tracing::instrument(skip(db, body))]
 pub async fn get_backup_key_sessions_route(
-    db: State<'_, Arc<Database>>,
+    db: ReadGuard,
     body: Ruma<get_backup_key_sessions::Request<'_>>,
 ) -> ConduitResult<get_backup_key_sessions::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -261,7 +261,7 @@ pub async fn get_backup_key_sessions_route(
 )]
 #[tracing::instrument(skip(db, body))]
 pub async fn get_backup_key_session_route(
-    db: State<'_, Arc<Database>>,
+    db: ReadGuard,
     body: Ruma<get_backup_key_session::Request<'_>>,
 ) -> ConduitResult<get_backup_key_session::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -283,7 +283,7 @@ pub async fn get_backup_key_session_route(
 )]
 #[tracing::instrument(skip(db, body))]
 pub async fn delete_backup_keys_route(
-    db: State<'_, Arc<Database>>,
+    db: ReadGuard,
     body: Ruma<delete_backup_keys::Request<'_>>,
 ) -> ConduitResult<delete_backup_keys::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -306,7 +306,7 @@ pub async fn delete_backup_keys_route(
 )]
 #[tracing::instrument(skip(db, body))]
 pub async fn delete_backup_key_sessions_route(
-    db: State<'_, Arc<Database>>,
+    db: ReadGuard,
     body: Ruma<delete_backup_key_sessions::Request<'_>>,
 ) -> ConduitResult<delete_backup_key_sessions::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -329,7 +329,7 @@ pub async fn delete_backup_key_sessions_route(
 )]
 #[tracing::instrument(skip(db, body))]
 pub async fn delete_backup_key_session_route(
-    db: State<'_, Arc<Database>>,
+    db: ReadGuard,
     body: Ruma<delete_backup_key_session::Request<'_>>,
 ) -> ConduitResult<delete_backup_key_session::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");

@@ -15,7 +15,8 @@ pub use error::{Error, Result};
 pub use pdu::PduEvent;
 pub use rocket::Config;
 pub use ruma_wrapper::{ConduitResult, Ruma, RumaResponse};
-use std::ops::Deref;
+use std::{ops::Deref, sync::Arc};
+use tokio::sync::RwLock;
 
 pub struct State<'r, T: Send + Sync + 'static>(pub &'r T);
 

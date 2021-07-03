@@ -19,16 +19,22 @@ use abstraction::DatabaseEngine;
 use directories::ProjectDirs;
 use log::error;
 use lru_cache::LruCache;
-use rocket::futures::{channel::mpsc, stream::FuturesUnordered, StreamExt};
+use rocket::{
+    futures::{channel::mpsc, stream::FuturesUnordered, StreamExt},
+    outcome::IntoOutcome,
+    request::{FromRequest, Request},
+    try_outcome, State,
+};
 use ruma::{DeviceId, ServerName, UserId};
 use serde::Deserialize;
 use std::{
     collections::HashMap,
     fs::{self, remove_dir_all},
     io::Write,
+    ops::Deref,
     sync::{Arc, RwLock},
 };
-use tokio::sync::Semaphore;
+use tokio::sync::{OwnedRwLockReadGuard, RwLock as TokioRwLock, RwLockReadGuard, Semaphore};
 
 use self::proxy::ProxyConfig;
 
@@ -122,7 +128,7 @@ impl Database {
     }
 
     /// Load an existing database or create a new one.
-    pub async fn load_or_create(config: Config) -> Result<Arc<Self>> {
+    pub async fn load_or_create(config: Config) -> Result<Arc<TokioRwLock<Self>>> {
         let builder = Engine::open(&config)?;
 
         if config.max_request_size < 1024 {
@@ -132,7 +138,7 @@ impl Database {
         let (admin_sender, admin_receiver) = mpsc::unbounded();
         let (sending_sender, sending_receiver) = mpsc::unbounded();
 
-        let db = Arc::new(Self {
+        let db = Arc::new(TokioRwLock::from(Self {
             _db: builder.clone(),
             users: users::Users {
                 userid_password: builder.open_tree("userid_password")?,
@@ -238,98 +244,105 @@ impl Database {
                 builder.open_tree("server_signingkeys")?,
                 config,
             )?,
-        });
+        }));
 
-        // MIGRATIONS
-        // TODO: database versions of new dbs should probably not be 0
-        if db.globals.database_version()? < 1 {
-            for (roomserverid, _) in db.rooms.roomserverids.iter() {
-                let mut parts = roomserverid.split(|&b| b == 0xff);
-                let room_id = parts.next().expect("split always returns one element");
-                let servername = match parts.next() {
-                    Some(s) => s,
-                    None => {
-                        error!("Migration: Invalid roomserverid in db.");
+        {
+            let db = db.read().await;
+            // MIGRATIONS
+            // TODO: database versions of new dbs should probably not be 0
+            if db.globals.database_version()? < 1 {
+                for (roomserverid, _) in db.rooms.roomserverids.iter() {
+                    let mut parts = roomserverid.split(|&b| b == 0xff);
+                    let room_id = parts.next().expect("split always returns one element");
+                    let servername = match parts.next() {
+                        Some(s) => s,
+                        None => {
+                            error!("Migration: Invalid roomserverid in db.");
+                            continue;
+                        }
+                    };
+                    let mut serverroomid = servername.to_vec();
+                    serverroomid.push(0xff);
+                    serverroomid.extend_from_slice(room_id);
+
+                    db.rooms.serverroomids.insert(&serverroomid, &[])?;
+                }
+
+                db.globals.bump_database_version(1)?;
+
+                println!("Migration: 0 -> 1 finished");
+            }
+
+            if db.globals.database_version()? < 2 {
+                // We accidentally inserted hashed versions of "" into the db instead of just ""
+                for (userid, password) in db.users.userid_password.iter() {
+                    let password = utils::string_from_bytes(&password);
+
+                    let empty_hashed_password = password.map_or(false, |password| {
+                        argon2::verify_encoded(&password, b"").unwrap_or(false)
+                    });
+
+                    if empty_hashed_password {
+                        db.users.userid_password.insert(&userid, b"")?;
+                    }
+                }
+
+                db.globals.bump_database_version(2)?;
+
+                println!("Migration: 1 -> 2 finished");
+            }
+
+            if db.globals.database_version()? < 3 {
+                // Move media to filesystem
+                for (key, content) in db.media.mediaid_file.iter() {
+                    if content.len() == 0 {
                         continue;
                     }
-                };
-                let mut serverroomid = servername.to_vec();
-                serverroomid.push(0xff);
-                serverroomid.extend_from_slice(room_id);
 
-                db.rooms.serverroomids.insert(&serverroomid, &[])?;
-            }
-
-            db.globals.bump_database_version(1)?;
-
-            println!("Migration: 0 -> 1 finished");
-        }
-
-        if db.globals.database_version()? < 2 {
-            // We accidentally inserted hashed versions of "" into the db instead of just ""
-            for (userid, password) in db.users.userid_password.iter() {
-                let password = utils::string_from_bytes(&password);
-
-                let empty_hashed_password = password.map_or(false, |password| {
-                    argon2::verify_encoded(&password, b"").unwrap_or(false)
-                });
-
-                if empty_hashed_password {
-                    db.users.userid_password.insert(&userid, b"")?;
-                }
-            }
-
-            db.globals.bump_database_version(2)?;
-
-            println!("Migration: 1 -> 2 finished");
-        }
-
-        if db.globals.database_version()? < 3 {
-            // Move media to filesystem
-            for (key, content) in db.media.mediaid_file.iter() {
-                if content.len() == 0 {
-                    continue;
+                    let path = db.globals.get_media_file(&key);
+                    let mut file = fs::File::create(path)?;
+                    file.write_all(&content)?;
+                    db.media.mediaid_file.insert(&key, &[])?;
                 }
 
-                let path = db.globals.get_media_file(&key);
-                let mut file = fs::File::create(path)?;
-                file.write_all(&content)?;
-                db.media.mediaid_file.insert(&key, &[])?;
+                db.globals.bump_database_version(3)?;
+
+                println!("Migration: 2 -> 3 finished");
             }
 
-            db.globals.bump_database_version(3)?;
-
-            println!("Migration: 2 -> 3 finished");
-        }
-
-        if db.globals.database_version()? < 4 {
-            // Add federated users to db as deactivated
-            for our_user in db.users.iter() {
-                let our_user = our_user?;
-                if db.users.is_deactivated(&our_user)? {
-                    continue;
-                }
-                for room in db.rooms.rooms_joined(&our_user) {
-                    for user in db.rooms.room_members(&room?) {
-                        let user = user?;
-                        if user.server_name() != db.globals.server_name() {
-                            println!("Migration: Creating user {}", user);
-                            db.users.create(&user, None)?;
+            if db.globals.database_version()? < 4 {
+                // Add federated users to db as deactivated
+                for our_user in db.users.iter() {
+                    let our_user = our_user?;
+                    if db.users.is_deactivated(&our_user)? {
+                        continue;
+                    }
+                    for room in db.rooms.rooms_joined(&our_user) {
+                        for user in db.rooms.room_members(&room?) {
+                            let user = user?;
+                            if user.server_name() != db.globals.server_name() {
+                                println!("Migration: Creating user {}", user);
+                                db.users.create(&user, None)?;
+                            }
                         }
                     }
                 }
+
+                db.globals.bump_database_version(4)?;
+
+                println!("Migration: 3 -> 4 finished");
             }
-
-            db.globals.bump_database_version(4)?;
-
-            println!("Migration: 3 -> 4 finished");
         }
 
-        // This data is probably outdated
-        db.rooms.edus.presenceid_presence.clear()?;
+        let guard = db.read().await;
 
-        db.admin.start_handler(Arc::clone(&db), admin_receiver);
-        db.sending.start_handler(Arc::clone(&db), sending_receiver);
+        // This data is probably outdated
+        guard.rooms.edus.presenceid_presence.clear()?;
+
+        guard.admin.start_handler(Arc::clone(&db), admin_receiver);
+        guard.sending.start_handler(Arc::clone(&db), sending_receiver);
+
+        drop(guard);
 
         Ok(db)
     }
@@ -430,5 +443,31 @@ impl Database {
         log::debug!("flush: took {:?}", start.elapsed());
 
         res
+    }
+
+    pub fn flush_wal(&self) -> Result<()> {
+        self._db.flush_wal()
+    }
+}
+
+pub struct ReadGuard(OwnedRwLockReadGuard<Database>);
+
+impl Deref for ReadGuard {
+    type Target = OwnedRwLockReadGuard<Database>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+#[cfg(feature = "conduit_bin")]
+#[rocket::async_trait]
+impl<'r> FromRequest<'r> for ReadGuard {
+    type Error = ();
+
+    async fn from_request(req: &'r Request<'_>) -> rocket::request::Outcome<Self, ()> {
+        let db = try_outcome!(req.guard::<State<'_, Arc<TokioRwLock<Database>>>>().await);
+
+        Ok(ReadGuard(Arc::clone(&db).read_owned().await)).or_forward(())
     }
 }

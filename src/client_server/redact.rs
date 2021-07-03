@@ -1,5 +1,5 @@
 use super::State;
-use crate::{pdu::PduBuilder, ConduitResult, Database, Ruma};
+use crate::{database::ReadGuard, pdu::PduBuilder, ConduitResult, Database, Ruma};
 use ruma::{
     api::client::r0::redact::redact_event,
     events::{room::redaction, EventType},
@@ -15,7 +15,7 @@ use rocket::put;
 )]
 #[tracing::instrument(skip(db, body))]
 pub async fn redact_event_route(
-    db: State<'_, Arc<Database>>,
+    db: ReadGuard,
     body: Ruma<redact_event::Request<'_>>,
 ) -> ConduitResult<redact_event::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");

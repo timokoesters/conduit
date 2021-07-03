@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use super::State;
-use crate::{utils, ConduitResult, Database, Error, Ruma};
+use crate::{database::ReadGuard, utils, ConduitResult, Database, Error, Ruma};
 use ruma::api::client::{
     error::ErrorKind,
     r0::{
@@ -20,7 +20,7 @@ use rocket::{delete, get, post, put};
 )]
 #[tracing::instrument(skip(db, body))]
 pub async fn get_devices_route(
-    db: State<'_, Arc<Database>>,
+    db: ReadGuard,
     body: Ruma<get_devices::Request>,
 ) -> ConduitResult<get_devices::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -40,7 +40,7 @@ pub async fn get_devices_route(
 )]
 #[tracing::instrument(skip(db, body))]
 pub async fn get_device_route(
-    db: State<'_, Arc<Database>>,
+    db: ReadGuard,
     body: Ruma<get_device::Request<'_>>,
 ) -> ConduitResult<get_device::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -59,7 +59,7 @@ pub async fn get_device_route(
 )]
 #[tracing::instrument(skip(db, body))]
 pub async fn update_device_route(
-    db: State<'_, Arc<Database>>,
+    db: ReadGuard,
     body: Ruma<update_device::Request<'_>>,
 ) -> ConduitResult<update_device::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -85,7 +85,7 @@ pub async fn update_device_route(
 )]
 #[tracing::instrument(skip(db, body))]
 pub async fn delete_device_route(
-    db: State<'_, Arc<Database>>,
+    db: ReadGuard,
     body: Ruma<delete_device::Request<'_>>,
 ) -> ConduitResult<delete_device::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -139,7 +139,7 @@ pub async fn delete_device_route(
 )]
 #[tracing::instrument(skip(db, body))]
 pub async fn delete_devices_route(
-    db: State<'_, Arc<Database>>,
+    db: ReadGuard,
     body: Ruma<delete_devices::Request<'_>>,
 ) -> ConduitResult<delete_devices::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");

@@ -1,5 +1,5 @@
 use super::State;
-use crate::{pdu::PduBuilder, utils, ConduitResult, Database, Error, Ruma};
+use crate::{database::ReadGuard, pdu::PduBuilder, utils, ConduitResult, Database, Error, Ruma};
 use ruma::{
     api::client::{
         error::ErrorKind,
@@ -21,7 +21,7 @@ use std::{convert::TryInto, sync::Arc};
 )]
 #[tracing::instrument(skip(db, body))]
 pub async fn set_displayname_route(
-    db: State<'_, Arc<Database>>,
+    db: ReadGuard,
     body: Ruma<set_display_name::Request<'_>>,
 ) -> ConduitResult<set_display_name::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -108,7 +108,7 @@ pub async fn set_displayname_route(
 )]
 #[tracing::instrument(skip(db, body))]
 pub async fn get_displayname_route(
-    db: State<'_, Arc<Database>>,
+    db: ReadGuard,
     body: Ruma<get_display_name::Request<'_>>,
 ) -> ConduitResult<get_display_name::Response> {
     Ok(get_display_name::Response {
@@ -123,7 +123,7 @@ pub async fn get_displayname_route(
 )]
 #[tracing::instrument(skip(db, body))]
 pub async fn set_avatar_url_route(
-    db: State<'_, Arc<Database>>,
+    db: ReadGuard,
     body: Ruma<set_avatar_url::Request<'_>>,
 ) -> ConduitResult<set_avatar_url::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -210,7 +210,7 @@ pub async fn set_avatar_url_route(
 )]
 #[tracing::instrument(skip(db, body))]
 pub async fn get_avatar_url_route(
-    db: State<'_, Arc<Database>>,
+    db: ReadGuard,
     body: Ruma<get_avatar_url::Request<'_>>,
 ) -> ConduitResult<get_avatar_url::Response> {
     Ok(get_avatar_url::Response {
@@ -225,7 +225,7 @@ pub async fn get_avatar_url_route(
 )]
 #[tracing::instrument(skip(db, body))]
 pub async fn get_profile_route(
-    db: State<'_, Arc<Database>>,
+    db: ReadGuard,
     body: Ruma<get_profile::Request<'_>>,
 ) -> ConduitResult<get_profile::Response> {
     if !db.users.exists(&body.user_id)? {
