@@ -255,6 +255,7 @@ dependencies = [
  "image",
  "jsonwebtoken",
  "log",
+ "num_cpus",
  "lru-cache",
  "opentelemetry",
  "opentelemetry-jaeger",

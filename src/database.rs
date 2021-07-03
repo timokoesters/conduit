@@ -93,6 +93,7 @@ pub type Engine = abstraction::rocksdb::RocksDbEngine;
 pub type Engine = abstraction::sqlite::SqliteEngine;
 
 pub struct Database {
+    _db: Arc<Engine>,
     pub globals: globals::Globals,
     pub users: users::Users,
     pub uiaa: uiaa::Uiaa,
@@ -132,6 +133,7 @@ impl Database {
         let (sending_sender, sending_receiver) = mpsc::unbounded();
 
         let db = Arc::new(Self {
+            _db: builder.clone(),
             users: users::Users {
                 userid_password: builder.open_tree("userid_password")?,
                 userid_displayname: builder.open_tree("userid_displayname")?,
@@ -421,8 +423,12 @@ impl Database {
     }
 
     pub async fn flush(&self) -> Result<()> {
-        // noop while we don't use sled 1.0
-        //self._db.flush_async().await?;
-        Ok(())
+        let start = std::time::Instant::now();
+
+        let res = self._db.flush();
+
+        log::debug!("flush: took {:?}", start.elapsed());
+
+        res
     }
 }

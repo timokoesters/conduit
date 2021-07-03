@@ -733,6 +733,8 @@ impl Rooms {
             .filter(|user_id| user_id.server_name() == db.globals.server_name())
             .filter(|user_id| !db.users.is_deactivated(user_id).unwrap_or(false))
             .filter(|user_id| self.is_joined(&user_id, &pdu.room_id).unwrap_or(false))
+            .collect::<Vec<_>>()
+        /* to consume iterator */
         {
             // Don't notify the user of their own events
             if user == pdu.sender {
@@ -1209,13 +1211,13 @@ impl Rooms {
             redacts,
         } = pdu_builder;
         // TODO: Make sure this isn't called twice in parallel
-        let prev_events = dbg!(self
+        let prev_events = self
             .get_pdu_leaves(&room_id)?
             .into_iter()
             .take(20)
-            .collect::<Vec<_>>());
+            .collect::<Vec<_>>();
 
-        let create_event = dbg!(self.room_state_get(&room_id, &EventType::RoomCreate, ""))?;
+        let create_event = self.room_state_get(&room_id, &EventType::RoomCreate, "")?;
 
         let create_event_content = create_event
             .as_ref()
