@@ -12,7 +12,7 @@ version = "0.7.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "43bb833f0bf979d8475d38fbf09ed3b8a55e1885fe93ad3f93239fc6a4f17b98"
 dependencies = [
- "getrandom 0.2.3",
+ "getrandom 0.2.2",
  "once_cell",
  "version_check",
 ]
@@ -255,8 +255,8 @@ dependencies = [
  "image",
  "jsonwebtoken",
  "log",
- "num_cpus",
  "lru-cache",
+ "num_cpus",
  "opentelemetry",
  "opentelemetry-jaeger",
  "parking_lot",
