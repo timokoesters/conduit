@@ -144,6 +144,8 @@ pub async fn sync_helper_wrapper(
         }
     }
 
+    drop(db);
+
     let _ = tx.send(Some(r.map(|(r, _)| r.into())));
 }
 

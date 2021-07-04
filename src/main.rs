@@ -32,7 +32,7 @@ use rocket::{
 };
 use tokio::{
     sync::RwLock,
-    time::{interval, Interval},
+    time::{interval, timeout},
 };
 use tracing::span;
 use tracing_subscriber::{prelude::*, Registry};
@@ -211,18 +211,25 @@ async fn main() {
         tokio::spawn(async {
             let weak = weak;
 
-            let mut i = interval(Duration::from_secs(10));
+            let mut i = interval(Duration::from_secs(60));
 
             loop {
                 i.tick().await;
 
                 if let Some(arc) = Weak::upgrade(&weak) {
                     log::warn!("wal-trunc: locking...");
-                    let guard = arc.write().await;
+                    let guard = {
+                        if let Ok(guard) = timeout(Duration::from_secs(5), arc.write()).await {
+                            guard
+                        } else {
+                            log::warn!("wal-trunc: lock failed in timeout, canceled.");
+                            continue;
+                        }
+                    };
                     log::warn!("wal-trunc: locked, flushing...");
                     let start = Instant::now();
                     guard.flush_wal();
-                    log::warn!("wal-trunc: locked, flushed in {:?}", start.elapsed());
+                    log::warn!("wal-trunc: flushed in {:?}", start.elapsed());
                 } else {
                     break;
                 }
