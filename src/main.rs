@@ -231,8 +231,11 @@ async fn main() {
                     };
                     log::warn!("wal-trunc: locked, flushing...");
                     let start = Instant::now();
-                    guard.flush_wal();
-                    log::warn!("wal-trunc: flushed in {:?}", start.elapsed());
+                    if let Err(e) = guard.flush_wal() {
+                        log::warn!("wal-trunc: errored: {}", e);
+                    } else {
+                        log::warn!("wal-trunc: flushed in {:?}", start.elapsed());
+                    }
                 } else {
                     break;
                 }

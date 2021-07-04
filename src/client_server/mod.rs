@@ -64,9 +64,7 @@ pub use voip::*;
 use super::State;
 #[cfg(feature = "conduit_bin")]
 use {
-    crate::ConduitResult,
-    rocket::{options, State},
-    ruma::api::client::r0::to_device::send_event_to_device,
+    crate::ConduitResult, rocket::options, ruma::api::client::r0::to_device::send_event_to_device,
 };
 
 pub const DEVICE_ID_LENGTH: usize = 10;

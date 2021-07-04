@@ -1,6 +1,3 @@
-use std::sync::Arc;
-
-use super::State;
 use crate::{database::ReadGuard, ConduitResult, Database, Error, Ruma};
 use regex::Regex;
 use ruma::{

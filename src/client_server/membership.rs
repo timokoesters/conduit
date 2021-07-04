@@ -1,4 +1,3 @@
-use super::State;
 use crate::{
     client_server,
     database::ReadGuard,

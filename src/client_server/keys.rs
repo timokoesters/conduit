@@ -1,4 +1,4 @@
-use super::{State, SESSION_ID_LENGTH};
+use super::SESSION_ID_LENGTH;
 use crate::{database::ReadGuard, utils, ConduitResult, Database, Error, Result, Ruma};
 use ruma::{
     api::client::{
@@ -14,10 +14,7 @@ use ruma::{
     encryption::UnsignedDeviceInfo,
     DeviceId, DeviceKeyAlgorithm, UserId,
 };
-use std::{
-    collections::{BTreeMap, HashSet},
-    sync::Arc,
-};
+use std::collections::{BTreeMap, HashSet};
 
 #[cfg(feature = "conduit_bin")]
 use rocket::{get, post};

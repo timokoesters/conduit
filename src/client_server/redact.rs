@@ -1,10 +1,8 @@
-use super::State;
-use crate::{database::ReadGuard, pdu::PduBuilder, ConduitResult, Database, Ruma};
+use crate::{database::ReadGuard, pdu::PduBuilder, ConduitResult, Ruma};
 use ruma::{
     api::client::r0::redact::redact_event,
     events::{room::redaction, EventType},
 };
-use std::sync::Arc;
 
 #[cfg(feature = "conduit_bin")]
 use rocket::put;

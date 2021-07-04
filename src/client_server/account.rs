@@ -1,7 +1,7 @@
-use std::{collections::BTreeMap, convert::TryInto, sync::Arc};
+use std::{collections::BTreeMap, convert::TryInto};
 
-use super::{State, DEVICE_ID_LENGTH, SESSION_ID_LENGTH, TOKEN_LENGTH};
-use crate::{database::ReadGuard, pdu::PduBuilder, utils, ConduitResult, Database, Error, Ruma};
+use super::{DEVICE_ID_LENGTH, SESSION_ID_LENGTH, TOKEN_LENGTH};
+use crate::{database::ReadGuard, pdu::PduBuilder, utils, ConduitResult, Error, Ruma};
 use log::info;
 use ruma::{
     api::client::{

@@ -1,7 +1,4 @@
-use std::sync::Arc;
-
-use super::State;
-use crate::{database::ReadGuard, ConduitResult, Database, Ruma};
+use crate::{database::ReadGuard, ConduitResult, Ruma};
 use ruma::api::client::r0::user_directory::search_users;
 
 #[cfg(feature = "conduit_bin")]

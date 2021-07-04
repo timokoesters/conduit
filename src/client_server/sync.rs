@@ -1,4 +1,3 @@
-use super::State;
 use crate::{database::ReadGuard, ConduitResult, Database, Error, Result, Ruma, RumaResponse};
 use log::error;
 use ruma::{

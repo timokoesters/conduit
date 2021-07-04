@@ -9,7 +9,7 @@ use std::ops::Deref;
 
 #[cfg(feature = "conduit_bin")]
 use {
-    crate::{server_server, Database},
+    crate::server_server,
     log::{debug, warn},
     rocket::{
         data::{self, ByteUnit, Data, FromData},
@@ -17,13 +17,12 @@ use {
         outcome::Outcome::*,
         response::{self, Responder},
         tokio::io::AsyncReadExt,
-        Request, State,
+        Request,
     },
     ruma::api::{AuthScheme, IncomingRequest},
     std::collections::BTreeMap,
     std::convert::TryFrom,
     std::io::Cursor,
-    std::sync::Arc,
 };
 
 /// This struct converts rocket requests into ruma structs by converting them into http requests

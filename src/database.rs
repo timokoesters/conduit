@@ -34,7 +34,7 @@ use std::{
     ops::Deref,
     sync::{Arc, RwLock},
 };
-use tokio::sync::{OwnedRwLockReadGuard, RwLock as TokioRwLock, RwLockReadGuard, Semaphore};
+use tokio::sync::{OwnedRwLockReadGuard, RwLock as TokioRwLock, Semaphore};
 
 use self::proxy::ProxyConfig;
 
@@ -462,7 +462,6 @@ impl Deref for ReadGuard {
     }
 }
 
-#[cfg(feature = "conduit_bin")]
 #[rocket::async_trait]
 impl<'r> FromRequest<'r> for ReadGuard {
     type Error = ();
@@ -471,5 +470,11 @@ impl<'r> FromRequest<'r> for ReadGuard {
         let db = try_outcome!(req.guard::<State<'_, Arc<TokioRwLock<Database>>>>().await);
 
         Ok(ReadGuard(Arc::clone(&db).read_owned().await)).or_forward(())
+    }
+}
+
+impl Into<ReadGuard> for OwnedRwLockReadGuard<Database> {
+    fn into(self) -> ReadGuard {
+        ReadGuard(self)
     }
 }

@@ -10,7 +10,7 @@ use ruma::{
     events::{room::message, EventType},
     UserId,
 };
-use tokio::sync::RwLock;
+use tokio::sync::{RwLock, RwLockReadGuard};
 
 pub enum AdminCommand {
     RegisterAppservice(serde_yaml::Value),
@@ -54,47 +54,52 @@ impl Admin {
 
             drop(guard);
 
-            let send_message = |message: message::MessageEventContent| {};
+            let send_message =
+                |message: message::MessageEventContent, guard: RwLockReadGuard<'_, Database>| {
+                    if let Some(conduit_room) = &conduit_room {
+                        guard
+                            .rooms
+                            .build_and_append_pdu(
+                                PduBuilder {
+                                    event_type: EventType::RoomMessage,
+                                    content: serde_json::to_value(message)
+                                        .expect("event is valid, we just created it"),
+                                    unsigned: None,
+                                    state_key: None,
+                                    redacts: None,
+                                },
+                                &conduit_user,
+                                &conduit_room,
+                                &guard,
+                            )
+                            .unwrap();
+                    }
+                };
 
             loop {
                 tokio::select! {
                     Some(event) = receiver.next() => {
+                        let guard = db.read().await;
+
                         match event {
                             AdminCommand::RegisterAppservice(yaml) => {
-                                db.read().await.appservice.register_appservice(yaml).unwrap(); // TODO handle error
+                                guard.appservice.register_appservice(yaml).unwrap(); // TODO handle error
                             }
                             AdminCommand::ListAppservices => {
-                                if let Ok(appservices) = db.read().await.appservice.iter_ids().map(|ids| ids.collect::<Vec<_>>()) {
+                                if let Ok(appservices) = guard.appservice.iter_ids().map(|ids| ids.collect::<Vec<_>>()) {
                                     let count = appservices.len();
                                     let output = format!(
                                         "Appservices ({}): {}",
                                         count,
                                         appservices.into_iter().filter_map(|r| r.ok()).collect::<Vec<_>>().join(", ")
                                     );
-                                    send_message(message::MessageEventContent::text_plain(output));
+                                    send_message(message::MessageEventContent::text_plain(output), guard);
                                 } else {
-                                    send_message(message::MessageEventContent::text_plain("Failed to get appservices."));
+                                    send_message(message::MessageEventContent::text_plain("Failed to get appservices."), guard);
                                 }
                             }
                             AdminCommand::SendMessage(message) => {
-                                if let Some(conduit_room) = &conduit_room {
-                                    let guard = db.read().await;
-                                    guard.rooms
-                                        .build_and_append_pdu(
-                                            PduBuilder {
-                                                event_type: EventType::RoomMessage,
-                                                content: serde_json::to_value(message)
-                                                    .expect("event is valid, we just created it"),
-                                                unsigned: None,
-                                                state_key: None,
-                                                redacts: None,
-                                            },
-                                            &conduit_user,
-                                            &conduit_room,
-                                            &guard,
-                                        )
-                                        .unwrap();
-                                }
+                                send_message(message, guard)
                             }
                         }
                     }

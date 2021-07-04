@@ -1,6 +1,3 @@
-use std::sync::Arc;
-
-use super::State;
 use crate::{database::ReadGuard, ConduitResult, Database, Error, Result, Ruma};
 use log::info;
 use ruma::{

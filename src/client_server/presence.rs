@@ -1,7 +1,6 @@
-use super::State;
-use crate::{database::ReadGuard, utils, ConduitResult, Database, Ruma};
+use crate::{database::ReadGuard, utils, ConduitResult, Ruma};
 use ruma::api::client::r0::presence::{get_presence, set_presence};
-use std::{convert::TryInto, sync::Arc, time::Duration};
+use std::{convert::TryInto, time::Duration};
 
 #[cfg(feature = "conduit_bin")]
 use rocket::{get, put};

@@ -1,7 +1,4 @@
-use std::sync::Arc;
-
-use super::State;
-use crate::{database::ReadGuard, ConduitResult, Database, Error, Ruma};
+use crate::{database::ReadGuard, ConduitResult, Error, Ruma};
 use ruma::{
     api::client::{error::ErrorKind, r0::to_device::send_event_to_device},
     to_device::DeviceIdOrAllDevices,

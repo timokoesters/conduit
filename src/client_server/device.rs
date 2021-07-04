@@ -1,7 +1,4 @@
-use std::sync::Arc;
-
-use super::State;
-use crate::{database::ReadGuard, utils, ConduitResult, Database, Error, Ruma};
+use crate::{database::ReadGuard, utils, ConduitResult, Error, Ruma};
 use ruma::api::client::{
     error::ErrorKind,
     r0::{

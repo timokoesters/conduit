@@ -1,7 +1,5 @@
-use super::State;
 use crate::{
-    client_server::invite_helper, database::ReadGuard, pdu::PduBuilder, ConduitResult, Database,
-    Error, Ruma,
+    client_server::invite_helper, database::ReadGuard, pdu::PduBuilder, ConduitResult, Error, Ruma,
 };
 use log::info;
 use ruma::{
@@ -16,7 +14,7 @@ use ruma::{
     serde::Raw,
     RoomAliasId, RoomId, RoomVersionId,
 };
-use std::{cmp::max, collections::BTreeMap, convert::TryFrom, sync::Arc};
+use std::{cmp::max, collections::BTreeMap, convert::TryFrom};
 
 #[cfg(feature = "conduit_bin")]
 use rocket::{get, post};

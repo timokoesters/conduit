@@ -7,7 +7,7 @@ use get_profile_information::v1::ProfileField;
 use http::header::{HeaderValue, AUTHORIZATION, HOST};
 use log::{debug, error, info, trace, warn};
 use regex::Regex;
-use rocket::{response::content::Json, State};
+use rocket::response::content::Json;
 use ruma::{
     api::{
         client::error::{Error as RumaError, ErrorKind},

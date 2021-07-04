@@ -1,7 +1,4 @@
-use std::sync::Arc;
-
-use super::State;
-use crate::{database::ReadGuard, utils, ConduitResult, Database, Ruma};
+use crate::{database::ReadGuard, utils, ConduitResult, Ruma};
 use create_typing_event::Typing;
 use ruma::api::client::r0::typing::create_typing_event;
 

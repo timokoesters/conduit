@@ -1,5 +1,4 @@
-use super::State;
-use crate::{database::ReadGuard, pdu::PduBuilder, utils, ConduitResult, Database, Error, Ruma};
+use crate::{database::ReadGuard, pdu::PduBuilder, utils, ConduitResult, Error, Ruma};
 use ruma::{
     api::client::{
         error::ErrorKind,
@@ -10,10 +9,10 @@ use ruma::{
     events::EventType,
     serde::Raw,
 };
+use std::convert::TryInto;
 
 #[cfg(feature = "conduit_bin")]
 use rocket::{get, put};
-use std::{convert::TryInto, sync::Arc};
 
 #[cfg_attr(
     feature = "conduit_bin",

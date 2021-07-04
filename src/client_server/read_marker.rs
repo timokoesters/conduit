@@ -1,5 +1,4 @@
-use super::State;
-use crate::{database::ReadGuard, ConduitResult, Database, Error, Ruma};
+use crate::{database::ReadGuard, ConduitResult, Error, Ruma};
 use ruma::{
     api::client::{
         error::ErrorKind,
@@ -9,10 +8,10 @@ use ruma::{
     receipt::ReceiptType,
     MilliSecondsSinceUnixEpoch,
 };
+use std::collections::BTreeMap;
 
 #[cfg(feature = "conduit_bin")]
 use rocket::post;
-use std::{collections::BTreeMap, sync::Arc};
 
 #[cfg_attr(
     feature = "conduit_bin",

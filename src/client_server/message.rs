@@ -1,5 +1,4 @@
-use super::State;
-use crate::{database::ReadGuard, pdu::PduBuilder, utils, ConduitResult, Database, Error, Ruma};
+use crate::{database::ReadGuard, pdu::PduBuilder, utils, ConduitResult, Error, Ruma};
 use ruma::{
     api::client::{
         error::ErrorKind,
@@ -11,7 +10,6 @@ use ruma::{
 use std::{
     collections::BTreeMap,
     convert::{TryFrom, TryInto},
-    sync::Arc,
 };
 
 #[cfg(feature = "conduit_bin")]

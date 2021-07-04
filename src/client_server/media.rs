@@ -1,15 +1,12 @@
-use super::State;
-use crate::{
-    database::media::FileMeta, database::ReadGuard, utils, ConduitResult, Database, Error, Ruma,
-};
+use crate::{database::media::FileMeta, database::ReadGuard, utils, ConduitResult, Error, Ruma};
 use ruma::api::client::{
     error::ErrorKind,
     r0::media::{create_content, get_content, get_content_thumbnail, get_media_config},
 };
+use std::convert::TryInto;
 
 #[cfg(feature = "conduit_bin")]
 use rocket::{get, post};
-use std::{convert::TryInto, sync::Arc};
 
 const MXC_LENGTH: usize = 32;
 

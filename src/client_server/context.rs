@@ -1,7 +1,6 @@
-use super::State;
-use crate::{database::ReadGuard, ConduitResult, Database, Error, Ruma};
+use crate::{database::ReadGuard, ConduitResult, Error, Ruma};
 use ruma::api::client::{error::ErrorKind, r0::context::get_context};
-use std::{convert::TryFrom, sync::Arc};
+use std::convert::TryFrom;
 
 #[cfg(feature = "conduit_bin")]
 use rocket::get;

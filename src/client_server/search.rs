@@ -1,7 +1,5 @@
-use super::State;
-use crate::{database::ReadGuard, ConduitResult, Database, Error, Ruma};
+use crate::{database::ReadGuard, ConduitResult, Error, Ruma};
 use ruma::api::client::{error::ErrorKind, r0::search::search_events};
-use std::sync::Arc;
 
 #[cfg(feature = "conduit_bin")]
 use rocket::post;

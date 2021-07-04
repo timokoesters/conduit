@@ -1,6 +1,3 @@
-use std::sync::Arc;
-
-use super::State;
 use crate::{database::ReadGuard, pdu::PduBuilder, ConduitResult, Database, Error, Result, Ruma};
 use ruma::{
     api::client::{

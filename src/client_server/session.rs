@@ -1,7 +1,5 @@
-use std::sync::Arc;
-
-use super::{State, DEVICE_ID_LENGTH, TOKEN_LENGTH};
-use crate::{database::ReadGuard, utils, ConduitResult, Database, Error, Ruma};
+use super::{DEVICE_ID_LENGTH, TOKEN_LENGTH};
+use crate::{database::ReadGuard, utils, ConduitResult, Error, Ruma};
 use log::info;
 use ruma::{
     api::client::{

@@ -1,10 +1,9 @@
-use super::State;
-use crate::{database::ReadGuard, ConduitResult, Database, Ruma};
+use crate::{database::ReadGuard, ConduitResult, Ruma};
 use ruma::{
     api::client::r0::tag::{create_tag, delete_tag, get_tags},
     events::EventType,
 };
-use std::{collections::BTreeMap, sync::Arc};
+use std::collections::BTreeMap;
 
 #[cfg(feature = "conduit_bin")]
 use rocket::{delete, get, put};
