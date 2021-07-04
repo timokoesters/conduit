@@ -189,10 +189,7 @@ impl Media {
         original_prefix.extend_from_slice(&0_u32.to_be_bytes()); // Height = 0 if it's not a thumbnail
         original_prefix.push(0xff);
 
-        if let Some((key, _)) = {
-            /* scoped to explicitly drop iterator */
-            self.mediaid_file.scan_prefix(thumbnail_prefix).next()
-        } {
+        if let Some((key, _)) = self.mediaid_file.scan_prefix(thumbnail_prefix).next() {
             // Using saved thumbnail
             let path = globals.get_media_file(&key);
             let mut file = Vec::new();
@@ -227,10 +224,7 @@ impl Media {
                 content_type,
                 file: file.to_vec(),
             }))
-        } else if let Some((key, _)) = {
-            /* scoped to explicitly drop iterator */
-            self.mediaid_file.scan_prefix(original_prefix).next()
-        } {
+        } else if let Some((key, _)) = self.mediaid_file.scan_prefix(original_prefix).next() {
             // Generate a thumbnail
             let path = globals.get_media_file(&key);
             let mut file = Vec::new();
