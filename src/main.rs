@@ -12,7 +12,10 @@ mod pdu;
 mod ruma_wrapper;
 mod utils;
 
-use std::{sync::{Arc, Weak}, time::{Duration, Instant}};
+use std::{
+    sync::{Arc, Weak},
+    time::{Duration, Instant},
+};
 
 use database::Config;
 pub use database::Database;

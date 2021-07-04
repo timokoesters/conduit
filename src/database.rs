@@ -340,7 +340,9 @@ impl Database {
         guard.rooms.edus.presenceid_presence.clear()?;
 
         guard.admin.start_handler(Arc::clone(&db), admin_receiver);
-        guard.sending.start_handler(Arc::clone(&db), sending_receiver);
+        guard
+            .sending
+            .start_handler(Arc::clone(&db), sending_receiver);
 
         drop(guard);
 

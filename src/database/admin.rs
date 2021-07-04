@@ -35,8 +35,9 @@ impl Admin {
 
             let guard = db.read().await;
 
-            let conduit_user = UserId::try_from(format!("@conduit:{}", guard.globals.server_name()))
-                .expect("@conduit:server_name is valid");
+            let conduit_user =
+                UserId::try_from(format!("@conduit:{}", guard.globals.server_name()))
+                    .expect("@conduit:server_name is valid");
 
             let conduit_room = guard
                 .rooms
@@ -53,9 +54,7 @@ impl Admin {
 
             drop(guard);
 
-            let send_message = |message: message::MessageEventContent| {
-
-            };
+            let send_message = |message: message::MessageEventContent| {};
 
             loop {
                 tokio::select! {
