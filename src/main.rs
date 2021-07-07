@@ -12,10 +12,7 @@ mod pdu;
 mod ruma_wrapper;
 mod utils;
 
-use std::{
-    sync::{Arc, Weak},
-    time::{Duration, Instant},
-};
+use std::sync::Arc;
 
 use database::Config;
 pub use database::Database;
@@ -33,10 +30,7 @@ use rocket::{
     },
     routes, Request,
 };
-use tokio::{
-    sync::RwLock,
-    time::{interval, timeout},
-};
+use tokio::sync::RwLock;
 use tracing::span;
 use tracing_subscriber::{prelude::*, Registry};
 
@@ -208,7 +202,15 @@ async fn main() {
         .await
         .expect("config is valid");
 
+    #[cfg(feature = "sqlite")]
     {
+        use tokio::time::{interval, timeout};
+
+        use std::{
+            sync::Weak,
+            time::{Duration, Instant},
+        };
+
         let weak: Weak<RwLock<Database>> = Arc::downgrade(&db);
 
         tokio::spawn(async {

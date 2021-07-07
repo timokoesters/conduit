@@ -23,6 +23,10 @@ impl DatabaseEngine for SledEngine {
     fn open_tree(self: &Arc<Self>, name: &'static str) -> Result<Arc<dyn Tree>> {
         Ok(Arc::new(SledEngineTree(self.0.open_tree(name)?)))
     }
+
+    fn flush(self: &Arc<Self>) -> Result<()> {
+        Ok(()) // noop
+    }
 }
 
 impl Tree for SledEngineTree {
@@ -40,7 +44,7 @@ impl Tree for SledEngineTree {
         Ok(())
     }
 
-    fn iter<'a>(&'a self) -> Box<dyn Iterator<Item = (Vec<u8>, Vec<u8>)> + Send + Sync + 'a> {
+    fn iter<'a>(&'a self) -> Box<dyn Iterator<Item = (Vec<u8>, Vec<u8>)> + Send + 'a> {
         Box::new(
             self.0
                 .iter()
@@ -58,7 +62,7 @@ impl Tree for SledEngineTree {
         &self,
         from: &[u8],
         backwards: bool,
-    ) -> Box<dyn Iterator<Item = (Vec<u8>, Vec<u8>)>> {
+    ) -> Box<dyn Iterator<Item = (Vec<u8>, Vec<u8>)> + Send> {
         let iter = if backwards {
             self.0.range(..from)
         } else {

@@ -447,6 +447,7 @@ impl Database {
         res
     }
 
+    #[cfg(feature = "sqlite")]
     pub fn flush_wal(&self) -> Result<()> {
         self._db.flush_wal()
     }
