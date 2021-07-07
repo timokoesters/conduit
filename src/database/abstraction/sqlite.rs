@@ -36,6 +36,7 @@ use tokio::sync::oneshot::Sender;
 struct Pool {
     writer: Mutex<Connection>,
     readers: Vec<Mutex<Connection>>,
+    spill_tracker: Arc<()>,
     path: PathBuf,
 }
 
@@ -43,7 +44,7 @@ pub const MILLI: Duration = Duration::from_millis(1);
 
 enum HoldingConn<'a> {
     FromGuard(MutexGuard<'a, Connection>),
-    FromOwned(Connection),
+    FromOwned(Connection, Arc<()>),
 }
 
 impl<'a> Deref for HoldingConn<'a> {
@@ -52,29 +53,30 @@ impl<'a> Deref for HoldingConn<'a> {
     fn deref(&self) -> &Self::Target {
         match self {
             HoldingConn::FromGuard(guard) => guard.deref(),
-            HoldingConn::FromOwned(conn) => conn,
+            HoldingConn::FromOwned(conn, _) => conn,
         }
     }
 }
 
 impl Pool {
-    fn new<P: AsRef<Path>>(path: P, num_readers: usize) -> Result<Self> {
-        let writer = Mutex::new(Self::prepare_conn(&path)?);
+    fn new<P: AsRef<Path>>(path: P, num_readers: usize, cache_size: u32) -> Result<Self> {
+        let writer = Mutex::new(Self::prepare_conn(&path, Some(cache_size))?);
 
         let mut readers = Vec::new();
 
         for _ in 0..num_readers {
-            readers.push(Mutex::new(Self::prepare_conn(&path)?))
+            readers.push(Mutex::new(Self::prepare_conn(&path, Some(cache_size))?))
         }
 
         Ok(Self {
             writer,
             readers,
+            spill_tracker: Arc::new(()),
             path: path.as_ref().to_path_buf(),
         })
     }
 
-    fn prepare_conn<P: AsRef<Path>>(path: P) -> Result<Connection> {
+    fn prepare_conn<P: AsRef<Path>>(path: P, cache_size: Option<u32>) -> Result<Connection> {
         let conn = Connection::open(path)?;
 
         conn.pragma_update(Some(Main), "journal_mode", &"WAL".to_owned())?;
@@ -84,6 +86,10 @@ impl Pool {
         // conn.pragma_update(Some(Main), "wal_checkpoint", &"FULL".to_owned())?;
 
         conn.pragma_update(Some(Main), "synchronous", &"OFF".to_owned())?;
+
+        if let Some(cache_kib) = cache_size {
+            conn.pragma_update(Some(Main), "cache_size", &(-Into::<i64>::into(cache_kib)))?;
+        }
 
         Ok(conn)
     }
@@ -99,11 +105,18 @@ impl Pool {
             }
         }
 
-        log::warn!("all readers locked, creating spillover reader...");
+        let spill_arc = self.spill_tracker.clone();
+        let now_count = Arc::strong_count(&spill_arc) - 1 /* because one is held by the pool */;
 
-        let spilled = Self::prepare_conn(&self.path).unwrap();
+        log::warn!("read_lock: all readers locked, creating spillover reader...");
 
-        return HoldingConn::FromOwned(spilled);
+        if now_count > 1 {
+            log::warn!("read_lock: now {} spillover readers exist", now_count);
+        }
+
+        let spilled = Self::prepare_conn(&self.path, None).unwrap();
+
+        return HoldingConn::FromOwned(spilled, spill_arc);
     }
 }
 
@@ -115,7 +128,8 @@ impl DatabaseEngine for SqliteEngine {
     fn open(config: &Config) -> Result<Arc<Self>> {
         let pool = Pool::new(
             format!("{}/conduit.db", &config.database_path),
-            num_cpus::get(),
+            config.sqlite_read_pool_size,
+            config.sqlite_cache_kib,
         )?;
 
         pool.write_lock()

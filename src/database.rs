@@ -44,6 +44,16 @@ pub struct Config {
     database_path: String,
     #[serde(default = "default_cache_capacity")]
     cache_capacity: u32,
+    #[serde(default = "default_sqlite_cache_kib")]
+    sqlite_cache_kib: u32,
+    #[serde(default = "default_sqlite_read_pool_size")]
+    sqlite_read_pool_size: usize,
+    #[serde(default = "false_fn")]
+    sqlite_wal_clean_timer: bool,
+    #[serde(default = "default_sqlite_wal_clean_second_interval")]
+    sqlite_wal_clean_second_interval: u32,
+    #[serde(default = "default_sqlite_wal_clean_second_timeout")]
+    sqlite_wal_clean_second_timeout: u32,
     #[serde(default = "default_max_request_size")]
     max_request_size: u32,
     #[serde(default = "default_max_concurrent_requests")]
@@ -75,6 +85,22 @@ fn true_fn() -> bool {
 
 fn default_cache_capacity() -> u32 {
     1024 * 1024 * 1024
+}
+
+fn default_sqlite_cache_kib() -> u32 {
+    2000
+}
+
+fn default_sqlite_read_pool_size() -> usize {
+    num_cpus::get().max(1)
+}
+
+fn default_sqlite_wal_clean_second_interval() -> u32 {
+    60
+}
+
+fn default_sqlite_wal_clean_second_timeout() -> u32 {
+    2
 }
 
 fn default_max_request_size() -> u32 {
@@ -450,6 +476,61 @@ impl Database {
     #[cfg(feature = "sqlite")]
     pub fn flush_wal(&self) -> Result<()> {
         self._db.flush_wal()
+    }
+
+    #[cfg(feature = "sqlite")]
+    pub async fn start_wal_clean_task(lock: &Arc<TokioRwLock<Self>>, config: &Config) {
+        use tokio::{
+            signal::unix::{signal, SignalKind},
+            time::{interval, timeout},
+        };
+
+        use std::{
+            sync::Weak,
+            time::{Duration, Instant},
+        };
+
+        let weak: Weak<TokioRwLock<Database>> = Arc::downgrade(&lock);
+
+        let lock_timeout = Duration::from_secs(config.sqlite_wal_clean_second_timeout as u64);
+        let timer_interval = Duration::from_secs(config.sqlite_wal_clean_second_interval as u64);
+        let do_timer = config.sqlite_wal_clean_timer;
+
+        tokio::spawn(async move {
+            let mut i = interval(timer_interval);
+            let mut s = signal(SignalKind::hangup()).unwrap();
+
+            loop {
+                if do_timer {
+                    i.tick().await;
+                    log::info!(target: "wal-trunc", "Timer ticked")
+                } else {
+                    s.recv().await;
+                    log::info!(target: "wal-trunc", "Received SIGHUP")
+                }
+
+                if let Some(arc) = Weak::upgrade(&weak) {
+                    log::info!(target: "wal-trunc", "Locking...");
+                    let guard = {
+                        if let Ok(guard) = timeout(lock_timeout, arc.write()).await {
+                            guard
+                        } else {
+                            log::info!(target: "wal-trunc", "Lock failed in timeout, canceled.");
+                            continue;
+                        }
+                    };
+                    log::info!(target: "wal-trunc", "Locked, flushing...");
+                    let start = Instant::now();
+                    if let Err(e) = guard.flush_wal() {
+                        log::error!(target: "wal-trunc", "Errored: {}", e);
+                    } else {
+                        log::info!(target: "wal-trunc", "Flushed in {:?}", start.elapsed());
+                    }
+                } else {
+                    break;
+                }
+            }
+        });
     }
 }
 

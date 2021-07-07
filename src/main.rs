@@ -203,47 +203,7 @@ async fn main() {
         .expect("config is valid");
 
     #[cfg(feature = "sqlite")]
-    {
-        use tokio::time::{interval, timeout};
-
-        use std::{
-            sync::Weak,
-            time::{Duration, Instant},
-        };
-
-        let weak: Weak<RwLock<Database>> = Arc::downgrade(&db);
-
-        tokio::spawn(async {
-            let weak = weak;
-
-            let mut i = interval(Duration::from_secs(60));
-
-            loop {
-                i.tick().await;
-
-                if let Some(arc) = Weak::upgrade(&weak) {
-                    log::warn!("wal-trunc: locking...");
-                    let guard = {
-                        if let Ok(guard) = timeout(Duration::from_secs(5), arc.write()).await {
-                            guard
-                        } else {
-                            log::warn!("wal-trunc: lock failed in timeout, canceled.");
-                            continue;
-                        }
-                    };
-                    log::warn!("wal-trunc: locked, flushing...");
-                    let start = Instant::now();
-                    if let Err(e) = guard.flush_wal() {
-                        log::warn!("wal-trunc: errored: {}", e);
-                    } else {
-                        log::warn!("wal-trunc: flushed in {:?}", start.elapsed());
-                    }
-                } else {
-                    break;
-                }
-            }
-        });
-    }
+    Database::start_wal_clean_task(&db, &config).await;
 
     if config.allow_jaeger {
         let (tracer, _uninstall) = opentelemetry_jaeger::new_pipeline()
