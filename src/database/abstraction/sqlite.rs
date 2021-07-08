@@ -126,7 +126,7 @@ pub struct SqliteEngine {
 impl DatabaseEngine for SqliteEngine {
     fn open(config: &Config) -> Result<Arc<Self>> {
         let pool = Pool::new(
-            format!("{}/conduit.db", &config.database_path),
+            Path::new(&config.database_path).join("conduit.db"),
             config.sqlite_read_pool_size,
             config.sqlite_cache_kib,
         )?;
