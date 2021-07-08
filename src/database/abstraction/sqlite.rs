@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeMap,
     future::Future,
     ops::Deref,
     path::{Path, PathBuf},
@@ -11,8 +12,6 @@ use std::{
 use crate::{database::Config, Result};
 
 use super::{DatabaseEngine, Tree};
-
-use std::collections::BTreeMap;
 
 use log::debug;
 
