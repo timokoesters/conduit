@@ -774,6 +774,8 @@ pub async fn send_transaction_message_route(
         }
     }
 
+    db.flush().await?;
+
     Ok(send_transaction_message::v1::Response { pdus: resolved_map }.into())
 }
 
@@ -2160,6 +2162,8 @@ pub async fn create_join_event_route(
         db.sending.send_pdu(&server, &pdu_id)?;
     }
 
+    db.flush().await?;
+
     Ok(create_join_event::v2::Response {
         room_state: RoomState {
             auth_chain: auth_chain_ids
@@ -2276,6 +2280,8 @@ pub async fn create_invite_route(
         )?;
     }
 
+    db.flush().await?;
+
     Ok(create_invite::v2::Response {
         event: PduEvent::convert_to_outgoing_federation_event(signed_event),
     }
@@ -2389,7 +2395,7 @@ pub fn get_profile_information_route(
     post("/_matrix/federation/v1/user/keys/query", data = "<body>")
 )]
 #[tracing::instrument(skip(db, body))]
-pub fn get_keys_route(
+pub async fn get_keys_route(
     db: ReadGuard,
     body: Ruma<get_keys::v1::Request>,
 ) -> ConduitResult<get_keys::v1::Response> {
@@ -2403,6 +2409,8 @@ pub fn get_keys_route(
         |u| Some(u.server_name()) == body.sender_servername.as_deref(),
         &db,
     )?;
+
+    db.flush().await?;
 
     Ok(get_keys::v1::Response {
         device_keys: result.device_keys,

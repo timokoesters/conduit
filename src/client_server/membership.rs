@@ -65,14 +65,18 @@ pub async fn join_room_by_id_route(
 
     servers.insert(body.room_id.server_name().to_owned());
 
-    join_room_by_id_helper(
+    let ret = join_room_by_id_helper(
         &db,
         body.sender_user.as_ref(),
         &body.room_id,
         &servers,
         body.third_party_signed.as_ref(),
     )
-    .await
+    .await;
+
+    db.flush().await?;
+
+    ret
 }
 
 #[cfg_attr(
