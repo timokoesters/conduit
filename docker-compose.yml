@@ -14,13 +14,13 @@ services:
             args:
                 CREATED: '2021-03-16T08:18:27Z'
                 VERSION: '0.1.0'
-                LOCAL: 'true'
+                LOCAL: 'false'
                 GIT_REF: origin/master
         restart: unless-stopped
         ports:
             - 8448:8000
         volumes:
-            - ./target/db:/srv/conduit/.local/share/conduit
+            - db:/srv/conduit/.local/share/conduit
             ### Uncomment if you want to use conduit.toml to configure Conduit
             ### Note: Set env vars will override conduit.toml values
             # - ./conduit.toml:/srv/conduit/conduit.toml
@@ -55,5 +55,5 @@ services:
     #     depends_on:
     #         - homeserver
 
-# volumes:
-#     db:
+volumes:
+  db:
