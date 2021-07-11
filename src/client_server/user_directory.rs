@@ -1,4 +1,4 @@
-use crate::{database::ReadGuard, ConduitResult, Ruma};
+use crate::{database::DatabaseGuard, ConduitResult, Ruma};
 use ruma::api::client::r0::user_directory::search_users;
 
 #[cfg(feature = "conduit_bin")]
@@ -10,7 +10,7 @@ use rocket::post;
 )]
 #[tracing::instrument(skip(db, body))]
 pub async fn search_users_route(
-    db: ReadGuard,
+    db: DatabaseGuard,
     body: Ruma<search_users::Request<'_>>,
 ) -> ConduitResult<search_users::Response> {
     let limit = u64::from(body.limit) as usize;

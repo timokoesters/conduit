@@ -1,5 +1,5 @@
 use super::SESSION_ID_LENGTH;
-use crate::{database::ReadGuard, utils, ConduitResult, Database, Error, Result, Ruma};
+use crate::{database::DatabaseGuard, utils, ConduitResult, Database, Error, Result, Ruma};
 use ruma::{
     api::client::{
         error::ErrorKind,
@@ -25,7 +25,7 @@ use rocket::{get, post};
 )]
 #[tracing::instrument(skip(db, body))]
 pub async fn upload_keys_route(
-    db: ReadGuard,
+    db: DatabaseGuard,
     body: Ruma<upload_keys::Request>,
 ) -> ConduitResult<upload_keys::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -74,7 +74,7 @@ pub async fn upload_keys_route(
 )]
 #[tracing::instrument(skip(db, body))]
 pub async fn get_keys_route(
-    db: ReadGuard,
+    db: DatabaseGuard,
     body: Ruma<get_keys::Request<'_>>,
 ) -> ConduitResult<get_keys::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -95,7 +95,7 @@ pub async fn get_keys_route(
 )]
 #[tracing::instrument(skip(db, body))]
 pub async fn claim_keys_route(
-    db: ReadGuard,
+    db: DatabaseGuard,
     body: Ruma<claim_keys::Request>,
 ) -> ConduitResult<claim_keys::Response> {
     let response = claim_keys_helper(&body.one_time_keys, &db)?;
@@ -111,7 +111,7 @@ pub async fn claim_keys_route(
 )]
 #[tracing::instrument(skip(db, body))]
 pub async fn upload_signing_keys_route(
-    db: ReadGuard,
+    db: DatabaseGuard,
     body: Ruma<upload_signing_keys::Request<'_>>,
 ) -> ConduitResult<upload_signing_keys::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -174,7 +174,7 @@ pub async fn upload_signing_keys_route(
 )]
 #[tracing::instrument(skip(db, body))]
 pub async fn upload_signatures_route(
-    db: ReadGuard,
+    db: DatabaseGuard,
     body: Ruma<upload_signatures::Request>,
 ) -> ConduitResult<upload_signatures::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -235,7 +235,7 @@ pub async fn upload_signatures_route(
 )]
 #[tracing::instrument(skip(db, body))]
 pub async fn get_key_changes_route(
-    db: ReadGuard,
+    db: DatabaseGuard,
     body: Ruma<get_key_changes::Request<'_>>,
 ) -> ConduitResult<get_key_changes::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");

@@ -1,4 +1,4 @@
-use crate::{database::ReadGuard, Error};
+use crate::{database::DatabaseGuard, Error};
 use ruma::{
     api::{client::r0::uiaa::UiaaResponse, OutgoingResponse},
     identifiers::{DeviceId, UserId},
@@ -48,7 +48,7 @@ where
     async fn from_data(request: &'a Request<'_>, data: Data) -> data::Outcome<Self, Self::Error> {
         let metadata = T::Incoming::METADATA;
         let db = request
-            .guard::<ReadGuard>()
+            .guard::<DatabaseGuard>()
             .await
             .expect("database was loaded");
 

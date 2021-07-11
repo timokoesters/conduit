@@ -1,4 +1,4 @@
-use crate::{database::ReadGuard, ConduitResult, Error, Ruma};
+use crate::{database::DatabaseGuard, ConduitResult, Error, Ruma};
 use ruma::{
     api::client::{error::ErrorKind, r0::to_device::send_event_to_device},
     to_device::DeviceIdOrAllDevices,
@@ -13,7 +13,7 @@ use rocket::put;
 )]
 #[tracing::instrument(skip(db, body))]
 pub async fn send_event_to_device_route(
-    db: ReadGuard,
+    db: DatabaseGuard,
     body: Ruma<send_event_to_device::Request<'_>>,
 ) -> ConduitResult<send_event_to_device::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");

@@ -1,4 +1,4 @@
-use crate::{database::ReadGuard, utils, ConduitResult, Ruma};
+use crate::{database::DatabaseGuard, utils, ConduitResult, Ruma};
 use ruma::api::client::r0::presence::{get_presence, set_presence};
 use std::{convert::TryInto, time::Duration};
 
@@ -11,7 +11,7 @@ use rocket::{get, put};
 )]
 #[tracing::instrument(skip(db, body))]
 pub async fn set_presence_route(
-    db: ReadGuard,
+    db: DatabaseGuard,
     body: Ruma<set_presence::Request<'_>>,
 ) -> ConduitResult<set_presence::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -52,7 +52,7 @@ pub async fn set_presence_route(
 )]
 #[tracing::instrument(skip(db, body))]
 pub async fn get_presence_route(
-    db: ReadGuard,
+    db: DatabaseGuard,
     body: Ruma<get_presence::Request<'_>>,
 ) -> ConduitResult<get_presence::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");

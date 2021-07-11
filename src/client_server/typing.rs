@@ -1,4 +1,4 @@
-use crate::{database::ReadGuard, utils, ConduitResult, Ruma};
+use crate::{database::DatabaseGuard, utils, ConduitResult, Ruma};
 use create_typing_event::Typing;
 use ruma::api::client::r0::typing::create_typing_event;
 
@@ -11,7 +11,7 @@ use rocket::put;
 )]
 #[tracing::instrument(skip(db, body))]
 pub fn create_typing_event_route(
-    db: ReadGuard,
+    db: DatabaseGuard,
     body: Ruma<create_typing_event::Request<'_>>,
 ) -> ConduitResult<create_typing_event::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");

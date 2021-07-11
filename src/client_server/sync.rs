@@ -1,4 +1,4 @@
-use crate::{database::ReadGuard, ConduitResult, Database, Error, Result, Ruma, RumaResponse};
+use crate::{database::DatabaseGuard, ConduitResult, Database, Error, Result, Ruma, RumaResponse};
 use log::error;
 use ruma::{
     api::client::r0::{sync::sync_events, uiaa::UiaaResponse},
@@ -34,7 +34,7 @@ use rocket::{get, tokio};
 )]
 #[tracing::instrument(skip(db, body))]
 pub async fn sync_events_route(
-    db: ReadGuard,
+    db: DatabaseGuard,
     body: Ruma<sync_events::Request<'_>>,
 ) -> std::result::Result<RumaResponse<sync_events::Response>, RumaResponse<UiaaResponse>> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -105,7 +105,7 @@ pub async fn sync_events_route(
 }
 
 pub async fn sync_helper_wrapper(
-    db: Arc<ReadGuard>,
+    db: Arc<DatabaseGuard>,
     sender_user: UserId,
     sender_device: Box<DeviceId>,
     since: Option<String>,
@@ -149,7 +149,7 @@ pub async fn sync_helper_wrapper(
 }
 
 async fn sync_helper(
-    db: Arc<ReadGuard>,
+    db: Arc<DatabaseGuard>,
     sender_user: UserId,
     sender_device: Box<DeviceId>,
     since: Option<String>,

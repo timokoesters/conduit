@@ -1,4 +1,4 @@
-use crate::{database::ReadGuard, ConduitResult, Ruma};
+use crate::{database::DatabaseGuard, ConduitResult, Ruma};
 use ruma::{
     api::client::r0::tag::{create_tag, delete_tag, get_tags},
     events::EventType,
@@ -14,7 +14,7 @@ use rocket::{delete, get, put};
 )]
 #[tracing::instrument(skip(db, body))]
 pub async fn update_tag_route(
-    db: ReadGuard,
+    db: DatabaseGuard,
     body: Ruma<create_tag::Request<'_>>,
 ) -> ConduitResult<create_tag::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -51,7 +51,7 @@ pub async fn update_tag_route(
 )]
 #[tracing::instrument(skip(db, body))]
 pub async fn delete_tag_route(
-    db: ReadGuard,
+    db: DatabaseGuard,
     body: Ruma<delete_tag::Request<'_>>,
 ) -> ConduitResult<delete_tag::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -85,7 +85,7 @@ pub async fn delete_tag_route(
 )]
 #[tracing::instrument(skip(db, body))]
 pub async fn get_tags_route(
-    db: ReadGuard,
+    db: DatabaseGuard,
     body: Ruma<get_tags::Request<'_>>,
 ) -> ConduitResult<get_tags::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");

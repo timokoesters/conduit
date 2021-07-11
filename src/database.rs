@@ -533,9 +533,9 @@ impl Database {
     }
 }
 
-pub struct ReadGuard(OwnedRwLockReadGuard<Database>);
+pub struct DatabaseGuard(OwnedRwLockReadGuard<Database>);
 
-impl Deref for ReadGuard {
+impl Deref for DatabaseGuard {
     type Target = OwnedRwLockReadGuard<Database>;
 
     fn deref(&self) -> &Self::Target {
@@ -544,18 +544,18 @@ impl Deref for ReadGuard {
 }
 
 #[rocket::async_trait]
-impl<'r> FromRequest<'r> for ReadGuard {
+impl<'r> FromRequest<'r> for DatabaseGuard {
     type Error = ();
 
     async fn from_request(req: &'r Request<'_>) -> rocket::request::Outcome<Self, ()> {
         let db = try_outcome!(req.guard::<State<'_, Arc<TokioRwLock<Database>>>>().await);
 
-        Ok(ReadGuard(Arc::clone(&db).read_owned().await)).or_forward(())
+        Ok(DatabaseGuard(Arc::clone(&db).read_owned().await)).or_forward(())
     }
 }
 
-impl Into<ReadGuard> for OwnedRwLockReadGuard<Database> {
-    fn into(self) -> ReadGuard {
-        ReadGuard(self)
+impl Into<DatabaseGuard> for OwnedRwLockReadGuard<Database> {
+    fn into(self) -> DatabaseGuard {
+        DatabaseGuard(self)
     }
 }

@@ -1,4 +1,4 @@
-use crate::{database::ReadGuard, ConduitResult, Error, Ruma};
+use crate::{database::DatabaseGuard, ConduitResult, Error, Ruma};
 use ruma::api::client::{error::ErrorKind, r0::context::get_context};
 use std::convert::TryFrom;
 
@@ -11,7 +11,7 @@ use rocket::get;
 )]
 #[tracing::instrument(skip(db, body))]
 pub async fn get_context_route(
-    db: ReadGuard,
+    db: DatabaseGuard,
     body: Ruma<get_context::Request<'_>>,
 ) -> ConduitResult<get_context::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");

@@ -1,4 +1,6 @@
-use crate::{database::ReadGuard, pdu::PduBuilder, ConduitResult, Database, Error, Result, Ruma};
+use crate::{
+    database::DatabaseGuard, pdu::PduBuilder, ConduitResult, Database, Error, Result, Ruma,
+};
 use ruma::{
     api::client::{
         error::ErrorKind,
@@ -24,7 +26,7 @@ use rocket::{get, put};
 )]
 #[tracing::instrument(skip(db, body))]
 pub async fn send_state_event_for_key_route(
-    db: ReadGuard,
+    db: DatabaseGuard,
     body: Ruma<send_state_event::Request<'_>>,
 ) -> ConduitResult<send_state_event::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -50,7 +52,7 @@ pub async fn send_state_event_for_key_route(
 )]
 #[tracing::instrument(skip(db, body))]
 pub async fn send_state_event_for_empty_key_route(
-    db: ReadGuard,
+    db: DatabaseGuard,
     body: Ruma<send_state_event::Request<'_>>,
 ) -> ConduitResult<send_state_event::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -76,7 +78,7 @@ pub async fn send_state_event_for_empty_key_route(
 )]
 #[tracing::instrument(skip(db, body))]
 pub async fn get_state_events_route(
-    db: ReadGuard,
+    db: DatabaseGuard,
     body: Ruma<get_state_events::Request<'_>>,
 ) -> ConduitResult<get_state_events::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -123,7 +125,7 @@ pub async fn get_state_events_route(
 )]
 #[tracing::instrument(skip(db, body))]
 pub async fn get_state_events_for_key_route(
-    db: ReadGuard,
+    db: DatabaseGuard,
     body: Ruma<get_state_events_for_key::Request<'_>>,
 ) -> ConduitResult<get_state_events_for_key::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -174,7 +176,7 @@ pub async fn get_state_events_for_key_route(
 )]
 #[tracing::instrument(skip(db, body))]
 pub async fn get_state_events_for_empty_key_route(
-    db: ReadGuard,
+    db: DatabaseGuard,
     body: Ruma<get_state_events_for_key::Request<'_>>,
 ) -> ConduitResult<get_state_events_for_key::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
