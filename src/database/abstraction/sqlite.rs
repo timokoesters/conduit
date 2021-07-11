@@ -16,7 +16,7 @@ use super::{DatabaseEngine, Tree};
 use log::debug;
 
 use crossbeam::channel::{bounded, Sender as ChannelSender};
-use parking_lot::{Mutex, MutexGuard, RwLock};
+use parking_lot::{FairMutex, FairMutexGuard, Mutex, MutexGuard, RwLock};
 use rusqlite::{params, Connection, DatabaseName::Main, OptionalExtension};
 
 use tokio::sync::oneshot::Sender;
@@ -33,7 +33,7 @@ use tokio::sync::oneshot::Sender;
 //     "SELECT key, value FROM {} WHERE key <= ? ORDER BY DESC";
 
 struct Pool {
-    writer: Mutex<Connection>,
+    writer: FairMutex<Connection>,
     readers: Vec<Mutex<Connection>>,
     spill_tracker: Arc<()>,
     path: PathBuf,
@@ -59,7 +59,7 @@ impl<'a> Deref for HoldingConn<'a> {
 
 impl Pool {
     fn new<P: AsRef<Path>>(path: P, num_readers: usize, cache_size: u32) -> Result<Self> {
-        let writer = Mutex::new(Self::prepare_conn(&path, Some(cache_size))?);
+        let writer = FairMutex::new(Self::prepare_conn(&path, Some(cache_size))?);
 
         let mut readers = Vec::new();
 
@@ -93,7 +93,7 @@ impl Pool {
         Ok(conn)
     }
 
-    fn write_lock(&self) -> MutexGuard<'_, Connection> {
+    fn write_lock(&self) -> FairMutexGuard<'_, Connection> {
         self.writer.lock()
     }
 

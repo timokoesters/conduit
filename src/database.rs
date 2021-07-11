@@ -456,6 +456,8 @@ impl Database {
                 .watch_prefix(&userid_bytes),
         );
 
+        futures.push(Box::pin(self.globals.rotate.watch()));
+
         // Wait until one of them finds something
         futures.next().await;
     }
@@ -509,6 +511,11 @@ impl Database {
                 };
 
                 if let Some(arc) = Weak::upgrade(&weak) {
+                    log::info!(target: "wal-trunc", "Rotating sync helpers...");
+                    // This actually creates a very small race condition between firing this and trying to acquire the subsequent write lock.
+                    // Though it is not a huge deal if the write lock doesn't "catch", as it'll harmlessly time out.
+                    arc.read().await.globals.rotate.fire();
+
                     log::info!(target: "wal-trunc", "Locking...");
                     let guard = {
                         if let Ok(guard) = timeout(lock_timeout, arc.write()).await {
