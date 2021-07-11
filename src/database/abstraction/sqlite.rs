@@ -334,8 +334,8 @@ impl Tree for SqliteTable {
         if backwards {
             iter_from_thread!(
                 self,
-                format!( // TODO change to <= on rebase
-                    "SELECT key, value FROM {} WHERE key < ? ORDER BY key DESC",
+                format!(
+                    "SELECT key, value FROM {} WHERE key <= ? ORDER BY key DESC",
                     name
                 )
                 .as_str(),
