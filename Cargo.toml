@@ -25,7 +25,6 @@ tokio = "1.2.0"
 # Used for storing data permanently
 sled = { version = "0.34.6", features = ["compression", "no_metrics"], optional = true }
 rocksdb = { version = "0.16.0", features = ["multi-threaded-cf"], optional = true }
-# sqlx = { version = "0.5.5", features = ["sqlite", "runtime-tokio-rustls"], optional = true }
 #sled = { git = "https://github.com/spacejam/sled.git", rev = "e4640e0773595229f398438886f19bca6f7326a2", features = ["compression"] }
 
 # Used for the http request / response body type for Ruma endpoints used with reqwest

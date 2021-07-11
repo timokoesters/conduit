@@ -42,10 +42,8 @@ use self::proxy::ProxyConfig;
 pub struct Config {
     server_name: Box<ServerName>,
     database_path: String,
-    #[serde(default = "default_cache_capacity")]
-    cache_capacity: u32,
-    #[serde(default = "default_sqlite_cache_kib")]
-    sqlite_cache_kib: u32,
+    #[serde(default = "default_db_cache_capacity")]
+    db_cache_capacity: u32,
     #[serde(default = "default_sqlite_read_pool_size")]
     sqlite_read_pool_size: usize,
     #[serde(default = "false_fn")]
@@ -83,12 +81,8 @@ fn true_fn() -> bool {
     true
 }
 
-fn default_cache_capacity() -> u32 {
+fn default_db_cache_capacity() -> u32 {
     1024 * 1024 * 1024
-}
-
-fn default_sqlite_cache_kib() -> u32 {
-    2000
 }
 
 fn default_sqlite_read_pool_size() -> usize {
@@ -116,13 +110,13 @@ fn default_log() -> String {
 }
 
 #[cfg(feature = "sled")]
-pub type Engine = abstraction::sled::SledEngine;
+pub type Engine = abstraction::sled::Engine;
 
 #[cfg(feature = "rocksdb")]
-pub type Engine = abstraction::rocksdb::RocksDbEngine;
+pub type Engine = abstraction::rocksdb::Engine;
 
 #[cfg(feature = "sqlite")]
-pub type Engine = abstraction::sqlite::SqliteEngine;
+pub type Engine = abstraction::sqlite::Engine;
 
 pub struct Database {
     _db: Arc<Engine>,
@@ -268,7 +262,7 @@ impl Database {
             globals: globals::Globals::load(
                 builder.open_tree("global")?,
                 builder.open_tree("server_signingkeys")?,
-                config,
+                config.clone(),
             )?,
         }));
 
@@ -371,6 +365,9 @@ impl Database {
             .start_handler(Arc::clone(&db), sending_receiver);
 
         drop(guard);
+
+        #[cfg(feature = "sqlite")]
+        Self::start_wal_clean_task(&db, &config).await;
 
         Ok(db)
     }
@@ -481,6 +478,7 @@ impl Database {
     #[cfg(feature = "sqlite")]
     pub async fn start_wal_clean_task(lock: &Arc<TokioRwLock<Self>>, config: &Config) {
         use tokio::{
+            select,
             signal::unix::{signal, SignalKind},
             time::{interval, timeout},
         };
@@ -501,13 +499,14 @@ impl Database {
             let mut s = signal(SignalKind::hangup()).unwrap();
 
             loop {
-                if do_timer {
-                    i.tick().await;
-                    log::info!(target: "wal-trunc", "Timer ticked")
-                } else {
-                    s.recv().await;
-                    log::info!(target: "wal-trunc", "Received SIGHUP")
-                }
+                select! {
+                    _ = i.tick(), if do_timer => {
+                        log::info!(target: "wal-trunc", "Timer ticked")
+                    }
+                    _ = s.recv() => {
+                        log::info!(target: "wal-trunc", "Received SIGHUP")
+                    }
+                };
 
                 if let Some(arc) = Weak::upgrade(&weak) {
                     log::info!(target: "wal-trunc", "Locking...");

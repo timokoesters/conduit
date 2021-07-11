@@ -5,13 +5,13 @@ use std::{future::Future, pin::Pin, sync::Arc};
 
 use super::{DatabaseEngine, Tree};
 
-pub struct SledEngine(sled::Db);
+pub struct Engine(sled::Db);
 
 pub struct SledEngineTree(sled::Tree);
 
-impl DatabaseEngine for SledEngine {
+impl DatabaseEngine for Engine {
     fn open(config: &Config) -> Result<Arc<Self>> {
-        Ok(Arc::new(SledEngine(
+        Ok(Arc::new(Engine(
             sled::Config::default()
                 .path(&config.database_path)
                 .cache_capacity(config.cache_capacity as u64)

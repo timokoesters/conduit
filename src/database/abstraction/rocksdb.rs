@@ -7,15 +7,15 @@ use super::{DatabaseEngine, Tree};
 
 use std::{collections::BTreeMap, sync::RwLock};
 
-pub struct RocksDbEngine(rocksdb::DBWithThreadMode<rocksdb::MultiThreaded>);
+pub struct Engine(rocksdb::DBWithThreadMode<rocksdb::MultiThreaded>);
 
 pub struct RocksDbEngineTree<'a> {
-    db: Arc<RocksDbEngine>,
+    db: Arc<Engine>,
     name: &'a str,
     watchers: RwLock<BTreeMap<Vec<u8>, Vec<tokio::sync::oneshot::Sender<()>>>>,
 }
 
-impl DatabaseEngine for RocksDbEngine {
+impl DatabaseEngine for Engine {
     fn open(config: &Config) -> Result<Arc<Self>> {
         let mut db_opts = rocksdb::Options::default();
         db_opts.create_if_missing(true);
@@ -45,7 +45,7 @@ impl DatabaseEngine for RocksDbEngine {
                 .map(|name| rocksdb::ColumnFamilyDescriptor::new(name, options.clone())),
         )?;
 
-        Ok(Arc::new(RocksDbEngine(db)))
+        Ok(Arc::new(Engine(db)))
     }
 
     fn open_tree(self: &Arc<Self>, name: &'static str) -> Result<Arc<dyn Tree>> {

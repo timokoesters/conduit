@@ -202,9 +202,6 @@ async fn main() {
         .await
         .expect("config is valid");
 
-    #[cfg(feature = "sqlite")]
-    Database::start_wal_clean_task(&db, &config).await;
-
     if config.allow_jaeger {
         let (tracer, _uninstall) = opentelemetry_jaeger::new_pipeline()
             .with_service_name("conduit")

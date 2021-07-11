@@ -119,22 +119,22 @@ impl Pool {
     }
 }
 
-pub struct SqliteEngine {
+pub struct Engine {
     pool: Pool,
 }
 
-impl DatabaseEngine for SqliteEngine {
+impl DatabaseEngine for Engine {
     fn open(config: &Config) -> Result<Arc<Self>> {
         let pool = Pool::new(
             Path::new(&config.database_path).join("conduit.db"),
             config.sqlite_read_pool_size,
-            config.sqlite_cache_kib,
+            config.db_cache_capacity / 1024, // bytes -> kb
         )?;
 
         pool.write_lock()
             .execute("CREATE TABLE IF NOT EXISTS _noop (\"key\" INT)", params![])?;
 
-        let arc = Arc::new(SqliteEngine { pool });
+        let arc = Arc::new(Engine { pool });
 
         Ok(arc)
     }
@@ -166,7 +166,7 @@ impl DatabaseEngine for SqliteEngine {
     }
 }
 
-impl SqliteEngine {
+impl Engine {
     pub fn flush_wal(self: &Arc<Self>) -> Result<()> {
         self.pool
             .write_lock()
@@ -185,7 +185,7 @@ impl SqliteEngine {
 }
 
 pub struct SqliteTable {
-    engine: Arc<SqliteEngine>,
+    engine: Arc<Engine>,
     name: String,
     watchers: RwLock<BTreeMap<Vec<u8>, Vec<Sender<()>>>>,
 }
@@ -257,18 +257,18 @@ impl Tree for SqliteTable {
     }
 
     fn insert(&self, key: &[u8], value: &[u8]) -> Result<()> {
-        {
-            let guard = self.engine.pool.write_lock();
+        let guard = self.engine.pool.write_lock();
 
-            let start = Instant::now();
+        let start = Instant::now();
 
-            self.insert_with_guard(&guard, key, value)?;
+        self.insert_with_guard(&guard, key, value)?;
 
-            let elapsed = start.elapsed();
-            if elapsed > MILLI {
-                debug!("insert:    took {:012?} : {}", elapsed, &self.name);
-            }
+        let elapsed = start.elapsed();
+        if elapsed > MILLI {
+            debug!("insert:    took {:012?} : {}", elapsed, &self.name);
         }
+
+        drop(guard);
 
         let watchers = self.watchers.read();
         let mut triggered = Vec::new();
