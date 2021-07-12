@@ -194,14 +194,14 @@ async fn main() {
             )
             .merge(Env::prefixed("CONDUIT_").global());
 
-    let config = raw_config
-        .extract::<Config>()
-        .expect("It looks like your config is invalid. Please take a look at the error")
-        .fallbacks();
+    std::env::set_var("RUST_LOG", "warn");
 
-    let db = Database::load_or_create(config.clone())
-        .await
-        .expect("config is valid");
+    let mut config = raw_config
+        .extract::<Config>()
+        .expect("It looks like your config is invalid. Please take a look at the error");
+
+    let mut _span: Option<span::Span> = None;
+    let mut _enter: Option<span::Entered<'_>> = None;
 
     if config.allow_jaeger {
         let (tracer, _uninstall) = opentelemetry_jaeger::new_pipeline()
@@ -211,18 +211,22 @@ async fn main() {
         let telemetry = tracing_opentelemetry::layer().with_tracer(tracer);
         Registry::default().with(telemetry).try_init().unwrap();
 
-        let root = span!(tracing::Level::INFO, "app_start", work_units = 2);
-        let _enter = root.enter();
-
-        let rocket = setup_rocket(raw_config, db);
-        rocket.launch().await.unwrap();
+        _span = Some(span!(tracing::Level::INFO, "app_start", work_units = 2));
+        _enter = Some(_span.as_ref().unwrap().enter());
     } else {
-        std::env::set_var("RUST_LOG", config.log);
+        std::env::set_var("RUST_LOG", &config.log);
         tracing_subscriber::fmt::init();
-
-        let rocket = setup_rocket(raw_config, db);
-        rocket.launch().await.unwrap();
     }
+
+    // Required here to process fallbacks while logging is enabled, but before config is actually used for anything
+    config.process_fallbacks();
+
+    let db = Database::load_or_create(config)
+        .await
+        .expect("config is valid");
+
+    let rocket = setup_rocket(raw_config, db);
+    rocket.launch().await.unwrap();
 }
 
 #[catch(404)]

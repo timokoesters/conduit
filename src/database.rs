@@ -90,10 +90,9 @@ macro_rules! deprecate_with {
 }
 
 impl Config {
-    pub fn fallbacks(mut self) -> Self {
+    pub fn process_fallbacks(&mut self) {
         // TODO: have a proper way handle into above struct (maybe serde supports something like this?)
         deprecate_with!(self ; cache_capacity -> db_cache_capacity or default_db_cache_capacity);
-        self
     }
 }
 
