@@ -196,7 +196,7 @@ async fn main() {
 
     std::env::set_var("RUST_LOG", "warn");
 
-    let mut config = raw_config
+    let config = raw_config
         .extract::<Config>()
         .expect("It looks like your config is invalid. Please take a look at the error");
 
@@ -218,8 +218,7 @@ async fn main() {
         tracing_subscriber::fmt::init();
     }
 
-    // Required here to process fallbacks while logging is enabled, but before config is actually used for anything
-    config.process_fallbacks();
+    config.warn_deprecated();
 
     let db = Database::load_or_create(config)
         .await

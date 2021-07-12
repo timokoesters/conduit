@@ -26,9 +26,9 @@ use rocket::{
     try_outcome, State,
 };
 use ruma::{DeviceId, ServerName, UserId};
-use serde::Deserialize;
+use serde::{de::IgnoredAny, Deserialize};
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     fs::{self, remove_dir_all},
     io::Write,
     ops::Deref,
@@ -42,8 +42,8 @@ use self::proxy::ProxyConfig;
 pub struct Config {
     server_name: Box<ServerName>,
     database_path: String,
-    cache_capacity: Option<u32>, // deprecated
-    db_cache_capacity: Option<u32>,
+    #[serde(default = "default_db_cache_capacity")]
+    db_cache_capacity: u32,
     #[serde(default = "default_sqlite_read_pool_size")]
     sqlite_read_pool_size: usize,
     #[serde(default = "false_fn")]
@@ -71,28 +71,28 @@ pub struct Config {
     trusted_servers: Vec<Box<ServerName>>,
     #[serde(default = "default_log")]
     pub log: String,
+
+    #[serde(flatten)]
+    catchall: BTreeMap<String, IgnoredAny>,
 }
 
-macro_rules! deprecate_with {
-    ($self:expr ; $from:ident -> $to:ident) => {
-        if let Some(v) = $self.$from {
-            let from = stringify!($from);
-            let to = stringify!($to);
-            log::warn!("{} is deprecated, use {} instead", from, to);
-
-            $self.$to.get_or_insert(v);
-        }
-    };
-    ($self:expr ; $from:ident -> $to:ident or $default:expr) => {
-        deprecate_with!($self ; $from -> $to);
-        $self.$to.get_or_insert_with($default);
-    };
-}
+const DEPRECATED_KEYS: &[&str] = &["cache_capacity"];
 
 impl Config {
-    pub fn process_fallbacks(&mut self) {
-        // TODO: have a proper way handle into above struct (maybe serde supports something like this?)
-        deprecate_with!(self ; cache_capacity -> db_cache_capacity or default_db_cache_capacity);
+    pub fn warn_deprecated(&self) {
+        let mut was_deprecated = false;
+        for key in self
+            .catchall
+            .keys()
+            .filter(|key| DEPRECATED_KEYS.iter().any(|s| s == key))
+        {
+            log::warn!("Config parameter {} is deprecated", key);
+            was_deprecated = true;
+        }
+
+        if was_deprecated {
+            log::warn!("Read conduit documentation and check your configuration if any new configuration parameters should be adjusted");
+        }
     }
 }
 

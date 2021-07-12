@@ -128,7 +128,7 @@ impl DatabaseEngine for Engine {
         let pool = Pool::new(
             Path::new(&config.database_path).join("conduit.db"),
             config.sqlite_read_pool_size,
-            config.db_cache_capacity.expect("fallbacks hasn't been called") / 1024, // bytes -> kb
+            config.db_cache_capacity / 1024, // bytes -> kb
         )?;
 
         pool.write_lock()
