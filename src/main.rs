@@ -196,7 +196,8 @@ async fn main() {
 
     let config = raw_config
         .extract::<Config>()
-        .expect("It looks like your config is invalid. Please take a look at the error");
+        .expect("It looks like your config is invalid. Please take a look at the error")
+        .fallbacks();
 
     let db = Database::load_or_create(config.clone())
         .await

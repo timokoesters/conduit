@@ -42,8 +42,8 @@ use self::proxy::ProxyConfig;
 pub struct Config {
     server_name: Box<ServerName>,
     database_path: String,
-    #[serde(default = "default_db_cache_capacity")]
-    db_cache_capacity: u32,
+    cache_capacity: Option<u32>, // deprecated
+    db_cache_capacity: Option<u32>,
     #[serde(default = "default_sqlite_read_pool_size")]
     sqlite_read_pool_size: usize,
     #[serde(default = "false_fn")]
@@ -71,6 +71,30 @@ pub struct Config {
     trusted_servers: Vec<Box<ServerName>>,
     #[serde(default = "default_log")]
     pub log: String,
+}
+
+macro_rules! deprecate_with {
+    ($self:expr ; $from:ident -> $to:ident) => {
+        if let Some(v) = $self.$from {
+            let from = stringify!($from);
+            let to = stringify!($to);
+            log::warn!("{} is deprecated, use {} instead", from, to);
+
+            $self.$to.get_or_insert(v);
+        }
+    };
+    ($self:expr ; $from:ident -> $to:ident or $default:expr) => {
+        deprecate_with!($self ; $from -> $to);
+        $self.$to.get_or_insert_with($default);
+    };
+}
+
+impl Config {
+    pub fn fallbacks(mut self) -> Self {
+        // TODO: have a proper way handle into above struct (maybe serde supports something like this?)
+        deprecate_with!(self ; cache_capacity -> db_cache_capacity or default_db_cache_capacity);
+        self
+    }
 }
 
 fn false_fn() -> bool {
