@@ -9,7 +9,7 @@ use ruma::{
     events::EventType,
     serde::Raw,
 };
-use std::convert::TryInto;
+use std::{convert::TryInto, sync::Arc};
 
 #[cfg(feature = "conduit_bin")]
 use rocket::{get, put};
@@ -69,9 +69,19 @@ pub async fn set_displayname_route(
         })
         .filter_map(|r| r.ok())
     {
-        let _ = db
-            .rooms
-            .build_and_append_pdu(pdu_builder, &sender_user, &room_id, &db);
+        let mutex = Arc::clone(
+            db.globals
+                .roomid_mutex
+                .write()
+                .unwrap()
+                .entry(room_id.clone())
+                .or_default(),
+        );
+        let mutex_lock = mutex.lock().await;
+
+        let _ =
+            db.rooms
+                .build_and_append_pdu(pdu_builder, &sender_user, &room_id, &db, &mutex_lock);
 
         // Presence update
         db.rooms.edus.update_presence(
@@ -171,9 +181,19 @@ pub async fn set_avatar_url_route(
         })
         .filter_map(|r| r.ok())
     {
-        let _ = db
-            .rooms
-            .build_and_append_pdu(pdu_builder, &sender_user, &room_id, &db);
+        let mutex = Arc::clone(
+            db.globals
+                .roomid_mutex
+                .write()
+                .unwrap()
+                .entry(room_id.clone())
+                .or_default(),
+        );
+        let mutex_lock = mutex.lock().await;
+
+        let _ =
+            db.rooms
+                .build_and_append_pdu(pdu_builder, &sender_user, &room_id, &db, &mutex_lock);
 
         // Presence update
         db.rooms.edus.update_presence(

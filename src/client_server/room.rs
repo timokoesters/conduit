@@ -15,7 +15,7 @@ use ruma::{
     serde::Raw,
     RoomAliasId, RoomId, RoomVersionId,
 };
-use std::{cmp::max, collections::BTreeMap, convert::TryFrom};
+use std::{cmp::max, collections::BTreeMap, convert::TryFrom, sync::Arc};
 
 #[cfg(feature = "conduit_bin")]
 use rocket::{get, post};
@@ -32,6 +32,16 @@ pub async fn create_room_route(
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
     let room_id = RoomId::new(db.globals.server_name());
+
+    let mutex = Arc::clone(
+        db.globals
+            .roomid_mutex
+            .write()
+            .unwrap()
+            .entry(room_id.clone())
+            .or_default(),
+    );
+    let mutex_lock = mutex.lock().await;
 
     let alias = body
         .room_alias_name
@@ -69,6 +79,7 @@ pub async fn create_room_route(
         &sender_user,
         &room_id,
         &db,
+        &mutex_lock,
     )?;
 
     // 2. Let the room creator join
@@ -90,6 +101,7 @@ pub async fn create_room_route(
         &sender_user,
         &room_id,
         &db,
+        &mutex_lock,
     )?;
 
     // 3. Power levels
@@ -144,6 +156,7 @@ pub async fn create_room_route(
         &sender_user,
         &room_id,
         &db,
+        &mutex_lock,
     )?;
 
     // 4. Events set by preset
@@ -170,6 +183,7 @@ pub async fn create_room_route(
         &sender_user,
         &room_id,
         &db,
+        &mutex_lock,
     )?;
 
     // 4.2 History Visibility
@@ -187,6 +201,7 @@ pub async fn create_room_route(
         &sender_user,
         &room_id,
         &db,
+        &mutex_lock,
     )?;
 
     // 4.3 Guest Access
@@ -212,6 +227,7 @@ pub async fn create_room_route(
         &sender_user,
         &room_id,
         &db,
+        &mutex_lock,
     )?;
 
     // 5. Events listed in initial_state
@@ -227,7 +243,7 @@ pub async fn create_room_route(
         }
 
         db.rooms
-            .build_and_append_pdu(pdu_builder, &sender_user, &room_id, &db)?;
+            .build_and_append_pdu(pdu_builder, &sender_user, &room_id, &db, &mutex_lock)?;
     }
 
     // 6. Events implied by name and topic
@@ -248,6 +264,7 @@ pub async fn create_room_route(
             &sender_user,
             &room_id,
             &db,
+            &mutex_lock,
         )?;
     }
 
@@ -266,10 +283,12 @@ pub async fn create_room_route(
             &sender_user,
             &room_id,
             &db,
+            &mutex_lock,
         )?;
     }
 
     // 7. Events implied by invite (and TODO: invite_3pid)
+    drop(mutex_lock);
     for user_id in &body.invite {
         let _ = invite_helper(sender_user, user_id, &room_id, &db, body.is_direct).await;
     }
@@ -340,6 +359,16 @@ pub async fn upgrade_room_route(
     // Create a replacement room
     let replacement_room = RoomId::new(db.globals.server_name());
 
+    let mutex = Arc::clone(
+        db.globals
+            .roomid_mutex
+            .write()
+            .unwrap()
+            .entry(body.room_id.clone())
+            .or_default(),
+    );
+    let mutex_lock = mutex.lock().await;
+
     // Send a m.room.tombstone event to the old room to indicate that it is not intended to be used any further
     // Fail if the sender does not have the required permissions
     let tombstone_event_id = db.rooms.build_and_append_pdu(
@@ -357,6 +386,7 @@ pub async fn upgrade_room_route(
         sender_user,
         &body.room_id,
         &db,
+        &mutex_lock,
     )?;
 
     // Get the old room federations status
@@ -397,6 +427,7 @@ pub async fn upgrade_room_route(
         sender_user,
         &replacement_room,
         &db,
+        &mutex_lock,
     )?;
 
     // Join the new room
@@ -418,6 +449,7 @@ pub async fn upgrade_room_route(
         sender_user,
         &replacement_room,
         &db,
+        &mutex_lock,
     )?;
 
     // Recommended transferable state events list from the specs
@@ -451,6 +483,7 @@ pub async fn upgrade_room_route(
             sender_user,
             &replacement_room,
             &db,
+            &mutex_lock,
         )?;
     }
 
@@ -494,7 +527,10 @@ pub async fn upgrade_room_route(
         sender_user,
         &body.room_id,
         &db,
+        &mutex_lock,
     )?;
+
+    drop(mutex_lock);
 
     db.flush().await?;
 

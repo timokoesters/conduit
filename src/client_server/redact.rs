@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use crate::{database::DatabaseGuard, pdu::PduBuilder, ConduitResult, Ruma};
 use ruma::{
     api::client::r0::redact::redact_event,
@@ -18,6 +20,16 @@ pub async fn redact_event_route(
 ) -> ConduitResult<redact_event::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
+    let mutex = Arc::clone(
+        db.globals
+            .roomid_mutex
+            .write()
+            .unwrap()
+            .entry(body.room_id.clone())
+            .or_default(),
+    );
+    let mutex_lock = mutex.lock().await;
+
     let event_id = db.rooms.build_and_append_pdu(
         PduBuilder {
             event_type: EventType::RoomRedaction,
@@ -32,7 +44,10 @@ pub async fn redact_event_route(
         &sender_user,
         &body.room_id,
         &db,
+        &mutex_lock,
     )?;
+
+    drop(mutex_lock);
 
     db.flush().await?;
 

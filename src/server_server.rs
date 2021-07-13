@@ -640,7 +640,7 @@ pub async fn send_transaction_message_route(
 
         let mutex = Arc::clone(
             db.globals
-                .roomid_mutex
+                .roomid_mutex_federation
                 .write()
                 .unwrap()
                 .entry(room_id.clone())
@@ -1309,11 +1309,13 @@ pub fn handle_incoming_pdu<'a>(
             pdu_id = Some(
                 append_incoming_pdu(
                     &db,
+                    &room_id,
                     &incoming_pdu,
                     val,
                     extremities,
                     &state_at_incoming_event,
                 )
+                .await
                 .map_err(|_| "Failed to add pdu to db.".to_owned())?,
             );
             debug!("Appended incoming pdu.");
@@ -1612,13 +1614,24 @@ pub(crate) async fn fetch_signing_keys(
 /// Append the incoming event setting the state snapshot to the state from the
 /// server that sent the event.
 #[tracing::instrument(skip(db))]
-pub(crate) fn append_incoming_pdu(
+async fn append_incoming_pdu(
     db: &Database,
+    room_id: &RoomId,
     pdu: &PduEvent,
     pdu_json: CanonicalJsonObject,
     new_room_leaves: HashSet<EventId>,
     state: &StateMap<Arc<PduEvent>>,
 ) -> Result<Vec<u8>> {
+    let mutex = Arc::clone(
+        db.globals
+            .roomid_mutex
+            .write()
+            .unwrap()
+            .entry(room_id.clone())
+            .or_default(),
+    );
+    let mutex_lock = mutex.lock().await;
+
     // We append to state before appending the pdu, so we don't have a moment in time with the
     // pdu without it's state. This is okay because append_pdu can't fail.
     db.rooms
@@ -1630,6 +1643,8 @@ pub(crate) fn append_incoming_pdu(
         &new_room_leaves.into_iter().collect::<Vec<_>>(),
         &db,
     )?;
+
+    drop(mutex_lock);
 
     for appservice in db.appservice.iter_all()?.filter_map(|r| r.ok()) {
         if let Some(namespaces) = appservice.1.get("namespaces") {
@@ -2146,7 +2161,7 @@ pub async fn create_join_event_route(
 
     let mutex = Arc::clone(
         db.globals
-            .roomid_mutex
+            .roomid_mutex_federation
             .write()
             .unwrap()
             .entry(body.room_id.clone())

@@ -10,6 +10,7 @@ use ruma::{
 use std::{
     collections::BTreeMap,
     convert::{TryFrom, TryInto},
+    sync::Arc,
 };
 
 #[cfg(feature = "conduit_bin")]
@@ -26,6 +27,16 @@ pub async fn send_message_event_route(
 ) -> ConduitResult<send_message_event::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
     let sender_device = body.sender_device.as_deref();
+
+    let mutex = Arc::clone(
+        db.globals
+            .roomid_mutex
+            .write()
+            .unwrap()
+            .entry(body.room_id.clone())
+            .or_default(),
+    );
+    let mutex_lock = mutex.lock().await;
 
     // Check if this is a new transaction id
     if let Some(response) =
@@ -64,6 +75,7 @@ pub async fn send_message_event_route(
         &sender_user,
         &body.room_id,
         &db,
+        &mutex_lock,
     )?;
 
     db.transaction_ids.add_txnid(
@@ -72,6 +84,8 @@ pub async fn send_message_event_route(
         &body.txn_id,
         event_id.as_bytes(),
     )?;
+
+    drop(mutex_lock);
 
     db.flush().await?;
 

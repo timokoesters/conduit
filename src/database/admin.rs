@@ -10,7 +10,7 @@ use ruma::{
     events::{room::message, EventType},
     UserId,
 };
-use tokio::sync::{RwLock, RwLockReadGuard};
+use tokio::sync::{MutexGuard, RwLock, RwLockReadGuard};
 
 pub enum AdminCommand {
     RegisterAppservice(serde_yaml::Value),
@@ -48,38 +48,51 @@ impl Admin {
                 )
                 .unwrap();
 
-            if conduit_room.is_none() {
-                warn!("Conduit instance does not have an #admins room. Logging to that room will not work. Restart Conduit after creating a user to fix this.");
-            }
+            let conduit_room = match conduit_room {
+                None => {
+                    warn!("Conduit instance does not have an #admins room. Logging to that room will not work. Restart Conduit after creating a user to fix this.");
+                    return;
+                }
+                Some(r) => r,
+            };
 
             drop(guard);
 
-            let send_message =
-                |message: message::MessageEventContent, guard: RwLockReadGuard<'_, Database>| {
-                    if let Some(conduit_room) = &conduit_room {
-                        guard
-                            .rooms
-                            .build_and_append_pdu(
-                                PduBuilder {
-                                    event_type: EventType::RoomMessage,
-                                    content: serde_json::to_value(message)
-                                        .expect("event is valid, we just created it"),
-                                    unsigned: None,
-                                    state_key: None,
-                                    redacts: None,
-                                },
-                                &conduit_user,
-                                &conduit_room,
-                                &guard,
-                            )
-                            .unwrap();
-                    }
-                };
+            let send_message = |message: message::MessageEventContent,
+                                guard: RwLockReadGuard<'_, Database>,
+                                mutex_lock: &MutexGuard<'_, ()>| {
+                guard
+                    .rooms
+                    .build_and_append_pdu(
+                        PduBuilder {
+                            event_type: EventType::RoomMessage,
+                            content: serde_json::to_value(message)
+                                .expect("event is valid, we just created it"),
+                            unsigned: None,
+                            state_key: None,
+                            redacts: None,
+                        },
+                        &conduit_user,
+                        &conduit_room,
+                        &guard,
+                        mutex_lock,
+                    )
+                    .unwrap();
+            };
 
             loop {
                 tokio::select! {
                     Some(event) = receiver.next() => {
                         let guard = db.read().await;
+                        let mutex = Arc::clone(
+                            guard.globals
+                                .roomid_mutex
+                                .write()
+                                .unwrap()
+                                .entry(conduit_room.clone())
+                                .or_default(),
+                        );
+                        let mutex_lock = mutex.lock().await;
 
                         match event {
                             AdminCommand::RegisterAppservice(yaml) => {
@@ -93,15 +106,17 @@ impl Admin {
                                         count,
                                         appservices.into_iter().filter_map(|r| r.ok()).collect::<Vec<_>>().join(", ")
                                     );
-                                    send_message(message::MessageEventContent::text_plain(output), guard);
+                                    send_message(message::MessageEventContent::text_plain(output), guard, &mutex_lock);
                                 } else {
-                                    send_message(message::MessageEventContent::text_plain("Failed to get appservices."), guard);
+                                    send_message(message::MessageEventContent::text_plain("Failed to get appservices."), guard, &mutex_lock);
                                 }
                             }
                             AdminCommand::SendMessage(message) => {
-                                send_message(message, guard)
+                                send_message(message, guard, &mutex_lock);
                             }
                         }
+
+                        drop(mutex_lock);
                     }
                 }
             }

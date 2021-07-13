@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use crate::{
     database::DatabaseGuard, pdu::PduBuilder, ConduitResult, Database, Error, Result, Ruma,
 };
@@ -257,6 +259,16 @@ pub async fn send_state_event_for_key_helper(
         }
     }
 
+    let mutex = Arc::clone(
+        db.globals
+            .roomid_mutex
+            .write()
+            .unwrap()
+            .entry(room_id.clone())
+            .or_default(),
+    );
+    let mutex_lock = mutex.lock().await;
+
     let event_id = db.rooms.build_and_append_pdu(
         PduBuilder {
             event_type,
@@ -268,6 +280,7 @@ pub async fn send_state_event_for_key_helper(
         &sender_user,
         &room_id,
         &db,
+        &mutex_lock,
     )?;
 
     Ok(event_id)

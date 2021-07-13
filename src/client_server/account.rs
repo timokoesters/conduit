@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, convert::TryInto};
+use std::{collections::BTreeMap, convert::TryInto, sync::Arc};
 
 use super::{DEVICE_ID_LENGTH, SESSION_ID_LENGTH, TOKEN_LENGTH};
 use crate::{database::DatabaseGuard, pdu::PduBuilder, utils, ConduitResult, Error, Ruma};
@@ -236,6 +236,16 @@ pub async fn register_route(
 
         let room_id = RoomId::new(db.globals.server_name());
 
+        let mutex = Arc::clone(
+            db.globals
+                .roomid_mutex
+                .write()
+                .unwrap()
+                .entry(room_id.clone())
+                .or_default(),
+        );
+        let mutex_lock = mutex.lock().await;
+
         let mut content = ruma::events::room::create::CreateEventContent::new(conduit_user.clone());
         content.federate = true;
         content.predecessor = None;
@@ -253,6 +263,7 @@ pub async fn register_route(
             &conduit_user,
             &room_id,
             &db,
+            &mutex_lock,
         )?;
 
         // 2. Make conduit bot join
@@ -274,6 +285,7 @@ pub async fn register_route(
             &conduit_user,
             &room_id,
             &db,
+            &mutex_lock,
         )?;
 
         // 3. Power levels
@@ -298,6 +310,7 @@ pub async fn register_route(
             &conduit_user,
             &room_id,
             &db,
+            &mutex_lock,
         )?;
 
         // 4.1 Join Rules
@@ -315,6 +328,7 @@ pub async fn register_route(
             &conduit_user,
             &room_id,
             &db,
+            &mutex_lock,
         )?;
 
         // 4.2 History Visibility
@@ -334,6 +348,7 @@ pub async fn register_route(
             &conduit_user,
             &room_id,
             &db,
+            &mutex_lock,
         )?;
 
         // 4.3 Guest Access
@@ -351,6 +366,7 @@ pub async fn register_route(
             &conduit_user,
             &room_id,
             &db,
+            &mutex_lock,
         )?;
 
         // 6. Events implied by name and topic
@@ -370,6 +386,7 @@ pub async fn register_route(
             &conduit_user,
             &room_id,
             &db,
+            &mutex_lock,
         )?;
 
         db.rooms.build_and_append_pdu(
@@ -386,6 +403,7 @@ pub async fn register_route(
             &conduit_user,
             &room_id,
             &db,
+            &mutex_lock,
         )?;
 
         // Room alias
@@ -408,6 +426,7 @@ pub async fn register_route(
             &conduit_user,
             &room_id,
             &db,
+            &mutex_lock,
         )?;
 
         db.rooms.set_alias(&alias, Some(&room_id), &db.globals)?;
@@ -431,6 +450,7 @@ pub async fn register_route(
             &conduit_user,
             &room_id,
             &db,
+            &mutex_lock,
         )?;
         db.rooms.build_and_append_pdu(
             PduBuilder {
@@ -450,6 +470,7 @@ pub async fn register_route(
             &user_id,
             &room_id,
             &db,
+            &mutex_lock,
         )?;
 
         // Send welcome message
@@ -468,6 +489,7 @@ pub async fn register_route(
             &conduit_user,
             &room_id,
             &db,
+            &mutex_lock,
         )?;
     }
 
@@ -643,6 +665,16 @@ pub async fn deactivate_route(
             third_party_invite: None,
         };
 
+        let mutex = Arc::clone(
+            db.globals
+                .roomid_mutex
+                .write()
+                .unwrap()
+                .entry(room_id.clone())
+                .or_default(),
+        );
+        let mutex_lock = mutex.lock().await;
+
         db.rooms.build_and_append_pdu(
             PduBuilder {
                 event_type: EventType::RoomMember,
@@ -654,6 +686,7 @@ pub async fn deactivate_route(
             &sender_user,
             &room_id,
             &db,
+            &mutex_lock,
         )?;
     }
 

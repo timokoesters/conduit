@@ -2,6 +2,7 @@ mod edus;
 
 pub use edus::RoomEdus;
 use member::MembershipState;
+use tokio::sync::MutexGuard;
 
 use crate::{pdu::PduBuilder, utils, Database, Error, PduEvent, Result};
 use log::{debug, error, warn};
@@ -1209,6 +1210,7 @@ impl Rooms {
         sender: &UserId,
         room_id: &RoomId,
         db: &Database,
+        _mutex_lock: &MutexGuard<'_, ()>, // Take mutex guard to make sure users get the room mutex
     ) -> Result<EventId> {
         let PduBuilder {
             event_type,
@@ -1218,7 +1220,6 @@ impl Rooms {
             redacts,
         } = pdu_builder;
 
-        // TODO: Make sure this isn't called twice in parallel
         let prev_events = self
             .get_pdu_leaves(&room_id)?
             .into_iter()
@@ -1792,6 +1793,16 @@ impl Rooms {
                 db,
             )?;
         } else {
+            let mutex = Arc::clone(
+                db.globals
+                    .roomid_mutex
+                    .write()
+                    .unwrap()
+                    .entry(room_id.clone())
+                    .or_default(),
+            );
+            let mutex_lock = mutex.lock().await;
+
             let mut event = serde_json::from_value::<Raw<member::MemberEventContent>>(
                 self.room_state_get(room_id, &EventType::RoomMember, &user_id.to_string())?
                     .ok_or(Error::BadRequest(
@@ -1819,6 +1830,7 @@ impl Rooms {
                 user_id,
                 room_id,
                 db,
+                &mutex_lock,
             )?;
         }
 
