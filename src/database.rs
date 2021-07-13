@@ -249,7 +249,7 @@ impl Database {
 
                 eventid_outlierpdu: builder.open_tree("eventid_outlierpdu")?,
                 prevevent_parent: builder.open_tree("prevevent_parent")?,
-                pdu_cache: RwLock::new(LruCache::new(1_000_000)),
+                pdu_cache: RwLock::new(LruCache::new(10_000)),
             },
             account_data: account_data::AccountData {
                 roomuserdataid_accountdata: builder.open_tree("roomuserdataid_accountdata")?,

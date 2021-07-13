@@ -46,7 +46,7 @@ use ruma::{
     receipt::ReceiptType,
     serde::Raw,
     signatures::{CanonicalJsonObject, CanonicalJsonValue},
-    state_res::{self, Event, RoomVersion, StateMap},
+    state_res::{self, RoomVersion, StateMap},
     to_device::DeviceIdOrAllDevices,
     uint, EventId, MilliSecondsSinceUnixEpoch, RoomId, RoomVersionId, ServerName,
     ServerSigningKeyId, UserId,
@@ -1220,18 +1220,10 @@ pub fn handle_incoming_pdu<'a>(
 
             let mut auth_events = vec![];
             for map in &fork_states {
-                let mut state_auth = vec![];
-                for auth_id in map.values().flat_map(|pdu| &pdu.auth_events) {
-                    match fetch_and_handle_events(&db, origin, &[auth_id.clone()], pub_key_map)
-                        .await
-                    {
-                        // This should always contain exactly one element when Ok
-                        Ok(events) => state_auth.extend_from_slice(&events),
-                        Err(e) => {
-                            debug!("Event was not present: {}", e);
-                        }
-                    }
-                }
+                let state_auth = map
+                    .values()
+                    .flat_map(|pdu| pdu.auth_events.clone())
+                    .collect();
                 auth_events.push(state_auth);
             }
 
@@ -1246,10 +1238,7 @@ pub fn handle_incoming_pdu<'a>(
                             .collect::<StateMap<_>>()
                     })
                     .collect::<Vec<_>>(),
-                auth_events
-                    .into_iter()
-                    .map(|pdus| pdus.into_iter().map(|pdu| pdu.event_id().clone()).collect())
-                    .collect(),
+                auth_events,
                 &|id| {
                     let res = db.rooms.get_pdu(id);
                     if let Err(e) = &res {
