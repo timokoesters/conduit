@@ -1,4 +1,8 @@
-use std::{collections::BTreeMap, convert::TryInto, sync::Arc};
+use std::{
+    collections::BTreeMap,
+    convert::{TryFrom, TryInto},
+    sync::Arc,
+};
 
 use super::{DEVICE_ID_LENGTH, SESSION_ID_LENGTH, TOKEN_LENGTH};
 use crate::{database::DatabaseGuard, pdu::PduBuilder, utils, ConduitResult, Error, Ruma};
@@ -16,7 +20,8 @@ use ruma::{
     },
     events::{
         room::{
-            canonical_alias, guest_access, history_visibility, join_rules, member, message, name,
+            canonical_alias, guest_access, history_visibility, join_rules, member, message,
+            name::{self, RoomName},
             topic,
         },
         EventType,
@@ -375,11 +380,9 @@ pub async fn register_route(
         db.rooms.build_and_append_pdu(
             PduBuilder {
                 event_type: EventType::RoomName,
-                content: serde_json::to_value(
-                    name::NameEventContent::new("Admin Room".to_owned()).map_err(|_| {
-                        Error::BadRequest(ErrorKind::InvalidParam, "Name is invalid.")
-                    })?,
-                )
+                content: serde_json::to_value(name::NameEventContent::new(Some(
+                    RoomName::try_from("Admin Room".to_owned()).expect("Room name is valid"),
+                )))
                 .expect("event is valid, we just created it"),
                 unsigned: None,
                 state_key: Some("".to_owned()),

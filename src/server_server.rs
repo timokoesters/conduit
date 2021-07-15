@@ -1254,15 +1254,6 @@ pub fn handle_incoming_pdu<'a>(
             // We do need to force an update to this room's state
             update_state = true;
 
-            let mut auth_events = vec![];
-            for map in &fork_states {
-                let state_auth = map
-                    .values()
-                    .flat_map(|pdu| pdu.auth_events.clone())
-                    .collect();
-                auth_events.push(state_auth);
-            }
-
             match state_res::StateResolution::resolve(
                 &room_id,
                 room_version_id,
@@ -1274,8 +1265,7 @@ pub fn handle_incoming_pdu<'a>(
                             .collect::<StateMap<_>>()
                     })
                     .collect::<Vec<_>>(),
-                auth_events,
-                &|id| {
+                |id| {
                     let res = db.rooms.get_pdu(id);
                     if let Err(e) = &res {
                         error!("LOOK AT ME Failed to fetch event: {}", e);
@@ -2432,10 +2422,10 @@ pub fn get_profile_information_route(
     let mut avatar_url = None;
 
     match &body.field {
-        // TODO: what to do with custom
-        Some(ProfileField::_Custom(_s)) => {}
         Some(ProfileField::DisplayName) => displayname = db.users.displayname(&body.user_id)?,
         Some(ProfileField::AvatarUrl) => avatar_url = db.users.avatar_url(&body.user_id)?,
+        // TODO: what to do with custom
+        Some(_) => {}
         None => {
             displayname = db.users.displayname(&body.user_id)?;
             avatar_url = db.users.avatar_url(&body.user_id)?;

@@ -490,6 +490,27 @@ impl Rooms {
             .transpose()
     }
 
+    /// Returns the json of a pdu.
+    pub fn get_non_outlier_pdu_json(
+        &self,
+        event_id: &EventId,
+    ) -> Result<Option<CanonicalJsonObject>> {
+        self.eventid_pduid
+            .get(event_id.as_bytes())?
+            .map_or_else::<Result<_>, _, _>(
+                || Ok(None),
+                |pduid| {
+                    Ok(Some(self.pduid_pdu.get(&pduid)?.ok_or_else(|| {
+                        Error::bad_database("Invalid pduid in eventid_pduid.")
+                    })?))
+                },
+            )?
+            .map(|pdu| {
+                serde_json::from_slice(&pdu).map_err(|_| Error::bad_database("Invalid PDU in db."))
+            })
+            .transpose()
+    }
+
     /// Returns the pdu's id.
     pub fn get_pdu_id(&self, event_id: &EventId) -> Result<Option<Vec<u8>>> {
         self.eventid_pduid
@@ -903,11 +924,59 @@ impl Rooms {
                                 "list_appservices" => {
                                     db.admin.send(AdminCommand::ListAppservices);
                                 }
+                                "get_pdu" => {
+                                    if args.len() == 1 {
+                                        if let Ok(event_id) = EventId::try_from(args[0]) {
+                                            let mut outlier = false;
+                                            let mut pdu_json =
+                                                db.rooms.get_non_outlier_pdu_json(&event_id)?;
+                                            if pdu_json.is_none() {
+                                                outlier = true;
+                                                pdu_json = db.rooms.get_pdu_json(&event_id)?;
+                                            }
+                                            match pdu_json {
+                                                Some(json) => {
+                                                    db.admin.send(AdminCommand::SendMessage(
+                                                        message::MessageEventContent::text_html(
+                                                            format!("{}\n```json\n{:#?}\n```", 
+                                                            if outlier {
+                                                                "PDU is outlier"
+                                                            } else { "PDU was accepted"}, json),
+                                                            format!("<p>{}</p>\n<pre><code class=\"language-json\">{}\n</code></pre>\n", 
+                                                            if outlier {
+                                                                "PDU is outlier"
+                                                            } else { "PDU was accepted"}, serde_json::to_string_pretty(&json).expect("canonical json is valid json"))
+                                                        ),
+                                                    ));
+                                                }
+                                                None => {
+                                                    db.admin.send(AdminCommand::SendMessage(
+                                                        message::MessageEventContent::text_plain(
+                                                            "PDU not found.",
+                                                        ),
+                                                    ));
+                                                }
+                                            }
+                                        } else {
+                                            db.admin.send(AdminCommand::SendMessage(
+                                                message::MessageEventContent::text_plain(
+                                                    "Event ID could not be parsed.",
+                                                ),
+                                            ));
+                                        }
+                                    } else {
+                                        db.admin.send(AdminCommand::SendMessage(
+                                            message::MessageEventContent::text_plain(
+                                                "Usage: get_pdu <eventid>",
+                                            ),
+                                        ));
+                                    }
+                                }
                                 _ => {
                                     db.admin.send(AdminCommand::SendMessage(
                                         message::MessageEventContent::text_plain(format!(
-                                            "Command: {}, Args: {:?}",
-                                            command, args
+                                            "Unrecognized command: {}",
+                                            command
                                         )),
                                     ));
                                 }
