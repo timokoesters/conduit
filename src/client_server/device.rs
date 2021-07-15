@@ -73,7 +73,7 @@ pub async fn update_device_route(
 
     db.flush().await?;
 
-    Ok(update_device::Response.into())
+    Ok(update_device::Response {}.into())
 }
 
 #[cfg_attr(
@@ -125,7 +125,7 @@ pub async fn delete_device_route(
 
     db.flush().await?;
 
-    Ok(delete_device::Response.into())
+    Ok(delete_device::Response {}.into())
 }
 
 #[cfg_attr(
@@ -179,5 +179,5 @@ pub async fn delete_devices_route(
 
     db.flush().await?;
 
-    Ok(delete_devices::Response.into())
+    Ok(delete_devices::Response {}.into())
 }

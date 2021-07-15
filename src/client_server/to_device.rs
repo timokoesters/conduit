@@ -69,5 +69,5 @@ pub async fn send_event_to_device_route(
 
     db.flush().await?;
 
-    Ok(send_event_to_device::Response.into())
+    Ok(send_event_to_device::Response {}.into())
 }

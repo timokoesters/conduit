@@ -43,7 +43,7 @@ pub async fn set_presence_route(
 
     db.flush().await?;
 
-    Ok(set_presence::Response.into())
+    Ok(set_presence::Response {}.into())
 }
 
 #[cfg_attr(

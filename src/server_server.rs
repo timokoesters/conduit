@@ -2001,6 +2001,7 @@ pub fn create_join_event_template_route(
 
     let content = serde_json::to_value(MemberEventContent {
         avatar_url: None,
+        blurhash: None,
         displayname: None,
         is_direct: None,
         membership: MembershipState::Join,
@@ -2420,19 +2421,25 @@ pub fn get_profile_information_route(
 
     let mut displayname = None;
     let mut avatar_url = None;
+    let mut blurhash = None;
 
     match &body.field {
         Some(ProfileField::DisplayName) => displayname = db.users.displayname(&body.user_id)?,
-        Some(ProfileField::AvatarUrl) => avatar_url = db.users.avatar_url(&body.user_id)?,
+        Some(ProfileField::AvatarUrl) => {
+            avatar_url = db.users.avatar_url(&body.user_id)?;
+            blurhash = db.users.blurhash(&body.user_id)?
+        }
         // TODO: what to do with custom
         Some(_) => {}
         None => {
             displayname = db.users.displayname(&body.user_id)?;
             avatar_url = db.users.avatar_url(&body.user_id)?;
+            blurhash = db.users.blurhash(&body.user_id)?;
         }
     }
 
     Ok(get_profile_information::v1::Response {
+        blurhash,
         displayname,
         avatar_url,
     }

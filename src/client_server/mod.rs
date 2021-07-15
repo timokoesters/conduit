@@ -75,5 +75,5 @@ pub const SESSION_ID_LENGTH: usize = 256;
 #[options("/<_..>")]
 #[tracing::instrument]
 pub async fn options_route() -> ConduitResult<send_event_to_device::Response> {
-    Ok(send_event_to_device::Response.into())
+    Ok(send_event_to_device::Response {}.into())
 }

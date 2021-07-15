@@ -283,6 +283,7 @@ pub async fn register_route(
                     avatar_url: None,
                     is_direct: None,
                     third_party_invite: None,
+                    blurhash: None,
                 })
                 .expect("event is valid, we just created it"),
                 unsigned: None,
@@ -446,6 +447,7 @@ pub async fn register_route(
                     avatar_url: None,
                     is_direct: None,
                     third_party_invite: None,
+                    blurhash: None,
                 })
                 .expect("event is valid, we just created it"),
                 unsigned: None,
@@ -466,6 +468,7 @@ pub async fn register_route(
                     avatar_url: None,
                     is_direct: None,
                     third_party_invite: None,
+                    blurhash: None,
                 })
                 .expect("event is valid, we just created it"),
                 unsigned: None,
@@ -578,7 +581,7 @@ pub async fn change_password_route(
 
     db.flush().await?;
 
-    Ok(change_password::Response.into())
+    Ok(change_password::Response {}.into())
 }
 
 /// # `GET _matrix/client/r0/account/whoami`
@@ -664,6 +667,7 @@ pub async fn deactivate_route(
             avatar_url: None,
             is_direct: None,
             third_party_invite: None,
+            blurhash: None,
         };
 
         let mutex = Arc::clone(

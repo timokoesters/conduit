@@ -194,7 +194,7 @@ pub async fn set_pushrule_route(
 
     db.flush().await?;
 
-    Ok(set_pushrule::Response.into())
+    Ok(set_pushrule::Response {}.into())
 }
 
 #[cfg_attr(
@@ -327,7 +327,7 @@ pub async fn set_pushrule_actions_route(
 
     db.flush().await?;
 
-    Ok(set_pushrule_actions::Response.into())
+    Ok(set_pushrule_actions::Response {}.into())
 }
 
 #[cfg_attr(
@@ -467,7 +467,7 @@ pub async fn set_pushrule_enabled_route(
 
     db.flush().await?;
 
-    Ok(set_pushrule_enabled::Response.into())
+    Ok(set_pushrule_enabled::Response {}.into())
 }
 
 #[cfg_attr(
@@ -536,7 +536,7 @@ pub async fn delete_pushrule_route(
 
     db.flush().await?;
 
-    Ok(delete_pushrule::Response.into())
+    Ok(delete_pushrule::Response {}.into())
 }
 
 #[cfg_attr(

@@ -42,7 +42,7 @@ pub async fn update_tag_route(
 
     db.flush().await?;
 
-    Ok(create_tag::Response.into())
+    Ok(create_tag::Response {}.into())
 }
 
 #[cfg_attr(
@@ -76,7 +76,7 @@ pub async fn delete_tag_route(
 
     db.flush().await?;
 
-    Ok(delete_tag::Response.into())
+    Ok(delete_tag::Response {}.into())
 }
 
 #[cfg_attr(

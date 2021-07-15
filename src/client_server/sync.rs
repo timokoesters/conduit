@@ -753,6 +753,7 @@ async fn sync_helper(
             leave: left_rooms,
             join: joined_rooms,
             invite: invited_rooms,
+            knock: BTreeMap::new(), // TODO
         },
         presence: sync_events::Presence {
             events: presence_updates

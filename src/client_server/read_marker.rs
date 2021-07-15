@@ -77,7 +77,7 @@ pub async fn set_read_marker_route(
 
     db.flush().await?;
 
-    Ok(set_read_marker::Response.into())
+    Ok(set_read_marker::Response {}.into())
 }
 
 #[cfg_attr(
@@ -130,5 +130,5 @@ pub async fn create_receipt_route(
 
     db.flush().await?;
 
-    Ok(create_receipt::Response.into())
+    Ok(create_receipt::Response {}.into())
 }

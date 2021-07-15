@@ -108,7 +108,7 @@ pub async fn set_displayname_route(
 
     db.flush().await?;
 
-    Ok(set_display_name::Response.into())
+    Ok(set_display_name::Response {}.into())
 }
 
 #[cfg_attr(
@@ -139,6 +139,8 @@ pub async fn set_avatar_url_route(
 
     db.users
         .set_avatar_url(&sender_user, body.avatar_url.clone())?;
+
+    db.users.set_blurhash(&sender_user, body.blurhash.clone())?;
 
     // Send a new membership event and presence update into all joined rooms
     for (pdu_builder, room_id) in db
@@ -220,7 +222,7 @@ pub async fn set_avatar_url_route(
 
     db.flush().await?;
 
-    Ok(set_avatar_url::Response.into())
+    Ok(set_avatar_url::Response {}.into())
 }
 
 #[cfg_attr(
@@ -234,6 +236,7 @@ pub async fn get_avatar_url_route(
 ) -> ConduitResult<get_avatar_url::Response> {
     Ok(get_avatar_url::Response {
         avatar_url: db.users.avatar_url(&body.user_id)?,
+        blurhash: db.users.blurhash(&body.user_id)?,
     }
     .into())
 }
@@ -257,6 +260,7 @@ pub async fn get_profile_route(
 
     Ok(get_profile::Response {
         avatar_url: db.users.avatar_url(&body.user_id)?,
+        blurhash: db.users.blurhash(&body.user_id)?,
         displayname: db.users.displayname(&body.user_id)?,
     }
     .into())

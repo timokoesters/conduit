@@ -163,7 +163,7 @@ pub async fn upload_signing_keys_route(
 
     db.flush().await?;
 
-    Ok(upload_signing_keys::Response.into())
+    Ok(upload_signing_keys::Response {}.into())
 }
 
 #[cfg_attr(
@@ -224,7 +224,7 @@ pub async fn upload_signatures_route(
 
     db.flush().await?;
 
-    Ok(upload_signatures::Response.into())
+    Ok(upload_signatures::Response {}.into())
 }
 
 #[cfg_attr(

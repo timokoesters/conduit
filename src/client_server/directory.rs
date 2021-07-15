@@ -102,7 +102,7 @@ pub async fn set_room_visibility_route(
 
     db.flush().await?;
 
-    Ok(set_room_visibility::Response.into())
+    Ok(set_room_visibility::Response {}.into())
 }
 
 #[cfg_attr(

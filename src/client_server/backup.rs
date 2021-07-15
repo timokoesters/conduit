@@ -46,7 +46,7 @@ pub async fn update_backup_route(
 
     db.flush().await?;
 
-    Ok(update_backup::Response.into())
+    Ok(update_backup::Response {}.into())
 }
 
 #[cfg_attr(
@@ -119,7 +119,7 @@ pub async fn delete_backup_route(
 
     db.flush().await?;
 
-    Ok(delete_backup::Response.into())
+    Ok(delete_backup::Response {}.into())
 }
 
 /// Add the received backup keys to the database.

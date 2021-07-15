@@ -45,7 +45,7 @@ pub async fn set_global_account_data_route(
 
     db.flush().await?;
 
-    Ok(set_global_account_data::Response.into())
+    Ok(set_global_account_data::Response {}.into())
 }
 
 #[cfg_attr(
@@ -80,7 +80,7 @@ pub async fn set_room_account_data_route(
 
     db.flush().await?;
 
-    Ok(set_room_account_data::Response.into())
+    Ok(set_room_account_data::Response {}.into())
 }
 
 #[cfg_attr(

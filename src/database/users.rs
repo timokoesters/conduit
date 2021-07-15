@@ -15,6 +15,7 @@ pub struct Users {
     pub(super) userid_password: Arc<dyn Tree>,
     pub(super) userid_displayname: Arc<dyn Tree>,
     pub(super) userid_avatarurl: Arc<dyn Tree>,
+    pub(super) userid_blurhash: Arc<dyn Tree>,
     pub(super) userdeviceid_token: Arc<dyn Tree>,
     pub(super) userdeviceid_metadata: Arc<dyn Tree>, // This is also used to check if a device exists
     pub(super) userid_devicelistversion: Arc<dyn Tree>, // DevicelistVersion = u64
@@ -150,7 +151,7 @@ impl Users {
         Ok(())
     }
 
-    /// Get a the avatar_url of a user.
+    /// Get the avatar_url of a user.
     pub fn avatar_url(&self, user_id: &UserId) -> Result<Option<MxcUri>> {
         self.userid_avatarurl
             .get(user_id.as_bytes())?
@@ -169,6 +170,31 @@ impl Users {
                 .insert(user_id.as_bytes(), avatar_url.to_string().as_bytes())?;
         } else {
             self.userid_avatarurl.remove(user_id.as_bytes())?;
+        }
+
+        Ok(())
+    }
+
+    /// Get the blurhash of a user.
+    pub fn blurhash(&self, user_id: &UserId) -> Result<Option<String>> {
+        self.userid_blurhash
+            .get(user_id.as_bytes())?
+            .map(|bytes| {
+                let s = utils::string_from_bytes(&bytes)
+                    .map_err(|_| Error::bad_database("Avatar URL in db is invalid."))?;
+
+                Ok(s)
+            })
+            .transpose()
+    }
+
+    /// Sets a new avatar_url or removes it if avatar_url is None.
+    pub fn set_blurhash(&self, user_id: &UserId, blurhash: Option<String>) -> Result<()> {
+        if let Some(blurhash) = blurhash {
+            self.userid_blurhash
+                .insert(user_id.as_bytes(), blurhash.as_bytes())?;
+        } else {
+            self.userid_blurhash.remove(user_id.as_bytes())?;
         }
 
         Ok(())

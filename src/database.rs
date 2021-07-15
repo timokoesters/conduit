@@ -217,6 +217,7 @@ impl Database {
                 userid_password: builder.open_tree("userid_password")?,
                 userid_displayname: builder.open_tree("userid_displayname")?,
                 userid_avatarurl: builder.open_tree("userid_avatarurl")?,
+                userid_blurhash: builder.open_tree("userid_blurhash")?,
                 userdeviceid_token: builder.open_tree("userdeviceid_token")?,
                 userdeviceid_metadata: builder.open_tree("userdeviceid_metadata")?,
                 userid_devicelistversion: builder.open_tree("userid_devicelistversion")?,

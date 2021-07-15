@@ -29,5 +29,5 @@ pub fn create_typing_event_route(
             .typing_remove(&sender_user, &body.room_id, &db.globals)?;
     }
 
-    Ok(create_typing_event::Response.into())
+    Ok(create_typing_event::Response {}.into())
 }

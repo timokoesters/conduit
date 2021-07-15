@@ -96,6 +96,7 @@ pub async fn create_room_route(
                 avatar_url: db.users.avatar_url(&sender_user)?,
                 is_direct: Some(body.is_direct),
                 third_party_invite: None,
+                blurhash: db.users.blurhash(&sender_user)?,
             })
             .expect("event is valid, we just created it"),
             unsigned: None,
@@ -444,6 +445,7 @@ pub async fn upgrade_room_route(
                 avatar_url: db.users.avatar_url(&sender_user)?,
                 is_direct: None,
                 third_party_invite: None,
+                blurhash: db.users.blurhash(&sender_user)?,
             })
             .expect("event is valid, we just created it"),
             unsigned: None,
