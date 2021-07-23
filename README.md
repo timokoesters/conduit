@@ -52,7 +52,7 @@ Check out the [Conduit 1.0 Release Milestone](https://gitlab.com/famedly/conduit
 Download or compile a Conduit binary, set up the config and call it from somewhere like a systemd script. [Read
 more](DEPLOY.md)
 
-If you want to connect an Appservice to Conduit, take a look at the [Appservice Guide](APPSERVICES.md).
+If you want to connect an Appservice to Conduit, take a look at the [Appservice Guide](docs/configuration/appservices.md).
 
 ##### Deploy using a Debian package
 

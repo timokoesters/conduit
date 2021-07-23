@@ -3,6 +3,7 @@ stages:
   - build docker image
   - test
   - upload artifacts
+  - publish
 
 variables:
   GIT_SUBMODULE_STRATEGY: recursive
@@ -338,3 +339,17 @@ publish:package:
     - 'curl --header "JOB-TOKEN: $CI_JOB_TOKEN" --upload-file conduit-x86_64-unknown-linux-gnu.deb "${BASE_URL}/conduit-x86_64-unknown-linux-gnu.deb"'
 
 
+pages:
+  stage: "publish"
+  image:
+    name: "squidfunk/mkdocs-material"
+    entrypoint: [""]
+  tags: ["docker"]
+  needs: []
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+  script:
+    - "mkdocs build --site-dir public"
+  artifacts:
+    paths:
+      - "public"
