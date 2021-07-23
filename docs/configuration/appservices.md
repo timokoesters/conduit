@@ -7,6 +7,7 @@ If you run into any problems while setting up an Appservice, write an email to `
 ## Tested appservices
 
 Here are some appservices we tested and that work with Conduit:
+
 - matrix-appservice-discord
 - mautrix-hangouts
 - mautrix-telegram
@@ -38,6 +39,7 @@ the room like this:
     ```
 
 You can confirm it worked by sending a message like this:
+
 `@conduit:your.server.name: list_appservices`
 
 The @conduit bot should answer with `Appservices (1): your-bridge`

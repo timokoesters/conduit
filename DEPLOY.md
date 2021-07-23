@@ -148,7 +148,7 @@ This depends on whether you use Apache, Nginx or another web server.
 
 Create `/etc/apache2/sites-enabled/050-conduit.conf` and copy-and-paste this:
 
-```
+```apache
 Listen 8448
 
 <VirtualHost *:443 *:8448>
@@ -177,7 +177,7 @@ $ sudo systemctl reload apache2
 If you use Nginx and not Apache, add the following server section inside the
 http section of `/etc/nginx/nginx.conf`
 
-```
+```nginx
 server {
     listen 443 ssl http2;
     listen [::]:443 ssl http2;
