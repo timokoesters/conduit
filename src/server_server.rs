@@ -2342,33 +2342,29 @@ pub fn create_join_event_template_route(
     .into())
 }
 
-#[cfg_attr(
-    feature = "conduit_bin",
-    put("/_matrix/federation/v2/send_join/<_>/<_>", data = "<body>")
-)]
-#[tracing::instrument(skip(db, body))]
-pub async fn create_join_event_route(
-    db: DatabaseGuard,
-    body: Ruma<create_join_event::v2::Request<'_>>,
-) -> ConduitResult<create_join_event::v2::Response> {
+async fn create_join_event(
+    db: &DatabaseGuard,
+    room_id: &RoomId,
+    pdu: &Raw<ruma::events::pdu::Pdu>,
+) -> Result<RoomState> {
     if !db.globals.allow_federation() {
         return Err(Error::bad_config("Federation is disabled."));
     }
 
     // We need to return the state prior to joining, let's keep a reference to that here
-    let shortstatehash =
-        db.rooms
-            .current_shortstatehash(&body.room_id)?
-            .ok_or(Error::BadRequest(
-                ErrorKind::NotFound,
-                "Pdu state not found.",
-            ))?;
+    let shortstatehash = db
+        .rooms
+        .current_shortstatehash(&room_id)?
+        .ok_or(Error::BadRequest(
+            ErrorKind::NotFound,
+            "Pdu state not found.",
+        ))?;
 
     let pub_key_map = RwLock::new(BTreeMap::new());
     // let mut auth_cache = EventMap::new();
 
     // We do not add the event_id field to the pdu here because of signature and hashes checks
-    let (event_id, value) = match crate::pdu::gen_event_id_canonical_json(&body.pdu) {
+    let (event_id, value) = match crate::pdu::gen_event_id_canonical_json(&pdu) {
         Ok(t) => t,
         Err(_) => {
             // Event could not be converted to canonical json
@@ -2393,31 +2389,23 @@ pub async fn create_join_event_route(
             .roomid_mutex_federation
             .write()
             .unwrap()
-            .entry(body.room_id.clone())
+            .entry(room_id.clone())
             .or_default(),
     );
     let mutex_lock = mutex.lock().await;
-    let pdu_id = handle_incoming_pdu(
-        &origin,
-        &event_id,
-        &body.room_id,
-        value,
-        true,
-        &db,
-        &pub_key_map,
-    )
-    .await
-    .map_err(|e| {
-        warn!("Error while handling incoming send join PDU: {}", e);
-        Error::BadRequest(
+    let pdu_id = handle_incoming_pdu(&origin, &event_id, &room_id, value, true, &db, &pub_key_map)
+        .await
+        .map_err(|e| {
+            warn!("Error while handling incoming send join PDU: {}", e);
+            Error::BadRequest(
+                ErrorKind::InvalidParam,
+                "Error while handling incoming PDU.",
+            )
+        })?
+        .ok_or(Error::BadRequest(
             ErrorKind::InvalidParam,
-            "Error while handling incoming PDU.",
-        )
-    })?
-    .ok_or(Error::BadRequest(
-        ErrorKind::InvalidParam,
-        "Could not accept incoming PDU as timeline event.",
-    ))?;
+            "Could not accept incoming PDU as timeline event.",
+        ))?;
     drop(mutex_lock);
 
     let state_ids = db.rooms.state_full_ids(shortstatehash)?;
@@ -2425,7 +2413,7 @@ pub async fn create_join_event_route(
 
     for server in db
         .rooms
-        .room_servers(&body.room_id)
+        .room_servers(&room_id)
         .filter_map(|r| r.ok())
         .filter(|server| &**server != db.globals.server_name())
     {
@@ -2434,18 +2422,49 @@ pub async fn create_join_event_route(
 
     db.flush()?;
 
+    Ok(RoomState {
+        auth_chain: auth_chain_ids
+            .filter_map(|id| db.rooms.get_pdu_json(&id).ok().flatten())
+            .map(PduEvent::convert_to_outgoing_federation_event)
+            .collect(),
+        state: state_ids
+            .iter()
+            .filter_map(|id| db.rooms.get_pdu_json(&id).ok().flatten())
+            .map(PduEvent::convert_to_outgoing_federation_event)
+            .collect(),
+    })
+}
+
+#[cfg_attr(
+    feature = "conduit_bin",
+    put("/_matrix/federation/v1/send_join/<_>/<_>", data = "<body>")
+)]
+#[tracing::instrument(skip(db, body))]
+pub async fn create_join_event_v1_route(
+    db: DatabaseGuard,
+    body: Ruma<create_join_event::v1::Request<'_>>,
+) -> ConduitResult<create_join_event::v1::Response> {
+    let room_state = create_join_event(&db, &body.room_id, &body.pdu).await?;
+
+    Ok(create_join_event::v1::Response {
+        room_state: room_state,
+    }
+    .into())
+}
+
+#[cfg_attr(
+    feature = "conduit_bin",
+    put("/_matrix/federation/v2/send_join/<_>/<_>", data = "<body>")
+)]
+#[tracing::instrument(skip(db, body))]
+pub async fn create_join_event_v2_route(
+    db: DatabaseGuard,
+    body: Ruma<create_join_event::v2::Request<'_>>,
+) -> ConduitResult<create_join_event::v2::Response> {
+    let room_state = create_join_event(&db, &body.room_id, &body.pdu).await?;
+
     Ok(create_join_event::v2::Response {
-        room_state: RoomState {
-            auth_chain: auth_chain_ids
-                .filter_map(|id| db.rooms.get_pdu_json(&id).ok().flatten())
-                .map(PduEvent::convert_to_outgoing_federation_event)
-                .collect(),
-            state: state_ids
-                .iter()
-                .filter_map(|id| db.rooms.get_pdu_json(&id).ok().flatten())
-                .map(PduEvent::convert_to_outgoing_federation_event)
-                .collect(),
-        },
+        room_state: room_state,
     }
     .into())
 }
