@@ -421,7 +421,10 @@ impl Tree for SqliteTable {
     #[tracing::instrument(skip(self))]
     fn iter<'a>(&'a self) -> Box<dyn Iterator<Item = TupleOfBytes> + Send + 'a> {
         let name = self.name.clone();
-        self.iter_from_thread(format!("SELECT key, value FROM {}", name), None)
+        self.iter_from_thread(
+            format!("SELECT key, value FROM {} ORDER BY key ASC", name),
+            None,
+        )
     }
 
     #[tracing::instrument(skip(self, from, backwards))]

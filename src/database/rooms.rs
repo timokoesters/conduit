@@ -47,7 +47,7 @@ pub struct Rooms {
     pub(super) aliasid_alias: Arc<dyn Tree>, // AliasId = RoomId + Count
     pub(super) publicroomids: Arc<dyn Tree>,
 
-    pub(super) tokenids: Arc<dyn Tree>, // TokenId = RoomId + Token + PduId
+    pub(super) tokenids: Arc<dyn Tree>, // TokenId = ShortRoomId + Token + PduIdCount
 
     /// Participating servers in a room.
     pub(super) roomserverids: Arc<dyn Tree>, // RoomServerId = RoomId + ServerName
@@ -70,14 +70,18 @@ pub struct Rooms {
     pub(super) shorteventid_shortstatehash: Arc<dyn Tree>,
     /// StateKey = EventType + StateKey, ShortStateKey = Count
     pub(super) statekey_shortstatekey: Arc<dyn Tree>,
+
+    pub(super) shortroomid_roomid: Arc<dyn Tree>,
+    pub(super) roomid_shortroomid: Arc<dyn Tree>,
+
     pub(super) shorteventid_eventid: Arc<dyn Tree>,
-    /// ShortEventId = Count
     pub(super) eventid_shorteventid: Arc<dyn Tree>,
-    /// ShortEventId = Count
+
     pub(super) statehash_shortstatehash: Arc<dyn Tree>,
     /// ShortStateHash = Count
-    /// StateId = ShortStateHash + ShortStateKey
+    /// StateId = ShortStateHash
     pub(super) stateid_shorteventid: Arc<dyn Tree>,
+    pub(super) shortstatehash_statediff: Arc<dyn Tree>, // StateDiff = parent (or 0) + (shortstatekey+shorteventid++) + 0_u64 + (shortstatekey+shorteventid--)
 
     /// RoomId + EventId -> outlier PDU.
     /// Any pdu that has passed the steps 1-8 in the incoming event /federation/send/txn.
