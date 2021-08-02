@@ -735,40 +735,81 @@ impl Database {
                     let shortroomid = db.globals.next_count()?.to_be_bytes();
                     db.rooms.roomid_shortroomid.insert(&room_id, &shortroomid)?;
                     db.rooms.shortroomid_roomid.insert(&shortroomid, &room_id)?;
+                    println!("Migration: 8");
                 }
                 // Update pduids db layout
-                for (key, v) in db.rooms.pduid_pdu.iter() {
+                let mut batch = db.rooms.pduid_pdu.iter().filter_map(|(key, v)| {
+                    if !key.starts_with(b"!") {
+                        return None;
+                    }
                     let mut parts = key.splitn(2, |&b| b == 0xff);
                     let room_id = parts.next().unwrap();
                     let count = parts.next().unwrap();
 
-                    let short_room_id = db.rooms.roomid_shortroomid.get(&room_id)?.unwrap();
+                    let short_room_id = db
+                        .rooms
+                        .roomid_shortroomid
+                        .get(&room_id)
+                        .unwrap()
+                        .expect("shortroomid should exist");
 
                     let mut new_key = short_room_id;
                     new_key.extend_from_slice(count);
 
-                    println!("{:?}", new_key);
+                    Some((new_key, v))
+                });
+
+                db.rooms.pduid_pdu.insert_batch(&mut batch)?;
+
+                for (key, _) in db.rooms.pduid_pdu.iter() {
+                    if key.starts_with(b"!") {
+                        db.rooms.pduid_pdu.remove(&key);
+                    }
                 }
 
+                db.globals.bump_database_version(8)?;
+
+                println!("Migration: 7 -> 8 finished");
+            }
+
+            if db.globals.database_version()? < 9 {
                 // Update tokenids db layout
-                for (key, _) in db.rooms.tokenids.iter() {
+                let mut batch = db.rooms.tokenids.iter().filter_map(|(key, _)| {
+                    if !key.starts_with(b"!") {
+                        return None;
+                    }
                     let mut parts = key.splitn(4, |&b| b == 0xff);
                     let room_id = parts.next().unwrap();
                     let word = parts.next().unwrap();
                     let _pdu_id_room = parts.next().unwrap();
                     let pdu_id_count = parts.next().unwrap();
 
-                    let short_room_id = db.rooms.roomid_shortroomid.get(&room_id)?.unwrap();
+                    let short_room_id = db
+                        .rooms
+                        .roomid_shortroomid
+                        .get(&room_id)
+                        .unwrap()
+                        .expect("shortroomid should exist");
                     let mut new_key = short_room_id;
                     new_key.extend_from_slice(word);
                     new_key.push(0xff);
                     new_key.extend_from_slice(pdu_id_count);
-                    println!("{:?}", new_key);
+                    println!("old {:?}", key);
+                    println!("new {:?}", new_key);
+                    Some((new_key, Vec::new()))
+                });
+
+                db.rooms.tokenids.insert_batch(&mut batch)?;
+
+                for (key, _) in db.rooms.tokenids.iter() {
+                    if key.starts_with(b"!") {
+                        db.rooms.pduid_pdu.remove(&key)?;
+                    }
                 }
 
-                db.globals.bump_database_version(8)?;
+                db.globals.bump_database_version(9)?;
 
-                println!("Migration: 7 -> 8 finished");
+                println!("Migration: 8 -> 9 finished");
             }
 
             panic!();

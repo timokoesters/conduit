@@ -223,7 +223,10 @@ impl Tree for SqliteTable {
 
         let statement = Box::leak(Box::new(
             guard
-                .prepare(&format!("SELECT key, value FROM {} ORDER BY key ASC", &self.name))
+                .prepare(&format!(
+                    "SELECT key, value FROM {} ORDER BY key ASC",
+                    &self.name
+                ))
                 .unwrap(),
         ));
 
