@@ -1311,7 +1311,7 @@ pub fn handle_incoming_pdu<'a>(
             for state in fork_states {
                 auth_chain_sets.push(
                     get_auth_chain(state.iter().map(|(_, id)| id.clone()).collect(), db)
-                        .map_err(|_| "Failed to load auth chain.".to_owned())?,
+                        .map_err(|_| "Failed to load auth chain.".to_owned())?.collect(),
                 );
             }
 
@@ -1756,15 +1756,15 @@ fn append_incoming_pdu(
     Ok(pdu_id)
 }
 
-fn get_auth_chain(starting_events: Vec<EventId>, db: &Database) -> Result<HashSet<EventId>> {
+fn get_auth_chain(starting_events: Vec<EventId>, db: &Database) -> Result<impl Iterator<Item = EventId> + '_> {
     let mut full_auth_chain = HashSet::new();
 
     let starting_events = starting_events
         .iter()
         .map(|id| {
-            (db.rooms
+            db.rooms
                 .get_or_create_shorteventid(id, &db.globals)
-                .map(|s| (s, id)))
+                .map(|s| (s, id))
         })
         .collect::<Result<Vec<_>>>()?;
 
@@ -1783,10 +1783,11 @@ fn get_auth_chain(starting_events: Vec<EventId>, db: &Database) -> Result<HashSe
         };
     }
 
-    full_auth_chain
+    drop(cache);
+
+    Ok(full_auth_chain
         .into_iter()
-        .map(|sid| db.rooms.get_eventid_from_short(sid))
-        .collect()
+        .filter_map(move |sid| db.rooms.get_eventid_from_short(sid).ok()))
 }
 
 fn get_auth_chain_recursive(
@@ -1909,7 +1910,6 @@ pub fn get_event_authorization_route(
 
     Ok(get_event_authorization::v1::Response {
         auth_chain: auth_chain_ids
-            .into_iter()
             .filter_map(|id| Some(db.rooms.get_pdu_json(&id).ok()??))
             .map(|event| PduEvent::convert_to_outgoing_federation_event(event))
             .collect(),
@@ -1953,7 +1953,6 @@ pub fn get_room_state_route(
 
     Ok(get_room_state::v1::Response {
         auth_chain: auth_chain_ids
-            .into_iter()
             .map(|id| {
                 Ok::<_, Error>(PduEvent::convert_to_outgoing_federation_event(
                     db.rooms.get_pdu_json(&id)?.unwrap(),
@@ -1996,7 +1995,7 @@ pub fn get_room_state_ids_route(
     let auth_chain_ids = get_auth_chain(vec![body.event_id.clone()], &db)?;
 
     Ok(get_room_state_ids::v1::Response {
-        auth_chain_ids: auth_chain_ids.into_iter().collect(),
+        auth_chain_ids: auth_chain_ids.collect(),
         pdu_ids,
     }
     .into())
@@ -2265,7 +2264,6 @@ pub async fn create_join_event_route(
     Ok(create_join_event::v2::Response {
         room_state: RoomState {
             auth_chain: auth_chain_ids
-                .iter()
                 .filter_map(|id| db.rooms.get_pdu_json(&id).ok().flatten())
                 .map(PduEvent::convert_to_outgoing_federation_event)
                 .collect(),
