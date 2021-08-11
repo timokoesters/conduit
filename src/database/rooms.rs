@@ -89,6 +89,7 @@ pub struct Rooms {
 
     pub(super) pdu_cache: Mutex<LruCache<EventId, Arc<PduEvent>>>,
     pub(super) auth_chain_cache: Mutex<LruCache<u64, HashSet<u64>>>,
+    pub(super) shorteventid_cache: Mutex<LruCache<u64, EventId>>,
 }
 
 impl Rooms {
@@ -447,17 +448,28 @@ impl Rooms {
     }
 
     pub fn get_eventid_from_short(&self, shorteventid: u64) -> Result<EventId> {
+        if let Some(id) = self.shorteventid_cache.lock().unwrap().get_mut(&shorteventid) {
+            return Ok(id.clone());
+        }
+
         let bytes = self
             .shorteventid_eventid
             .get(&shorteventid.to_be_bytes())?
             .ok_or_else(|| Error::bad_database("Shorteventid does not exist"))?;
 
-        EventId::try_from(
+        let event_id = EventId::try_from(
             utils::string_from_bytes(&bytes).map_err(|_| {
                 Error::bad_database("EventID in roomid_pduleaves is invalid unicode.")
             })?,
         )
-        .map_err(|_| Error::bad_database("EventId in roomid_pduleaves is invalid."))
+        .map_err(|_| Error::bad_database("EventId in roomid_pduleaves is invalid."))?;
+
+        self.shorteventid_cache
+            .lock()
+            .unwrap()
+            .insert(shorteventid, event_id.clone());
+
+        Ok(event_id)
     }
 
     /// Returns the full room state.
