@@ -1044,13 +1044,16 @@ pub fn handle_incoming_pdu<'a>(
 
         if incoming_pdu.prev_events.len() == 1 {
             let prev_event = &incoming_pdu.prev_events[0];
-            let state = db
+            let prev_event_sstatehash = db
                 .rooms
                 .pdu_shortstatehash(prev_event)
-                .map_err(|_| "Failed talking to db".to_owned())?
-                .map(|shortstatehash| db.rooms.state_full_ids(shortstatehash).ok())
-                .flatten();
-            if let Some(state) = state {
+                .map_err(|_| "Failed talking to db".to_owned())?;
+
+            let state =
+                prev_event_sstatehash.map(|shortstatehash| db.rooms.state_full_ids(shortstatehash));
+
+            if let Some(Ok(state)) = state {
+                warn!("Using cached state");
                 let mut state = fetch_and_handle_events(
                     db,
                     origin,
@@ -1088,6 +1091,7 @@ pub fn handle_incoming_pdu<'a>(
         }
 
         if state_at_incoming_event.is_none() {
+            warn!("Calling /state_ids");
             // Call /state_ids to find out what the state at this pdu is. We trust the server's
             // response to some extend, but we still do a lot of checks on the events
             match db
@@ -1755,35 +1759,50 @@ fn append_incoming_pdu(
 fn get_auth_chain(starting_events: Vec<EventId>, db: &Database) -> Result<HashSet<EventId>> {
     let mut full_auth_chain = HashSet::new();
 
+    let starting_events = starting_events
+        .iter()
+        .map(|id| {
+            (db.rooms
+                .get_or_create_shorteventid(id, &db.globals)
+                .map(|s| (s, id)))
+        })
+        .collect::<Result<Vec<_>>>()?;
+
     let mut cache = db.rooms.auth_chain_cache();
 
-    for event_id in &starting_events {
-        if let Some(cached) = cache.get_mut(&[event_id.clone()][..]) {
+    for (sevent_id, event_id) in starting_events {
+        if let Some(cached) = cache.get_mut(&sevent_id) {
             full_auth_chain.extend(cached.iter().cloned());
         } else {
             drop(cache);
             let mut auth_chain = HashSet::new();
             get_auth_chain_recursive(&event_id, &mut auth_chain, db)?;
             cache = db.rooms.auth_chain_cache();
-            cache.insert(vec![event_id.clone()], auth_chain.clone());
+            cache.insert(sevent_id, auth_chain.clone());
             full_auth_chain.extend(auth_chain);
         };
     }
 
-    Ok(full_auth_chain)
+    full_auth_chain
+        .into_iter()
+        .map(|sid| db.rooms.get_eventid_from_short(sid))
+        .collect()
 }
 
 fn get_auth_chain_recursive(
     event_id: &EventId,
-    found: &mut HashSet<EventId>,
+    found: &mut HashSet<u64>,
     db: &Database,
 ) -> Result<()> {
     let r = db.rooms.get_pdu(&event_id);
     match r {
         Ok(Some(pdu)) => {
             for auth_event in &pdu.auth_events {
-                if !found.contains(auth_event) {
-                    found.insert(auth_event.clone());
+                let sauthevent = db
+                    .rooms
+                    .get_or_create_shorteventid(auth_event, &db.globals)?;
+                if !found.contains(&sauthevent) {
+                    found.insert(sauthevent);
                     get_auth_chain_recursive(&auth_event, found, db)?;
                 }
             }
