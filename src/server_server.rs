@@ -1022,7 +1022,7 @@ pub fn handle_incoming_pdu<'a>(
             return Ok(None);
         }
 
-        // Load missing prev events first
+        // 9. Fetch any missing prev events doing all checks listed here starting at 1. These are timeline events
         fetch_and_handle_events(
             db,
             origin,
@@ -1032,8 +1032,6 @@ pub fn handle_incoming_pdu<'a>(
             true,
         )
         .await;
-
-        // TODO: 9. fetch any missing prev events doing all checks listed here starting at 1. These are timeline events
 
         // 10. Fetch missing state and auth chain events by calling /state_ids at backwards extremities
         //     doing all the checks in this list starting at 1. These are not timeline events.
