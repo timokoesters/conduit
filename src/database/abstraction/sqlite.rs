@@ -12,9 +12,7 @@ use std::{
     time::{Duration, Instant},
 };
 use tokio::sync::oneshot::Sender;
-use tracing::{debug, warn};
-
-pub const MILLI: Duration = Duration::from_millis(1);
+use tracing::debug;
 
 thread_local! {
     static READ_CONNECTION: RefCell<Option<&'static Connection>> = RefCell::new(None);
@@ -164,16 +162,7 @@ impl Tree for SqliteTable {
     #[tracing::instrument(skip(self, key, value))]
     fn insert(&self, key: &[u8], value: &[u8]) -> Result<()> {
         let guard = self.engine.write_lock();
-
-        let start = Instant::now();
-
         self.insert_with_guard(&guard, key, value)?;
-
-        let elapsed = start.elapsed();
-        if elapsed > MILLI {
-            warn!("insert took {:?} : {}", elapsed, &self.name);
-        }
-
         drop(guard);
 
         let watchers = self.watchers.read();
@@ -220,19 +209,10 @@ impl Tree for SqliteTable {
     fn remove(&self, key: &[u8]) -> Result<()> {
         let guard = self.engine.write_lock();
 
-        let start = Instant::now();
-
         guard.execute(
             format!("DELETE FROM {} WHERE key = ?", self.name).as_str(),
             [key],
         )?;
-
-        let elapsed = start.elapsed();
-
-        if elapsed > MILLI {
-            debug!("remove:    took {:012?} : {}", elapsed, &self.name);
-        }
-        // debug!("remove key: {:?}", &key);
 
         Ok(())
     }
@@ -326,8 +306,6 @@ impl Tree for SqliteTable {
     fn increment(&self, key: &[u8]) -> Result<Vec<u8>> {
         let guard = self.engine.write_lock();
 
-        let start = Instant::now();
-
         let old = self.get_with_guard(&guard, key)?;
 
         let new =
@@ -335,26 +313,11 @@ impl Tree for SqliteTable {
 
         self.insert_with_guard(&guard, key, &new)?;
 
-        let elapsed = start.elapsed();
-
-        if elapsed > MILLI {
-            debug!("increment: took {:012?} : {}", elapsed, &self.name);
-        }
-        // debug!("increment key: {:?}", &key);
-
         Ok(new)
     }
 
     #[tracing::instrument(skip(self, prefix))]
     fn scan_prefix<'a>(&'a self, prefix: Vec<u8>) -> Box<dyn Iterator<Item = TupleOfBytes> + 'a> {
-        // let name = self.name.clone();
-        // self.iter_from_thread(
-        //     format!(
-        //         "SELECT key, value FROM {} WHERE key BETWEEN ?1 AND ?1 || X'FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF' ORDER BY key ASC",
-        //         name
-        //     )
-        //     [prefix]
-        // )
         Box::new(
             self.iter_from(&prefix, false)
                 .take_while(move |(key, _)| key.starts_with(&prefix)),

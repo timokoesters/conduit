@@ -721,7 +721,8 @@ pub async fn send_transaction_message_route(
                                 &db.globals,
                             )?;
                         } else {
-                            warn!("No known event ids in read receipt: {:?}", user_updates);
+                            // TODO fetch missing events
+                            debug!("No known event ids in read receipt: {:?}", user_updates);
                         }
                     }
                 }
