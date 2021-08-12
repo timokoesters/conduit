@@ -668,7 +668,7 @@ pub async fn send_transaction_message_route(
 
         let elapsed = start_time.elapsed();
         warn!(
-            "Handling event {} took {}m{}s",
+            "Handling transaction of event {} took {}m{}s",
             event_id,
             elapsed.as_secs() / 60,
             elapsed.as_secs() % 60
@@ -850,6 +850,8 @@ pub fn handle_incoming_pdu<'a>(
     pub_key_map: &'a RwLock<BTreeMap<String, BTreeMap<String, String>>>,
 ) -> AsyncRecursiveType<'a, StdResult<Option<Vec<u8>>, String>> {
     Box::pin(async move {
+        let start_time = Instant::now();
+
         // TODO: For RoomVersion6 we must check that Raw<..> is canonical do we anywhere?: https://matrix.org/docs/spec/rooms/v6#canonical-json
         match db.rooms.exists(&room_id) {
             Ok(true) => {}
@@ -1014,12 +1016,18 @@ pub fn handle_incoming_pdu<'a>(
         // 8. if not timeline event: stop
         if !is_timeline_event
             || incoming_pdu.origin_server_ts
-                < db.rooms
-                    .first_pdu_in_room(&room_id)
-                    .map_err(|_| "Error loading first room event.".to_owned())?
-                    .expect("Room exists")
-                    .origin_server_ts
+                < (utils::millis_since_unix_epoch() - 1000 * 60 * 20)
+                    .try_into()
+                    .expect("time is valid")
+        // Not older than 20 mins
         {
+            let elapsed = start_time.elapsed();
+            warn!(
+                "Handling outlier event {} took {}m{}s",
+                event_id,
+                elapsed.as_secs() / 60,
+                elapsed.as_secs() % 60
+            );
             return Ok(None);
         }
 
@@ -1312,7 +1320,8 @@ pub fn handle_incoming_pdu<'a>(
             for state in fork_states {
                 auth_chain_sets.push(
                     get_auth_chain(state.iter().map(|(_, id)| id.clone()).collect(), db)
-                        .map_err(|_| "Failed to load auth chain.".to_owned())?.collect(),
+                        .map_err(|_| "Failed to load auth chain.".to_owned())?
+                        .collect(),
                 );
             }
 
@@ -1385,6 +1394,14 @@ pub fn handle_incoming_pdu<'a>(
 
         // Event has passed all auth/stateres checks
         drop(state_lock);
+
+        let elapsed = start_time.elapsed();
+        warn!(
+            "Handling timeline event {} took {}m{}s",
+            event_id,
+            elapsed.as_secs() / 60,
+            elapsed.as_secs() % 60
+        );
         Ok(pdu_id)
     })
 }
@@ -1757,7 +1774,10 @@ fn append_incoming_pdu(
     Ok(pdu_id)
 }
 
-fn get_auth_chain(starting_events: Vec<EventId>, db: &Database) -> Result<impl Iterator<Item = EventId> + '_> {
+fn get_auth_chain(
+    starting_events: Vec<EventId>,
+    db: &Database,
+) -> Result<impl Iterator<Item = EventId> + '_> {
     let mut full_auth_chain = HashSet::new();
 
     let starting_events = starting_events

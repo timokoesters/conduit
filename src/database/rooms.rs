@@ -99,15 +99,11 @@ impl Rooms {
         Ok(self
             .stateid_shorteventid
             .scan_prefix(shortstatehash.to_be_bytes().to_vec())
-            .map(|(_, bytes)| self.shorteventid_eventid.get(&bytes).ok().flatten())
-            .flatten()
-            .map(|bytes| {
-                EventId::try_from(utils::string_from_bytes(&bytes).map_err(|_| {
-                    Error::bad_database("EventID in stateid_shorteventid is invalid unicode.")
-                })?)
-                .map_err(|_| Error::bad_database("EventId in stateid_shorteventid is invalid."))
+            .map(|(_, bytes)| {
+                self.get_eventid_from_short(utils::u64_from_bytes(&bytes).unwrap())
+                    .ok()
             })
-            .filter_map(|r| r.ok())
+            .flatten()
             .collect())
     }
 
@@ -118,15 +114,11 @@ impl Rooms {
         let state = self
             .stateid_shorteventid
             .scan_prefix(shortstatehash.to_be_bytes().to_vec())
-            .map(|(_, bytes)| self.shorteventid_eventid.get(&bytes).ok().flatten())
-            .flatten()
-            .map(|bytes| {
-                EventId::try_from(utils::string_from_bytes(&bytes).map_err(|_| {
-                    Error::bad_database("EventID in stateid_shorteventid is invalid unicode.")
-                })?)
-                .map_err(|_| Error::bad_database("EventId in stateid_shorteventid is invalid."))
+            .map(|(_, bytes)| {
+                self.get_eventid_from_short(utils::u64_from_bytes(&bytes).unwrap())
+                    .ok()
             })
-            .filter_map(|r| r.ok())
+            .flatten()
             .map(|eventid| self.get_pdu(&eventid))
             .filter_map(|r| r.ok().flatten())
             .map(|pdu| {
@@ -168,15 +160,10 @@ impl Rooms {
             Ok(self
                 .stateid_shorteventid
                 .get(&stateid)?
-                .map(|bytes| self.shorteventid_eventid.get(&bytes).ok().flatten())
-                .flatten()
                 .map(|bytes| {
-                    EventId::try_from(utils::string_from_bytes(&bytes).map_err(|_| {
-                        Error::bad_database("EventID in stateid_shorteventid is invalid unicode.")
-                    })?)
-                    .map_err(|_| Error::bad_database("EventId in stateid_shorteventid is invalid."))
+                    self.get_eventid_from_short(utils::u64_from_bytes(&bytes).unwrap())
+                        .ok()
                 })
-                .map(|r| r.ok())
                 .flatten())
         } else {
             Ok(None)
@@ -448,7 +435,12 @@ impl Rooms {
     }
 
     pub fn get_eventid_from_short(&self, shorteventid: u64) -> Result<EventId> {
-        if let Some(id) = self.shorteventid_cache.lock().unwrap().get_mut(&shorteventid) {
+        if let Some(id) = self
+            .shorteventid_cache
+            .lock()
+            .unwrap()
+            .get_mut(&shorteventid)
+        {
             return Ok(id.clone());
         }
 
@@ -457,12 +449,11 @@ impl Rooms {
             .get(&shorteventid.to_be_bytes())?
             .ok_or_else(|| Error::bad_database("Shorteventid does not exist"))?;
 
-        let event_id = EventId::try_from(
-            utils::string_from_bytes(&bytes).map_err(|_| {
+        let event_id =
+            EventId::try_from(utils::string_from_bytes(&bytes).map_err(|_| {
                 Error::bad_database("EventID in roomid_pduleaves is invalid unicode.")
-            })?,
-        )
-        .map_err(|_| Error::bad_database("EventId in roomid_pduleaves is invalid."))?;
+            })?)
+            .map_err(|_| Error::bad_database("EventId in roomid_pduleaves is invalid."))?;
 
         self.shorteventid_cache
             .lock()
