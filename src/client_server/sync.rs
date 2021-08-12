@@ -205,7 +205,7 @@ async fn sync_helper(
 
         let mut non_timeline_pdus = db
             .rooms
-            .pdus_until(&sender_user, &room_id, u64::MAX)
+            .pdus_until(&sender_user, &room_id, u64::MAX)?
             .filter_map(|r| {
                 // Filter out buggy events
                 if r.is_err() {
@@ -248,13 +248,13 @@ async fn sync_helper(
 
         let first_pdu_before_since = db
             .rooms
-            .pdus_until(&sender_user, &room_id, since)
+            .pdus_until(&sender_user, &room_id, since)?
             .next()
             .transpose()?;
 
         let pdus_after_since = db
             .rooms
-            .pdus_after(&sender_user, &room_id, since)
+            .pdus_after(&sender_user, &room_id, since)?
             .next()
             .is_some();
 
@@ -286,7 +286,7 @@ async fn sync_helper(
 
                 for hero in db
                     .rooms
-                    .all_pdus(&sender_user, &room_id)
+                    .all_pdus(&sender_user, &room_id)?
                     .filter_map(|pdu| pdu.ok()) // Ignore all broken pdus
                     .filter(|(_, pdu)| pdu.kind == EventType::RoomMember)
                     .map(|(_, pdu)| {
@@ -328,11 +328,11 @@ async fn sync_helper(
                 }
             }
 
-            (
+            Ok::<_, Error>((
                 Some(joined_member_count),
                 Some(invited_member_count),
                 heroes,
-            )
+            ))
         };
 
         let (
@@ -343,7 +343,7 @@ async fn sync_helper(
             state_events,
         ) = if since_shortstatehash.is_none() {
             // Probably since = 0, we will do an initial sync
-            let (joined_member_count, invited_member_count, heroes) = calculate_counts();
+            let (joined_member_count, invited_member_count, heroes) = calculate_counts()?;
 
             let current_state_ids = db.rooms.state_full_ids(current_shortstatehash)?;
             let state_events = current_state_ids
@@ -510,7 +510,7 @@ async fn sync_helper(
             }
 
             let (joined_member_count, invited_member_count, heroes) = if send_member_count {
-                calculate_counts()
+                calculate_counts()?
             } else {
                 (None, None, Vec::new())
             };

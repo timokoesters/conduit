@@ -1704,7 +1704,7 @@ fn append_incoming_pdu(
     // We append to state before appending the pdu, so we don't have a moment in time with the
     // pdu without it's state. This is okay because append_pdu can't fail.
     db.rooms
-        .set_event_state(&pdu.event_id, state, &db.globals)?;
+        .set_event_state(&pdu.event_id, &pdu.room_id, state, &db.globals)?;
 
     let pdu_id = db.rooms.append_pdu(
         pdu,

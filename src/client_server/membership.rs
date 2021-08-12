@@ -609,6 +609,8 @@ async fn join_room_by_id_helper(
             )
             .await?;
 
+        db.rooms.get_or_create_shortroomid(&room_id, &db.globals)?;
+
         let pdu = PduEvent::from_id_val(&event_id, join_event.clone())
             .map_err(|_| Error::BadServerResponse("Invalid join event PDU."))?;
 

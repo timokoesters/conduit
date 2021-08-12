@@ -9,13 +9,13 @@ use std::{
     path::{Path, PathBuf},
     pin::Pin,
     sync::Arc,
-    time::{Duration, Instant},
 };
 use tokio::sync::oneshot::Sender;
 use tracing::debug;
 
 thread_local! {
     static READ_CONNECTION: RefCell<Option<&'static Connection>> = RefCell::new(None);
+    static READ_CONNECTION_ITERATOR: RefCell<Option<&'static Connection>> = RefCell::new(None);
 }
 
 struct PreparedStatementIterator<'a> {
@@ -64,6 +64,21 @@ impl Engine {
 
     fn read_lock(&self) -> &'static Connection {
         READ_CONNECTION.with(|cell| {
+            let connection = &mut cell.borrow_mut();
+
+            if (*connection).is_none() {
+                let c = Box::leak(Box::new(
+                    Self::prepare_conn(&self.path, self.cache_size_per_thread).unwrap(),
+                ));
+                **connection = Some(c);
+            }
+
+            connection.unwrap()
+        })
+    }
+
+    fn read_lock_iterator(&self) -> &'static Connection {
+        READ_CONNECTION_ITERATOR.with(|cell| {
             let connection = &mut cell.borrow_mut();
 
             if (*connection).is_none() {
@@ -151,6 +166,34 @@ impl SqliteTable {
         )?;
         Ok(())
     }
+
+    pub fn iter_with_guard<'a>(
+        &'a self,
+        guard: &'a Connection,
+    ) -> Box<dyn Iterator<Item = TupleOfBytes> + 'a> {
+        let statement = Box::leak(Box::new(
+            guard
+                .prepare(&format!(
+                    "SELECT key, value FROM {} ORDER BY key ASC",
+                    &self.name
+                ))
+                .unwrap(),
+        ));
+
+        let statement_ref = NonAliasingBox(statement);
+
+        let iterator = Box::new(
+            statement
+                .query_map([], |row| Ok((row.get_unwrap(0), row.get_unwrap(1))))
+                .unwrap()
+                .map(|r| r.unwrap()),
+        );
+
+        Box::new(PreparedStatementIterator {
+            iterator,
+            statement_ref,
+        })
+    }
 }
 
 impl Tree for SqliteTable {
@@ -219,30 +262,9 @@ impl Tree for SqliteTable {
 
     #[tracing::instrument(skip(self))]
     fn iter<'a>(&'a self) -> Box<dyn Iterator<Item = TupleOfBytes> + 'a> {
-        let guard = self.engine.read_lock();
+        let guard = self.engine.read_lock_iterator();
 
-        let statement = Box::leak(Box::new(
-            guard
-                .prepare(&format!(
-                    "SELECT key, value FROM {} ORDER BY key ASC",
-                    &self.name
-                ))
-                .unwrap(),
-        ));
-
-        let statement_ref = NonAliasingBox(statement);
-
-        let iterator = Box::new(
-            statement
-                .query_map([], |row| Ok((row.get_unwrap(0), row.get_unwrap(1))))
-                .unwrap()
-                .map(|r| r.unwrap()),
-        );
-
-        Box::new(PreparedStatementIterator {
-            iterator,
-            statement_ref,
-        })
+        self.iter_with_guard(&guard)
     }
 
     #[tracing::instrument(skip(self, from, backwards))]
@@ -251,7 +273,7 @@ impl Tree for SqliteTable {
         from: &[u8],
         backwards: bool,
     ) -> Box<dyn Iterator<Item = TupleOfBytes> + 'a> {
-        let guard = self.engine.read_lock();
+        let guard = self.engine.read_lock_iterator();
         let from = from.to_vec(); // TODO change interface?
 
         if backwards {

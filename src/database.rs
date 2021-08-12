@@ -28,7 +28,7 @@ use ruma::{DeviceId, EventId, RoomId, ServerName, UserId};
 use serde::{de::IgnoredAny, Deserialize};
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
-    convert::TryFrom,
+    convert::{TryFrom, TryInto},
     fs::{self, remove_dir_all},
     io::Write,
     mem::size_of,
@@ -266,7 +266,6 @@ impl Database {
                 shortroomid_roomid: builder.open_tree("shortroomid_roomid")?,
                 roomid_shortroomid: builder.open_tree("roomid_shortroomid")?,
 
-                stateid_shorteventid: builder.open_tree("stateid_shorteventid")?,
                 shortstatehash_statediff: builder.open_tree("shortstatehash_statediff")?,
                 eventid_shorteventid: builder.open_tree("eventid_shorteventid")?,
                 shorteventid_eventid: builder.open_tree("shorteventid_eventid")?,
@@ -431,7 +430,6 @@ impl Database {
             }
 
             if db.globals.database_version()? < 6 {
-                // TODO update to 6
                 // Set room member count
                 for (roomid, _) in db.rooms.roomid_shortstatehash.iter() {
                     let room_id =
@@ -445,263 +443,98 @@ impl Database {
                 println!("Migration: 5 -> 6 finished");
             }
 
-            fn load_shortstatehash_info(
-                shortstatehash: &[u8],
-                db: &Database,
-                lru: &mut LruCache<
-                    Vec<u8>,
-                    Vec<(
-                        Vec<u8>,
-                        HashSet<Vec<u8>>,
-                        HashSet<Vec<u8>>,
-                        HashSet<Vec<u8>>,
-                    )>,
-                >,
-            ) -> Result<
-                Vec<(
-                    Vec<u8>,          // sstatehash
-                    HashSet<Vec<u8>>, // full state
-                    HashSet<Vec<u8>>, // added
-                    HashSet<Vec<u8>>, // removed
-                )>,
-            > {
-                if let Some(result) = lru.get_mut(shortstatehash) {
-                    return Ok(result.clone());
-                }
-
-                let value = db
-                    .rooms
-                    .shortstatehash_statediff
-                    .get(shortstatehash)?
-                    .ok_or_else(|| Error::bad_database("State hash does not exist"))?;
-                let parent = value[0..size_of::<u64>()].to_vec();
-
-                let mut add_mode = true;
-                let mut added = HashSet::new();
-                let mut removed = HashSet::new();
-
-                let mut i = size_of::<u64>();
-                while let Some(v) = value.get(i..i + 2 * size_of::<u64>()) {
-                    if add_mode && v.starts_with(&0_u64.to_be_bytes()) {
-                        add_mode = false;
-                        i += size_of::<u64>();
-                        continue;
-                    }
-                    if add_mode {
-                        added.insert(v.to_vec());
-                    } else {
-                        removed.insert(v.to_vec());
-                    }
-                    i += 2 * size_of::<u64>();
-                }
-
-                if parent != 0_u64.to_be_bytes() {
-                    let mut response = load_shortstatehash_info(&parent, db, lru)?;
-                    let mut state = response.last().unwrap().1.clone();
-                    state.extend(added.iter().cloned());
-                    for r in &removed {
-                        state.remove(r);
-                    }
-
-                    response.push((shortstatehash.to_vec(), state, added, removed));
-
-                    lru.insert(shortstatehash.to_vec(), response.clone());
-                    Ok(response)
-                } else {
-                    let mut response = Vec::new();
-                    response.push((shortstatehash.to_vec(), added.clone(), added, removed));
-                    lru.insert(shortstatehash.to_vec(), response.clone());
-                    Ok(response)
-                }
-            }
-
-            fn update_shortstatehash_level(
-                current_shortstatehash: &[u8],
-                statediffnew: HashSet<Vec<u8>>,
-                statediffremoved: HashSet<Vec<u8>>,
-                diff_to_sibling: usize,
-                mut parent_states: Vec<(
-                    Vec<u8>,          // sstatehash
-                    HashSet<Vec<u8>>, // full state
-                    HashSet<Vec<u8>>, // added
-                    HashSet<Vec<u8>>, // removed
-                )>,
-                db: &Database,
-            ) -> Result<()> {
-                let diffsum = statediffnew.len() + statediffremoved.len();
-
-                if parent_states.len() > 3 {
-                    // Number of layers
-                    // To many layers, we have to go deeper
-                    let parent = parent_states.pop().unwrap();
-
-                    let mut parent_new = parent.2;
-                    let mut parent_removed = parent.3;
-
-                    for removed in statediffremoved {
-                        if !parent_new.remove(&removed) {
-                            parent_removed.insert(removed);
-                        }
-                    }
-                    parent_new.extend(statediffnew);
-
-                    update_shortstatehash_level(
-                        current_shortstatehash,
-                        parent_new,
-                        parent_removed,
-                        diffsum,
-                        parent_states,
-                        db,
-                    )?;
-
-                    return Ok(());
-                }
-
-                if parent_states.len() == 0 {
-                    // There is no parent layer, create a new state
-                    let mut value = 0_u64.to_be_bytes().to_vec(); // 0 means no parent
-                    for new in &statediffnew {
-                        value.extend_from_slice(&new);
-                    }
-
-                    if !statediffremoved.is_empty() {
-                        warn!("Tried to create new state with removals");
-                    }
-
-                    db.rooms
-                        .shortstatehash_statediff
-                        .insert(&current_shortstatehash, &value)?;
-
-                    return Ok(());
-                };
-
-                // Else we have two options.
-                // 1. We add the current diff on top of the parent layer.
-                // 2. We replace a layer above
-
-                let parent = parent_states.pop().unwrap();
-                let parent_diff = parent.2.len() + parent.3.len();
-
-                if diffsum * diffsum >= 2 * diff_to_sibling * parent_diff {
-                    // Diff too big, we replace above layer(s)
-                    let mut parent_new = parent.2;
-                    let mut parent_removed = parent.3;
-
-                    for removed in statediffremoved {
-                        if !parent_new.remove(&removed) {
-                            parent_removed.insert(removed);
-                        }
-                    }
-
-                    parent_new.extend(statediffnew);
-                    update_shortstatehash_level(
-                        current_shortstatehash,
-                        parent_new,
-                        parent_removed,
-                        diffsum,
-                        parent_states,
-                        db,
-                    )?;
-                } else {
-                    // Diff small enough, we add diff as layer on top of parent
-                    let mut value = parent.0.clone();
-                    for new in &statediffnew {
-                        value.extend_from_slice(&new);
-                    }
-
-                    if !statediffremoved.is_empty() {
-                        value.extend_from_slice(&0_u64.to_be_bytes());
-                        for removed in &statediffremoved {
-                            value.extend_from_slice(&removed);
-                        }
-                    }
-
-                    db.rooms
-                        .shortstatehash_statediff
-                        .insert(&current_shortstatehash, &value)?;
-                }
-
-                Ok(())
-            }
-
             if db.globals.database_version()? < 7 {
                 // Upgrade state store
-                let mut lru = LruCache::new(1000);
-                let mut last_roomstates: HashMap<RoomId, Vec<u8>> = HashMap::new();
-                let mut current_sstatehash: Vec<u8> = Vec::new();
+                let mut last_roomstates: HashMap<RoomId, u64> = HashMap::new();
+                let mut current_sstatehash: Option<u64> = None;
                 let mut current_room = None;
                 let mut current_state = HashSet::new();
                 let mut counter = 0;
+
+                let mut handle_state =
+                    |current_sstatehash: u64,
+                     current_room: &RoomId,
+                     current_state: HashSet<_>,
+                     last_roomstates: &mut HashMap<_, _>| {
+                        counter += 1;
+                        println!("counter: {}", counter);
+                        let last_roomsstatehash = last_roomstates.get(current_room);
+
+                        let states_parents = last_roomsstatehash.map_or_else(
+                            || Ok(Vec::new()),
+                            |&last_roomsstatehash| {
+                                db.rooms.load_shortstatehash_info(dbg!(last_roomsstatehash))
+                            },
+                        )?;
+
+                        let (statediffnew, statediffremoved) =
+                            if let Some(parent_stateinfo) = states_parents.last() {
+                                let statediffnew = current_state
+                                    .difference(&parent_stateinfo.1)
+                                    .cloned()
+                                    .collect::<HashSet<_>>();
+
+                                let statediffremoved = parent_stateinfo
+                                    .1
+                                    .difference(&current_state)
+                                    .cloned()
+                                    .collect::<HashSet<_>>();
+
+                                (statediffnew, statediffremoved)
+                            } else {
+                                (current_state, HashSet::new())
+                            };
+
+                        db.rooms.save_state_from_diff(
+                            dbg!(current_sstatehash),
+                            statediffnew,
+                            statediffremoved,
+                            2, // every state change is 2 event changes on average
+                            states_parents,
+                        )?;
+
+                        /*
+                        let mut tmp = db.rooms.load_shortstatehash_info(&current_sstatehash, &db)?;
+                        let state = tmp.pop().unwrap();
+                        println!(
+                            "{}\t{}{:?}: {:?} + {:?} - {:?}",
+                            current_room,
+                            "  ".repeat(tmp.len()),
+                            utils::u64_from_bytes(&current_sstatehash).unwrap(),
+                            tmp.last().map(|b| utils::u64_from_bytes(&b.0).unwrap()),
+                            state
+                                .2
+                                .iter()
+                                .map(|b| utils::u64_from_bytes(&b[size_of::<u64>()..]).unwrap())
+                                .collect::<Vec<_>>(),
+                            state
+                                .3
+                                .iter()
+                                .map(|b| utils::u64_from_bytes(&b[size_of::<u64>()..]).unwrap())
+                                .collect::<Vec<_>>()
+                        );
+                        */
+
+                        Ok::<_, Error>(())
+                    };
+
                 for (k, seventid) in db._db.open_tree("stateid_shorteventid")?.iter() {
-                    let sstatehash = k[0..size_of::<u64>()].to_vec();
+                    let sstatehash = utils::u64_from_bytes(&k[0..size_of::<u64>()])
+                        .expect("number of bytes is correct");
                     let sstatekey = k[size_of::<u64>()..].to_vec();
-                    if sstatehash != current_sstatehash {
-                        if !current_sstatehash.is_empty() {
-                            counter += 1;
-                            println!("counter: {}", counter);
-                            let current_room = current_room.as_ref().unwrap();
-                            let last_roomsstatehash = last_roomstates.get(&current_room);
-
-                            let states_parents = last_roomsstatehash.map_or_else(
-                                || Ok(Vec::new()),
-                                |last_roomsstatehash| {
-                                    load_shortstatehash_info(&last_roomsstatehash, &db, &mut lru)
-                                },
+                    if Some(sstatehash) != current_sstatehash {
+                        if let Some(current_sstatehash) = current_sstatehash {
+                            handle_state(
+                                current_sstatehash,
+                                current_room.as_ref().unwrap(),
+                                current_state,
+                                &mut last_roomstates,
                             )?;
-
-                            let (statediffnew, statediffremoved) =
-                                if let Some(parent_stateinfo) = states_parents.last() {
-                                    let statediffnew = current_state
-                                        .difference(&parent_stateinfo.1)
-                                        .cloned()
-                                        .collect::<HashSet<_>>();
-
-                                    let statediffremoved = parent_stateinfo
-                                        .1
-                                        .difference(&current_state)
-                                        .cloned()
-                                        .collect::<HashSet<_>>();
-
-                                    (statediffnew, statediffremoved)
-                                } else {
-                                    (current_state, HashSet::new())
-                                };
-
-                            update_shortstatehash_level(
-                                &current_sstatehash,
-                                statediffnew,
-                                statediffremoved,
-                                2, // every state change is 2 event changes on average
-                                states_parents,
-                                &db,
-                            )?;
-
-                            /*
-                            let mut tmp = load_shortstatehash_info(&current_sstatehash, &db)?;
-                            let state = tmp.pop().unwrap();
-                            println!(
-                                "{}\t{}{:?}: {:?} + {:?} - {:?}",
-                                current_room,
-                                "  ".repeat(tmp.len()),
-                                utils::u64_from_bytes(&current_sstatehash).unwrap(),
-                                tmp.last().map(|b| utils::u64_from_bytes(&b.0).unwrap()),
-                                state
-                                    .2
-                                    .iter()
-                                    .map(|b| utils::u64_from_bytes(&b[size_of::<u64>()..]).unwrap())
-                                    .collect::<Vec<_>>(),
-                                state
-                                    .3
-                                    .iter()
-                                    .map(|b| utils::u64_from_bytes(&b[size_of::<u64>()..]).unwrap())
-                                    .collect::<Vec<_>>()
-                            );
-                            */
-
-                            last_roomstates.insert(current_room.clone(), current_sstatehash);
+                            last_roomstates
+                                .insert(current_room.clone().unwrap(), current_sstatehash);
                         }
                         current_state = HashSet::new();
-                        current_sstatehash = sstatehash;
+                        current_sstatehash = Some(sstatehash);
 
                         let event_id = db
                             .rooms
@@ -721,7 +554,16 @@ impl Database {
 
                     let mut val = sstatekey;
                     val.extend_from_slice(&seventid);
-                    current_state.insert(val);
+                    current_state.insert(val.try_into().expect("size is correct"));
+                }
+
+                if let Some(current_sstatehash) = current_sstatehash {
+                    handle_state(
+                        current_sstatehash,
+                        current_room.as_ref().unwrap(),
+                        current_state,
+                        &mut last_roomstates,
+                    )?;
                 }
 
                 db.globals.bump_database_version(7)?;
@@ -761,11 +603,28 @@ impl Database {
 
                 db.rooms.pduid_pdu.insert_batch(&mut batch)?;
 
-                for (key, _) in db.rooms.pduid_pdu.iter() {
-                    if key.starts_with(b"!") {
-                        db.rooms.pduid_pdu.remove(&key);
+                let mut batch2 = db.rooms.eventid_pduid.iter().filter_map(|(k, value)| {
+                    if !value.starts_with(b"!") {
+                        return None;
                     }
-                }
+                    let mut parts = value.splitn(2, |&b| b == 0xff);
+                    let room_id = parts.next().unwrap();
+                    let count = parts.next().unwrap();
+
+                    let short_room_id = db
+                        .rooms
+                        .roomid_shortroomid
+                        .get(&room_id)
+                        .unwrap()
+                        .expect("shortroomid should exist");
+
+                    let mut new_value = short_room_id;
+                    new_value.extend_from_slice(count);
+
+                    Some((k, new_value))
+                });
+
+                db.rooms.eventid_pduid.insert_batch(&mut batch2)?;
 
                 db.globals.bump_database_version(8)?;
 
@@ -803,7 +662,7 @@ impl Database {
 
                 for (key, _) in db.rooms.tokenids.iter() {
                     if key.starts_with(b"!") {
-                        db.rooms.pduid_pdu.remove(&key)?;
+                        db.rooms.tokenids.remove(&key)?;
                     }
                 }
 
@@ -811,8 +670,6 @@ impl Database {
 
                 println!("Migration: 8 -> 9 finished");
             }
-
-            panic!();
         }
 
         let guard = db.read().await;

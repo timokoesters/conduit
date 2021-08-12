@@ -33,6 +33,8 @@ pub async fn create_room_route(
 
     let room_id = RoomId::new(db.globals.server_name());
 
+    db.rooms.get_or_create_shortroomid(&room_id, &db.globals)?;
+
     let mutex_state = Arc::clone(
         db.globals
             .roomid_mutex_state
@@ -173,7 +175,6 @@ pub async fn create_room_route(
     )?;
 
     // 4. Canonical room alias
-
     if let Some(room_alias_id) = &alias {
         db.rooms.build_and_append_pdu(
             PduBuilder {
@@ -193,7 +194,7 @@ pub async fn create_room_route(
             &room_id,
             &db,
             &state_lock,
-        );
+        )?;
     }
 
     // 5. Events set by preset

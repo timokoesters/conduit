@@ -249,6 +249,8 @@ pub async fn register_route(
 
         let room_id = RoomId::new(db.globals.server_name());
 
+        db.rooms.get_or_create_shortroomid(&room_id, &db.globals)?;
+
         let mutex_state = Arc::clone(
             db.globals
                 .roomid_mutex_state
