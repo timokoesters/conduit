@@ -845,10 +845,7 @@ impl Rooms {
     }
 
     /// Returns the json of a pdu.
-    pub fn get_outlier_pdu_json(
-        &self,
-        event_id: &EventId,
-    ) -> Result<Option<CanonicalJsonObject>> {
+    pub fn get_outlier_pdu_json(&self, event_id: &EventId) -> Result<Option<CanonicalJsonObject>> {
         self.eventid_outlierpdu
             .get(event_id.as_bytes())?
             .map(|pdu| {
@@ -1134,10 +1131,9 @@ impl Rooms {
             &serde_json::to_vec(&pdu_json).expect("CanonicalJsonObject is always a valid"),
         )?;
 
-        // This also replaces the eventid of any outliers with the correct
-        // pduid, removing the place holder.
         self.eventid_pduid
             .insert(pdu.event_id.as_bytes(), &pdu_id)?;
+        self.eventid_outlierpdu.remove(pdu.event_id.as_bytes())?;
 
         drop(insert_lock);
 
