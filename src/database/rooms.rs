@@ -510,10 +510,19 @@ impl Rooms {
 
             for removed in statediffremoved {
                 if !parent_new.remove(&removed) {
+                    // It was not added in the parent and we removed it
                     parent_removed.insert(removed);
                 }
+                // Else it was added in the parent and we removed it again. We can forget this change
             }
-            parent_new.extend(statediffnew);
+
+            for new in statediffnew {
+                if !parent_removed.remove(&new) {
+                    // It was not touched in the parent and we added it
+                    parent_new.insert(new);
+                }
+                // Else it was removed in the parent and we added it again. We can forget this change
+            }
 
             self.save_state_from_diff(
                 shortstatehash,
@@ -557,11 +566,20 @@ impl Rooms {
 
             for removed in statediffremoved {
                 if !parent_new.remove(&removed) {
+                    // It was not added in the parent and we removed it
                     parent_removed.insert(removed);
                 }
+                // Else it was added in the parent and we removed it again. We can forget this change
             }
 
-            parent_new.extend(statediffnew);
+            for new in statediffnew {
+                if !parent_removed.remove(&new) {
+                    // It was not touched in the parent and we added it
+                    parent_new.insert(new);
+                }
+                // Else it was removed in the parent and we added it again. We can forget this change
+            }
+
             self.save_state_from_diff(
                 shortstatehash,
                 parent_new,

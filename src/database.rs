@@ -108,7 +108,7 @@ fn default_db_cache_capacity_mb() -> f64 {
 }
 
 fn default_sqlite_wal_clean_second_interval() -> u32 {
-    15 * 60 // every 15 minutes
+    1 * 60 // every minute
 }
 
 fn default_max_request_size() -> u32 {
