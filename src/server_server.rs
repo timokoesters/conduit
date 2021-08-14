@@ -1016,10 +1016,11 @@ pub fn handle_incoming_pdu<'a>(
         // 8. if not timeline event: stop
         if !is_timeline_event
             || incoming_pdu.origin_server_ts
-                < (utils::millis_since_unix_epoch() - 1000 * 60 * 20)
-                    .try_into()
-                    .expect("time is valid")
-        // Not older than 20 mins
+                < db.rooms
+                    .first_pdu_in_room(&room_id)
+                    .map_err(|_| "Error loading first room event.".to_owned())?
+                    .expect("Room exists")
+                    .origin_server_ts
         {
             let elapsed = start_time.elapsed();
             warn!(
@@ -1031,6 +1032,7 @@ pub fn handle_incoming_pdu<'a>(
             return Ok(None);
         }
 
+        // TODO: make not recursive
         // 9. Fetch any missing prev events doing all checks listed here starting at 1. These are timeline events
         fetch_and_handle_events(
             db,
