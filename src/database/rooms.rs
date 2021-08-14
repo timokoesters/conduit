@@ -265,7 +265,11 @@ impl Rooms {
 
     /// Checks if a room exists.
     pub fn first_pdu_in_room(&self, room_id: &RoomId) -> Result<Option<Arc<PduEvent>>> {
-        let prefix = self.get_shortroomid(room_id)?.expect("room exists").to_be_bytes().to_vec();
+        let prefix = self
+            .get_shortroomid(room_id)?
+            .expect("room exists")
+            .to_be_bytes()
+            .to_vec();
 
         // Look for PDUs in that room.
         self.pduid_pdu
@@ -649,11 +653,13 @@ impl Rooms {
     }
 
     pub fn get_shortroomid(&self, room_id: &RoomId) -> Result<Option<u64>> {
-        self
-            .roomid_shortroomid
+        self.roomid_shortroomid
             .get(&room_id.as_bytes())?
-            .map(|bytes|
-        utils::u64_from_bytes(&bytes).map_err(|_| Error::bad_database("Invalid shortroomid in db."))).transpose()
+            .map(|bytes| {
+                utils::u64_from_bytes(&bytes)
+                    .map_err(|_| Error::bad_database("Invalid shortroomid in db."))
+            })
+            .transpose()
     }
 
     pub fn get_shortstatekey(
@@ -802,7 +808,11 @@ impl Rooms {
     }
 
     pub fn latest_pdu_count(&self, room_id: &RoomId) -> Result<u64> {
-        let prefix = self.get_shortroomid(room_id)?.expect("room exists").to_be_bytes().to_vec();
+        let prefix = self
+            .get_shortroomid(room_id)?
+            .expect("room exists")
+            .to_be_bytes()
+            .to_vec();
 
         let mut last_possible_key = prefix.clone();
         last_possible_key.extend_from_slice(&u64::MAX.to_be_bytes());
@@ -1867,7 +1877,11 @@ impl Rooms {
         room_id: &RoomId,
         since: u64,
     ) -> Result<impl Iterator<Item = Result<(Vec<u8>, PduEvent)>> + 'a> {
-        let prefix = self.get_shortroomid(room_id)?.expect("room exists").to_be_bytes().to_vec();
+        let prefix = self
+            .get_shortroomid(room_id)?
+            .expect("room exists")
+            .to_be_bytes()
+            .to_vec();
 
         // Skip the first pdu if it's exactly at since, because we sent that last time
         let mut first_pdu_id = prefix.clone();
@@ -1899,7 +1913,11 @@ impl Rooms {
         until: u64,
     ) -> Result<impl Iterator<Item = Result<(Vec<u8>, PduEvent)>> + 'a> {
         // Create the first part of the full pdu id
-        let prefix = self.get_shortroomid(room_id)?.expect("room exists").to_be_bytes().to_vec();
+        let prefix = self
+            .get_shortroomid(room_id)?
+            .expect("room exists")
+            .to_be_bytes()
+            .to_vec();
 
         let mut current = prefix.clone();
         current.extend_from_slice(&(until.saturating_sub(1)).to_be_bytes()); // -1 because we don't want event at `until`
@@ -1932,7 +1950,11 @@ impl Rooms {
         from: u64,
     ) -> Result<impl Iterator<Item = Result<(Vec<u8>, PduEvent)>> + 'a> {
         // Create the first part of the full pdu id
-        let prefix = self.get_shortroomid(room_id)?.expect("room exists").to_be_bytes().to_vec();
+        let prefix = self
+            .get_shortroomid(room_id)?
+            .expect("room exists")
+            .to_be_bytes()
+            .to_vec();
 
         let mut current = prefix.clone();
         current.extend_from_slice(&(from + 1).to_be_bytes()); // +1 so we don't send the base event
@@ -2483,7 +2505,11 @@ impl Rooms {
         room_id: &RoomId,
         search_string: &str,
     ) -> Result<(impl Iterator<Item = Vec<u8>> + 'a, Vec<String>)> {
-        let prefix = self.get_shortroomid(room_id)?.expect("room exists").to_be_bytes().to_vec();
+        let prefix = self
+            .get_shortroomid(room_id)?
+            .expect("room exists")
+            .to_be_bytes()
+            .to_vec();
         let prefix_clone = prefix.clone();
 
         let words = search_string
