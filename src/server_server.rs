@@ -887,10 +887,10 @@ pub async fn handle_incoming_pdu<'a>(
     let mut todo_outlier_stack = incoming_pdu.prev_events.clone();
     let mut todo_timeline_stack = Vec::new();
     while let Some(prev_event_id) = todo_outlier_stack.pop() {
-        if let Some((pdu, Some(json))) = fetch_and_handle_outliers(
+        if let Some((pdu, json_opt)) = fetch_and_handle_outliers(
             db,
             origin,
-            &[prev_event_id],
+            &[prev_event_id.clone()],
             &create_event,
             &room_id,
             pub_key_map,
@@ -898,15 +898,17 @@ pub async fn handle_incoming_pdu<'a>(
         .await
         .pop()
         {
-            if incoming_pdu.origin_server_ts
-                > db.rooms
-                    .first_pdu_in_room(&room_id)
-                    .map_err(|_| "Error loading first room event.".to_owned())?
-                    .expect("Room exists")
-                    .origin_server_ts
-            {
-                todo_outlier_stack.extend(pdu.prev_events.iter().cloned());
-                todo_timeline_stack.push((pdu, json));
+            if let Some(json) = json_opt.or_else(|| db.rooms.get_outlier_pdu_json(&prev_event_id).ok().flatten()) {
+                if incoming_pdu.origin_server_ts
+                    > db.rooms
+                        .first_pdu_in_room(&room_id)
+                        .map_err(|_| "Error loading first room event.".to_owned())?
+                        .expect("Room exists")
+                        .origin_server_ts
+                {
+                    todo_outlier_stack.extend(pdu.prev_events.iter().cloned());
+                    todo_timeline_stack.push((pdu, json));
+                }
             }
         }
     }

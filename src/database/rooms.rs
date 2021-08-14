@@ -845,6 +845,19 @@ impl Rooms {
     }
 
     /// Returns the json of a pdu.
+    pub fn get_outlier_pdu_json(
+        &self,
+        event_id: &EventId,
+    ) -> Result<Option<CanonicalJsonObject>> {
+        self.eventid_outlierpdu
+            .get(event_id.as_bytes())?
+            .map(|pdu| {
+                serde_json::from_slice(&pdu).map_err(|_| Error::bad_database("Invalid PDU in db."))
+            })
+            .transpose()
+    }
+
+    /// Returns the json of a pdu.
     pub fn get_non_outlier_pdu_json(
         &self,
         event_id: &EventId,
