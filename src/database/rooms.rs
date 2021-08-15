@@ -92,6 +92,13 @@ pub struct Rooms {
     pub(super) pdu_cache: Mutex<LruCache<EventId, Arc<PduEvent>>>,
     pub(super) auth_chain_cache: Mutex<LruCache<u64, HashSet<u64>>>,
     pub(super) shorteventid_cache: Mutex<LruCache<u64, EventId>>,
+    pub(super) stateinfo_cache: Mutex<LruCache<u64, 
+        Vec<(
+            u64,                           // sstatehash
+            HashSet<CompressedStateEvent>, // full state
+            HashSet<CompressedStateEvent>, // added
+            HashSet<CompressedStateEvent>, // removed
+        )>>>,
 }
 
 impl Rooms {
@@ -407,6 +414,14 @@ impl Rooms {
             HashSet<CompressedStateEvent>, // removed
         )>,
     > {
+        if let Some(r) = self.stateinfo_cache
+            .lock()
+            .unwrap()
+            .get_mut(&shortstatehash)
+        {
+            return Ok(r.clone());
+        }
+
         let value = self
             .shortstatehash_statediff
             .get(&shortstatehash.to_be_bytes())?
@@ -443,10 +458,18 @@ impl Rooms {
 
             response.push((shortstatehash, state, added, removed));
 
+            self.stateinfo_cache
+                .lock()
+                .unwrap()
+                .insert(shortstatehash, response.clone());
             Ok(response)
         } else {
             let mut response = Vec::new();
             response.push((shortstatehash, added.clone(), added, removed));
+            self.stateinfo_cache
+                .lock()
+                .unwrap()
+                .insert(shortstatehash, response.clone());
             Ok(response)
         }
     }
