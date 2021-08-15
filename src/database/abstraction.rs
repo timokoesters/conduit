@@ -35,6 +35,7 @@ pub trait Tree: Send + Sync {
     ) -> Box<dyn Iterator<Item = (Vec<u8>, Vec<u8>)> + 'a>;
 
     fn increment(&self, key: &[u8]) -> Result<Vec<u8>>;
+    fn increment_batch<'a>(&self, iter: &mut dyn Iterator<Item = Vec<u8>>) -> Result<()>;
 
     fn scan_prefix<'a>(
         &'a self,

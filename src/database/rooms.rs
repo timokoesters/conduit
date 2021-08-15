@@ -92,13 +92,17 @@ pub struct Rooms {
     pub(super) pdu_cache: Mutex<LruCache<EventId, Arc<PduEvent>>>,
     pub(super) auth_chain_cache: Mutex<LruCache<u64, HashSet<u64>>>,
     pub(super) shorteventid_cache: Mutex<LruCache<u64, EventId>>,
-    pub(super) stateinfo_cache: Mutex<LruCache<u64, 
-        Vec<(
-            u64,                           // sstatehash
-            HashSet<CompressedStateEvent>, // full state
-            HashSet<CompressedStateEvent>, // added
-            HashSet<CompressedStateEvent>, // removed
-        )>>>,
+    pub(super) stateinfo_cache: Mutex<
+        LruCache<
+            u64,
+            Vec<(
+                u64,                           // sstatehash
+                HashSet<CompressedStateEvent>, // full state
+                HashSet<CompressedStateEvent>, // added
+                HashSet<CompressedStateEvent>, // removed
+            )>,
+        >,
+    >,
 }
 
 impl Rooms {
@@ -414,7 +418,8 @@ impl Rooms {
             HashSet<CompressedStateEvent>, // removed
         )>,
     > {
-        if let Some(r) = self.stateinfo_cache
+        if let Some(r) = self
+            .stateinfo_cache
             .lock()
             .unwrap()
             .get_mut(&shortstatehash)
@@ -458,10 +463,6 @@ impl Rooms {
 
             response.push((shortstatehash, state, added, removed));
 
-            self.stateinfo_cache
-                .lock()
-                .unwrap()
-                .insert(shortstatehash, response.clone());
             Ok(response)
         } else {
             let mut response = Vec::new();
@@ -1173,6 +1174,9 @@ impl Rooms {
 
         let sync_pdu = pdu.to_sync_room_event();
 
+        let mut notifies = Vec::new();
+        let mut highlights = Vec::new();
+
         for user in db
             .rooms
             .room_members(&pdu.room_id)
@@ -1218,17 +1222,22 @@ impl Rooms {
             userroom_id.extend_from_slice(pdu.room_id.as_bytes());
 
             if notify {
-                self.userroomid_notificationcount.increment(&userroom_id)?;
+                notifies.push(userroom_id.clone());
             }
 
             if highlight {
-                self.userroomid_highlightcount.increment(&userroom_id)?;
+                highlights.push(userroom_id);
             }
 
             for senderkey in db.pusher.get_pusher_senderkeys(&user) {
                 db.sending.send_push_pdu(&*pdu_id, senderkey)?;
             }
         }
+
+        self.userroomid_notificationcount
+            .increment_batch(&mut notifies.into_iter())?;
+        self.userroomid_highlightcount
+            .increment_batch(&mut highlights.into_iter())?;
 
         match pdu.kind {
             EventType::RoomRedaction => {

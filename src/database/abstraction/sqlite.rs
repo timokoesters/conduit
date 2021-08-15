@@ -49,11 +49,11 @@ impl Engine {
     fn prepare_conn(path: &Path, cache_size_kb: u32) -> Result<Connection> {
         let conn = Connection::open(&path)?;
 
-        conn.pragma_update(Some(Main), "page_size", &32768)?;
+        conn.pragma_update(Some(Main), "page_size", &1024)?;
         conn.pragma_update(Some(Main), "journal_mode", &"WAL")?;
         conn.pragma_update(Some(Main), "synchronous", &"NORMAL")?;
         conn.pragma_update(Some(Main), "cache_size", &(-i64::from(cache_size_kb)))?;
-        conn.pragma_update(Some(Main), "wal_autocheckpoint", &0)?;
+        conn.pragma_update(Some(Main), "wal_autocheckpoint", &8000)?;
 
         Ok(conn)
     }
@@ -93,8 +93,9 @@ impl Engine {
     }
 
     pub fn flush_wal(self: &Arc<Self>) -> Result<()> {
-        self.write_lock()
-            .pragma_update(Some(Main), "wal_checkpoint", &"TRUNCATE")?;
+        // We use autocheckpoints
+        //self.write_lock()
+        //.pragma_update(Some(Main), "wal_checkpoint", &"TRUNCATE")?;
         Ok(())
     }
 }
@@ -240,6 +241,24 @@ impl Tree for SqliteTable {
         guard.execute("BEGIN", [])?;
         for (key, value) in iter {
             self.insert_with_guard(&guard, &key, &value)?;
+        }
+        guard.execute("COMMIT", [])?;
+
+        drop(guard);
+
+        Ok(())
+    }
+
+    #[tracing::instrument(skip(self, iter))]
+    fn increment_batch<'a>(&self, iter: &mut dyn Iterator<Item = Vec<u8>>) -> Result<()> {
+        let guard = self.engine.write_lock();
+
+        guard.execute("BEGIN", [])?;
+        for key in iter {
+            let old = self.get_with_guard(&guard, &key)?;
+            let new = crate::utils::increment(old.as_deref())
+                .expect("utils::increment always returns Some");
+            self.insert_with_guard(&guard, &key, &new)?;
         }
         guard.execute("COMMIT", [])?;
 
