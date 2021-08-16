@@ -1571,6 +1571,8 @@ impl Rooms {
             let shortstatekey =
                 self.get_or_create_shortstatekey(&new_pdu.kind, &state_key, globals)?;
 
+            let new = self.compress_state_event(shortstatekey, &new_pdu.event_id, globals)?;
+
             let replaces = states_parents
                 .last()
                 .map(|info| {
@@ -1580,11 +1582,14 @@ impl Rooms {
                 })
                 .unwrap_or_default();
 
+            if Some(&new) == replaces {
+                return Ok(previous_shortstatehash.expect("must exist"));
+            }
+
             // TODO: statehash with deterministic inputs
             let shortstatehash = globals.next_count()?;
 
             let mut statediffnew = HashSet::new();
-            let new = self.compress_state_event(shortstatekey, &new_pdu.event_id, globals)?;
             statediffnew.insert(new);
 
             let mut statediffremoved = HashSet::new();

@@ -907,7 +907,7 @@ pub async fn handle_incoming_pdu<'a>(
             if let Some(json) =
                 json_opt.or_else(|| db.rooms.get_outlier_pdu_json(&prev_event_id).ok().flatten())
             {
-                if incoming_pdu.origin_server_ts
+                if pdu.origin_server_ts
                     > db.rooms
                         .first_pdu_in_room(&room_id)
                         .map_err(|_| "Error loading first room event.".to_owned())?
