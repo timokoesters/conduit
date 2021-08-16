@@ -392,6 +392,7 @@ impl Rooms {
                                     &pdu.sender,
                                     None,
                                     db,
+                                    false,
                                 )?;
                             }
                         }
@@ -399,6 +400,8 @@ impl Rooms {
                 }
             }
         }
+
+        self.update_joined_count(room_id)?;
 
         self.roomid_shortstatehash
             .insert(room_id.as_bytes(), &new_shortstatehash.to_be_bytes())?;
@@ -1285,6 +1288,7 @@ impl Rooms {
                         &pdu.sender,
                         invite_state,
                         db,
+                        true,
                     )?;
                 }
             }
@@ -2051,6 +2055,7 @@ impl Rooms {
         sender: &UserId,
         last_state: Option<Vec<Raw<AnyStrippedStateEvent>>>,
         db: &Database,
+        update_joined_count: bool,
     ) -> Result<()> {
         // Keep track what remote users exist by adding them as "deactivated" users
         if user_id.server_name() != db.globals.server_name() {
@@ -2232,7 +2237,9 @@ impl Rooms {
             _ => {}
         }
 
-        self.update_joined_count(room_id)?;
+        if update_joined_count {
+            self.update_joined_count(room_id)?;
+        }
 
         Ok(())
     }
@@ -2269,6 +2276,7 @@ impl Rooms {
                 user_id,
                 last_state,
                 db,
+                true,
             )?;
         } else {
             let mutex_state = Arc::clone(

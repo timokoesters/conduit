@@ -2471,6 +2471,7 @@ pub async fn create_invite_route(
             &sender,
             Some(invite_state),
             &db,
+            true,
         )?;
     }
 
