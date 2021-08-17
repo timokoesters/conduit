@@ -10,6 +10,29 @@ services:
             - "traefik.http.routers.to-conduit.rule=Host(`<SUBDOMAIN>.<DOMAIN>`)"  # Change to the address on which Conduit is hosted
             - "traefik.http.routers.to-conduit.tls=true"
             - "traefik.http.routers.to-conduit.tls.certresolver=letsencrypt"
+            - "traefik.http.routers.to-conduit.middlewares=cors-headers@docker"
+
+            - "traefik.http.middlewares.cors-headers.headers.accessControlAllowOrigin=*"
+            - "traefik.http.middlewares.cors-headers.headers.accessControlAllowHeaders=Origin, X-Requested-With, Content-Type, Accept, Authorization"
+            - "traefik.http.middlewares.cors-headers.headers.accessControlAllowMethods=GET, POST, PUT, DELETE, OPTIONS"
+
+    # We need some way to server the client and server .well-known json. The simplest way is to use a nginx container
+    # to serve those two as static files. If you want to use a different way, delete or comment the below service, here
+    # and in the docker-compose file.
+    well-known:
+        labels:
+            - "traefik.enable=true"
+            - "traefik.docker.network=proxy"
+
+            - "traefik.http.routers.to-matrix-wellknown.rule=Host(`<SUBDOMAIN>.<DOMAIN>`) && PathPrefix(`/.well-known/matrix`)"
+            - "traefik.http.routers.to-matrix-wellknown.tls=true"
+            - "traefik.http.routers.to-matrix-wellknown.tls.certresolver=letsencrypt"
+            - "traefik.http.routers.to-matrix-wellknown.middlewares=cors-headers@docker"
+
+            - "traefik.http.middlewares.cors-headers.headers.accessControlAllowOrigin=*"
+            - "traefik.http.middlewares.cors-headers.headers.accessControlAllowHeaders=Origin, X-Requested-With, Content-Type, Accept, Authorization"
+            - "traefik.http.middlewares.cors-headers.headers.accessControlAllowMethods=GET, POST, PUT, DELETE, OPTIONS"
+
 
     ### Uncomment this if you uncommented Element-Web App in the docker-compose.yml
     # element-web:

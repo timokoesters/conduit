@@ -44,7 +44,7 @@ This also allows you to make sure that the file permissions are correctly set up
 
 In Debian you can use this command to create a Conduit user:
 
-```
+```bash
 sudo adduser --system conduit --no-create-home
 ```
 
@@ -131,13 +131,13 @@ address = "127.0.0.1" # This makes sure Conduit can only be reached using the re
 As we are using a Conduit specific user we need to allow it to read the config.
 To do that you can run this command on Debian:
 
-```
+```bash
 sudo chown -R conduit:nogroup /etc/matrix-conduit
 ```
 
 If you use the default database path you also need to run this:
 
-```
+```bash
 sudo mkdir -p /var/lib/matrix-conduit/conduit_db
 sudo chown -R conduit:nogroup /var/lib/matrix-conduit/conduit_db
 ```
