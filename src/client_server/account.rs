@@ -733,7 +733,7 @@ pub async fn deactivate_route(
 pub async fn third_party_route(
     body: Ruma<get_contacts::Request>,
 ) -> ConduitResult<get_contacts::Response> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
+    let _sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
     Ok(get_contacts::Response::new(Vec::new()).into())
 }

@@ -92,6 +92,8 @@ pub struct Rooms {
     pub(super) pdu_cache: Mutex<LruCache<EventId, Arc<PduEvent>>>,
     pub(super) auth_chain_cache: Mutex<LruCache<u64, HashSet<u64>>>,
     pub(super) shorteventid_cache: Mutex<LruCache<u64, EventId>>,
+    pub(super) eventidshort_cache: Mutex<LruCache<EventId, u64>>,
+    pub(super) statekeyshort_cache: Mutex<LruCache<(EventType, String), u64>>,
     pub(super) stateinfo_cache: Mutex<
         LruCache<
             u64,
@@ -665,7 +667,11 @@ impl Rooms {
         event_id: &EventId,
         globals: &super::globals::Globals,
     ) -> Result<u64> {
-        Ok(match self.eventid_shorteventid.get(event_id.as_bytes())? {
+        if let Some(short) = self.eventidshort_cache.lock().unwrap().get_mut(&event_id) {
+            return Ok(*short);
+        }
+
+        let short = match self.eventid_shorteventid.get(event_id.as_bytes())? {
             Some(shorteventid) => utils::u64_from_bytes(&shorteventid)
                 .map_err(|_| Error::bad_database("Invalid shorteventid in db."))?,
             None => {
@@ -676,7 +682,14 @@ impl Rooms {
                     .insert(&shorteventid.to_be_bytes(), event_id.as_bytes())?;
                 shorteventid
             }
-        })
+        };
+
+        self.eventidshort_cache
+            .lock()
+            .unwrap()
+            .insert(event_id.clone(), short);
+
+        Ok(short)
     }
 
     pub fn get_shortroomid(&self, room_id: &RoomId) -> Result<Option<u64>> {
@@ -694,17 +707,36 @@ impl Rooms {
         event_type: &EventType,
         state_key: &str,
     ) -> Result<Option<u64>> {
+        if let Some(short) = self
+            .statekeyshort_cache
+            .lock()
+            .unwrap()
+            .get_mut(&(event_type.clone(), state_key.to_owned()))
+        {
+            return Ok(Some(*short));
+        }
+
         let mut statekey = event_type.as_ref().as_bytes().to_vec();
         statekey.push(0xff);
         statekey.extend_from_slice(&state_key.as_bytes());
 
-        self.statekey_shortstatekey
+        let short = self
+            .statekey_shortstatekey
             .get(&statekey)?
             .map(|shortstatekey| {
                 utils::u64_from_bytes(&shortstatekey)
                     .map_err(|_| Error::bad_database("Invalid shortstatekey in db."))
             })
-            .transpose()
+            .transpose()?;
+
+        if let Some(s) = short {
+            self.statekeyshort_cache
+                .lock()
+                .unwrap()
+                .insert((event_type.clone(), state_key.to_owned()), s);
+        }
+
+        Ok(short)
     }
 
     pub fn get_or_create_shortroomid(
@@ -730,11 +762,20 @@ impl Rooms {
         state_key: &str,
         globals: &super::globals::Globals,
     ) -> Result<u64> {
+        if let Some(short) = self
+            .statekeyshort_cache
+            .lock()
+            .unwrap()
+            .get_mut(&(event_type.clone(), state_key.to_owned()))
+        {
+            return Ok(*short);
+        }
+
         let mut statekey = event_type.as_ref().as_bytes().to_vec();
         statekey.push(0xff);
         statekey.extend_from_slice(&state_key.as_bytes());
 
-        Ok(match self.statekey_shortstatekey.get(&statekey)? {
+        let short = match self.statekey_shortstatekey.get(&statekey)? {
             Some(shortstatekey) => utils::u64_from_bytes(&shortstatekey)
                 .map_err(|_| Error::bad_database("Invalid shortstatekey in db."))?,
             None => {
@@ -743,7 +784,14 @@ impl Rooms {
                     .insert(&statekey, &shortstatekey.to_be_bytes())?;
                 shortstatekey
             }
-        })
+        };
+
+        self.statekeyshort_cache
+            .lock()
+            .unwrap()
+            .insert((event_type.clone(), state_key.to_owned()), short);
+
+        Ok(short)
     }
 
     pub fn get_eventid_from_short(&self, shorteventid: u64) -> Result<EventId> {
@@ -2173,8 +2221,10 @@ impl Rooms {
                     }
                 }
 
-                self.roomserverids.insert(&roomserver_id, &[])?;
-                self.serverroomids.insert(&serverroom_id, &[])?;
+                if update_joined_count {
+                    self.roomserverids.insert(&roomserver_id, &[])?;
+                    self.serverroomids.insert(&serverroom_id, &[])?;
+                }
                 self.userroomid_joined.insert(&userroom_id, &[])?;
                 self.roomuserid_joined.insert(&roomuser_id, &[])?;
                 self.userroomid_invitestate.remove(&userroom_id)?;
@@ -2199,8 +2249,10 @@ impl Rooms {
                     return Ok(());
                 }
 
-                self.roomserverids.insert(&roomserver_id, &[])?;
-                self.serverroomids.insert(&serverroom_id, &[])?;
+                if update_joined_count {
+                    self.roomserverids.insert(&roomserver_id, &[])?;
+                    self.serverroomids.insert(&serverroom_id, &[])?;
+                }
                 self.userroomid_invitestate.insert(
                     &userroom_id,
                     &serde_json::to_vec(&last_state.unwrap_or_default())
@@ -2214,14 +2266,16 @@ impl Rooms {
                 self.roomuserid_leftcount.remove(&roomuser_id)?;
             }
             member::MembershipState::Leave | member::MembershipState::Ban => {
-                if self
-                    .room_members(room_id)
-                    .chain(self.room_members_invited(room_id))
-                    .filter_map(|r| r.ok())
-                    .all(|u| u.server_name() != user_id.server_name())
-                {
-                    self.roomserverids.remove(&roomserver_id)?;
-                    self.serverroomids.remove(&serverroom_id)?;
+                if update_joined_count {
+                    if self
+                        .room_members(room_id)
+                        .chain(self.room_members_invited(room_id))
+                        .filter_map(|r| r.ok())
+                        .all(|u| u.server_name() != user_id.server_name())
+                    {
+                        self.roomserverids.remove(&roomserver_id)?;
+                        self.serverroomids.remove(&serverroom_id)?;
+                    }
                 }
                 self.userroomid_leftstate.insert(
                     &userroom_id,
@@ -2245,10 +2299,52 @@ impl Rooms {
     }
 
     pub fn update_joined_count(&self, room_id: &RoomId) -> Result<()> {
-        self.roomid_joinedcount.insert(
-            room_id.as_bytes(),
-            &(self.room_members(&room_id).count() as u64).to_be_bytes(),
-        )
+        let mut joinedcount = 0_u64;
+        let mut joined_servers = HashSet::new();
+
+        for joined in self.room_members(&room_id).filter_map(|r| r.ok()) {
+            joined_servers.insert(joined.server_name().to_owned());
+            joinedcount += 1;
+        }
+
+        for invited in self.room_members_invited(&room_id).filter_map(|r| r.ok()) {
+            joined_servers.insert(invited.server_name().to_owned());
+        }
+
+        self.roomid_joinedcount
+            .insert(room_id.as_bytes(), &joinedcount.to_be_bytes())?;
+
+        for old_joined_server in self.room_servers(room_id).filter_map(|r| r.ok()) {
+            if !joined_servers.remove(&old_joined_server) {
+                // Server not in room anymore
+                let mut roomserver_id = room_id.as_bytes().to_vec();
+                roomserver_id.push(0xff);
+                roomserver_id.extend_from_slice(old_joined_server.as_bytes());
+
+                let mut serverroom_id = old_joined_server.as_bytes().to_vec();
+                serverroom_id.push(0xff);
+                serverroom_id.extend_from_slice(room_id.as_bytes());
+
+                self.roomserverids.remove(&roomserver_id)?;
+                self.serverroomids.remove(&serverroom_id)?;
+            }
+        }
+
+        // Now only new servers are in joined_servers anymore
+        for server in joined_servers {
+            let mut roomserver_id = room_id.as_bytes().to_vec();
+            roomserver_id.push(0xff);
+            roomserver_id.extend_from_slice(server.as_bytes());
+
+            let mut serverroom_id = server.as_bytes().to_vec();
+            serverroom_id.push(0xff);
+            serverroom_id.extend_from_slice(room_id.as_bytes());
+
+            self.roomserverids.insert(&roomserver_id, &[])?;
+            self.serverroomids.insert(&serverroom_id, &[])?;
+        }
+
+        Ok(())
     }
 
     pub async fn leave_room(

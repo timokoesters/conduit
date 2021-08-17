@@ -272,14 +272,20 @@ where
             if status == 200 {
                 let response = T::IncomingResponse::try_from_http_response(http_response);
                 response.map_err(|e| {
-                    warn!("Invalid 200 response from {}: {}", &destination, e);
+                    warn!(
+                        "Invalid 200 response from {} on: {} {}",
+                        &destination, url, e
+                    );
                     Error::BadServerResponse("Server returned bad 200 response.")
                 })
             } else {
                 Err(Error::FederationError(
                     destination.to_owned(),
                     RumaError::try_from_http_response(http_response).map_err(|e| {
-                        warn!("Server returned bad error response: {}", e);
+                        warn!(
+                            "Invalid {} response from {} on: {} {}",
+                            status, &destination, url, e
+                        );
                         Error::BadServerResponse("Server returned bad error response.")
                     })?,
                 ))
@@ -884,15 +890,10 @@ pub async fn handle_incoming_pdu<'a>(
     }
 
     // 9. Fetch any missing prev events doing all checks listed here starting at 1. These are timeline events
-    let mut visited = HashSet::new();
+    let mut graph = HashMap::new();
+    let mut eventid_info = HashMap::new();
     let mut todo_outlier_stack = incoming_pdu.prev_events.clone();
-    let mut todo_timeline_stack = Vec::new();
     while let Some(prev_event_id) = todo_outlier_stack.pop() {
-        if visited.contains(&prev_event_id) {
-            continue;
-        }
-        visited.insert(prev_event_id.clone());
-
         if let Some((pdu, json_opt)) = fetch_and_handle_outliers(
             db,
             origin,
@@ -914,24 +915,58 @@ pub async fn handle_incoming_pdu<'a>(
                         .expect("Room exists")
                         .origin_server_ts
                 {
-                    todo_outlier_stack.extend(pdu.prev_events.iter().cloned());
-                    todo_timeline_stack.push((pdu, json));
+                    for prev_prev in &pdu.prev_events {
+                        if !graph.contains_key(prev_prev) {
+                            todo_outlier_stack.push(dbg!(prev_prev.clone()));
+                        }
+                    }
+
+                    graph.insert(
+                        prev_event_id.clone(),
+                        pdu.prev_events.iter().cloned().collect(),
+                    );
+                    eventid_info.insert(prev_event_id.clone(), (pdu, json));
+                } else {
+                    graph.insert(prev_event_id.clone(), HashSet::new());
+                    eventid_info.insert(prev_event_id.clone(), (pdu, json));
                 }
+            } else {
+                graph.insert(prev_event_id.clone(), HashSet::new());
             }
         }
     }
 
-    while let Some(prev) = todo_timeline_stack.pop() {
-        upgrade_outlier_to_timeline_pdu(
-            prev.0,
-            prev.1,
-            &create_event,
-            origin,
-            db,
-            room_id,
-            pub_key_map,
-        )
-        .await?;
+    let sorted =
+        state_res::StateResolution::lexicographical_topological_sort(dbg!(&graph), |event_id| {
+            // This return value is the key used for sorting events,
+            // events are then sorted by power level, time,
+            // and lexically by event_id.
+            println!("{}", event_id);
+            Ok((
+                0,
+                MilliSecondsSinceUnixEpoch(
+                    eventid_info
+                        .get(event_id)
+                        .map_or_else(|| uint!(0), |info| info.0.origin_server_ts.clone()),
+                ),
+                ruma::event_id!("$notimportant"),
+            ))
+        })
+        .map_err(|_| "Error sorting prev events".to_owned())?;
+
+    for prev_id in dbg!(sorted) {
+        if let Some((pdu, json)) = eventid_info.remove(&prev_id) {
+            upgrade_outlier_to_timeline_pdu(
+                pdu,
+                json,
+                &create_event,
+                origin,
+                db,
+                room_id,
+                pub_key_map,
+            )
+            .await?;
+        }
     }
 
     upgrade_outlier_to_timeline_pdu(
@@ -1872,8 +1907,7 @@ fn get_auth_chain(
             full_auth_chain.extend(cached.iter().cloned());
         } else {
             drop(cache);
-            let mut auth_chain = HashSet::new();
-            get_auth_chain_recursive(&event_id, &mut auth_chain, db)?;
+            let auth_chain = get_auth_chain_inner(&event_id, db)?;
             cache = db.rooms.auth_chain_cache();
             cache.insert(sevent_id, auth_chain.clone());
             full_auth_chain.extend(auth_chain);
@@ -1887,33 +1921,34 @@ fn get_auth_chain(
         .filter_map(move |sid| db.rooms.get_eventid_from_short(sid).ok()))
 }
 
-fn get_auth_chain_recursive(
-    event_id: &EventId,
-    found: &mut HashSet<u64>,
-    db: &Database,
-) -> Result<()> {
-    let r = db.rooms.get_pdu(&event_id);
-    match r {
-        Ok(Some(pdu)) => {
-            for auth_event in &pdu.auth_events {
-                let sauthevent = db
-                    .rooms
-                    .get_or_create_shorteventid(auth_event, &db.globals)?;
-                if !found.contains(&sauthevent) {
-                    found.insert(sauthevent);
-                    get_auth_chain_recursive(&auth_event, found, db)?;
+fn get_auth_chain_inner(event_id: &EventId, db: &Database) -> Result<HashSet<u64>> {
+    let mut todo = vec![event_id.clone()];
+    let mut found = HashSet::new();
+
+    while let Some(event_id) = todo.pop() {
+        match db.rooms.get_pdu(&event_id) {
+            Ok(Some(pdu)) => {
+                for auth_event in &pdu.auth_events {
+                    let sauthevent = db
+                        .rooms
+                        .get_or_create_shorteventid(auth_event, &db.globals)?;
+
+                    if !found.contains(&sauthevent) {
+                        found.insert(sauthevent);
+                        todo.push(auth_event.clone());
+                    }
                 }
             }
-        }
-        Ok(None) => {
-            warn!("Could not find pdu mentioned in auth events.");
-        }
-        Err(e) => {
-            warn!("Could not load event in auth chain: {}", e);
+            Ok(None) => {
+                warn!("Could not find pdu mentioned in auth events: {}", event_id);
+            }
+            Err(e) => {
+                warn!("Could not load event in auth chain: {} {}", event_id, e);
+            }
         }
     }
 
-    Ok(())
+    Ok(found)
 }
 
 #[cfg_attr(

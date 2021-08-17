@@ -278,6 +278,8 @@ impl Database {
                 pdu_cache: Mutex::new(LruCache::new(100_000)),
                 auth_chain_cache: Mutex::new(LruCache::new(100_000)),
                 shorteventid_cache: Mutex::new(LruCache::new(1_000_000)),
+                eventidshort_cache: Mutex::new(LruCache::new(1_000_000)),
+                statekeyshort_cache: Mutex::new(LruCache::new(1_000_000)),
                 stateinfo_cache: Mutex::new(LruCache::new(1000)),
             },
             account_data: account_data::AccountData {
