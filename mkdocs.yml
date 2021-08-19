@@ -11,7 +11,7 @@ nav:
       - Manual: installation/manual.md
       - Docker: installation/docker.md
   - Configuration:
-      - Conduit.toml: configuration/conduit.toml.md
+      - Config options: configuration/configuration.md
       - Appservices: configuration/appservices.md
   - Development:
       - Basics: development/basics.md
