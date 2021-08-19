@@ -1378,6 +1378,7 @@ impl Rooms {
                 if let Some(body) = pdu.content.get("body").and_then(|b| b.as_str()) {
                     let mut batch = body
                         .split_terminator(|c: char| !c.is_alphanumeric())
+                        .filter(|s| !s.is_empty())
                         .filter(|word| word.len() <= 50)
                         .map(str::to_lowercase)
                         .map(|word| {
@@ -2702,6 +2703,7 @@ impl Rooms {
 
         let words = search_string
             .split_terminator(|c: char| !c.is_alphanumeric())
+            .filter(|s| !s.is_empty())
             .map(str::to_lowercase)
             .collect::<Vec<_>>();
 
