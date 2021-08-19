@@ -248,7 +248,7 @@ dependencies = [
  "jsonwebtoken",
  "lru-cache",
  "num_cpus",
- "opentelemetry",
+ "opentelemetry 0.16.0",
  "opentelemetry-jaeger",
  "parking_lot",
  "pretty_env_logger",
@@ -1466,16 +1466,46 @@ dependencies = [
 ]
 
 [[package]]
-name = "opentelemetry-jaeger"
-version = "0.14.0"
+name = "opentelemetry"
+version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "09a9fc8192722e7daa0c56e59e2336b797122fb8598383dcb11c8852733b435c"
+checksum = "e1cf9b1c4e9a6c4de793c632496fa490bdc0e1eea73f0c91394f7b6990935d22"
+dependencies = [
+ "async-trait",
+ "crossbeam-channel",
+ "futures",
+ "js-sys",
+ "lazy_static",
+ "percent-encoding",
+ "pin-project",
+ "rand 0.8.4",
+ "thiserror",
+ "tokio",
+ "tokio-stream",
+]
+
+[[package]]
+name = "opentelemetry-jaeger"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "db22f492873ea037bc267b35a0e8e4fb846340058cb7c864efe3d0bf23684593"
 dependencies = [
  "async-trait",
  "lazy_static",
- "opentelemetry",
+ "opentelemetry 0.16.0",
+ "opentelemetry-semantic-conventions",
  "thiserror",
  "thrift",
+ "tokio",
+]
+
+[[package]]
+name = "opentelemetry-semantic-conventions"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ffeac823339e8b0f27b961f4385057bf9f97f2863bc745bd015fd6091f2270e9"
+dependencies = [
+ "opentelemetry 0.16.0",
 ]
 
 [[package]]
@@ -2014,8 +2044,8 @@ dependencies = [
 
 [[package]]
 name = "ruma"
-version = "0.2.0"
-source = "git+https://github.com/timokoesters/ruma?rev=a2d93500e1dbc87e7032a3c74f3b2479a7f84e93#a2d93500e1dbc87e7032a3c74f3b2479a7f84e93"
+version = "0.3.0"
+source = "git+https://github.com/ruma/ruma?rev=f5ab038e22421ed338396ece977b6b2844772ced#f5ab038e22421ed338396ece977b6b2844772ced"
 dependencies = [
  "assign",
  "js_int",
@@ -2035,8 +2065,8 @@ dependencies = [
 
 [[package]]
 name = "ruma-api"
-version = "0.17.1"
-source = "git+https://github.com/timokoesters/ruma?rev=a2d93500e1dbc87e7032a3c74f3b2479a7f84e93#a2d93500e1dbc87e7032a3c74f3b2479a7f84e93"
+version = "0.18.3"
+source = "git+https://github.com/ruma/ruma?rev=f5ab038e22421ed338396ece977b6b2844772ced#f5ab038e22421ed338396ece977b6b2844772ced"
 dependencies = [
  "bytes",
  "http",
@@ -2051,8 +2081,8 @@ dependencies = [
 
 [[package]]
 name = "ruma-api-macros"
-version = "0.17.1"
-source = "git+https://github.com/timokoesters/ruma?rev=a2d93500e1dbc87e7032a3c74f3b2479a7f84e93#a2d93500e1dbc87e7032a3c74f3b2479a7f84e93"
+version = "0.18.3"
+source = "git+https://github.com/ruma/ruma?rev=f5ab038e22421ed338396ece977b6b2844772ced#f5ab038e22421ed338396ece977b6b2844772ced"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -2062,8 +2092,8 @@ dependencies = [
 
 [[package]]
 name = "ruma-appservice-api"
-version = "0.3.0"
-source = "git+https://github.com/timokoesters/ruma?rev=a2d93500e1dbc87e7032a3c74f3b2479a7f84e93#a2d93500e1dbc87e7032a3c74f3b2479a7f84e93"
+version = "0.4.0"
+source = "git+https://github.com/ruma/ruma?rev=f5ab038e22421ed338396ece977b6b2844772ced#f5ab038e22421ed338396ece977b6b2844772ced"
 dependencies = [
  "ruma-api",
  "ruma-common",
@@ -2076,8 +2106,8 @@ dependencies = [
 
 [[package]]
 name = "ruma-client-api"
-version = "0.11.0"
-source = "git+https://github.com/timokoesters/ruma?rev=a2d93500e1dbc87e7032a3c74f3b2479a7f84e93#a2d93500e1dbc87e7032a3c74f3b2479a7f84e93"
+version = "0.12.2"
+source = "git+https://github.com/ruma/ruma?rev=f5ab038e22421ed338396ece977b6b2844772ced#f5ab038e22421ed338396ece977b6b2844772ced"
 dependencies = [
  "assign",
  "bytes",
@@ -2096,8 +2126,8 @@ dependencies = [
 
 [[package]]
 name = "ruma-common"
-version = "0.5.4"
-source = "git+https://github.com/timokoesters/ruma?rev=a2d93500e1dbc87e7032a3c74f3b2479a7f84e93#a2d93500e1dbc87e7032a3c74f3b2479a7f84e93"
+version = "0.6.0"
+source = "git+https://github.com/ruma/ruma?rev=f5ab038e22421ed338396ece977b6b2844772ced#f5ab038e22421ed338396ece977b6b2844772ced"
 dependencies = [
  "indexmap",
  "js_int",
@@ -2111,8 +2141,8 @@ dependencies = [
 
 [[package]]
 name = "ruma-events"
-version = "0.23.2"
-source = "git+https://github.com/timokoesters/ruma?rev=a2d93500e1dbc87e7032a3c74f3b2479a7f84e93#a2d93500e1dbc87e7032a3c74f3b2479a7f84e93"
+version = "0.24.4"
+source = "git+https://github.com/ruma/ruma?rev=f5ab038e22421ed338396ece977b6b2844772ced#f5ab038e22421ed338396ece977b6b2844772ced"
 dependencies = [
  "indoc",
  "js_int",
@@ -2127,8 +2157,8 @@ dependencies = [
 
 [[package]]
 name = "ruma-events-macros"
-version = "0.23.2"
-source = "git+https://github.com/timokoesters/ruma?rev=a2d93500e1dbc87e7032a3c74f3b2479a7f84e93#a2d93500e1dbc87e7032a3c74f3b2479a7f84e93"
+version = "0.24.4"
+source = "git+https://github.com/ruma/ruma?rev=f5ab038e22421ed338396ece977b6b2844772ced#f5ab038e22421ed338396ece977b6b2844772ced"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -2138,8 +2168,8 @@ dependencies = [
 
 [[package]]
 name = "ruma-federation-api"
-version = "0.2.0"
-source = "git+https://github.com/timokoesters/ruma?rev=a2d93500e1dbc87e7032a3c74f3b2479a7f84e93#a2d93500e1dbc87e7032a3c74f3b2479a7f84e93"
+version = "0.3.0"
+source = "git+https://github.com/ruma/ruma?rev=f5ab038e22421ed338396ece977b6b2844772ced#f5ab038e22421ed338396ece977b6b2844772ced"
 dependencies = [
  "js_int",
  "ruma-api",
@@ -2153,8 +2183,8 @@ dependencies = [
 
 [[package]]
 name = "ruma-identifiers"
-version = "0.19.4"
-source = "git+https://github.com/timokoesters/ruma?rev=a2d93500e1dbc87e7032a3c74f3b2479a7f84e93#a2d93500e1dbc87e7032a3c74f3b2479a7f84e93"
+version = "0.20.0"
+source = "git+https://github.com/ruma/ruma?rev=f5ab038e22421ed338396ece977b6b2844772ced#f5ab038e22421ed338396ece977b6b2844772ced"
 dependencies = [
  "paste",
  "rand 0.8.4",
@@ -2167,8 +2197,8 @@ dependencies = [
 
 [[package]]
 name = "ruma-identifiers-macros"
-version = "0.19.4"
-source = "git+https://github.com/timokoesters/ruma?rev=a2d93500e1dbc87e7032a3c74f3b2479a7f84e93#a2d93500e1dbc87e7032a3c74f3b2479a7f84e93"
+version = "0.20.0"
+source = "git+https://github.com/ruma/ruma?rev=f5ab038e22421ed338396ece977b6b2844772ced#f5ab038e22421ed338396ece977b6b2844772ced"
 dependencies = [
  "quote",
  "ruma-identifiers-validation",
@@ -2177,13 +2207,13 @@ dependencies = [
 
 [[package]]
 name = "ruma-identifiers-validation"
-version = "0.4.0"
-source = "git+https://github.com/timokoesters/ruma?rev=a2d93500e1dbc87e7032a3c74f3b2479a7f84e93#a2d93500e1dbc87e7032a3c74f3b2479a7f84e93"
+version = "0.5.0"
+source = "git+https://github.com/ruma/ruma?rev=f5ab038e22421ed338396ece977b6b2844772ced#f5ab038e22421ed338396ece977b6b2844772ced"
 
 [[package]]
 name = "ruma-identity-service-api"
-version = "0.2.0"
-source = "git+https://github.com/timokoesters/ruma?rev=a2d93500e1dbc87e7032a3c74f3b2479a7f84e93#a2d93500e1dbc87e7032a3c74f3b2479a7f84e93"
+version = "0.3.0"
+source = "git+https://github.com/ruma/ruma?rev=f5ab038e22421ed338396ece977b6b2844772ced#f5ab038e22421ed338396ece977b6b2844772ced"
 dependencies = [
  "js_int",
  "ruma-api",
@@ -2195,8 +2225,8 @@ dependencies = [
 
 [[package]]
 name = "ruma-push-gateway-api"
-version = "0.2.0"
-source = "git+https://github.com/timokoesters/ruma?rev=a2d93500e1dbc87e7032a3c74f3b2479a7f84e93#a2d93500e1dbc87e7032a3c74f3b2479a7f84e93"
+version = "0.3.0"
+source = "git+https://github.com/ruma/ruma?rev=f5ab038e22421ed338396ece977b6b2844772ced#f5ab038e22421ed338396ece977b6b2844772ced"
 dependencies = [
  "js_int",
  "ruma-api",
@@ -2210,8 +2240,8 @@ dependencies = [
 
 [[package]]
 name = "ruma-serde"
-version = "0.4.1"
-source = "git+https://github.com/timokoesters/ruma?rev=a2d93500e1dbc87e7032a3c74f3b2479a7f84e93#a2d93500e1dbc87e7032a3c74f3b2479a7f84e93"
+version = "0.5.0"
+source = "git+https://github.com/ruma/ruma?rev=f5ab038e22421ed338396ece977b6b2844772ced#f5ab038e22421ed338396ece977b6b2844772ced"
 dependencies = [
  "bytes",
  "form_urlencoded",
@@ -2224,8 +2254,8 @@ dependencies = [
 
 [[package]]
 name = "ruma-serde-macros"
-version = "0.4.1"
-source = "git+https://github.com/timokoesters/ruma?rev=a2d93500e1dbc87e7032a3c74f3b2479a7f84e93#a2d93500e1dbc87e7032a3c74f3b2479a7f84e93"
+version = "0.5.0"
+source = "git+https://github.com/ruma/ruma?rev=f5ab038e22421ed338396ece977b6b2844772ced#f5ab038e22421ed338396ece977b6b2844772ced"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -2235,8 +2265,8 @@ dependencies = [
 
 [[package]]
 name = "ruma-signatures"
-version = "0.8.0"
-source = "git+https://github.com/timokoesters/ruma?rev=a2d93500e1dbc87e7032a3c74f3b2479a7f84e93#a2d93500e1dbc87e7032a3c74f3b2479a7f84e93"
+version = "0.9.0"
+source = "git+https://github.com/ruma/ruma?rev=f5ab038e22421ed338396ece977b6b2844772ced#f5ab038e22421ed338396ece977b6b2844772ced"
 dependencies = [
  "base64 0.13.0",
  "ed25519-dalek",
@@ -2252,8 +2282,8 @@ dependencies = [
 
 [[package]]
 name = "ruma-state-res"
-version = "0.2.0"
-source = "git+https://github.com/timokoesters/ruma?rev=a2d93500e1dbc87e7032a3c74f3b2479a7f84e93#a2d93500e1dbc87e7032a3c74f3b2479a7f84e93"
+version = "0.3.0"
+source = "git+https://github.com/ruma/ruma?rev=f5ab038e22421ed338396ece977b6b2844772ced#f5ab038e22421ed338396ece977b6b2844772ced"
 dependencies = [
  "itertools 0.10.1",
  "js_int",
@@ -3022,7 +3052,7 @@ version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c47440f2979c4cd3138922840eec122e3c0ba2148bc290f756bd7fd60fc97fff"
 dependencies = [
- "opentelemetry",
+ "opentelemetry 0.15.0",
  "tracing",
  "tracing-core",
  "tracing-log",

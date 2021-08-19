@@ -18,8 +18,8 @@ edition = "2018"
 rocket = { version = "0.5.0-rc.1", features = ["tls"] } # Used to handle requests
 
 # Used for matrix spec type definitions and helpers
-#ruma = { git = "https://github.com/ruma/ruma", rev = "eb19b0e08a901b87d11b3be0890ec788cc760492", features = ["compat", "rand", "appservice-api-c", "client-api", "federation-api", "push-gateway-api-c", "state-res", "unstable-pre-spec", "unstable-exhaustive-types"] }
-ruma = { git = "https://github.com/timokoesters/ruma", rev = "a2d93500e1dbc87e7032a3c74f3b2479a7f84e93", features = ["compat", "rand", "appservice-api-c", "client-api", "federation-api", "push-gateway-api-c", "state-res", "unstable-pre-spec", "unstable-exhaustive-types"] }
+ruma = { git = "https://github.com/ruma/ruma", rev = "f5ab038e22421ed338396ece977b6b2844772ced", features = ["compat", "rand", "appservice-api-c", "client-api", "federation-api", "push-gateway-api-c", "state-res", "unstable-pre-spec", "unstable-exhaustive-types"] }
+#ruma = { git = "https://github.com/timokoesters/ruma", rev = "995ccea20f5f6d4a8fb22041749ed4de22fa1b6a", features = ["compat", "rand", "appservice-api-c", "client-api", "federation-api", "push-gateway-api-c", "state-res", "unstable-pre-spec", "unstable-exhaustive-types"] }
 #ruma = { path = "../ruma/crates/ruma", features = ["compat", "rand", "appservice-api-c", "client-api", "federation-api", "push-gateway-api-c", "state-res", "unstable-pre-spec", "unstable-exhaustive-types"] }
 
 # Used for long polling and federation sender, should be the same as rocket::tokio
@@ -66,11 +66,11 @@ regex = "1.5.4"
 jsonwebtoken = "7.2.0"
 # Performance measurements
 tracing = { version = "0.1.26", features = ["release_max_level_warn"] }
-opentelemetry = "0.15.0"
 tracing-subscriber = "0.2.19"
 tracing-opentelemetry = "0.14.0"
 tracing-flame = "0.1.0"
-opentelemetry-jaeger = "0.14.0"
+opentelemetry = { version = "0.16.0", features = ["rt-tokio"] }
+opentelemetry-jaeger = { version = "0.15.0", features = ["rt-tokio"] }
 pretty_env_logger = "0.4.0"
 lru-cache = "0.1.2"
 rusqlite = { version = "0.25.3", optional = true, features = ["bundled"] }

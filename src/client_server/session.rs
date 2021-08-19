@@ -3,7 +3,10 @@ use crate::{database::DatabaseGuard, utils, ConduitResult, Error, Ruma};
 use ruma::{
     api::client::{
         error::ErrorKind,
-        r0::session::{get_login_types, login, logout, logout_all},
+        r0::{
+            session::{get_login_types, login, logout, logout_all},
+            uiaa::IncomingUserIdentifier,
+        },
     },
     UserId,
 };
@@ -60,7 +63,7 @@ pub async fn login_route(
             identifier,
             password,
         } => {
-            let username = if let login::IncomingUserIdentifier::MatrixId(matrix_id) = identifier {
+            let username = if let IncomingUserIdentifier::MatrixId(matrix_id) = identifier {
                 matrix_id
             } else {
                 return Err(Error::BadRequest(ErrorKind::Forbidden, "Bad login type."));

@@ -17,7 +17,7 @@ use std::sync::Arc;
 use database::Config;
 pub use database::Database;
 pub use error::{Error, Result};
-use opentelemetry::trace::Tracer;
+use opentelemetry::trace::{FutureExt, Tracer};
 pub use pdu::PduEvent;
 pub use rocket::State;
 use ruma::api::client::error::ErrorKind;
@@ -220,14 +220,17 @@ async fn main() {
     };
 
     if config.allow_jaeger {
+        opentelemetry::global::set_text_map_propagator(opentelemetry_jaeger::Propagator::new());
         let tracer = opentelemetry_jaeger::new_pipeline()
-            .with_service_name("conduit")
-            .install_simple()
+            .install_batch(opentelemetry::runtime::Tokio)
             .unwrap();
 
         let span = tracer.start("conduit");
-        start.await;
+        start.with_current_context().await;
         drop(span);
+
+        println!("exporting");
+        opentelemetry::global::shutdown_tracer_provider();
     } else {
         std::env::set_var("RUST_LOG", &config.log);
 

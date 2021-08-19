@@ -111,7 +111,7 @@ impl FedDest {
     }
 }
 
-#[tracing::instrument(skip(globals))]
+#[tracing::instrument(skip(globals, request))]
 pub async fn send_request<T: OutgoingRequest>(
     globals: &crate::database::globals::Globals,
     destination: &ServerName,
@@ -501,7 +501,7 @@ pub fn get_server_keys_route(db: DatabaseGuard) -> Json<String> {
     )
     .unwrap();
 
-    Json(ruma::serde::to_canonical_json_string(&response).expect("JSON is canonical"))
+    Json(serde_json::to_string(&response).expect("JSON is canonical"))
 }
 
 #[cfg_attr(feature = "conduit_bin", get("/_matrix/key/v2/server/<_>"))]
@@ -927,12 +927,17 @@ pub async fn handle_incoming_pdu<'a>(
                     );
                     eventid_info.insert(prev_event_id.clone(), (pdu, json));
                 } else {
+                    // Time based check failed
                     graph.insert(prev_event_id.clone(), HashSet::new());
                     eventid_info.insert(prev_event_id.clone(), (pdu, json));
                 }
             } else {
+                // Get json failed
                 graph.insert(prev_event_id.clone(), HashSet::new());
             }
+        } else {
+            // Fetch and handle failed
+            graph.insert(prev_event_id.clone(), HashSet::new());
         }
     }
 
@@ -956,7 +961,9 @@ pub async fn handle_incoming_pdu<'a>(
 
     for prev_id in dbg!(sorted) {
         if let Some((pdu, json)) = eventid_info.remove(&prev_id) {
-            upgrade_outlier_to_timeline_pdu(
+            let start_time = Instant::now();
+            let event_id = pdu.event_id.clone();
+            if let Err(e) = upgrade_outlier_to_timeline_pdu(
                 pdu,
                 json,
                 &create_event,
@@ -965,7 +972,17 @@ pub async fn handle_incoming_pdu<'a>(
                 room_id,
                 pub_key_map,
             )
-            .await?;
+            .await
+            {
+                warn!("Prev event {} failed: {}", event_id, e);
+            }
+            let elapsed = start_time.elapsed();
+            warn!(
+                "Handling prev event {} took {}m{}s",
+                event_id,
+                elapsed.as_secs() / 60,
+                elapsed.as_secs() % 60
+            );
         }
     }
 
@@ -981,6 +998,7 @@ pub async fn handle_incoming_pdu<'a>(
     .await
 }
 
+#[tracing::instrument(skip(origin, create_event, event_id, room_id, value, db, pub_key_map))]
 fn handle_outlier_pdu<'a>(
     origin: &'a ServerName,
     create_event: &'a PduEvent,
@@ -1141,6 +1159,7 @@ fn handle_outlier_pdu<'a>(
     })
 }
 
+#[tracing::instrument(skip(incoming_pdu, val, create_event, origin, db, room_id, pub_key_map))]
 async fn upgrade_outlier_to_timeline_pdu(
     incoming_pdu: Arc<PduEvent>,
     val: BTreeMap<String, CanonicalJsonValue>,
@@ -1352,41 +1371,6 @@ async fn upgrade_outlier_to_timeline_pdu(
     // Only keep those extremities were not referenced yet
     extremities.retain(|id| !matches!(db.rooms.is_event_referenced(&room_id, id), Ok(true)));
 
-    let mut extremity_statehashes = Vec::new();
-
-    for id in &extremities {
-        match db
-            .rooms
-            .get_pdu(&id)
-            .map_err(|_| "Failed to ask db for pdu.".to_owned())?
-        {
-            Some(leaf_pdu) => {
-                extremity_statehashes.push((
-                    db.rooms
-                        .pdu_shortstatehash(&leaf_pdu.event_id)
-                        .map_err(|_| "Failed to ask db for pdu state hash.".to_owned())?
-                        .ok_or_else(|| {
-                            error!(
-                                "Found extremity pdu with no statehash in db: {:?}",
-                                leaf_pdu
-                            );
-                            "Found pdu with no statehash in db.".to_owned()
-                        })?,
-                    Some(leaf_pdu),
-                ));
-            }
-            _ => {
-                error!("Missing state snapshot for {:?}", id);
-                return Err("Missing state snapshot.".to_owned());
-            }
-        }
-    }
-
-    // 12. Ensure that the state is derived from the previous current state (i.e. we calculated
-    //     by doing state res where one of the inputs was a previously trusted set of state,
-    //     don't just trust a set of state we got from a remote).
-
-    // We do this by adding the current state to the list of fork states
     let current_statehash = db
         .rooms
         .current_shortstatehash(&room_id)
@@ -1398,91 +1382,138 @@ async fn upgrade_outlier_to_timeline_pdu(
         .state_full(current_statehash)
         .map_err(|_| "Failed to load room state.")?;
 
-    extremity_statehashes.push((current_statehash.clone(), None));
+    if incoming_pdu.state_key.is_some() {
+        let mut extremity_statehashes = Vec::new();
 
-    let mut fork_states = Vec::new();
-    for (statehash, leaf_pdu) in extremity_statehashes {
-        let mut leaf_state = db
-            .rooms
-            .state_full(statehash)
-            .map_err(|_| "Failed to ask db for room state.".to_owned())?;
-
-        if let Some(leaf_pdu) = leaf_pdu {
-            if let Some(state_key) = &leaf_pdu.state_key {
-                // Now it's the state after
-                let key = (leaf_pdu.kind.clone(), state_key.clone());
-                leaf_state.insert(key, leaf_pdu);
+        for id in &extremities {
+            match db
+                .rooms
+                .get_pdu(&id)
+                .map_err(|_| "Failed to ask db for pdu.".to_owned())?
+            {
+                Some(leaf_pdu) => {
+                    extremity_statehashes.push((
+                        db.rooms
+                            .pdu_shortstatehash(&leaf_pdu.event_id)
+                            .map_err(|_| "Failed to ask db for pdu state hash.".to_owned())?
+                            .ok_or_else(|| {
+                                error!(
+                                    "Found extremity pdu with no statehash in db: {:?}",
+                                    leaf_pdu
+                                );
+                                "Found pdu with no statehash in db.".to_owned()
+                            })?,
+                        Some(leaf_pdu),
+                    ));
+                }
+                _ => {
+                    error!("Missing state snapshot for {:?}", id);
+                    return Err("Missing state snapshot.".to_owned());
+                }
             }
         }
 
-        fork_states.push(leaf_state);
-    }
+        // 12. Ensure that the state is derived from the previous current state (i.e. we calculated
+        //     by doing state res where one of the inputs was a previously trusted set of state,
+        //     don't just trust a set of state we got from a remote).
 
-    // We also add state after incoming event to the fork states
-    extremities.insert(incoming_pdu.event_id.clone());
-    let mut state_after = state_at_incoming_event.clone();
-    if let Some(state_key) = &incoming_pdu.state_key {
-        state_after.insert(
-            (incoming_pdu.kind.clone(), state_key.clone()),
-            incoming_pdu.clone(),
-        );
-    }
-    fork_states.push(state_after.clone());
+        // We do this by adding the current state to the list of fork states
 
-    let mut update_state = false;
-    // 14. Use state resolution to find new room state
-    let new_room_state = if fork_states.is_empty() {
-        return Err("State is empty.".to_owned());
-    } else if fork_states.iter().skip(1).all(|f| &fork_states[0] == f) {
-        // There was only one state, so it has to be the room's current state (because that is
-        // always included)
-        fork_states[0]
-            .iter()
-            .map(|(k, pdu)| (k.clone(), pdu.event_id.clone()))
-            .collect()
-    } else {
-        // We do need to force an update to this room's state
-        update_state = true;
+        extremity_statehashes.push((current_statehash.clone(), None));
 
-        let fork_states = &fork_states
-            .into_iter()
-            .map(|map| {
-                map.into_iter()
-                    .map(|(k, v)| (k, v.event_id.clone()))
-                    .collect::<StateMap<_>>()
-            })
-            .collect::<Vec<_>>();
+        let mut fork_states = Vec::new();
+        for (statehash, leaf_pdu) in extremity_statehashes {
+            let mut leaf_state = db
+                .rooms
+                .state_full(statehash)
+                .map_err(|_| "Failed to ask db for room state.".to_owned())?;
 
-        let mut auth_chain_sets = Vec::new();
-        for state in fork_states {
-            auth_chain_sets.push(
-                get_auth_chain(state.iter().map(|(_, id)| id.clone()).collect(), db)
-                    .map_err(|_| "Failed to load auth chain.".to_owned())?
-                    .collect(),
+            if let Some(leaf_pdu) = leaf_pdu {
+                if let Some(state_key) = &leaf_pdu.state_key {
+                    // Now it's the state after
+                    let key = (leaf_pdu.kind.clone(), state_key.clone());
+                    leaf_state.insert(key, leaf_pdu);
+                }
+            }
+
+            fork_states.push(leaf_state);
+        }
+
+        // We also add state after incoming event to the fork states
+        let mut state_after = state_at_incoming_event.clone();
+        if let Some(state_key) = &incoming_pdu.state_key {
+            state_after.insert(
+                (incoming_pdu.kind.clone(), state_key.clone()),
+                incoming_pdu.clone(),
             );
         }
+        fork_states.push(state_after.clone());
 
-        let state = match state_res::StateResolution::resolve(
-            &room_id,
-            room_version_id,
-            fork_states,
-            auth_chain_sets,
-            |id| {
-                let res = db.rooms.get_pdu(id);
-                if let Err(e) = &res {
-                    error!("LOOK AT ME Failed to fetch event: {}", e);
-                }
-                res.ok().flatten()
-            },
-        ) {
-            Ok(new_state) => new_state,
-            Err(_) => {
-                return Err("State resolution failed, either an event could not be found or deserialization".into());
+        let mut update_state = false;
+        // 14. Use state resolution to find new room state
+        let new_room_state = if fork_states.is_empty() {
+            return Err("State is empty.".to_owned());
+        } else if fork_states.iter().skip(1).all(|f| &fork_states[0] == f) {
+            // There was only one state, so it has to be the room's current state (because that is
+            // always included)
+            fork_states[0]
+                .iter()
+                .map(|(k, pdu)| (k.clone(), pdu.event_id.clone()))
+                .collect()
+        } else {
+            // We do need to force an update to this room's state
+            update_state = true;
+
+            let fork_states = &fork_states
+                .into_iter()
+                .map(|map| {
+                    map.into_iter()
+                        .map(|(k, v)| (k, v.event_id.clone()))
+                        .collect::<StateMap<_>>()
+                })
+                .collect::<Vec<_>>();
+
+            let mut auth_chain_sets = Vec::new();
+            for state in fork_states {
+                auth_chain_sets.push(
+                    get_auth_chain(state.iter().map(|(_, id)| id.clone()).collect(), db)
+                        .map_err(|_| "Failed to load auth chain.".to_owned())?
+                        .collect(),
+                );
             }
+
+            let state = match state_res::StateResolution::resolve(
+                &room_id,
+                room_version_id,
+                fork_states,
+                auth_chain_sets,
+                |id| {
+                    let res = db.rooms.get_pdu(id);
+                    if let Err(e) = &res {
+                        error!("LOOK AT ME Failed to fetch event: {}", e);
+                    }
+                    res.ok().flatten()
+                },
+            ) {
+                Ok(new_state) => new_state,
+                Err(_) => {
+                    return Err("State resolution failed, either an event could not be found or deserialization".into());
+                }
+            };
+
+            state
         };
 
-        state
-    };
+        // Set the new room state to the resolved state
+        if update_state {
+            db.rooms
+                .force_state(&room_id, new_room_state, &db)
+                .map_err(|_| "Failed to set new room state.".to_owned())?;
+        }
+        debug!("Updated resolved state");
+    }
+
+    extremities.insert(incoming_pdu.event_id.clone());
 
     debug!("starting soft fail auth check");
     // 13. Check if the event passes auth based on the "current state" of the room, if not "soft fail" it
@@ -1516,14 +1547,6 @@ async fn upgrade_outlier_to_timeline_pdu(
         warn!("Event was soft failed: {:?}", incoming_pdu);
     }
 
-    // Set the new room state to the resolved state
-    if update_state {
-        db.rooms
-            .force_state(&room_id, new_room_state, &db)
-            .map_err(|_| "Failed to set new room state.".to_owned())?;
-    }
-    debug!("Updated resolved state");
-
     if soft_fail {
         // Soft fail, we leave the event as an outlier but don't add it to the timeline
         return Err("Event has been soft failed".into());
@@ -1543,7 +1566,7 @@ async fn upgrade_outlier_to_timeline_pdu(
 /// b. Look at outlier pdu tree
 /// c. Ask origin server over federation
 /// d. TODO: Ask other servers over federation?
-//#[tracing::instrument(skip(db, key_map, auth_cache))]
+#[tracing::instrument(skip(db, origin, events, create_event, room_id, pub_key_map))]
 pub(crate) fn fetch_and_handle_outliers<'a>(
     db: &'a Database,
     origin: &'a ServerName,
@@ -1562,15 +1585,16 @@ pub(crate) fn fetch_and_handle_outliers<'a>(
 
         let mut pdus = vec![];
         for id in events {
+            info!("loading {}", id);
             if let Some((time, tries)) = db.globals.bad_event_ratelimiter.read().unwrap().get(&id) {
                 // Exponential backoff
-                let mut min_elapsed_duration = Duration::from_secs(30) * (*tries) * (*tries);
+                let mut min_elapsed_duration = Duration::from_secs(5 * 60) * (*tries) * (*tries);
                 if min_elapsed_duration > Duration::from_secs(60 * 60 * 24) {
                     min_elapsed_duration = Duration::from_secs(60 * 60 * 24);
                 }
 
                 if time.elapsed() < min_elapsed_duration {
-                    debug!("Backing off from {}", id);
+                    info!("Backing off from {}", id);
                     continue;
                 }
             }
@@ -1586,7 +1610,7 @@ pub(crate) fn fetch_and_handle_outliers<'a>(
                 }
                 Ok(None) => {
                     // c. Ask origin server over federation
-                    debug!("Fetching {} over federation.", id);
+                    info!("Fetching {} over federation.", id);
                     match db
                         .sending
                         .send_federation_request(
@@ -1597,11 +1621,14 @@ pub(crate) fn fetch_and_handle_outliers<'a>(
                         .await
                     {
                         Ok(res) => {
-                            debug!("Got {} over federation", id);
+                            info!("Got {} over federation", id);
                             let (event_id, value) =
                                 match crate::pdu::gen_event_id_canonical_json(&res.pdu) {
                                     Ok(t) => t,
-                                    Err(_) => continue,
+                                    Err(_) => {
+                                        back_off(id.clone());
+                                        continue;
+                                    }
                                 };
 
                             // This will also fetch the auth chain
@@ -1632,7 +1659,7 @@ pub(crate) fn fetch_and_handle_outliers<'a>(
                     }
                 }
                 Err(e) => {
-                    debug!("Error loading {}: {}", id, e);
+                    warn!("Error loading {}: {}", id, e);
                     continue;
                 }
             };
@@ -1644,7 +1671,7 @@ pub(crate) fn fetch_and_handle_outliers<'a>(
 
 /// Search the DB for the signing keys of the given server, if we don't have them
 /// fetch them from the server and save to our DB.
-#[tracing::instrument(skip(db))]
+#[tracing::instrument(skip(db, origin, signature_ids))]
 pub(crate) async fn fetch_signing_keys(
     db: &Database,
     origin: &ServerName,
@@ -1885,6 +1912,7 @@ fn append_incoming_pdu(
     Ok(pdu_id)
 }
 
+#[tracing::instrument(skip(starting_events, db))]
 fn get_auth_chain(
     starting_events: Vec<EventId>,
     db: &Database,
@@ -1921,6 +1949,7 @@ fn get_auth_chain(
         .filter_map(move |sid| db.rooms.get_eventid_from_short(sid).ok()))
 }
 
+#[tracing::instrument(skip(event_id, db))]
 fn get_auth_chain_inner(event_id: &EventId, db: &Database) -> Result<HashSet<u64>> {
     let mut todo = vec![event_id.clone()];
     let mut found = HashSet::new();
@@ -2204,6 +2233,7 @@ pub fn create_join_event_template_route(
         is_direct: None,
         membership: MembershipState::Join,
         third_party_invite: None,
+        reason: None,
     })
     .expect("member event is valid value");
 
@@ -2680,6 +2710,7 @@ pub async fn claim_keys_route(
     .into())
 }
 
+#[tracing::instrument(skip(event, pub_key_map, db))]
 pub async fn fetch_required_signing_keys(
     event: &BTreeMap<String, CanonicalJsonValue>,
     pub_key_map: &RwLock<BTreeMap<String, BTreeMap<String, String>>>,

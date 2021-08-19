@@ -110,6 +110,7 @@ pub struct Rooms {
 impl Rooms {
     /// Builds a StateMap by iterating over all keys that start
     /// with state_hash, this gives the full state for the given state_hash.
+    #[tracing::instrument(skip(self))]
     pub fn state_full_ids(&self, shortstatehash: u64) -> Result<BTreeSet<EventId>> {
         let full_state = self
             .load_shortstatehash_info(shortstatehash)?
@@ -122,6 +123,7 @@ impl Rooms {
             .collect()
     }
 
+    #[tracing::instrument(skip(self))]
     pub fn state_full(
         &self,
         shortstatehash: u64,
@@ -220,6 +222,7 @@ impl Rooms {
     }
 
     /// This fetches auth events from the current state.
+    #[tracing::instrument(skip(self))]
     pub fn get_auth_events(
         &self,
         room_id: &RoomId,
@@ -261,6 +264,7 @@ impl Rooms {
     }
 
     /// Checks if a room exists.
+    #[tracing::instrument(skip(self))]
     pub fn exists(&self, room_id: &RoomId) -> Result<bool> {
         let prefix = match self.get_shortroomid(room_id)? {
             Some(b) => b.to_be_bytes().to_vec(),
@@ -277,6 +281,7 @@ impl Rooms {
     }
 
     /// Checks if a room exists.
+    #[tracing::instrument(skip(self))]
     pub fn first_pdu_in_room(&self, room_id: &RoomId) -> Result<Option<Arc<PduEvent>>> {
         let prefix = self
             .get_shortroomid(room_id)?
@@ -300,6 +305,7 @@ impl Rooms {
     /// Force the creation of a new StateHash and insert it into the db.
     ///
     /// Whatever `state` is supplied to `force_state` becomes the new current room state snapshot.
+    #[tracing::instrument(skip(self, new_state, db))]
     pub fn force_state(
         &self,
         room_id: &RoomId,
@@ -412,6 +418,7 @@ impl Rooms {
     }
 
     /// Returns a stack with info on shortstatehash, full state, added diff and removed diff for the selected shortstatehash and each parent layer.
+    #[tracing::instrument(skip(self))]
     pub fn load_shortstatehash_info(
         &self,
         shortstatehash: u64,
@@ -480,6 +487,7 @@ impl Rooms {
         }
     }
 
+    #[tracing::instrument(skip(self, globals))]
     pub fn compress_state_event(
         &self,
         shortstatekey: u64,
@@ -495,6 +503,7 @@ impl Rooms {
         Ok(v.try_into().expect("we checked the size above"))
     }
 
+    #[tracing::instrument(skip(self, compressed_event))]
     pub fn parse_compressed_state_event(
         &self,
         compressed_event: CompressedStateEvent,
@@ -518,6 +527,13 @@ impl Rooms {
     /// * `statediffremoved` - Removed from base. Each vec is shortstatekey+shorteventid
     /// * `diff_to_sibling` - Approximately how much the diff grows each time for this layer
     /// * `parent_states` - A stack with info on shortstatehash, full state, added diff and removed diff for each parent layer
+    #[tracing::instrument(skip(
+        self,
+        statediffnew,
+        statediffremoved,
+        diff_to_sibling,
+        parent_states
+    ))]
     pub fn save_state_from_diff(
         &self,
         shortstatehash: u64,
@@ -642,6 +658,7 @@ impl Rooms {
     }
 
     /// Returns (shortstatehash, already_existed)
+    #[tracing::instrument(skip(self, globals))]
     fn get_or_create_shortstatehash(
         &self,
         state_hash: &StateHashId,
@@ -662,6 +679,7 @@ impl Rooms {
         })
     }
 
+    #[tracing::instrument(skip(self, globals))]
     pub fn get_or_create_shorteventid(
         &self,
         event_id: &EventId,
@@ -692,6 +710,7 @@ impl Rooms {
         Ok(short)
     }
 
+    #[tracing::instrument(skip(self))]
     pub fn get_shortroomid(&self, room_id: &RoomId) -> Result<Option<u64>> {
         self.roomid_shortroomid
             .get(&room_id.as_bytes())?
@@ -702,6 +721,7 @@ impl Rooms {
             .transpose()
     }
 
+    #[tracing::instrument(skip(self))]
     pub fn get_shortstatekey(
         &self,
         event_type: &EventType,
@@ -739,6 +759,7 @@ impl Rooms {
         Ok(short)
     }
 
+    #[tracing::instrument(skip(self, globals))]
     pub fn get_or_create_shortroomid(
         &self,
         room_id: &RoomId,
@@ -756,6 +777,7 @@ impl Rooms {
         })
     }
 
+    #[tracing::instrument(skip(self, globals))]
     pub fn get_or_create_shortstatekey(
         &self,
         event_type: &EventType,
@@ -794,6 +816,7 @@ impl Rooms {
         Ok(short)
     }
 
+    #[tracing::instrument(skip(self))]
     pub fn get_eventid_from_short(&self, shorteventid: u64) -> Result<EventId> {
         if let Some(id) = self
             .shorteventid_cache
@@ -876,12 +899,14 @@ impl Rooms {
     }
 
     /// Returns the `count` of this pdu's id.
+    #[tracing::instrument(skip(self))]
     pub fn get_pdu_count(&self, event_id: &EventId) -> Result<Option<u64>> {
         self.eventid_pduid
             .get(event_id.as_bytes())?
             .map_or(Ok(None), |pdu_id| self.pdu_count(&pdu_id).map(Some))
     }
 
+    #[tracing::instrument(skip(self))]
     pub fn latest_pdu_count(&self, room_id: &RoomId) -> Result<u64> {
         let prefix = self
             .get_shortroomid(room_id)?
@@ -902,6 +927,7 @@ impl Rooms {
     }
 
     /// Returns the json of a pdu.
+    #[tracing::instrument(skip(self))]
     pub fn get_pdu_json(&self, event_id: &EventId) -> Result<Option<CanonicalJsonObject>> {
         self.eventid_pduid
             .get(event_id.as_bytes())?
@@ -920,6 +946,7 @@ impl Rooms {
     }
 
     /// Returns the json of a pdu.
+    #[tracing::instrument(skip(self))]
     pub fn get_outlier_pdu_json(&self, event_id: &EventId) -> Result<Option<CanonicalJsonObject>> {
         self.eventid_outlierpdu
             .get(event_id.as_bytes())?
@@ -930,6 +957,7 @@ impl Rooms {
     }
 
     /// Returns the json of a pdu.
+    #[tracing::instrument(skip(self))]
     pub fn get_non_outlier_pdu_json(
         &self,
         event_id: &EventId,
@@ -951,6 +979,7 @@ impl Rooms {
     }
 
     /// Returns the pdu's id.
+    #[tracing::instrument(skip(self))]
     pub fn get_pdu_id(&self, event_id: &EventId) -> Result<Option<Vec<u8>>> {
         self.eventid_pduid
             .get(event_id.as_bytes())?
@@ -960,6 +989,7 @@ impl Rooms {
     /// Returns the pdu.
     ///
     /// Checks the `eventid_outlierpdu` Tree if not found in the timeline.
+    #[tracing::instrument(skip(self))]
     pub fn get_non_outlier_pdu(&self, event_id: &EventId) -> Result<Option<PduEvent>> {
         self.eventid_pduid
             .get(event_id.as_bytes())?
@@ -980,6 +1010,7 @@ impl Rooms {
     /// Returns the pdu.
     ///
     /// Checks the `eventid_outlierpdu` Tree if not found in the timeline.
+    #[tracing::instrument(skip(self))]
     pub fn get_pdu(&self, event_id: &EventId) -> Result<Option<Arc<PduEvent>>> {
         if let Some(p) = self.pdu_cache.lock().unwrap().get_mut(&event_id) {
             return Ok(Some(Arc::clone(p)));
@@ -1019,6 +1050,7 @@ impl Rooms {
     /// Returns the pdu.
     ///
     /// This does __NOT__ check the outliers `Tree`.
+    #[tracing::instrument(skip(self))]
     pub fn get_pdu_from_id(&self, pdu_id: &[u8]) -> Result<Option<PduEvent>> {
         self.pduid_pdu.get(pdu_id)?.map_or(Ok(None), |pdu| {
             Ok(Some(
@@ -1029,6 +1061,7 @@ impl Rooms {
     }
 
     /// Returns the pdu as a `BTreeMap<String, CanonicalJsonValue>`.
+    #[tracing::instrument(skip(self))]
     pub fn get_pdu_json_from_id(&self, pdu_id: &[u8]) -> Result<Option<CanonicalJsonObject>> {
         self.pduid_pdu.get(pdu_id)?.map_or(Ok(None), |pdu| {
             Ok(Some(
@@ -1039,6 +1072,7 @@ impl Rooms {
     }
 
     /// Removes a pdu and creates a new one with the same id.
+    #[tracing::instrument(skip(self))]
     fn replace_pdu(&self, pdu_id: &[u8], pdu: &PduEvent) -> Result<()> {
         if self.pduid_pdu.get(&pdu_id)?.is_some() {
             self.pduid_pdu.insert(
@@ -2298,6 +2332,7 @@ impl Rooms {
         Ok(())
     }
 
+    #[tracing::instrument(skip(self))]
     pub fn update_joined_count(&self, room_id: &RoomId) -> Result<()> {
         let mut joinedcount = 0_u64;
         let mut joined_servers = HashSet::new();
@@ -2347,6 +2382,7 @@ impl Rooms {
         Ok(())
     }
 
+    #[tracing::instrument(skip(self, db))]
     pub async fn leave_room(
         &self,
         user_id: &UserId,
@@ -2419,6 +2455,7 @@ impl Rooms {
         Ok(())
     }
 
+    #[tracing::instrument(skip(self, db))]
     async fn remote_leave_room(
         &self,
         user_id: &UserId,
@@ -2650,6 +2687,7 @@ impl Rooms {
         })
     }
 
+    #[tracing::instrument(skip(self))]
     pub fn search_pdus<'a>(
         &'a self,
         room_id: &RoomId,
@@ -2809,6 +2847,7 @@ impl Rooms {
         })
     }
 
+    #[tracing::instrument(skip(self))]
     pub fn room_joined_count(&self, room_id: &RoomId) -> Result<Option<u64>> {
         Ok(self
             .roomid_joinedcount

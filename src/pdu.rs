@@ -12,7 +12,7 @@ use ruma::{
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::{cmp::Ordering, collections::BTreeMap, convert::TryFrom};
-use tracing::error;
+use tracing::warn;
 
 #[derive(Clone, Deserialize, Serialize, Debug)]
 pub struct PduEvent {
@@ -322,7 +322,7 @@ pub(crate) fn gen_event_id_canonical_json(
     pdu: &Raw<ruma::events::pdu::Pdu>,
 ) -> crate::Result<(EventId, CanonicalJsonObject)> {
     let value = serde_json::from_str(pdu.json().get()).map_err(|e| {
-        error!("{:?}: {:?}", pdu, e);
+        warn!("Error parsing incoming event {:?}: {:?}", pdu, e);
         Error::BadServerResponse("Invalid PDU in server response")
     })?;
 
