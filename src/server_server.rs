@@ -254,7 +254,7 @@ where
             }); // TODO: handle timeout
 
             if status != 200 {
-                info!(
+                warn!(
                     "{} {}: {}",
                     url,
                     status,
@@ -893,6 +893,9 @@ pub async fn handle_incoming_pdu<'a>(
     let mut graph = HashMap::new();
     let mut eventid_info = HashMap::new();
     let mut todo_outlier_stack = incoming_pdu.prev_events.clone();
+
+    let mut amount = 0;
+
     while let Some(prev_event_id) = todo_outlier_stack.pop() {
         if let Some((pdu, json_opt)) = fetch_and_handle_outliers(
             db,
@@ -905,6 +908,13 @@ pub async fn handle_incoming_pdu<'a>(
         .await
         .pop()
         {
+            if amount > 100 {
+                // Max limit reached
+                warn!("Max prev event limit reached!");
+                graph.insert(prev_event_id.clone(), HashSet::new());
+                continue
+            }
+
             if let Some(json) =
                 json_opt.or_else(|| db.rooms.get_outlier_pdu_json(&prev_event_id).ok().flatten())
             {
@@ -915,6 +925,7 @@ pub async fn handle_incoming_pdu<'a>(
                         .expect("Room exists")
                         .origin_server_ts
                 {
+                    amount += 1;
                     for prev_prev in &pdu.prev_events {
                         if !graph.contains_key(prev_prev) {
                             todo_outlier_stack.push(dbg!(prev_prev.clone()));

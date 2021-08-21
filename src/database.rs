@@ -636,7 +636,7 @@ impl Database {
 
             if db.globals.database_version()? < 9 {
                 // Update tokenids db layout
-                let mut batch = db.rooms.tokenids.iter().filter_map(|(key, _)| {
+                let batch = db.rooms.tokenids.iter().filter_map(|(key, _)| {
                     if !key.starts_with(b"!") {
                         return None;
                     }
@@ -659,14 +659,29 @@ impl Database {
                     println!("old {:?}", key);
                     println!("new {:?}", new_key);
                     Some((new_key, Vec::new()))
-                });
+                }).collect::<Vec<_>>();
 
-                db.rooms.tokenids.insert_batch(&mut batch)?;
+                let mut iter = batch.into_iter().peekable();
 
-                for (key, _) in db.rooms.tokenids.iter() {
+                while iter.peek().is_some() {
+                    db.rooms.tokenids.insert_batch(&mut iter.by_ref().take(1000))?;
+                    println!("smaller batch done");
+                }
+
+                println!("Deleting starts");
+
+                let batch2 = db.rooms.tokenids.iter().filter_map(|(key, _)| {
                     if key.starts_with(b"!") {
-                        db.rooms.tokenids.remove(&key)?;
+                        println!("del {:?}", key);
+                        Some(key)
+                    } else {
+                        None
                     }
+                }).collect::<Vec<_>>();
+
+                for key in batch2 {
+                    println!("del");
+                    db.rooms.tokenids.remove(&key)?;
                 }
 
                 db.globals.bump_database_version(9)?;
