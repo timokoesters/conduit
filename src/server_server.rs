@@ -912,7 +912,7 @@ pub async fn handle_incoming_pdu<'a>(
                 // Max limit reached
                 warn!("Max prev event limit reached!");
                 graph.insert(prev_event_id.clone(), HashSet::new());
-                continue
+                continue;
             }
 
             if let Some(json) =
