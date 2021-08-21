@@ -7,6 +7,7 @@ use crate::{pdu::PduBuilder, utils, Database, Error, PduEvent, Result};
 use lru_cache::LruCache;
 use regex::Regex;
 use ring::digest;
+use rocket::http::RawStr;
 use ruma::{
     api::{client::error::ErrorKind, federation},
     events::{
@@ -1458,16 +1459,19 @@ impl Rooms {
                                             }
                                             match pdu_json {
                                                 Some(json) => {
+                                                    let json_text =
+                                                        serde_json::to_string_pretty(&json)
+                                                            .expect("canonical json is valid json");
                                                     db.admin.send(AdminCommand::SendMessage(
                                                         message::MessageEventContent::text_html(
-                                                            format!("{}\n```json\n{:#?}\n```", 
+                                                            format!("{}\n```json\n{}\n```",
                                                             if outlier {
                                                                 "PDU is outlier"
-                                                            } else { "PDU was accepted"}, json),
+                                                            } else { "PDU was accepted"}, json_text),
                                                             format!("<p>{}</p>\n<pre><code class=\"language-json\">{}\n</code></pre>\n", 
                                                             if outlier {
                                                                 "PDU is outlier"
-                                                            } else { "PDU was accepted"}, serde_json::to_string_pretty(&json).expect("canonical json is valid json"))
+                                                            } else { "PDU was accepted"}, RawStr::new(&json_text).html_escape())
                                                         ),
                                                     ));
                                                 }
