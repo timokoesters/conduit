@@ -1776,7 +1776,10 @@ impl Rooms {
                 serde_json::from_value::<Raw<CreateEventContent>>(create_event.content.clone())
                     .expect("Raw::from_value always works.")
                     .deserialize()
-                    .map_err(|_| Error::bad_database("Invalid PowerLevels event in db."))
+                    .map_err(|e| {
+                        warn!("Invalid create event: {}", e);
+                        Error::bad_database("Invalid create event in db.")
+                    })
             })
             .transpose()?;
 

@@ -1036,7 +1036,10 @@ fn handle_outlier_pdu<'a>(
             serde_json::from_value::<Raw<CreateEventContent>>(create_event.content.clone())
                 .expect("Raw::from_value always works.")
                 .deserialize()
-                .map_err(|_| "Invalid PowerLevels event in db.".to_owned())?;
+                .map_err(|e| {
+                    warn!("Invalid create event: {}", e);
+                    "Invalid create event in db.".to_owned()
+                })?;
 
         let room_version_id = &create_event_content.room_version;
         let room_version = RoomVersion::new(room_version_id).expect("room version is supported");
@@ -1323,7 +1326,10 @@ async fn upgrade_outlier_to_timeline_pdu(
         serde_json::from_value::<Raw<CreateEventContent>>(create_event.content.clone())
             .expect("Raw::from_value always works.")
             .deserialize()
-            .map_err(|_| "Invalid PowerLevels event in db.".to_owned())?;
+            .map_err(|e| {
+                warn!("Invalid create event: {}", e);
+                "Invalid create event in db.".to_owned()
+            })?;
 
     let room_version_id = &create_event_content.room_version;
     let room_version = RoomVersion::new(room_version_id).expect("room version is supported");
@@ -2210,7 +2216,10 @@ pub fn create_join_event_template_route(
             serde_json::from_value::<Raw<CreateEventContent>>(create_event.content.clone())
                 .expect("Raw::from_value always works.")
                 .deserialize()
-                .map_err(|_| Error::bad_database("Invalid PowerLevels event in db."))
+                .map_err(|e| {
+                    warn!("Invalid create event: {}", e);
+                    Error::bad_database("Invalid create event in db.")
+                })
         })
         .transpose()?;
 
