@@ -28,6 +28,9 @@ variables:
       - cargohome
       - target/
     key: "build_cache-$TARGET-release"
+  variables:
+    CARGO_PROFILE_RELEASE_LTO=true
+    CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1
   before_script:
     - 'echo "Building for target $TARGET"'
     - 'mkdir -p cargohome && CARGOHOME="cargohome"'

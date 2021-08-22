@@ -124,16 +124,15 @@ lto = 'thin'
 incremental = true
 
 [profile.release]
-lto = true
+lto = 'thin'
 incremental = true
-codegen-units = 1
+
+codegen-units=32
 # If you want to make flamegraphs, enable debug info:
 # debug = true
 
 # For releases also try to max optimizations for dependencies:
 [profile.release.build-override]
 opt-level = 3
-codegen-units = 1
 [profile.release.package."*"]
 opt-level = 3
-codegen-units = 1
