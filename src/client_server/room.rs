@@ -423,6 +423,8 @@ pub async fn upgrade_room_route(
 
     // Create a replacement room
     let replacement_room = RoomId::new(db.globals.server_name());
+    db.rooms
+        .get_or_create_shortroomid(&replacement_room, &db.globals)?;
 
     let mutex_state = Arc::clone(
         db.globals
