@@ -262,8 +262,8 @@ impl Database {
                 userroomid_highlightcount: builder.open_tree("userroomid_highlightcount")?,
 
                 statekey_shortstatekey: builder.open_tree("statekey_shortstatekey")?,
+                shortstatekey_statekey: builder.open_tree("shortstatekey_statekey")?,
 
-                shortroomid_roomid: builder.open_tree("shortroomid_roomid")?,
                 roomid_shortroomid: builder.open_tree("roomid_shortroomid")?,
 
                 shortstatehash_statediff: builder.open_tree("shortstatehash_statediff")?,
@@ -279,8 +279,9 @@ impl Database {
                 auth_chain_cache: Mutex::new(LruCache::new(100_000)),
                 shorteventid_cache: Mutex::new(LruCache::new(1_000_000)),
                 eventidshort_cache: Mutex::new(LruCache::new(1_000_000)),
+                shortstatekey_cache: Mutex::new(LruCache::new(1_000_000)),
                 statekeyshort_cache: Mutex::new(LruCache::new(1_000_000)),
-                stateinfo_cache: Mutex::new(LruCache::new(50)),
+                stateinfo_cache: Mutex::new(LruCache::new(1000)),
             },
             account_data: account_data::AccountData {
                 roomuserdataid_accountdata: builder.open_tree("roomuserdataid_accountdata")?,
@@ -579,7 +580,6 @@ impl Database {
                 for (room_id, _) in db.rooms.roomid_shortstatehash.iter() {
                     let shortroomid = db.globals.next_count()?.to_be_bytes();
                     db.rooms.roomid_shortroomid.insert(&room_id, &shortroomid)?;
-                    db.rooms.shortroomid_roomid.insert(&shortroomid, &room_id)?;
                     println!("Migration: 8");
                 }
                 // Update pduids db layout
@@ -699,6 +699,19 @@ impl Database {
                 db.globals.bump_database_version(9)?;
 
                 println!("Migration: 8 -> 9 finished");
+            }
+
+            if db.globals.database_version()? < 10 {
+                // Add other direction for shortstatekeys
+                for (statekey, shortstatekey) in db.rooms.statekey_shortstatekey.iter() {
+                    db.rooms
+                        .shortstatekey_statekey
+                        .insert(&shortstatekey, &statekey)?;
+                }
+
+                db.globals.bump_database_version(10)?;
+
+                println!("Migration: 9 -> 10 finished");
             }
         }
 

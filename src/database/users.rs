@@ -673,7 +673,7 @@ impl Users {
     }
 
     #[tracing::instrument(skip(self, user_id, rooms, globals))]
-    fn mark_device_key_update(
+    pub fn mark_device_key_update(
         &self,
         user_id: &UserId,
         rooms: &super::rooms::Rooms,

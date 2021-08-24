@@ -640,23 +640,40 @@ async fn join_room_by_id_helper(
 
             db.rooms.add_pdu_outlier(&event_id, &value)?;
             if let Some(state_key) = &pdu.state_key {
-                state.insert((pdu.kind.clone(), state_key.clone()), pdu.event_id.clone());
+                let shortstatekey =
+                    db.rooms
+                        .get_or_create_shortstatekey(&pdu.kind, state_key, &db.globals)?;
+                state.insert(shortstatekey, pdu.event_id.clone());
             }
         }
 
-        state.insert(
-            (
-                pdu.kind.clone(),
-                pdu.state_key.clone().expect("join event has state key"),
-            ),
-            pdu.event_id.clone(),
-        );
+        let incoming_shortstatekey = db.rooms.get_or_create_shortstatekey(
+            &pdu.kind,
+            pdu.state_key
+                .as_ref()
+                .expect("Pdu is a membership state event"),
+            &db.globals,
+        )?;
 
-        if state.get(&(EventType::RoomCreate, "".to_owned())).is_none() {
+        state.insert(incoming_shortstatekey, pdu.event_id.clone());
+
+        let create_shortstatekey = db
+            .rooms
+            .get_shortstatekey(&EventType::RoomCreate, "")?
+            .expect("Room exists");
+
+        if state.get(&create_shortstatekey).is_none() {
             return Err(Error::BadServerResponse("State contained no create event."));
         }
 
-        db.rooms.force_state(room_id, state, &db)?;
+        db.rooms.force_state(
+            room_id,
+            state
+                .into_iter()
+                .map(|(k, id)| db.rooms.compress_state_event(k, &id, &db.globals))
+                .collect::<Result<HashSet<_>>>()?,
+            &db,
+        )?;
 
         for result in futures::future::join_all(
             send_join_response
@@ -913,8 +930,8 @@ pub async fn invite_helper<'a>(
                 &room_version,
                 &Arc::new(pdu.clone()),
                 create_prev_event,
-                &auth_events,
                 None, // TODO: third_party_invite
+                |k, s| auth_events.get(&(k.clone(), s.to_owned())).map(Arc::clone),
             )
             .map_err(|e| {
                 error!("{:?}", e);

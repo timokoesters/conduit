@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, HashMap, HashSet},
     convert::{TryFrom, TryInto},
     fmt::Debug,
     sync::Arc,
@@ -20,14 +20,17 @@ use ruma::{
         appservice,
         federation::{
             self,
-            transactions::edu::{Edu, ReceiptContent, ReceiptData, ReceiptMap},
+            transactions::edu::{
+                DeviceListUpdateContent, Edu, ReceiptContent, ReceiptData, ReceiptMap,
+            },
         },
         OutgoingRequest,
     },
+    device_id,
     events::{push_rules, AnySyncEphemeralRoomEvent, EventType},
     push,
     receipt::ReceiptType,
-    MilliSecondsSinceUnixEpoch, ServerName, UInt, UserId,
+    uint, MilliSecondsSinceUnixEpoch, ServerName, UInt, UserId,
 };
 use tokio::{
     select,
@@ -317,8 +320,19 @@ impl Sending {
             })?;
         let mut events = Vec::new();
         let mut max_edu_count = since;
+        let mut device_list_changes = HashSet::new();
+
         'outer: for room_id in db.rooms.server_rooms(server) {
             let room_id = room_id?;
+            // Look for device list updates in this room
+            device_list_changes.extend(
+                db.users
+                    .keys_changed(&room_id.to_string(), since, None)
+                    .filter_map(|r| r.ok())
+                    .filter(|user_id| user_id.server_name() == db.globals.server_name()),
+            );
+
+            // Look for read receipts in this room
             for r in db.rooms.edus.readreceipts_since(&room_id, since) {
                 let (user_id, count, read_receipt) = r?;
 
@@ -376,6 +390,22 @@ impl Sending {
                     break 'outer;
                 }
             }
+        }
+
+        for user_id in device_list_changes {
+            // Empty prev id forces synapse to resync: https://github.com/matrix-org/synapse/blob/98aec1cc9da2bd6b8e34ffb282c85abf9b8b42ca/synapse/handlers/device.py#L767
+            // Because synapse resyncs, we can just insert dummy data
+            let edu = Edu::DeviceListUpdate(DeviceListUpdateContent {
+                user_id,
+                device_id: device_id!("dummy"),
+                device_display_name: "Dummy".to_owned(),
+                stream_id: uint!(1),
+                prev_id: Vec::new(),
+                deleted: None,
+                keys: None,
+            });
+
+            events.push(serde_json::to_vec(&edu).expect("json can be serialized"));
         }
 
         Ok((events, max_edu_count))
