@@ -3186,6 +3186,8 @@ fn test_size_of_caches() {
         )>,
     > = LruCache::new(1_000);
 
+    let mut total_max_cache_size: i32 = 0;
+
     {
         let pdu_cache: LruCache<EventId, Arc<PduEvent>> = LruCache::new(100_000);
         let content_json = r#"
@@ -3230,6 +3232,8 @@ fn test_size_of_caches() {
         let pdu_cache_size_in_mb =
             (std::mem::size_of_val(&pdu_cache) + total_pdu_mem) as i32 / 100_000 as i32;
 
+        total_max_cache_size += pdu_cache_size_in_mb;
+
         println!(
             "size of filled ({}) pdu_cache is {} MB",
             &pdu_cache.capacity(),
@@ -3250,6 +3254,10 @@ fn test_size_of_caches() {
 
         let auth_chain_cache_size_in_mb =
             (std::mem::size_of_val(&auth_chain_cache) + all_entry_sizes) as i32 / 100_000 as i32;
+
+
+        total_max_cache_size += auth_chain_cache_size_in_mb;
+
         println!(
             "size of filled ({}) auth_chain_cache is {} MB",
             &auth_chain_cache.capacity(),
@@ -3269,6 +3277,9 @@ fn test_size_of_caches() {
 
         let shorteventid_cache_size_in_mb =
             (std::mem::size_of_val(&shorteventid_cache) + all_entry_sizes) as i32 / 100_000 as i32;
+
+        total_max_cache_size += shorteventid_cache_size_in_mb * 2;
+
         println!(
             "size of filled ({}) shorteventid_cache / eventidshort_cache is {} MB",
             &shorteventid_cache.capacity(),
@@ -3286,10 +3297,15 @@ fn test_size_of_caches() {
 
         let statekeyshort_cache_size_in_mb =
             (std::mem::size_of_val(&statekeyshort_cache) + all_entry_sizes) as i32 / 100_000 as i32;
+
+        total_max_cache_size += statekeyshort_cache_size_in_mb * 2;
+
         println!(
             "size of filled ({}) statekeyshort_cache / shortstatekey_cache is {} MB",
             &statekeyshort_cache.capacity(),
             statekeyshort_cache_size_in_mb
         );
     }
+
+    println!("All caches sum up to {} MB", &total_max_cache_size);
 }
