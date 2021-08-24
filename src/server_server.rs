@@ -1,6 +1,6 @@
 use crate::{
     client_server::{self, claim_keys_helper, get_keys_helper},
-    database::DatabaseGuard,
+    database::{rooms::CompressedStateEvent, DatabaseGuard},
     utils, ConduitResult, Database, Error, PduEvent, Result, Ruma,
 };
 use get_profile_information::v1::ProfileField;
@@ -27,7 +27,7 @@ use ruma::{
             },
             query::{get_profile_information, get_room_information},
             transactions::{
-                edu::{DirectDeviceContent, Edu},
+                edu::{DeviceListUpdateContent, DirectDeviceContent, Edu},
                 send_transaction_message,
             },
         },
@@ -51,7 +51,7 @@ use ruma::{
     ServerSigningKeyId, UserId,
 };
 use std::{
-    collections::{hash_map::Entry, BTreeMap, HashMap, HashSet},
+    collections::{btree_map, hash_map, BTreeMap, HashMap, HashSet},
     convert::{TryFrom, TryInto},
     fmt::Debug,
     future::Future,
@@ -747,8 +747,9 @@ pub async fn send_transaction_message_route(
                         .typing_remove(&typing.user_id, &typing.room_id, &db.globals)?;
                 }
             }
-            Edu::DeviceListUpdate(_) => {
-                // TODO: Instead of worrying about stream ids we can just fetch all devices again
+            Edu::DeviceListUpdate(DeviceListUpdateContent { user_id, .. }) => {
+                db.users
+                    .mark_device_key_update(&user_id, &db.rooms, &db.globals)?;
             }
             Edu::DirectToDevice(DirectDeviceContent {
                 sender,
@@ -1079,7 +1080,7 @@ fn handle_outlier_pdu<'a>(
         // 4. fetch any missing auth events doing all checks listed here starting at 1. These are not timeline events
         // 5. Reject "due to auth events" if can't get all the auth events or some of the auth events are also rejected "due to auth events"
         // EDIT: Step 5 is not applied anymore because it failed too often
-        debug!("Fetching auth events for {}", incoming_pdu.event_id);
+        warn!("Fetching auth events for {}", incoming_pdu.event_id);
         fetch_and_handle_outliers(
             db,
             origin,
@@ -1114,10 +1115,10 @@ fn handle_outlier_pdu<'a>(
                     .clone()
                     .expect("all auth events have state keys"),
             )) {
-                Entry::Vacant(v) => {
+                hash_map::Entry::Vacant(v) => {
                     v.insert(auth_event.clone());
                 }
-                Entry::Occupied(_) => {
+                hash_map::Entry::Occupied(_) => {
                     return Err(
                         "Auth event's type and state_key combination exists multiple times."
                             .to_owned(),
@@ -1153,8 +1154,8 @@ fn handle_outlier_pdu<'a>(
             &room_version,
             &incoming_pdu,
             previous_create.clone(),
-            &auth_events,
             None, // TODO: third party invite
+            |k, s| auth_events.get(&(k.clone(), s.to_owned())).map(Arc::clone),
         )
         .map_err(|_e| "Auth check failed".to_string())?
         {
@@ -1205,38 +1206,21 @@ async fn upgrade_outlier_to_timeline_pdu(
         let state =
             prev_event_sstatehash.map(|shortstatehash| db.rooms.state_full_ids(shortstatehash));
 
-        if let Some(Ok(state)) = state {
+        if let Some(Ok(mut state)) = state {
             warn!("Using cached state");
-            let mut state = fetch_and_handle_outliers(
-                db,
-                origin,
-                &state.into_iter().collect::<Vec<_>>(),
-                &create_event,
-                &room_id,
-                pub_key_map,
-            )
-            .await
-            .into_iter()
-            .map(|(pdu, _)| {
-                (
-                    (
-                        pdu.kind.clone(),
-                        pdu.state_key
-                            .clone()
-                            .expect("events from state_full_ids are state events"),
-                    ),
-                    pdu,
-                )
-            })
-            .collect::<HashMap<_, _>>();
-
             let prev_pdu =
                 db.rooms.get_pdu(prev_event).ok().flatten().ok_or_else(|| {
                     "Could not find prev event, but we know the state.".to_owned()
                 })?;
 
             if let Some(state_key) = &prev_pdu.state_key {
-                state.insert((prev_pdu.kind.clone(), state_key.clone()), prev_pdu);
+                let shortstatekey = db
+                    .rooms
+                    .get_or_create_shortstatekey(&prev_pdu.kind, state_key, &db.globals)
+                    .map_err(|_| "Failed to create shortstatekey.".to_owned())?;
+
+                state.insert(shortstatekey, prev_event.clone());
+                // Now it's the state after the pdu
             }
 
             state_at_incoming_event = Some(state);
@@ -1261,7 +1245,7 @@ async fn upgrade_outlier_to_timeline_pdu(
             .await
         {
             Ok(res) => {
-                debug!("Fetching state events at event.");
+                warn!("Fetching state events at event.");
                 let state_vec = fetch_and_handle_outliers(
                     &db,
                     origin,
@@ -1272,18 +1256,23 @@ async fn upgrade_outlier_to_timeline_pdu(
                 )
                 .await;
 
-                let mut state = HashMap::new();
+                let mut state = BTreeMap::new();
                 for (pdu, _) in state_vec {
-                    match state.entry((
-                        pdu.kind.clone(),
-                        pdu.state_key
-                            .clone()
-                            .ok_or_else(|| "Found non-state pdu in state events.".to_owned())?,
-                    )) {
-                        Entry::Vacant(v) => {
-                            v.insert(pdu);
+                    let state_key = pdu
+                        .state_key
+                        .clone()
+                        .ok_or_else(|| "Found non-state pdu in state events.".to_owned())?;
+
+                    let shortstatekey = db
+                        .rooms
+                        .get_or_create_shortstatekey(&pdu.kind, &state_key, &db.globals)
+                        .map_err(|_| "Failed to create shortstatekey.".to_owned())?;
+
+                    match state.entry(shortstatekey) {
+                        btree_map::Entry::Vacant(v) => {
+                            v.insert(pdu.event_id.clone());
                         }
-                        Entry::Occupied(_) => return Err(
+                        btree_map::Entry::Occupied(_) => return Err(
                             "State event's type and state_key combination exists multiple times."
                                 .to_owned(),
                         ),
@@ -1291,28 +1280,20 @@ async fn upgrade_outlier_to_timeline_pdu(
                 }
 
                 // The original create event must still be in the state
-                if state
-                    .get(&(EventType::RoomCreate, "".to_owned()))
-                    .map(|a| a.as_ref())
-                    != Some(&create_event)
-                {
+                let create_shortstatekey = db
+                    .rooms
+                    .get_shortstatekey(&EventType::RoomCreate, "")
+                    .map_err(|_| "Failed to talk to db.")?
+                    .expect("Room exists");
+
+                if state.get(&create_shortstatekey) != Some(&create_event.event_id) {
                     return Err("Incoming event refers to wrong create event.".to_owned());
                 }
 
-                debug!("Fetching auth chain events at event.");
-                fetch_and_handle_outliers(
-                    &db,
-                    origin,
-                    &res.auth_chain_ids,
-                    &create_event,
-                    &room_id,
-                    pub_key_map,
-                )
-                .await;
-
                 state_at_incoming_event = Some(state);
             }
-            Err(_) => {
+            Err(e) => {
+                warn!("Fetching state for event failed: {}", e);
                 return Err("Fetching state for event failed".into());
             }
         };
@@ -1350,8 +1331,15 @@ async fn upgrade_outlier_to_timeline_pdu(
         &room_version,
         &incoming_pdu,
         previous_create.clone(),
-        &state_at_incoming_event,
         None, // TODO: third party invite
+        |k, s| {
+            db.rooms
+                .get_shortstatekey(&k, &s)
+                .ok()
+                .flatten()
+                .and_then(|shortstatekey| state_at_incoming_event.get(&shortstatekey))
+                .and_then(|event_id| db.rooms.get_pdu(&event_id).ok().flatten())
+        },
     )
     .map_err(|_e| "Auth check failed.".to_owned())?
     {
@@ -1388,28 +1376,28 @@ async fn upgrade_outlier_to_timeline_pdu(
     // Only keep those extremities were not referenced yet
     extremities.retain(|id| !matches!(db.rooms.is_event_referenced(&room_id, id), Ok(true)));
 
-    let current_statehash = db
+    let current_sstatehash = db
         .rooms
         .current_shortstatehash(&room_id)
         .map_err(|_| "Failed to load current state hash.".to_owned())?
         .expect("every room has state");
 
-    let current_state = db
+    let current_state_ids = db
         .rooms
-        .state_full(current_statehash)
+        .state_full_ids(current_sstatehash)
         .map_err(|_| "Failed to load room state.")?;
 
     if incoming_pdu.state_key.is_some() {
-        let mut extremity_statehashes = Vec::new();
+        let mut extremity_sstatehashes = HashMap::new();
 
-        for id in &extremities {
+        for id in dbg!(&extremities) {
             match db
                 .rooms
                 .get_pdu(&id)
                 .map_err(|_| "Failed to ask db for pdu.".to_owned())?
             {
                 Some(leaf_pdu) => {
-                    extremity_statehashes.push((
+                    extremity_sstatehashes.insert(
                         db.rooms
                             .pdu_shortstatehash(&leaf_pdu.event_id)
                             .map_err(|_| "Failed to ask db for pdu state hash.".to_owned())?
@@ -1420,8 +1408,8 @@ async fn upgrade_outlier_to_timeline_pdu(
                                 );
                                 "Found pdu with no statehash in db.".to_owned()
                             })?,
-                        Some(leaf_pdu),
-                    ));
+                        leaf_pdu,
+                    );
                 }
                 _ => {
                     error!("Missing state snapshot for {:?}", id);
@@ -1430,27 +1418,30 @@ async fn upgrade_outlier_to_timeline_pdu(
             }
         }
 
+        let mut fork_states = Vec::new();
+
         // 12. Ensure that the state is derived from the previous current state (i.e. we calculated
         //     by doing state res where one of the inputs was a previously trusted set of state,
         //     don't just trust a set of state we got from a remote).
 
         // We do this by adding the current state to the list of fork states
+        extremity_sstatehashes.remove(&current_sstatehash);
+        fork_states.push(current_state_ids);
+        dbg!(&extremity_sstatehashes);
 
-        extremity_statehashes.push((current_statehash.clone(), None));
-
-        let mut fork_states = Vec::new();
-        for (statehash, leaf_pdu) in extremity_statehashes {
+        for (sstatehash, leaf_pdu) in extremity_sstatehashes {
             let mut leaf_state = db
                 .rooms
-                .state_full(statehash)
+                .state_full_ids(sstatehash)
                 .map_err(|_| "Failed to ask db for room state.".to_owned())?;
 
-            if let Some(leaf_pdu) = leaf_pdu {
-                if let Some(state_key) = &leaf_pdu.state_key {
-                    // Now it's the state after
-                    let key = (leaf_pdu.kind.clone(), state_key.clone());
-                    leaf_state.insert(key, leaf_pdu);
-                }
+            if let Some(state_key) = &leaf_pdu.state_key {
+                let shortstatekey = db
+                    .rooms
+                    .get_or_create_shortstatekey(&leaf_pdu.kind, state_key, &db.globals)
+                    .map_err(|_| "Failed to create shortstatekey.".to_owned())?;
+                leaf_state.insert(shortstatekey, leaf_pdu.event_id.clone());
+                // Now it's the state after the pdu
             }
 
             fork_states.push(leaf_state);
@@ -1459,10 +1450,12 @@ async fn upgrade_outlier_to_timeline_pdu(
         // We also add state after incoming event to the fork states
         let mut state_after = state_at_incoming_event.clone();
         if let Some(state_key) = &incoming_pdu.state_key {
-            state_after.insert(
-                (incoming_pdu.kind.clone(), state_key.clone()),
-                incoming_pdu.clone(),
-            );
+            let shortstatekey = db
+                .rooms
+                .get_or_create_shortstatekey(&incoming_pdu.kind, state_key, &db.globals)
+                .map_err(|_| "Failed to create shortstatekey.".to_owned())?;
+
+            state_after.insert(shortstatekey, incoming_pdu.event_id.clone());
         }
         fork_states.push(state_after.clone());
 
@@ -1475,8 +1468,12 @@ async fn upgrade_outlier_to_timeline_pdu(
             // always included)
             fork_states[0]
                 .iter()
-                .map(|(k, pdu)| (k.clone(), pdu.event_id.clone()))
-                .collect()
+                .map(|(k, id)| {
+                    db.rooms
+                        .compress_state_event(*k, &id, &db.globals)
+                        .map_err(|_| "Failed to compress_state_event.".to_owned())
+                })
+                .collect::<StdResult<_, String>>()?
         } else {
             // We do need to force an update to this room's state
             update_state = true;
@@ -1485,10 +1482,11 @@ async fn upgrade_outlier_to_timeline_pdu(
                 .into_iter()
                 .map(|map| {
                     map.into_iter()
-                        .map(|(k, v)| (k, v.event_id.clone()))
-                        .collect::<StateMap<_>>()
+                        .map(|(k, id)| (db.rooms.get_statekey_from_short(k).map(|k| (k, id))))
+                        .collect::<Result<StateMap<_>>>()
                 })
-                .collect::<Vec<_>>();
+                .collect::<Result<Vec<_>>>()
+                .map_err(|_| "Failed to get_statekey_from_short.".to_owned())?;
 
             let mut auth_chain_sets = Vec::new();
             for state in fork_states {
@@ -1519,6 +1517,17 @@ async fn upgrade_outlier_to_timeline_pdu(
             };
 
             state
+                .into_iter()
+                .map(|((event_type, state_key), event_id)| {
+                    let shortstatekey = db
+                        .rooms
+                        .get_or_create_shortstatekey(&event_type, &state_key, &db.globals)
+                        .map_err(|_| "Failed to get_or_create_shortstatekey".to_owned())?;
+                    db.rooms
+                        .compress_state_event(shortstatekey, &event_id, &db.globals)
+                        .map_err(|_| "Failed to compress state event".to_owned())
+                })
+                .collect::<StdResult<_, String>>()?
         };
 
         // Set the new room state to the resolved state
@@ -1534,38 +1543,55 @@ async fn upgrade_outlier_to_timeline_pdu(
 
     debug!("starting soft fail auth check");
     // 13. Check if the event passes auth based on the "current state" of the room, if not "soft fail" it
+    let auth_events = db
+        .rooms
+        .get_auth_events(
+            &room_id,
+            &incoming_pdu.kind,
+            &incoming_pdu.sender,
+            incoming_pdu.state_key.as_deref(),
+            &incoming_pdu.content,
+        )
+        .map_err(|_| "Failed to get_auth_events.".to_owned())?;
+
     let soft_fail = !state_res::event_auth::auth_check(
         &room_version,
         &incoming_pdu,
         previous_create,
-        &current_state,
         None,
+        |k, s| auth_events.get(&(k.clone(), s.to_owned())).map(Arc::clone),
     )
     .map_err(|_e| "Auth check failed.".to_owned())?;
 
-    let mut pdu_id = None;
-    if !soft_fail {
-        // Now that the event has passed all auth it is added into the timeline.
-        // We use the `state_at_event` instead of `state_after` so we accurately
-        // represent the state for this event.
-        pdu_id = Some(
-            append_incoming_pdu(
-                &db,
-                &incoming_pdu,
-                val,
-                extremities,
-                &state_at_incoming_event,
-                &state_lock,
-            )
-            .map_err(|_| "Failed to add pdu to db.".to_owned())?,
-        );
-        debug!("Appended incoming pdu.");
-    } else {
-        warn!("Event was soft failed: {:?}", incoming_pdu);
-    }
+    // Now that the event has passed all auth it is added into the timeline.
+    // We use the `state_at_event` instead of `state_after` so we accurately
+    // represent the state for this event.
+
+    let state_ids_compressed = state_at_incoming_event
+        .iter()
+        .map(|(shortstatekey, id)| {
+            db.rooms
+                .compress_state_event(*shortstatekey, &id, &db.globals)
+                .map_err(|_| "Failed to compress_state_event".to_owned())
+        })
+        .collect::<StdResult<_, String>>()?;
+
+    let pdu_id = append_incoming_pdu(
+        &db,
+        &incoming_pdu,
+        val,
+        extremities,
+        state_ids_compressed,
+        soft_fail,
+        &state_lock,
+    )
+    .map_err(|_| "Failed to add pdu to db.".to_owned())?;
+
+    debug!("Appended incoming pdu.");
 
     if soft_fail {
-        // Soft fail, we leave the event as an outlier but don't add it to the timeline
+        // Soft fail, we keep the event as an outlier but don't add it to the timeline
+        warn!("Event was soft failed: {:?}", incoming_pdu);
         return Err("Event has been soft failed".into());
     }
 
@@ -1594,15 +1620,14 @@ pub(crate) fn fetch_and_handle_outliers<'a>(
 ) -> AsyncRecursiveType<'a, Vec<(Arc<PduEvent>, Option<BTreeMap<String, CanonicalJsonValue>>)>> {
     Box::pin(async move {
         let back_off = |id| match db.globals.bad_event_ratelimiter.write().unwrap().entry(id) {
-            Entry::Vacant(e) => {
+            hash_map::Entry::Vacant(e) => {
                 e.insert((Instant::now(), 1));
             }
-            Entry::Occupied(mut e) => *e.get_mut() = (Instant::now(), e.get().1 + 1),
+            hash_map::Entry::Occupied(mut e) => *e.get_mut() = (Instant::now(), e.get().1 + 1),
         };
 
         let mut pdus = vec![];
         for id in events {
-            info!("loading {}", id);
             if let Some((time, tries)) = db.globals.bad_event_ratelimiter.read().unwrap().get(&id) {
                 // Exponential backoff
                 let mut min_elapsed_duration = Duration::from_secs(5 * 60) * (*tries) * (*tries);
@@ -1627,7 +1652,7 @@ pub(crate) fn fetch_and_handle_outliers<'a>(
                 }
                 Ok(None) => {
                     // c. Ask origin server over federation
-                    info!("Fetching {} over federation.", id);
+                    warn!("Fetching {} over federation.", id);
                     match db
                         .sending
                         .send_federation_request(
@@ -1638,7 +1663,7 @@ pub(crate) fn fetch_and_handle_outliers<'a>(
                         .await
                     {
                         Ok(res) => {
-                            info!("Got {} over federation", id);
+                            warn!("Got {} over federation", id);
                             let (event_id, value) =
                                 match crate::pdu::gen_event_id_canonical_json(&res.pdu) {
                                     Ok(t) => t,
@@ -1727,10 +1752,10 @@ pub(crate) async fn fetch_signing_keys(
         .unwrap()
         .entry(id)
     {
-        Entry::Vacant(e) => {
+        hash_map::Entry::Vacant(e) => {
             e.insert((Instant::now(), 1));
         }
-        Entry::Occupied(mut e) => *e.get_mut() = (Instant::now(), e.get().1 + 1),
+        hash_map::Entry::Occupied(mut e) => *e.get_mut() = (Instant::now(), e.get().1 + 1),
     };
 
     if let Some((time, tries)) = db
@@ -1847,19 +1872,34 @@ pub(crate) async fn fetch_signing_keys(
 
 /// Append the incoming event setting the state snapshot to the state from the
 /// server that sent the event.
-#[tracing::instrument(skip(db, pdu, pdu_json, new_room_leaves, state, _mutex_lock))]
+#[tracing::instrument(skip(db, pdu, pdu_json, new_room_leaves, state_ids_compressed, _mutex_lock))]
 fn append_incoming_pdu(
     db: &Database,
     pdu: &PduEvent,
     pdu_json: CanonicalJsonObject,
     new_room_leaves: HashSet<EventId>,
-    state: &StateMap<Arc<PduEvent>>,
+    state_ids_compressed: HashSet<CompressedStateEvent>,
+    soft_fail: bool,
     _mutex_lock: &MutexGuard<'_, ()>, // Take mutex guard to make sure users get the room mutex
-) -> Result<Vec<u8>> {
+) -> Result<Option<Vec<u8>>> {
     // We append to state before appending the pdu, so we don't have a moment in time with the
     // pdu without it's state. This is okay because append_pdu can't fail.
-    db.rooms
-        .set_event_state(&pdu.event_id, &pdu.room_id, state, &db.globals)?;
+    db.rooms.set_event_state(
+        &pdu.event_id,
+        &pdu.room_id,
+        state_ids_compressed,
+        &db.globals,
+    )?;
+
+    if soft_fail {
+        db.rooms
+            .mark_as_referenced(&pdu.room_id, &pdu.prev_events)?;
+        db.rooms.replace_pdu_leaves(
+            &pdu.room_id,
+            &new_room_leaves.into_iter().collect::<Vec<_>>(),
+        )?;
+        return Ok(None);
+    }
 
     let pdu_id = db.rooms.append_pdu(
         pdu,
@@ -1926,7 +1966,7 @@ fn append_incoming_pdu(
         }
     }
 
-    Ok(pdu_id)
+    Ok(Some(pdu_id))
 }
 
 #[tracing::instrument(skip(starting_events, db))]
@@ -2120,7 +2160,7 @@ pub fn get_room_state_route(
         .rooms
         .state_full_ids(shortstatehash)?
         .into_iter()
-        .map(|id| {
+        .map(|(_, id)| {
             PduEvent::convert_to_outgoing_federation_event(
                 db.rooms.get_pdu_json(&id).unwrap().unwrap(),
             )
@@ -2168,6 +2208,7 @@ pub fn get_room_state_ids_route(
         .rooms
         .state_full_ids(shortstatehash)?
         .into_iter()
+        .map(|(_, id)| id)
         .collect();
 
     let auth_chain_ids = get_auth_chain(vec![body.event_id.clone()], &db)?;
@@ -2314,8 +2355,8 @@ pub fn create_join_event_template_route(
         &room_version,
         &Arc::new(pdu.clone()),
         create_prev_event,
-        &auth_events,
         None, // TODO: third_party_invite
+        |k, s| auth_events.get(&(k.clone(), s.to_owned())).map(Arc::clone),
     )
     .map_err(|e| {
         error!("{:?}", e);
@@ -2430,7 +2471,7 @@ pub async fn create_join_event_route(
     drop(mutex_lock);
 
     let state_ids = db.rooms.state_full_ids(shortstatehash)?;
-    let auth_chain_ids = get_auth_chain(state_ids.iter().cloned().collect(), &db)?;
+    let auth_chain_ids = get_auth_chain(state_ids.iter().map(|(_, id)| id.clone()).collect(), &db)?;
 
     for server in db
         .rooms
@@ -2451,7 +2492,7 @@ pub async fn create_join_event_route(
                 .collect(),
             state: state_ids
                 .iter()
-                .filter_map(|id| db.rooms.get_pdu_json(&id).ok().flatten())
+                .filter_map(|(_, id)| db.rooms.get_pdu_json(&id).ok().flatten())
                 .map(PduEvent::convert_to_outgoing_federation_event)
                 .collect(),
         },

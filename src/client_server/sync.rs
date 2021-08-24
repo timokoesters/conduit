@@ -348,7 +348,7 @@ async fn sync_helper(
             let current_state_ids = db.rooms.state_full_ids(current_shortstatehash)?;
             let state_events = current_state_ids
                 .iter()
-                .map(|id| db.rooms.get_pdu(id))
+                .map(|(_, id)| db.rooms.get_pdu(id))
                 .filter_map(|r| r.ok().flatten())
                 .collect::<Vec<_>>();
 
@@ -393,18 +393,19 @@ async fn sync_helper(
             let state_events = if joined_since_last_sync {
                 current_state_ids
                     .iter()
-                    .map(|id| db.rooms.get_pdu(id))
+                    .map(|(_, id)| db.rooms.get_pdu(id))
                     .filter_map(|r| r.ok().flatten())
                     .collect::<Vec<_>>()
             } else {
                 current_state_ids
-                    .difference(&since_state_ids)
-                    .filter(|id| {
+                    .iter()
+                    .filter(|(key, id)| since_state_ids.get(key) != Some(id))
+                    .filter(|(_, id)| {
                         !timeline_pdus
                             .iter()
                             .any(|(_, timeline_pdu)| timeline_pdu.event_id == **id)
                     })
-                    .map(|id| db.rooms.get_pdu(id))
+                    .map(|(_, id)| db.rooms.get_pdu(id))
                     .filter_map(|r| r.ok().flatten())
                     .collect()
             };
