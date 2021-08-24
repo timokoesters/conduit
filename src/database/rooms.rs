@@ -1,37 +1,39 @@
-mod edus;
-
-pub use edus::RoomEdus;
-use member::MembershipState;
-
-use crate::{pdu::PduBuilder, utils, Database, Error, PduEvent, Result};
-use lru_cache::LruCache;
-use regex::Regex;
-use ring::digest;
-use rocket::http::RawStr;
-use ruma::{
-    api::{client::error::ErrorKind, federation},
-    events::{
-        ignored_user_list, push_rules,
-        room::{
-            create::CreateEventContent, member, message, power_levels::PowerLevelsEventContent,
-        },
-        AnyStrippedStateEvent, AnySyncStateEvent, EventType,
-    },
-    push::{self, Action, Tweak},
-    serde::{CanonicalJsonObject, CanonicalJsonValue, Raw},
-    state_res::{self, RoomVersion, StateMap},
-    uint, EventId, RoomAliasId, RoomId, RoomVersionId, ServerName, UserId,
-};
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     convert::{TryFrom, TryInto},
     mem::size_of,
     sync::{Arc, Mutex},
 };
+
+use lru_cache::LruCache;
+use member::MembershipState;
+use regex::Regex;
+use ring::digest;
+use rocket::http::RawStr;
+use ruma::{
+    api::{client::error::ErrorKind, federation},
+    EventId,
+    events::{
+        AnyStrippedStateEvent, AnySyncStateEvent,
+        EventType,
+        ignored_user_list, push_rules, room::{
+            create::CreateEventContent, member, message, power_levels::PowerLevelsEventContent,
+        },
+    },
+    push::{self, Action, Tweak},
+    RoomAliasId,
+    RoomId, RoomVersionId, serde::{CanonicalJsonObject, CanonicalJsonValue, Raw}, ServerName, state_res::{self, RoomVersion, StateMap}, uint, UserId,
+};
 use tokio::sync::MutexGuard;
 use tracing::{error, warn};
 
+pub use edus::RoomEdus;
+
+use crate::{Database, Error, pdu::PduBuilder, PduEvent, Result, utils};
+
 use super::{abstraction::Tree, admin::AdminCommand, pusher};
+
+mod edus;
 
 /// The unique identifier of each state group.
 ///
@@ -3168,5 +3170,126 @@ impl Rooms {
     #[tracing::instrument(skip(self))]
     pub fn auth_chain_cache(&self) -> std::sync::MutexGuard<'_, LruCache<Vec<u64>, HashSet<u64>>> {
         self.auth_chain_cache.lock().unwrap()
+    }
+}
+
+
+#[test]
+fn test_size_of_caches() {
+    let stateinfo_cache: LruCache<
+        u64,
+        Vec<(
+            u64,                           // sstatehash
+            HashSet<CompressedStateEvent>, // full state
+            HashSet<CompressedStateEvent>, // added
+            HashSet<CompressedStateEvent>, // removed
+        )>,
+    > = LruCache::new(1_000);
+
+    {
+        let pdu_cache: LruCache<EventId, Arc<PduEvent>> = LruCache::new(100_000);
+        let content_json = r#"
+          {
+            "body": "> <@fusetim:matrix.org> with my toaster, sure xd\n\nFor people with smaller machines, I can recomend gitpod. It is integrated with GitLab and gives you a quite powerful machine (see screenshot below) with vscode in the browser.",
+            "format": "org.matrix.custom.html",
+            "formatted_body": "<mx-reply><blockquote><a href=\"https://matrix.to/#/!pWCROeqlZcGggueJLt:fachschaften.org/$2Slj7obNBkOLVOiF5nhNLIRI7-gWLY6lc0F75ERJAmI?via=conduit.rs&via=matrix.org&via=privacytools.io\">In reply to</a> <a href=\"https://matrix.to/#/@fusetim:matrix.org\">@fusetim:matrix.org</a><br>with my toaster, sure xd</blockquote></mx-reply>For people with smaller machines, I can recomend gitpod. It is integrated with GitLab and gives you a quite powerful machine (see screenshot below) with vscode in the browser.",
+            "m.relates_to": {
+              "m.in_reply_to": {
+                "event_id": "$2Slj7obNBkOLVOiF5nhNLIRI7-gWLY6lc0F75ERJAmI"
+              }
+            },
+            "msgtype": "m.text"
+          }"#;
+
+        let pdu_event = PduEvent {
+            event_id: EventId::try_from(format!("$acR1l0raoZnm60CBwAVgqbZqoO/mYU81xysh1u7XcJk"))
+                .unwrap(),
+            room_id: RoomId::try_from("!n8f893n9:example.com").unwrap(),
+            sender: UserId::try_from("@carl:example.com").unwrap(),
+            origin_server_ts: uint!(400),
+            kind: EventType::Dummy,
+            content: serde_json::from_str(content_json).unwrap(),
+            auth_events: Vec::new(),
+            state_key: Some("#################################".to_string()),
+            prev_events: Vec::new(),
+            depth: uint!(400),
+            redacts: None,
+            unsigned: BTreeMap::default(),
+            hashes: ruma::events::pdu::EventHash::new(
+                "################################################################".to_string(),
+            ),
+            signatures: BTreeMap::default(),
+        };
+        let pdu_event_size = std::mem::size_of_val(&pdu_event);
+
+        let event_id =
+            EventId::try_from(format!("$acR1l0raoZnm60CBwAVgqbZqoO/mYU81xysh1u7XcJk")).unwrap();
+        let event_id_size = std::mem::size_of_val(&event_id);
+
+        let total_pdu_mem = &pdu_cache.capacity() * (pdu_event_size + event_id_size);
+        let pdu_cache_size_in_mb =
+            (std::mem::size_of_val(&pdu_cache) + total_pdu_mem) as i32 / 100_000 as i32;
+
+        println!(
+            "size of filled ({}) pdu_cache is {} MB",
+            &pdu_cache.capacity(),
+            pdu_cache_size_in_mb
+        );
+    }
+
+    {
+        let auth_chain_cache: LruCache<u64, HashSet<u64>> = LruCache::new(100_000);
+
+        let mut a_hash_set: HashSet<u64> = HashSet::new();
+        a_hash_set.insert(100_000 as u64);
+        a_hash_set.insert(200_000 as u64);
+        a_hash_set.insert(300_000 as u64);
+
+        let entry_size = std::mem::size_of::<u64>() + std::mem::size_of_val(&a_hash_set);
+        let all_entry_sizes = &auth_chain_cache.capacity() * entry_size;
+
+        let auth_chain_cache_size_in_mb =
+            (std::mem::size_of_val(&auth_chain_cache) + all_entry_sizes) as i32 / 100_000 as i32;
+        println!(
+            "size of filled ({}) auth_chain_cache is {} MB",
+            &auth_chain_cache.capacity(),
+            auth_chain_cache_size_in_mb
+        );
+    }
+
+    {
+        let shorteventid_cache: LruCache<u64, EventId> = LruCache::new(1_000_000);
+
+        let event_id =
+            EventId::try_from(format!("$acR1l0raoZnm60CBwAVgqbZqoO/mYU81xysh1u7XcJk")).unwrap();
+        let event_id_size = std::mem::size_of_val(&event_id);
+
+        let entry_size = std::mem::size_of::<u64>() + event_id_size;
+        let all_entry_sizes = &shorteventid_cache.capacity() * entry_size;
+
+        let shorteventid_cache_size_in_mb =
+            (std::mem::size_of_val(&shorteventid_cache) + all_entry_sizes) as i32 / 100_000 as i32;
+        println!(
+            "size of filled ({}) shorteventid_cache / eventidshort_cache is {} MB",
+            &shorteventid_cache.capacity(),
+            shorteventid_cache_size_in_mb
+        );
+    }
+
+    {
+        let statekeyshort_cache: LruCache<(EventType, String), u64> = LruCache::new(1_000_000);
+        let a_key = (EventType::Dummy, "###################################".to_string());
+        let a_value = "#####################################".to_string();
+
+        let entry_size = std::mem::size_of_val(&a_key) + std::mem::size_of_val(&a_value);
+        let all_entry_sizes = &statekeyshort_cache.capacity() * entry_size;
+
+        let statekeyshort_cache_size_in_mb =
+            (std::mem::size_of_val(&statekeyshort_cache) + all_entry_sizes) as i32 / 100_000 as i32;
+        println!(
+            "size of filled ({}) statekeyshort_cache / shortstatekey_cache is {} MB",
+            &statekeyshort_cache.capacity(),
+            statekeyshort_cache_size_in_mb
+        );
     }
 }
