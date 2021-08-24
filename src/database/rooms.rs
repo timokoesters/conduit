@@ -19,7 +19,7 @@ use ruma::{
     },
     push::{self, Action, Tweak},
     serde::{CanonicalJsonObject, CanonicalJsonValue, Raw},
-    state_res::{self, Event, RoomVersion, StateMap},
+    state_res::{self, RoomVersion, StateMap},
     uint, EventId, RoomAliasId, RoomId, RoomVersionId, ServerName, UserId,
 };
 use std::{
@@ -91,7 +91,7 @@ pub struct Rooms {
     pub(super) referencedevents: Arc<dyn Tree>,
 
     pub(super) pdu_cache: Mutex<LruCache<EventId, Arc<PduEvent>>>,
-    pub(super) auth_chain_cache: Mutex<LruCache<u64, HashSet<u64>>>,
+    pub(super) auth_chain_cache: Mutex<LruCache<Vec<u64>, HashSet<u64>>>,
     pub(super) shorteventid_cache: Mutex<LruCache<u64, EventId>>,
     pub(super) eventidshort_cache: Mutex<LruCache<EventId, u64>>,
     pub(super) statekeyshort_cache: Mutex<LruCache<(EventType, String), u64>>,
@@ -3166,7 +3166,7 @@ impl Rooms {
     }
 
     #[tracing::instrument(skip(self))]
-    pub fn auth_chain_cache(&self) -> std::sync::MutexGuard<'_, LruCache<u64, HashSet<u64>>> {
+    pub fn auth_chain_cache(&self) -> std::sync::MutexGuard<'_, LruCache<Vec<u64>, HashSet<u64>>> {
         self.auth_chain_cache.lock().unwrap()
     }
 }

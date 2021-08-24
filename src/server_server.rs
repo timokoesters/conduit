@@ -1976,27 +1976,39 @@ fn get_auth_chain(
 ) -> Result<impl Iterator<Item = EventId> + '_> {
     let mut full_auth_chain = HashSet::new();
 
-    let starting_events = starting_events
-        .iter()
-        .map(|id| {
-            db.rooms
-                .get_or_create_shorteventid(id, &db.globals)
-                .map(|s| (s, id))
-        })
-        .collect::<Result<Vec<_>>>()?;
+    const NUM_BUCKETS: usize = 100;
+
+    let mut buckets = vec![HashSet::new(); NUM_BUCKETS];
+
+    for id in starting_events {
+        let short = db.rooms.get_or_create_shorteventid(&id, &db.globals)?;
+        let bucket_id = (short % NUM_BUCKETS as u64) as usize;
+        buckets[bucket_id].insert((short, id));
+    }
 
     let mut cache = db.rooms.auth_chain_cache();
 
-    for (sevent_id, event_id) in starting_events {
-        if let Some(cached) = cache.get_mut(&sevent_id) {
+    for chunk in buckets {
+        let chunk_key = chunk.iter().map(|(short, _)| short).copied().collect();
+        if let Some(cached) = cache.get_mut(&chunk_key) {
             full_auth_chain.extend(cached.iter().cloned());
-        } else {
-            drop(cache);
-            let auth_chain = get_auth_chain_inner(&event_id, db)?;
-            cache = db.rooms.auth_chain_cache();
-            cache.insert(sevent_id, auth_chain.clone());
-            full_auth_chain.extend(auth_chain);
-        };
+            continue;
+        }
+
+        let mut chunk_cache = HashSet::new();
+        for (sevent_id, event_id) in chunk {
+            if let Some(cached) = cache.get_mut(&[sevent_id][..]) {
+                chunk_cache.extend(cached.iter().cloned());
+            } else {
+                drop(cache);
+                let auth_chain = get_auth_chain_inner(&event_id, db)?;
+                cache = db.rooms.auth_chain_cache();
+                cache.insert(vec![sevent_id], auth_chain.clone());
+                chunk_cache.extend(auth_chain);
+            };
+        }
+        cache.insert(chunk_key, chunk_cache.clone());
+        full_auth_chain.extend(chunk_cache);
     }
 
     drop(cache);
