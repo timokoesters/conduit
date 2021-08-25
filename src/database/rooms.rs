@@ -69,6 +69,7 @@ pub struct Rooms {
 
     /// Remember the current state hash of a room.
     pub(super) roomid_shortstatehash: Arc<dyn Tree>,
+    pub(super) roomsynctoken_shortstatehash: Arc<dyn Tree>,
     /// Remember the state hash at events in the past.
     pub(super) shorteventid_shortstatehash: Arc<dyn Tree>,
     /// StateKey = EventType + StateKey, ShortStateKey = Count
@@ -1798,6 +1799,38 @@ impl Rooms {
             .insert(room_id.as_bytes(), &shortstatehash.to_be_bytes())?;
 
         Ok(())
+    }
+
+    pub fn associate_token_shortstatehash(
+        &self,
+        room_id: &RoomId,
+        token: u64,
+        shortstatehash: u64,
+    ) -> Result<()> {
+        let shortroomid = self.get_shortroomid(room_id)?.expect("room exists");
+
+        let mut key = shortroomid.to_be_bytes().to_vec();
+        key.extend_from_slice(&token.to_be_bytes());
+
+        self.roomsynctoken_shortstatehash
+            .insert(&key, &shortstatehash.to_be_bytes())
+    }
+
+    pub fn get_token_shortstatehash(&self, room_id: &RoomId, token: u64) -> Result<Option<u64>> {
+        let shortroomid = self.get_shortroomid(room_id)?.expect("room exists");
+
+        let mut key = shortroomid.to_be_bytes().to_vec();
+        key.extend_from_slice(&token.to_be_bytes());
+
+        Ok(self
+            .roomsynctoken_shortstatehash
+            .get(&key)?
+            .map(|bytes| {
+                utils::u64_from_bytes(&bytes).map_err(|_| {
+                    Error::bad_database("Invalid shortstatehash in roomsynctoken_shortstatehash")
+                })
+            })
+            .transpose()?)
     }
 
     /// Creates a new persisted data unit and adds it to a room.

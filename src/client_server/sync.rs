@@ -246,31 +246,13 @@ async fn sync_helper(
             .current_shortstatehash(&room_id)?
             .expect("All rooms have state");
 
-        let first_pdu_before_since = db
-            .rooms
-            .pdus_until(&sender_user, &room_id, since)?
-            .next()
-            .transpose()?;
-
         let pdus_after_since = db
             .rooms
             .pdus_after(&sender_user, &room_id, since)?
             .next()
             .is_some();
 
-        let since_shortstatehash = first_pdu_before_since
-            .as_ref()
-            .map(|pdu| {
-                db.rooms
-                    .pdu_shortstatehash(&pdu.1.event_id)
-                    .transpose()
-                    .ok_or_else(|| {
-                        warn!("PDU without state: {}", pdu.1.event_id);
-                        Error::bad_database("Found PDU without state")
-                    })
-            })
-            .transpose()?
-            .transpose()?;
+        let since_shortstatehash = db.rooms.get_token_shortstatehash(&room_id, since)?;
 
         // Calculates joined_member_count, invited_member_count and heroes
         let calculate_counts = || {
@@ -359,7 +341,7 @@ async fn sync_helper(
                 true,
                 state_events,
             )
-        } else if !pdus_after_since || since_shortstatehash == Some(current_shortstatehash) {
+        } else if !pdus_after_since && since_shortstatehash == Some(current_shortstatehash) {
             // No state changes
             (Vec::new(), None, None, false, Vec::new())
         } else {
@@ -400,11 +382,6 @@ async fn sync_helper(
                 current_state_ids
                     .iter()
                     .filter(|(key, id)| since_state_ids.get(key) != Some(id))
-                    .filter(|(_, id)| {
-                        !timeline_pdus
-                            .iter()
-                            .any(|(_, timeline_pdu)| timeline_pdu.event_id == **id)
-                    })
                     .map(|(_, id)| db.rooms.get_pdu(id))
                     .filter_map(|r| r.ok().flatten())
                     .collect()
@@ -584,6 +561,9 @@ async fn sync_helper(
                 .expect("event is valid, we just created it"),
             );
         }
+
+        // Save the state after this sync so we can send the correct state diff next sync
+        db.rooms.associate_token_shortstatehash(&room_id, next_batch, current_shortstatehash)?;
 
         let joined_room = sync_events::JoinedRoom {
             account_data: sync_events::RoomAccountData {

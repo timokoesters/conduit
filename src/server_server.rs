@@ -1387,6 +1387,17 @@ async fn upgrade_outlier_to_timeline_pdu(
         .state_full_ids(current_sstatehash)
         .map_err(|_| "Failed to load room state.")?;
 
+    let auth_events = db
+        .rooms
+        .get_auth_events(
+            &room_id,
+            &incoming_pdu.kind,
+            &incoming_pdu.sender,
+            incoming_pdu.state_key.as_deref(),
+            &incoming_pdu.content,
+        )
+        .map_err(|_| "Failed to get_auth_events.".to_owned())?;
+
     if incoming_pdu.state_key.is_some() {
         let mut extremity_sstatehashes = HashMap::new();
 
@@ -1541,18 +1552,8 @@ async fn upgrade_outlier_to_timeline_pdu(
 
     extremities.insert(incoming_pdu.event_id.clone());
 
-    debug!("starting soft fail auth check");
     // 13. Check if the event passes auth based on the "current state" of the room, if not "soft fail" it
-    let auth_events = db
-        .rooms
-        .get_auth_events(
-            &room_id,
-            &incoming_pdu.kind,
-            &incoming_pdu.sender,
-            incoming_pdu.state_key.as_deref(),
-            &incoming_pdu.content,
-        )
-        .map_err(|_| "Failed to get_auth_events.".to_owned())?;
+    debug!("starting soft fail auth check");
 
     let soft_fail = !state_res::event_auth::auth_check(
         &room_version,
