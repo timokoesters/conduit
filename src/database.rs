@@ -725,6 +725,12 @@ impl Database {
                         .insert(&shortstatekey, &statekey)?;
                 }
 
+                // Force E2EE device list updates so we can send them over federation
+                for user_id in db.users.iter().filter_map(|r| r.ok()) {
+                    db.users
+                        .mark_device_key_update(&user_id, &db.rooms, &db.globals)?;
+                }
+
                 db.globals.bump_database_version(10)?;
 
                 println!("Migration: 9 -> 10 finished");

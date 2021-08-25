@@ -563,7 +563,8 @@ async fn sync_helper(
         }
 
         // Save the state after this sync so we can send the correct state diff next sync
-        db.rooms.associate_token_shortstatehash(&room_id, next_batch, current_shortstatehash)?;
+        db.rooms
+            .associate_token_shortstatehash(&room_id, next_batch, current_shortstatehash)?;
 
         let joined_room = sync_events::JoinedRoom {
             account_data: sync_events::RoomAccountData {
