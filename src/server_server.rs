@@ -568,7 +568,7 @@ pub fn get_server_keys_route(db: DatabaseGuard) -> Json<String> {
                 old_verify_keys: BTreeMap::new(),
                 signatures: BTreeMap::new(),
                 valid_until_ts: MilliSecondsSinceUnixEpoch::from_system_time(
-                    SystemTime::now() + Duration::from_secs(60 * 2),
+                    SystemTime::now() + Duration::from_secs(86400 * 7),
                 )
                 .expect("time is valid"),
             },
