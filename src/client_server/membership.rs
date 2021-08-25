@@ -5,7 +5,6 @@ use crate::{
     server_server, utils, ConduitResult, Database, Error, Result, Ruma,
 };
 use member::{MemberEventContent, MembershipState};
-use rocket::futures;
 use ruma::{
     api::{
         client::{
@@ -667,14 +666,19 @@ async fn join_room_by_id_helper(
         let mut state = HashMap::new();
         let pub_key_map = RwLock::new(BTreeMap::new());
 
-        for result in futures::future::join_all(
-            send_join_response
-                .room_state
-                .state
-                .iter()
-                .map(|pdu| validate_and_add_event_id(pdu, &room_version, &pub_key_map, &db)),
+        server_server::fetch_join_signing_keys(
+            &send_join_response,
+            &room_version,
+            &pub_key_map,
+            &db,
         )
-        .await
+        .await?;
+
+        for result in send_join_response
+            .room_state
+            .state
+            .iter()
+            .map(|pdu| validate_and_add_event_id(pdu, &room_version, &pub_key_map, &db))
         {
             let (event_id, value) = match result {
                 Ok(t) => t,
@@ -723,14 +727,11 @@ async fn join_room_by_id_helper(
             &db,
         )?;
 
-        for result in futures::future::join_all(
-            send_join_response
-                .room_state
-                .auth_chain
-                .iter()
-                .map(|pdu| validate_and_add_event_id(pdu, &room_version, &pub_key_map, &db)),
-        )
-        .await
+        for result in send_join_response
+            .room_state
+            .auth_chain
+            .iter()
+            .map(|pdu| validate_and_add_event_id(pdu, &room_version, &pub_key_map, &db))
         {
             let (event_id, value) = match result {
                 Ok(t) => t,
@@ -787,7 +788,7 @@ async fn join_room_by_id_helper(
     Ok(join_room_by_id::Response::new(room_id.clone()).into())
 }
 
-async fn validate_and_add_event_id(
+fn validate_and_add_event_id(
     pdu: &Raw<Pdu>,
     room_version: &RoomVersionId,
     pub_key_map: &RwLock<BTreeMap<String, BTreeMap<String, String>>>,
@@ -830,7 +831,6 @@ async fn validate_and_add_event_id(
         }
     }
 
-    server_server::fetch_required_signing_keys(&value, pub_key_map, db).await?;
     if let Err(e) = ruma::signatures::verify_event(
         &*pub_key_map
             .read()
