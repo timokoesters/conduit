@@ -56,6 +56,7 @@ pub async fn send_event_to_device_route(
                         },
                     ))
                     .expect("DirectToDevice EDU can be serialized"),
+                    db.globals.next_count()?,
                 )?;
 
                 continue;
