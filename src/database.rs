@@ -286,6 +286,7 @@ impl Database {
                 shorteventid_eventid: builder.open_tree("shorteventid_eventid")?,
                 shorteventid_shortstatehash: builder.open_tree("shorteventid_shortstatehash")?,
                 roomid_shortstatehash: builder.open_tree("roomid_shortstatehash")?,
+                roomsynctoken_shortstatehash: builder.open_tree("roomsynctoken_shortstatehash")?,
                 statehash_shortstatehash: builder.open_tree("statehash_shortstatehash")?,
 
                 eventid_outlierpdu: builder.open_tree("eventid_outlierpdu")?,
