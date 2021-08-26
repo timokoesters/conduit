@@ -12,7 +12,7 @@ use std::{
     time::Duration,
 };
 use tokio::sync::watch::Sender;
-use tracing::{error, warn};
+use tracing::error;
 
 #[cfg(feature = "conduit_bin")]
 use rocket::{get, tokio};
