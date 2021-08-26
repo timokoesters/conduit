@@ -83,7 +83,7 @@ use rocket::{get, post, put};
 /// FedDest::Named("198.51.100.5".to_owned(), "".to_owned());
 /// ```
 #[derive(Clone, Debug, PartialEq)]
-enum FedDest {
+pub enum FedDest {
     Literal(SocketAddr),
     Named(String, String),
 }
@@ -109,6 +109,13 @@ impl FedDest {
             Self::Named(host, _) => host.clone(),
         }
     }
+
+    fn port(&self) -> Option<u16> {
+        match &self {
+            Self::Literal(addr) => Some(addr.port()),
+            Self::Named(_, port) => port[1..].parse().ok(),
+        }
+    }
 }
 
 #[tracing::instrument(skip(globals, request))]
@@ -124,41 +131,34 @@ where
         return Err(Error::bad_config("Federation is disabled."));
     }
 
-    let maybe_result = globals
+    let mut write_destination_to_cache = false;
+
+    let cached_result = globals
         .actual_destination_cache
         .read()
         .unwrap()
         .get(destination)
         .cloned();
 
-    let (actual_destination, host) = if let Some(result) = maybe_result {
+    let (actual_destination, host) = if let Some(result) = cached_result {
         result
     } else {
+        write_destination_to_cache = true;
+
         let result = find_actual_destination(globals, &destination).await;
-        let (actual_destination, host) = result.clone();
-        let result_string = (result.0.into_https_string(), result.1.into_uri_string());
-        globals
-            .actual_destination_cache
-            .write()
-            .unwrap()
-            .insert(Box::<ServerName>::from(destination), result_string.clone());
-        let dest_hostname = actual_destination.hostname();
-        let host_hostname = host.hostname();
-        if dest_hostname != host_hostname {
-            globals.tls_name_override.write().unwrap().insert(
-                dest_hostname,
-                webpki::DNSNameRef::try_from_ascii_str(&host_hostname)
-                    .unwrap()
-                    .to_owned(),
-            );
-        }
-        result_string
+
+        (result.0, result.1.clone().into_uri_string())
     };
 
+    let actual_destination_str = actual_destination.clone().into_https_string();
+
     let mut http_request = request
-        .try_into_http_request::<Vec<u8>>(&actual_destination, SendAccessToken::IfRequired(""))
+        .try_into_http_request::<Vec<u8>>(&actual_destination_str, SendAccessToken::IfRequired(""))
         .map_err(|e| {
-            warn!("Failed to find destination {}: {}", actual_destination, e);
+            warn!(
+                "Failed to find destination {}: {}",
+                actual_destination_str, e
+            );
             Error::BadServerResponse("Invalid destination")
         })?;
 
@@ -232,7 +232,22 @@ where
         .expect("all http requests are valid reqwest requests");
 
     let url = reqwest_request.url().clone();
-    let response = globals.reqwest_client().execute(reqwest_request).await;
+
+    let mut client = globals.reqwest_client()?;
+    if let Some(override_name) = globals
+        .tls_name_override
+        .read()
+        .unwrap()
+        .get(&actual_destination.hostname())
+    {
+        client = client.resolve(
+            &actual_destination.hostname(),
+            SocketAddr::new(override_name[0], 0),
+        );
+        // port will be ignored
+    }
+
+    let response = client.build()?.execute(reqwest_request).await;
 
     match response {
         Ok(mut response) => {
@@ -271,6 +286,13 @@ where
 
             if status == 200 {
                 let response = T::IncomingResponse::try_from_http_response(http_response);
+                if response.is_ok() && write_destination_to_cache {
+                    globals.actual_destination_cache.write().unwrap().insert(
+                        Box::<ServerName>::from(destination),
+                        (actual_destination, host),
+                    );
+                }
+
                 response.map_err(|e| {
                     warn!(
                         "Invalid 200 response from {} on: {} {}",
@@ -348,11 +370,41 @@ async fn find_actual_destination(
                                     let (host, port) = delegated_hostname.split_at(pos);
                                     FedDest::Named(host.to_string(), port.to_string())
                                 } else {
-                                    match query_srv_record(globals, &delegated_hostname).await {
+                                    if let Some(hostname_override) =
+                                        query_srv_record(globals, &delegated_hostname).await
+                                    {
                                         // 3.3: SRV lookup successful
-                                        Some(hostname) => hostname,
+                                        let host = match delegated_hostname.find(':') {
+                                            None => delegated_hostname.clone(),
+                                            Some(pos) => {
+                                                delegated_hostname.split_at(pos).0.to_owned()
+                                            }
+                                        };
+
+                                        if let Ok(override_ip) = globals
+                                            .dns_resolver()
+                                            .lookup_ip(hostname_override.hostname())
+                                            .await
+                                        {
+                                            globals
+                                                .tls_name_override
+                                                .write()
+                                                .unwrap()
+                                                .insert(host.clone(), override_ip.iter().collect());
+                                        } else {
+                                            warn!("Using SRV record, but could not resolve to IP");
+                                        }
+
+                                        let force_port = hostname_override.port();
+
+                                        if let Some(port) = force_port {
+                                            FedDest::Named(host, format!(":{}", port.to_string()))
+                                        } else {
+                                            add_port_to_hostname(&delegated_hostname)
+                                        }
+                                    } else {
                                         // 3.4: No SRV records, just use the hostname from .well-known
-                                        None => add_port_to_hostname(&delegated_hostname),
+                                        add_port_to_hostname(&delegated_hostname)
                                     }
                                 }
                             }
@@ -423,6 +475,9 @@ pub async fn request_well_known(
     let body: serde_json::Value = serde_json::from_str(
         &globals
             .reqwest_client()
+            .ok()?
+            .build()
+            .ok()?
             .get(&format!(
                 "https://{}/.well-known/matrix/server",
                 destination

@@ -19,10 +19,7 @@ use ruma::{
     DeviceId, DeviceKeyAlgorithm, UserId,
 };
 use serde_json::json;
-use std::{
-    collections::{BTreeMap, HashMap, HashSet},
-    time::{Duration, Instant},
-};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 #[cfg(feature = "conduit_bin")]
 use rocket::{get, post};

@@ -1,4 +1,4 @@
-use crate::{database::Config, utils, ConduitResult, Error, Result};
+use crate::{database::Config, server_server::FedDest, utils, ConduitResult, Error, Result};
 use ruma::{
     api::{
         client::r0::sync::sync_events,
@@ -6,25 +6,25 @@ use ruma::{
     },
     DeviceId, EventId, MilliSecondsSinceUnixEpoch, RoomId, ServerName, ServerSigningKeyId, UserId,
 };
-use rustls::{ServerCertVerifier, WebPKIVerifier};
 use std::{
     collections::{BTreeMap, HashMap},
     fs,
     future::Future,
+    net::IpAddr,
     path::PathBuf,
     sync::{Arc, Mutex, RwLock},
     time::{Duration, Instant},
 };
 use tokio::sync::{broadcast, watch::Receiver, Mutex as TokioMutex, Semaphore};
-use tracing::{error, info};
+use tracing::error;
 use trust_dns_resolver::TokioAsyncResolver;
 
 use super::abstraction::Tree;
 
 pub const COUNTER: &[u8] = b"c";
 
-type WellKnownMap = HashMap<Box<ServerName>, (String, String)>;
-type TlsNameMap = HashMap<String, webpki::DNSName>;
+type WellKnownMap = HashMap<Box<ServerName>, (FedDest, String)>;
+type TlsNameMap = HashMap<String, Vec<IpAddr>>;
 type RateLimitState = (Instant, u32); // Time if last failed try, number of failed tries
 type SyncHandle = (
     Option<String>,                                         // since
@@ -37,7 +37,6 @@ pub struct Globals {
     pub(super) globals: Arc<dyn Tree>,
     config: Config,
     keypair: Arc<ruma::signatures::Ed25519KeyPair>,
-    reqwest_client: reqwest::Client,
     dns_resolver: TokioAsyncResolver,
     jwt_decoding_key: Option<jsonwebtoken::DecodingKey<'static>>,
     pub(super) server_signingkeys: Arc<dyn Tree>,
@@ -49,40 +48,6 @@ pub struct Globals {
     pub roomid_mutex_state: RwLock<HashMap<RoomId, Arc<TokioMutex<()>>>>,
     pub roomid_mutex_federation: RwLock<HashMap<RoomId, Arc<TokioMutex<()>>>>, // this lock will be held longer
     pub rotate: RotationHandler,
-}
-
-struct MatrixServerVerifier {
-    inner: WebPKIVerifier,
-    tls_name_override: Arc<RwLock<TlsNameMap>>,
-}
-
-impl ServerCertVerifier for MatrixServerVerifier {
-    #[tracing::instrument(skip(self, roots, presented_certs, dns_name, ocsp_response))]
-    fn verify_server_cert(
-        &self,
-        roots: &rustls::RootCertStore,
-        presented_certs: &[rustls::Certificate],
-        dns_name: webpki::DNSNameRef<'_>,
-        ocsp_response: &[u8],
-    ) -> std::result::Result<rustls::ServerCertVerified, rustls::TLSError> {
-        if let Some(override_name) = self.tls_name_override.read().unwrap().get(dns_name.into()) {
-            let result = self.inner.verify_server_cert(
-                roots,
-                presented_certs,
-                override_name.as_ref(),
-                ocsp_response,
-            );
-            if result.is_ok() {
-                return result;
-            }
-            info!(
-                "Server {:?} is non-compliant, retrying TLS verification with original name",
-                dns_name
-            );
-        }
-        self.inner
-            .verify_server_cert(roots, presented_certs, dns_name, ocsp_response)
-    }
 }
 
 /// Handles "rotation" of long-polling requests. "Rotation" in this context is similar to "rotation" of log files and the like.
@@ -162,24 +127,6 @@ impl Globals {
         };
 
         let tls_name_override = Arc::new(RwLock::new(TlsNameMap::new()));
-        let verifier = Arc::new(MatrixServerVerifier {
-            inner: WebPKIVerifier::new(),
-            tls_name_override: tls_name_override.clone(),
-        });
-        let mut tlsconfig = rustls::ClientConfig::new();
-        tlsconfig.dangerous().set_certificate_verifier(verifier);
-        tlsconfig.root_store =
-            rustls_native_certs::load_native_certs().expect("Error loading system certificates");
-
-        let mut reqwest_client_builder = reqwest::Client::builder()
-            .connect_timeout(Duration::from_secs(30))
-            .timeout(Duration::from_secs(60 * 3))
-            .pool_max_idle_per_host(1)
-            .use_preconfigured_tls(tlsconfig);
-        if let Some(proxy) = config.proxy.to_proxy()? {
-            reqwest_client_builder = reqwest_client_builder.proxy(proxy);
-        }
-        let reqwest_client = reqwest_client_builder.build().unwrap();
 
         let jwt_decoding_key = config
             .jwt_secret
@@ -190,7 +137,6 @@ impl Globals {
             globals,
             config,
             keypair: Arc::new(keypair),
-            reqwest_client,
             dns_resolver: TokioAsyncResolver::tokio_from_system_conf().map_err(|_| {
                 Error::bad_config("Failed to set up trust dns resolver with system config.")
             })?,
@@ -219,8 +165,17 @@ impl Globals {
     }
 
     /// Returns a reqwest client which can be used to send requests.
-    pub fn reqwest_client(&self) -> &reqwest::Client {
-        &self.reqwest_client
+    pub fn reqwest_client(&self) -> Result<reqwest::ClientBuilder> {
+        let mut reqwest_client_builder = reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(30))
+            .timeout(Duration::from_secs(60 * 3))
+            .pool_max_idle_per_host(1);
+        //.use_preconfigured_tls(tlsconfig);
+        if let Some(proxy) = self.config.proxy.to_proxy()? {
+            reqwest_client_builder = reqwest_client_builder.proxy(proxy);
+        }
+
+        Ok(reqwest_client_builder)
     }
 
     #[tracing::instrument(skip(self))]
