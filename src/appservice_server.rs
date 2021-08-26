@@ -46,7 +46,11 @@ where
     *reqwest_request.timeout_mut() = Some(Duration::from_secs(30));
 
     let url = reqwest_request.url().clone();
-    let mut response = globals.reqwest_client().execute(reqwest_request).await?;
+    let mut response = globals
+        .reqwest_client()?
+        .build()?
+        .execute(reqwest_request)
+        .await?;
 
     // reqwest::Response -> http::Response conversion
     let status = response.status();

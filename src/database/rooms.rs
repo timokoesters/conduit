@@ -3,7 +3,7 @@ mod edus;
 pub use edus::RoomEdus;
 use member::MembershipState;
 
-use crate::{pdu::PduBuilder, utils, Database, Error, PduEvent, Result};
+use crate::{Database, Error, PduEvent, Result, pdu::PduBuilder, server_server, utils};
 use lru_cache::LruCache;
 use regex::Regex;
 use ring::digest;
@@ -22,12 +22,7 @@ use ruma::{
     state_res::{self, RoomVersion, StateMap},
     uint, EventId, RoomAliasId, RoomId, RoomVersionId, ServerName, UserId,
 };
-use std::{
-    collections::{BTreeMap, HashMap, HashSet},
-    convert::{TryFrom, TryInto},
-    mem::size_of,
-    sync::{Arc, Mutex},
-};
+use std::{collections::{BTreeMap, HashMap, HashSet}, convert::{TryFrom, TryInto}, mem::size_of, sync::{Arc, Mutex}, time::Instant};
 use tokio::sync::MutexGuard;
 use tracing::{error, warn};
 
@@ -1514,6 +1509,23 @@ impl Rooms {
                                 }
                                 "list_appservices" => {
                                     db.admin.send(AdminCommand::ListAppservices);
+                                }
+                                "get_auth_chain" => {
+                                    if args.len() == 1 {
+                                        if let Ok(event_id) = EventId::try_from(args[0]) {
+                                            let start = Instant::now();
+                                            let count =
+                                                server_server::get_auth_chain(vec![event_id], db)?
+                                                    .count();
+                                            let elapsed = start.elapsed();
+                                            db.admin.send(AdminCommand::SendMessage(
+                                                message::MessageEventContent::text_plain(format!(
+                                                    "Loaded auth chain with length {} in {:?}",
+                                                    count, elapsed
+                                                )),
+                                            ));
+                                        }
+                                    }
                                 }
                                 "get_pdu" => {
                                     if args.len() == 1 {

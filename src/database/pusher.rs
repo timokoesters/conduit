@@ -113,7 +113,11 @@ where
     //*reqwest_request.timeout_mut() = Some(Duration::from_secs(5));
 
     let url = reqwest_request.url().clone();
-    let response = globals.reqwest_client().execute(reqwest_request).await;
+    let response = globals
+        .reqwest_client()?
+        .build()?
+        .execute(reqwest_request)
+        .await;
 
     match response {
         Ok(mut response) => {
