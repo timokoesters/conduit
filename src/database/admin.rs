@@ -3,19 +3,21 @@ use std::{
     sync::Arc,
 };
 
-use crate::{pdu::PduBuilder, Database};
 use rocket::futures::{channel::mpsc, stream::StreamExt};
 use ruma::{
-    events::{room::message, EventType},
+    events::{EventType, room::message},
     UserId,
 };
-use tokio::sync::{MutexGuard, RwLock, RwLockReadGuard};
+use tokio::sync::{MutexGuard, RwLock, RwLockWriteGuard};
 use tracing::warn;
+
+use crate::{Database, pdu::PduBuilder};
 
 pub enum AdminCommand {
     RegisterAppservice(serde_yaml::Value),
     ListAppservices,
     SendMessage(message::MessageEventContent),
+    ShowCacheUsage,
 }
 
 #[derive(Clone)]
@@ -59,7 +61,7 @@ impl Admin {
             drop(guard);
 
             let send_message = |message: message::MessageEventContent,
-                                guard: RwLockReadGuard<'_, Database>,
+                                guard: RwLockWriteGuard<'_, Database>,
                                 mutex_lock: &MutexGuard<'_, ()>| {
                 guard
                     .rooms
@@ -83,7 +85,7 @@ impl Admin {
             loop {
                 tokio::select! {
                     Some(event) = receiver.next() => {
-                        let guard = db.read().await;
+                        let mut guard = db.write().await;
                         let mutex_state = Arc::clone(
                             guard.globals
                                 .roomid_mutex_state
@@ -92,6 +94,7 @@ impl Admin {
                                 .entry(conduit_room.clone())
                                 .or_default(),
                         );
+
                         let state_lock = mutex_state.lock().await;
 
                         match event {
@@ -113,6 +116,37 @@ impl Admin {
                             }
                             AdminCommand::SendMessage(message) => {
                                 send_message(message, guard, &state_lock);
+                            }
+                            AdminCommand::ShowCacheUsage => {
+
+                                fn format_cache_statistics_triple(name: String, triple: (usize, usize, usize)) -> String {
+                                    let (memory_usage, item_count, capacity) = triple;
+                                    format!(
+                                        "{0} is using {1} MB ({2} bytes) of RAM at {3:.2}% utilization.",
+                                        name,
+                                        memory_usage / 100_00,
+                                        memory_usage ,
+                                        ((item_count as f32 / capacity as f32) * 100.0)
+                                    )
+                                }
+
+                                if let Ok(cache_usage_statistics) = guard.get_cache_usage() {
+
+                                    let mut statistics_lines =  Vec::with_capacity(7);
+                                    statistics_lines.push(format_cache_statistics_triple("pdu_cache".to_string(), cache_usage_statistics.pdu_cache));
+                                    statistics_lines.push(format_cache_statistics_triple("auth_chain_cache".to_string(), cache_usage_statistics.auth_chain_cache));
+                                    statistics_lines.push(format_cache_statistics_triple("shorteventid_cache".to_string(), cache_usage_statistics.shorteventid_cache));
+                                    statistics_lines.push(format_cache_statistics_triple("eventidshort_cache".to_string(), cache_usage_statistics.eventidshort_cache));
+                                    statistics_lines.push(format_cache_statistics_triple("statekeyshort_cache".to_string(), cache_usage_statistics.statekeyshort_cache));
+                                    statistics_lines.push(format_cache_statistics_triple("shortstatekey_cache".to_string(), cache_usage_statistics.shortstatekey_cache));
+                                    statistics_lines.push(format_cache_statistics_triple("stateinfo_cache".to_string(), cache_usage_statistics.stateinfo_cache));
+
+                                    send_message(message::MessageEventContent::text_plain(statistics_lines.join("\n")), guard, &state_lock);
+                                } else {
+                                    let result_text = "Could not calculate database cache size";
+                                    send_message(message::MessageEventContent::text_plain(result_text), guard, &state_lock);
+                                }
+
                             }
                         }
 

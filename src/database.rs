@@ -1,3 +1,34 @@
+use std::{
+    collections::{BTreeMap, HashMap, HashSet},
+    convert::{TryFrom, TryInto},
+    fs::{self, remove_dir_all},
+    io::Write,
+    mem::size_of,
+    ops::Deref,
+    path::Path,
+    sync::{Arc, Mutex, RwLock},
+};
+use std::hash::Hash;
+
+use directories::ProjectDirs;
+use lru_cache::LruCache;
+use rocket::{
+    futures::{channel::mpsc, stream::FuturesUnordered, StreamExt},
+    outcome::{IntoOutcome, try_outcome},
+    request::{FromRequest, Request},
+    Shutdown, State,
+};
+use ruma::{DeviceId, EventId, RoomId, ServerName, UserId};
+use serde::{de::IgnoredAny, Deserialize};
+use tokio::sync::{OwnedRwLockReadGuard, RwLock as TokioRwLock, Semaphore};
+use tracing::{debug, error, warn};
+
+use abstraction::DatabaseEngine;
+
+use crate::{Error, Result, utils};
+
+use self::proxy::ProxyConfig;
+
 pub mod abstraction;
 
 pub mod account_data;
@@ -13,33 +44,6 @@ pub mod sending;
 pub mod transaction_ids;
 pub mod uiaa;
 pub mod users;
-
-use crate::{utils, Error, Result};
-use abstraction::DatabaseEngine;
-use directories::ProjectDirs;
-use lru_cache::LruCache;
-use rocket::{
-    futures::{channel::mpsc, stream::FuturesUnordered, StreamExt},
-    outcome::{try_outcome, IntoOutcome},
-    request::{FromRequest, Request},
-    Shutdown, State,
-};
-use ruma::{DeviceId, EventId, RoomId, ServerName, UserId};
-use serde::{de::IgnoredAny, Deserialize};
-use std::{
-    collections::{BTreeMap, HashMap, HashSet},
-    convert::{TryFrom, TryInto},
-    fs::{self, remove_dir_all},
-    io::Write,
-    mem::size_of,
-    ops::Deref,
-    path::Path,
-    sync::{Arc, Mutex, RwLock},
-};
-use tokio::sync::{OwnedRwLockReadGuard, RwLock as TokioRwLock, Semaphore};
-use tracing::{debug, error, warn};
-
-use self::proxy::ProxyConfig;
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct Config {
@@ -132,6 +136,17 @@ pub type Engine = abstraction::sqlite::Engine;
 #[cfg(feature = "heed")]
 pub type Engine = abstraction::heed::Engine;
 
+// for each key: (memory_usage in bytes, items in cache, capacity)
+pub struct CacheUsageStatistics {
+    pdu_cache: (usize, usize, usize),
+    auth_chain_cache: (usize, usize, usize),
+    shorteventid_cache: (usize, usize, usize),
+    eventidshort_cache: (usize, usize, usize),
+    statekeyshort_cache: (usize, usize, usize),
+    shortstatekey_cache: (usize, usize, usize),
+    stateinfo_cache: (usize, usize, usize),
+}
+
 pub struct Database {
     _db: Arc<Engine>,
     pub globals: globals::Globals,
@@ -163,27 +178,27 @@ impl Database {
 
     fn check_sled_or_sqlite_db(config: &Config) -> Result<()> {
         #[cfg(feature = "backend_sqlite")]
-        {
-            let path = Path::new(&config.database_path);
+            {
+                let path = Path::new(&config.database_path);
 
-            let sled_exists = path.join("db").exists();
-            let sqlite_exists = path.join("conduit.db").exists();
-            if sled_exists {
-                if sqlite_exists {
-                    // most likely an in-place directory, only warn
-                    warn!("Both sled and sqlite databases are detected in database directory");
-                    warn!("Currently running from the sqlite database, but consider removing sled database files to free up space")
-                } else {
-                    error!(
+                let sled_exists = path.join("db").exists();
+                let sqlite_exists = path.join("conduit.db").exists();
+                if sled_exists {
+                    if sqlite_exists {
+                        // most likely an in-place directory, only warn
+                        warn!("Both sled and sqlite databases are detected in database directory");
+                        warn!("Currently running from the sqlite database, but consider removing sled database files to free up space")
+                    } else {
+                        error!(
                         "Sled database detected, conduit now uses sqlite for database operations"
                     );
-                    error!("This database must be converted to sqlite, go to https://github.com/ShadowJonathan/conduit_toolbox#conduit_sled_to_sqlite");
-                    return Err(Error::bad_config(
-                        "sled database detected, migrate to sqlite",
-                    ));
+                        error!("This database must be converted to sqlite, go to https://github.com/ShadowJonathan/conduit_toolbox#conduit_sled_to_sqlite");
+                        return Err(Error::bad_config(
+                            "sled database detected, migrate to sqlite",
+                        ));
+                    }
                 }
             }
-        }
 
         Ok(())
     }
@@ -728,9 +743,9 @@ impl Database {
         drop(guard);
 
         #[cfg(feature = "sqlite")]
-        {
-            Self::start_wal_clean_task(Arc::clone(&db), &config).await;
-        }
+            {
+                Self::start_wal_clean_task(Arc::clone(&db), &config).await;
+            }
 
         Ok(db)
     }
@@ -881,7 +896,7 @@ impl Database {
         tokio::spawn(async move {
             let mut i = interval(timer_interval);
             #[cfg(unix)]
-            let mut s = signal(SignalKind::hangup()).unwrap();
+                let mut s = signal(SignalKind::hangup()).unwrap();
 
             loop {
                 #[cfg(unix)]
@@ -892,12 +907,13 @@ impl Database {
                     _ = s.recv() => {
                         info!("wal-trunc: Received SIGHUP");
                     }
-                };
-                #[cfg(not(unix))]
-                {
-                    i.tick().await;
-                    info!("wal-trunc: Timer ticked")
                 }
+                ;
+                #[cfg(not(unix))]
+                    {
+                        i.tick().await;
+                        info!("wal-trunc: Timer ticked")
+                    }
 
                 let start = Instant::now();
                 if let Err(e) = db.read().await.flush_wal() {
@@ -907,6 +923,65 @@ impl Database {
                 }
             }
         });
+    }
+
+    /// Measures memory usage in bytes and how full the caches are in percent for all caches in the Database struct.
+    pub fn get_cache_usage(&mut self) -> Result<CacheUsageStatistics> {
+        fn memory_usage_of_locked_cache<K: Eq + Hash, V>(cache: &mut Mutex<LruCache<K, V>>) -> usize {
+            let raw_cache = cache.lock().unwrap();
+            let mut cache_items_size_sum: usize = 0;
+            for cache_item in raw_cache.iter() {
+                cache_items_size_sum += std::mem::size_of_val(&cache_item);
+            }
+            cache_items_size_sum += std::mem::size_of_val(&cache);
+            cache_items_size_sum
+        }
+
+        fn items_in_locked_cache<K: Eq + Hash, V>(cache: &mut Mutex<LruCache<K, V>>) -> usize {
+            cache.lock().unwrap().len()
+        }
+        fn capacity_of_locked_cache<K: Eq + Hash, V>(cache: &mut Mutex<LruCache<K, V>>) -> usize {
+            cache.lock().unwrap().capacity()
+        }
+
+        return
+            Ok(CacheUsageStatistics {
+                pdu_cache: (
+                    memory_usage_of_locked_cache(&mut self.rooms.pdu_cache),
+                    items_in_locked_cache(&mut self.rooms.pdu_cache),
+                    capacity_of_locked_cache(&mut self.rooms.pdu_cache)
+                ),
+                auth_chain_cache: (
+                    memory_usage_of_locked_cache(&mut self.rooms.auth_chain_cache),
+                    items_in_locked_cache(&mut self.rooms.auth_chain_cache),
+                    capacity_of_locked_cache(&mut self.rooms.auth_chain_cache)
+                ),
+                shorteventid_cache: (
+                    memory_usage_of_locked_cache(&mut self.rooms.shorteventid_cache),
+                    items_in_locked_cache(&mut self.rooms.shorteventid_cache),
+                    capacity_of_locked_cache(&mut self.rooms.shorteventid_cache)
+                ),
+                eventidshort_cache: (
+                    memory_usage_of_locked_cache(&mut self.rooms.eventidshort_cache),
+                    items_in_locked_cache(&mut self.rooms.eventidshort_cache),
+                    capacity_of_locked_cache(&mut self.rooms.eventidshort_cache)
+                ),
+                statekeyshort_cache: (
+                    memory_usage_of_locked_cache(&mut self.rooms.statekeyshort_cache),
+                    items_in_locked_cache(&mut self.rooms.statekeyshort_cache),
+                    capacity_of_locked_cache(&mut self.rooms.statekeyshort_cache)
+                ),
+                shortstatekey_cache: (
+                    memory_usage_of_locked_cache(&mut self.rooms.shortstatekey_cache),
+                    items_in_locked_cache(&mut self.rooms.shortstatekey_cache),
+                    capacity_of_locked_cache(&mut self.rooms.shortstatekey_cache)
+                ),
+                stateinfo_cache: (
+                    memory_usage_of_locked_cache(&mut self.rooms.stateinfo_cache),
+                    items_in_locked_cache(&mut self.rooms.stateinfo_cache),
+                    capacity_of_locked_cache(&mut self.rooms.stateinfo_cache)
+                ),
+            });
     }
 }
 

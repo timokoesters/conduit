@@ -1,37 +1,39 @@
-mod edus;
-
-pub use edus::RoomEdus;
-use member::MembershipState;
-
-use crate::{pdu::PduBuilder, utils, Database, Error, PduEvent, Result};
-use lru_cache::LruCache;
-use regex::Regex;
-use ring::digest;
-use rocket::http::RawStr;
-use ruma::{
-    api::{client::error::ErrorKind, federation},
-    events::{
-        ignored_user_list, push_rules,
-        room::{
-            create::CreateEventContent, member, message, power_levels::PowerLevelsEventContent,
-        },
-        AnyStrippedStateEvent, AnySyncStateEvent, EventType,
-    },
-    push::{self, Action, Tweak},
-    serde::{CanonicalJsonObject, CanonicalJsonValue, Raw},
-    state_res::{self, RoomVersion, StateMap},
-    uint, EventId, RoomAliasId, RoomId, RoomVersionId, ServerName, UserId,
-};
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     convert::{TryFrom, TryInto},
     mem::size_of,
     sync::{Arc, Mutex},
 };
+
+use lru_cache::LruCache;
+use member::MembershipState;
+use regex::Regex;
+use ring::digest;
+use rocket::http::RawStr;
+use ruma::{
+    api::{client::error::ErrorKind, federation},
+    EventId,
+    events::{
+        AnyStrippedStateEvent, AnySyncStateEvent,
+        EventType,
+        ignored_user_list, push_rules, room::{
+            create::CreateEventContent, member, message, power_levels::PowerLevelsEventContent,
+        },
+    },
+    push::{self, Action, Tweak},
+    RoomAliasId,
+    RoomId, RoomVersionId, serde::{CanonicalJsonObject, CanonicalJsonValue, Raw}, ServerName, state_res::{self, RoomVersion, StateMap}, uint, UserId,
+};
 use tokio::sync::MutexGuard;
 use tracing::{error, warn};
 
+pub use edus::RoomEdus;
+
+use crate::{Database, Error, pdu::PduBuilder, PduEvent, Result, utils};
+
 use super::{abstraction::Tree, admin::AdminCommand, pusher};
+
+mod edus;
 
 /// The unique identifier of each state group.
 ///
@@ -1563,10 +1565,13 @@ impl Rooms {
                                         ));
                                     }
                                 }
+                                "show_cache_usage" => {
+                                    db.admin.send(AdminCommand::ShowCacheUsage);
+                                }
                                 _ => {
                                     db.admin.send(AdminCommand::SendMessage(
                                         message::MessageEventContent::text_plain(format!(
-                                            "Unrecognized command: {}",
+                                            "Unrecognized command: {}\nAvailable commands:\n- register_appservice\n- list_appservices\n- get_pdu\n- show_cache_usage",
                                             command
                                         )),
                                     ));
