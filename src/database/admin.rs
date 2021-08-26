@@ -5,13 +5,13 @@ use std::{
 
 use rocket::futures::{channel::mpsc, stream::StreamExt};
 use ruma::{
-    events::{EventType, room::message},
+    events::{room::message, EventType},
     UserId,
 };
 use tokio::sync::{MutexGuard, RwLock, RwLockWriteGuard};
 use tracing::warn;
 
-use crate::{Database, pdu::PduBuilder};
+use crate::{pdu::PduBuilder, Database};
 
 pub enum AdminCommand {
     RegisterAppservice(serde_yaml::Value),

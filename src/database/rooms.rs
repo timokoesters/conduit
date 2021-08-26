@@ -12,24 +12,24 @@ use ring::digest;
 use rocket::http::RawStr;
 use ruma::{
     api::{client::error::ErrorKind, federation},
-    EventId,
     events::{
-        AnyStrippedStateEvent, AnySyncStateEvent,
-        EventType,
-        ignored_user_list, push_rules, room::{
+        ignored_user_list, push_rules,
+        room::{
             create::CreateEventContent, member, message, power_levels::PowerLevelsEventContent,
         },
+        AnyStrippedStateEvent, AnySyncStateEvent, EventType,
     },
     push::{self, Action, Tweak},
-    RoomAliasId,
-    RoomId, RoomVersionId, serde::{CanonicalJsonObject, CanonicalJsonValue, Raw}, ServerName, state_res::{self, RoomVersion, StateMap}, uint, UserId,
+    serde::{CanonicalJsonObject, CanonicalJsonValue, Raw},
+    state_res::{self, RoomVersion, StateMap},
+    uint, EventId, RoomAliasId, RoomId, RoomVersionId, ServerName, UserId,
 };
 use tokio::sync::MutexGuard;
 use tracing::{error, warn};
 
 pub use edus::RoomEdus;
 
-use crate::{Database, Error, pdu::PduBuilder, PduEvent, Result, utils};
+use crate::{pdu::PduBuilder, utils, Database, Error, PduEvent, Result};
 
 use super::{abstraction::Tree, admin::AdminCommand, pusher};
 
