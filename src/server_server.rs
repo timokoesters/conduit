@@ -343,9 +343,9 @@ async fn find_actual_destination(
                         match get_ip_with_port(&delegated_hostname) {
                             Some(host_and_port) => host_and_port, // 3.1: IP literal in .well-known file
                             None => {
-                                if let Some(pos) = destination_str.find(':') {
+                                if let Some(pos) = delegated_hostname.find(':') {
                                     // 3.2: Hostname with port in .well-known file
-                                    let (host, port) = destination_str.split_at(pos);
+                                    let (host, port) = delegated_hostname.split_at(pos);
                                     FedDest::Named(host.to_string(), port.to_string())
                                 } else {
                                     match query_srv_record(globals, &delegated_hostname).await {
