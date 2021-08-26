@@ -1980,15 +1980,9 @@ fn get_auth_chain(
     let mut buckets = vec![BTreeSet::new(); NUM_BUCKETS];
 
     for id in starting_events {
-        if let Some(pdu) = db.rooms.get_pdu(&id)? {
-            for auth_event in &pdu.auth_events {
-                let short = db
-                    .rooms
-                    .get_or_create_shorteventid(&auth_event, &db.globals)?;
-                let bucket_id = (short % NUM_BUCKETS as u64) as usize;
-                buckets[bucket_id].insert((short, auth_event.clone()));
-            }
-        }
+        let short = db.rooms.get_or_create_shorteventid(&id, &db.globals)?;
+        let bucket_id = (short % NUM_BUCKETS as u64) as usize;
+        buckets[bucket_id].insert((short, id.clone()));
     }
 
     let mut full_auth_chain = HashSet::new();
@@ -1999,10 +1993,6 @@ fn get_auth_chain(
         if chunk.is_empty() {
             continue;
         }
-
-        // The code below will only get the auth chains, not the events in the chunk. So let's add
-        // them first
-        full_auth_chain.extend(chunk.iter().map(|(id, _)| id));
 
         let chunk_key = chunk
             .iter()
