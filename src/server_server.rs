@@ -51,7 +51,7 @@ use ruma::{
     ServerSigningKeyId, UserId,
 };
 use std::{
-    collections::{btree_map, hash_map, BTreeMap, HashMap, HashSet},
+    collections::{btree_map, hash_map, BTreeMap, BTreeSet, HashMap, HashSet},
     convert::{TryFrom, TryInto},
     fmt::Debug,
     future::Future,
@@ -1975,44 +1975,85 @@ fn get_auth_chain(
     starting_events: Vec<EventId>,
     db: &Database,
 ) -> Result<impl Iterator<Item = EventId> + '_> {
-    let mut full_auth_chain = HashSet::new();
+    const NUM_BUCKETS: usize = 50;
 
-    const NUM_BUCKETS: usize = 100;
-
-    let mut buckets = vec![HashSet::new(); NUM_BUCKETS];
+    let mut buckets = vec![BTreeSet::new(); NUM_BUCKETS];
 
     for id in starting_events {
-        let short = db.rooms.get_or_create_shorteventid(&id, &db.globals)?;
-        let bucket_id = (short % NUM_BUCKETS as u64) as usize;
-        buckets[bucket_id].insert((short, id));
+        if let Some(pdu) = db.rooms.get_pdu(&id)? {
+            for auth_event in &pdu.auth_events {
+                let short = db
+                    .rooms
+                    .get_or_create_shorteventid(&auth_event, &db.globals)?;
+                let bucket_id = (short % NUM_BUCKETS as u64) as usize;
+                buckets[bucket_id].insert((short, auth_event.clone()));
+            }
+        }
     }
 
-    let mut cache = db.rooms.auth_chain_cache();
+    let mut full_auth_chain = HashSet::new();
 
+    let mut hits = 0;
+    let mut misses = 0;
     for chunk in buckets {
-        let chunk_key = chunk.iter().map(|(short, _)| short).copied().collect();
-        if let Some(cached) = cache.get_mut(&chunk_key) {
-            full_auth_chain.extend(cached.iter().cloned());
+        if chunk.is_empty() {
             continue;
         }
 
+        // The code below will only get the auth chains, not the events in the chunk. So let's add
+        // them first
+        full_auth_chain.extend(chunk.iter().map(|(id, _)| id));
+
+        let chunk_key = chunk
+            .iter()
+            .map(|(short, _)| short)
+            .copied()
+            .collect::<Vec<u64>>();
+        if let Some(cached) = db.rooms.get_auth_chain_from_cache(&chunk_key)? {
+            hits += 1;
+            full_auth_chain.extend(cached.iter().cloned());
+            continue;
+        }
+        misses += 1;
+
         let mut chunk_cache = HashSet::new();
+        let mut hits2 = 0;
+        let mut misses2 = 0;
         for (sevent_id, event_id) in chunk {
-            if let Some(cached) = cache.get_mut(&[sevent_id][..]) {
+            if let Some(cached) = db.rooms.get_auth_chain_from_cache(&[sevent_id])? {
+                hits2 += 1;
                 chunk_cache.extend(cached.iter().cloned());
             } else {
-                drop(cache);
-                let auth_chain = get_auth_chain_inner(&event_id, db)?;
-                cache = db.rooms.auth_chain_cache();
-                cache.insert(vec![sevent_id], auth_chain.clone());
-                chunk_cache.extend(auth_chain);
+                misses2 += 1;
+                let auth_chain = Arc::new(get_auth_chain_inner(&event_id, db)?);
+                db.rooms
+                    .cache_auth_chain(vec![sevent_id], Arc::clone(&auth_chain))?;
+                println!(
+                    "cache missed event {} with auth chain len {}",
+                    event_id,
+                    auth_chain.len()
+                );
+                chunk_cache.extend(auth_chain.iter());
             };
         }
-        cache.insert(chunk_key, chunk_cache.clone());
-        full_auth_chain.extend(chunk_cache);
+        println!(
+            "chunk missed with len {}, event hits2: {}, misses2: {}",
+            chunk_cache.len(),
+            hits2,
+            misses2
+        );
+        let chunk_cache = Arc::new(chunk_cache);
+        db.rooms
+            .cache_auth_chain(chunk_key, Arc::clone(&chunk_cache))?;
+        full_auth_chain.extend(chunk_cache.iter());
     }
 
-    drop(cache);
+    println!(
+        "total: {}, chunk hits: {}, misses: {}",
+        full_auth_chain.len(),
+        hits,
+        misses
+    );
 
     Ok(full_auth_chain
         .into_iter()
