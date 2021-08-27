@@ -69,6 +69,7 @@ pub async fn join_room_by_id_route(
         &db,
         body.sender_user.as_ref(),
         &body.room_id,
+        body.reason.clone(),
         &servers,
         body.third_party_signed.as_ref(),
     )
@@ -120,6 +121,7 @@ pub async fn join_room_by_id_or_alias_route(
         &db,
         body.sender_user.as_ref(),
         &room_id,
+        body.reason.clone(),
         &servers,
         body.third_party_signed.as_ref(),
     )
@@ -144,7 +146,9 @@ pub async fn leave_room_route(
 ) -> ConduitResult<leave_room::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
-    db.rooms.leave_room(sender_user, &body.room_id, &db).await?;
+    db.rooms
+        .leave_room(sender_user, &body.room_id, body.reason.clone(), &db)
+        .await?;
 
     db.flush()?;
 
@@ -163,7 +167,15 @@ pub async fn invite_user_route(
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
     if let invite_user::IncomingInvitationRecipient::UserId { user_id } = &body.recipient {
-        invite_helper(sender_user, user_id, &body.room_id, &db, false).await?;
+        invite_helper(
+            sender_user,
+            user_id,
+            &body.room_id,
+            body.reason.clone(),
+            &db,
+            false,
+        )
+        .await?;
         db.flush()?;
         Ok(invite_user::Response {}.into())
     } else {
@@ -201,7 +213,7 @@ pub async fn kick_user_route(
     .map_err(|_| Error::bad_database("Invalid member event in database."))?;
 
     event.membership = ruma::events::room::member::MembershipState::Leave;
-    // TODO: reason
+    event.reason = body.reason.clone();
 
     let mutex_state = Arc::clone(
         db.globals
@@ -245,8 +257,6 @@ pub async fn ban_user_route(
 ) -> ConduitResult<ban_user::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
-    // TODO: reason
-
     let event = db
         .rooms
         .room_state_get(
@@ -262,7 +272,7 @@ pub async fn ban_user_route(
                 is_direct: None,
                 third_party_invite: None,
                 blurhash: db.users.blurhash(&body.user_id)?,
-                reason: None,
+                reason: body.reason.clone(),
             }),
             |event| {
                 let mut event = serde_json::from_value::<Raw<member::MemberEventContent>>(
@@ -272,6 +282,7 @@ pub async fn ban_user_route(
                 .deserialize()
                 .map_err(|_| Error::bad_database("Invalid member event in database."))?;
                 event.membership = ruma::events::room::member::MembershipState::Ban;
+                event.reason = body.reason.clone();
                 Ok(event)
             },
         )?;
@@ -337,6 +348,7 @@ pub async fn unban_user_route(
     .map_err(|_| Error::bad_database("Invalid member event in database."))?;
 
     event.membership = ruma::events::room::member::MembershipState::Leave;
+    event.reason = body.reason.clone();
 
     let mutex_state = Arc::clone(
         db.globals
@@ -482,6 +494,7 @@ async fn join_room_by_id_helper(
     db: &Database,
     sender_user: Option<&UserId>,
     room_id: &RoomId,
+    reason: Option<String>,
     servers: &HashSet<Box<ServerName>>,
     _third_party_signed: Option<&IncomingThirdPartySigned>,
 ) -> ConduitResult<join_room_by_id::Response> {
@@ -564,7 +577,7 @@ async fn join_room_by_id_helper(
                 is_direct: None,
                 third_party_invite: None,
                 blurhash: db.users.blurhash(&sender_user)?,
-                reason: None,
+                reason,
             })
             .expect("event is valid, we just created it"),
         );
@@ -714,7 +727,7 @@ async fn join_room_by_id_helper(
             is_direct: None,
             third_party_invite: None,
             blurhash: db.users.blurhash(&sender_user)?,
-            reason: None,
+            reason,
         };
 
         db.rooms.build_and_append_pdu(
@@ -807,6 +820,7 @@ pub async fn invite_helper<'a>(
     sender_user: &UserId,
     user_id: &UserId,
     room_id: &RoomId,
+    reason: Option<String>,
     db: &Database,
     is_direct: bool,
 ) -> Result<()> {
@@ -869,7 +883,7 @@ pub async fn invite_helper<'a>(
                 membership: MembershipState::Invite,
                 third_party_invite: None,
                 blurhash: None,
-                reason: None,
+                reason,
             })
             .expect("member event is valid value");
 
@@ -1064,7 +1078,7 @@ pub async fn invite_helper<'a>(
                 is_direct: Some(is_direct),
                 third_party_invite: None,
                 blurhash: db.users.blurhash(&user_id)?,
-                reason: None,
+                reason,
             })
             .expect("event is valid, we just created it"),
             unsigned: None,

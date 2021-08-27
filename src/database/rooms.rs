@@ -2482,6 +2482,7 @@ impl Rooms {
         &self,
         user_id: &UserId,
         room_id: &RoomId,
+        reason: Option<String>,
         db: &Database,
     ) -> Result<()> {
         // Ask a remote server if we don't have this room
@@ -2530,6 +2531,7 @@ impl Rooms {
             .map_err(|_| Error::bad_database("Invalid member event in database."))?;
 
             event.membership = member::MembershipState::Leave;
+            event.reason = reason;
 
             self.build_and_append_pdu(
                 PduBuilder {
