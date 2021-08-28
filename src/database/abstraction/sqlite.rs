@@ -93,9 +93,8 @@ impl Engine {
     }
 
     pub fn flush_wal(self: &Arc<Self>) -> Result<()> {
-        // We use autocheckpoints
-        //self.write_lock()
-        //.pragma_update(Some(Main), "wal_checkpoint", &"TRUNCATE")?;
+        self.write_lock()
+            .pragma_update(Some(Main), "wal_checkpoint", &"TRUNCATE")?;
         Ok(())
     }
 }

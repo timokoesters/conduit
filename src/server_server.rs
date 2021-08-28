@@ -1184,13 +1184,13 @@ fn handle_outlier_pdu<'a>(
         // Build map of auth events
         let mut auth_events = HashMap::new();
         for id in &incoming_pdu.auth_events {
-            let auth_event = db
-                .rooms
-                .get_pdu(id)
-                .map_err(|e| e.to_string())?
-                .ok_or_else(|| {
-                    "Auth event not found, event failed recursive auth checks.".to_string()
-                })?;
+            let auth_event = match db.rooms.get_pdu(id).map_err(|e| e.to_string())? {
+                Some(e) => e,
+                None => {
+                    warn!("Could not find auth event {}", id);
+                    continue;
+                }
+            };
 
             match auth_events.entry((
                 auth_event.kind.clone(),
@@ -1767,7 +1767,7 @@ pub(crate) fn fetch_and_handle_outliers<'a>(
                     {
                         Ok(res) => {
                             warn!("Got {} over federation", id);
-                            let (event_id, value) =
+                            let (calculated_event_id, value) =
                                 match crate::pdu::gen_event_id_canonical_json(&res.pdu) {
                                     Ok(t) => t,
                                     Err(_) => {
@@ -1776,11 +1776,16 @@ pub(crate) fn fetch_and_handle_outliers<'a>(
                                     }
                                 };
 
+                            if calculated_event_id != **id {
+                                warn!("Server didn't return event id we requested: requested: {}, we got {}. Event: {:?}",
+                                    id, calculated_event_id, &res.pdu);
+                            }
+
                             // This will also fetch the auth chain
                             match handle_outlier_pdu(
                                 origin,
                                 create_event,
-                                &event_id,
+                                &id,
                                 &room_id,
                                 value.clone(),
                                 db,

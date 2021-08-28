@@ -1544,6 +1544,66 @@ impl Rooms {
                                         }
                                     }
                                 }
+                                "parse_pdu" => {
+                                    if body.len() > 2
+                                        && body[0].trim() == "```"
+                                        && body.last().unwrap().trim() == "```"
+                                    {
+                                        let string = body[1..body.len() - 1].join("\n");
+                                        match serde_json::from_str(&string) {
+                                            Ok(value) => {
+                                                let event_id = EventId::try_from(&*format!(
+                                                    "${}",
+                                                    // Anything higher than version3 behaves the same
+                                                    ruma::signatures::reference_hash(
+                                                        &value,
+                                                        &RoomVersionId::Version6
+                                                    )
+                                                    .expect("ruma can calculate reference hashes")
+                                                ))
+                                                .expect(
+                                                    "ruma's reference hashes are valid event ids",
+                                                );
+
+                                                match serde_json::from_value::<PduEvent>(
+                                                    serde_json::to_value(value)
+                                                        .expect("value is json"),
+                                                ) {
+                                                    Ok(pdu) => {
+                                                        db.admin.send(AdminCommand::SendMessage(
+                                                            message::MessageEventContent::text_plain(
+                                                                format!("EventId: {:?}\n{:#?}", event_id, pdu),
+                                                            ),
+                                                        ));
+                                                    }
+                                                    Err(e) => {
+                                                        db.admin.send(AdminCommand::SendMessage(
+                                                            message::MessageEventContent::text_plain(
+                                                                format!("EventId: {:?}\nCould not parse event: {}", event_id, e),
+                                                            ),
+                                                        ));
+                                                    }
+                                                }
+                                            }
+                                            Err(e) => {
+                                                db.admin.send(AdminCommand::SendMessage(
+                                                    message::MessageEventContent::text_plain(
+                                                        format!(
+                                                            "Invalid json in command body: {}",
+                                                            e
+                                                        ),
+                                                    ),
+                                                ));
+                                            }
+                                        }
+                                    } else {
+                                        db.admin.send(AdminCommand::SendMessage(
+                                            message::MessageEventContent::text_plain(
+                                                "Expected code block in command body.",
+                                            ),
+                                        ));
+                                    }
+                                }
                                 "get_pdu" => {
                                     if args.len() == 1 {
                                         if let Ok(event_id) = EventId::try_from(args[0]) {
