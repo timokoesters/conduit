@@ -256,8 +256,8 @@ async fn sync_helper(
 
         // Calculates joined_member_count, invited_member_count and heroes
         let calculate_counts = || {
-            let joined_member_count = db.rooms.room_members(&room_id).count();
-            let invited_member_count = db.rooms.room_members_invited(&room_id).count();
+            let joined_member_count = db.rooms.room_joined_count(&room_id)?.unwrap_or(0);
+            let invited_member_count = db.rooms.room_invited_count(&room_id)?.unwrap_or(0);
 
             // Recalculate heroes (first 5 members)
             let mut heroes = Vec::new();
@@ -407,64 +407,40 @@ async fn sync_helper(
                 });
 
             if encrypted_room {
-                for (user_id, current_member) in db
-                    .rooms
-                    .room_members(&room_id)
-                    .filter_map(|r| r.ok())
-                    .filter_map(|user_id| {
-                        db.rooms
-                            .state_get(
-                                current_shortstatehash,
-                                &EventType::RoomMember,
-                                user_id.as_str(),
-                            )
-                            .ok()
-                            .flatten()
-                            .map(|current_member| (user_id, current_member))
-                    })
-                {
-                    let current_membership = serde_json::from_value::<
-                        Raw<ruma::events::room::member::MemberEventContent>,
-                    >(current_member.content.clone())
-                    .expect("Raw::from_value always works")
-                    .deserialize()
-                    .map_err(|_| Error::bad_database("Invalid PDU in database."))?
-                    .membership;
+                for state_event in &state_events {
+                    if state_event.kind != EventType::RoomMember {
+                        continue;
+                    }
 
-                    let since_membership = db
-                        .rooms
-                        .state_get(
-                            since_shortstatehash,
-                            &EventType::RoomMember,
-                            user_id.as_str(),
-                        )?
-                        .and_then(|since_member| {
-                            serde_json::from_value::<
-                                Raw<ruma::events::room::member::MemberEventContent>,
-                            >(since_member.content.clone())
-                            .expect("Raw::from_value always works")
-                            .deserialize()
-                            .map_err(|_| Error::bad_database("Invalid PDU in database."))
-                            .ok()
-                        })
-                        .map_or(MembershipState::Leave, |member| member.membership);
+                    if let Some(state_key) = &state_event.state_key {
+                        let user_id = UserId::try_from(state_key.clone())
+                            .map_err(|_| Error::bad_database("Invalid UserId in member PDU."))?;
 
-                    let user_id = UserId::try_from(user_id.clone())
-                        .map_err(|_| Error::bad_database("Invalid UserId in member PDU."))?;
+                        if user_id == sender_user {
+                            continue;
+                        }
 
-                    match (since_membership, current_membership) {
-                        (MembershipState::Leave, MembershipState::Join) => {
-                            // A new user joined an encrypted room
-                            if !share_encrypted_room(&db, &sender_user, &user_id, &room_id)? {
-                                device_list_updates.insert(user_id);
+                        let new_membership = serde_json::from_value::<
+                            Raw<ruma::events::room::member::MemberEventContent>,
+                        >(state_event.content.clone())
+                        .expect("Raw::from_value always works")
+                        .deserialize()
+                        .map_err(|_| Error::bad_database("Invalid PDU in database."))?
+                        .membership;
+
+                        match new_membership {
+                            MembershipState::Join => {
+                                // A new user joined an encrypted room
+                                if !share_encrypted_room(&db, &sender_user, &user_id, &room_id)? {
+                                    device_list_updates.insert(user_id);
+                                }
                             }
+                            MembershipState::Leave => {
+                                // Write down users that have left encrypted rooms we are in
+                                left_encrypted_users.insert(user_id);
+                            }
+                            _ => {}
                         }
-                        // TODO: Remove, this should never happen here, right?
-                        (MembershipState::Join, MembershipState::Leave) => {
-                            // Write down users that have left encrypted rooms we are in
-                            left_encrypted_users.insert(user_id);
-                        }
-                        _ => {}
                     }
                 }
             }

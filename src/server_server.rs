@@ -1271,6 +1271,15 @@ async fn upgrade_outlier_to_timeline_pdu(
     if let Ok(Some(pduid)) = db.rooms.get_pdu_id(&incoming_pdu.event_id) {
         return Ok(Some(pduid));
     }
+
+    if db
+        .rooms
+        .is_event_soft_failed(&incoming_pdu.event_id)
+        .map_err(|_| "Failed to ask db for soft fail".to_owned())?
+    {
+        return Err("Event has been soft failed".into());
+    }
+
     // 10. Fetch missing state and auth chain events by calling /state_ids at backwards extremities
     //     doing all the checks in this list starting at 1. These are not timeline events.
 
@@ -1683,6 +1692,9 @@ async fn upgrade_outlier_to_timeline_pdu(
     if soft_fail {
         // Soft fail, we keep the event as an outlier but don't add it to the timeline
         warn!("Event was soft failed: {:?}", incoming_pdu);
+        db.rooms
+            .mark_event_soft_failed(&incoming_pdu.event_id)
+            .map_err(|_| "Failed to set soft failed flag".to_owned())?;
         return Err("Event has been soft failed".into());
     }
 

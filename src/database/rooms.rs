@@ -26,7 +26,7 @@ use std::{
     collections::{BTreeMap, HashMap, HashSet},
     convert::{TryFrom, TryInto},
     mem::size_of,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, RwLock},
     time::Instant,
 };
 use tokio::sync::MutexGuard;
@@ -59,6 +59,7 @@ pub struct Rooms {
     pub(super) userroomid_joined: Arc<dyn Tree>,
     pub(super) roomuserid_joined: Arc<dyn Tree>,
     pub(super) roomid_joinedcount: Arc<dyn Tree>,
+    pub(super) roomid_invitedcount: Arc<dyn Tree>,
     pub(super) roomuseroncejoinedids: Arc<dyn Tree>,
     pub(super) userroomid_invitestate: Arc<dyn Tree>, // InviteState = Vec<Raw<Pdu>>
     pub(super) roomuserid_invitecount: Arc<dyn Tree>, // InviteCount = Count
@@ -90,6 +91,7 @@ pub struct Rooms {
     /// RoomId + EventId -> outlier PDU.
     /// Any pdu that has passed the steps 1-8 in the incoming event /federation/send/txn.
     pub(super) eventid_outlierpdu: Arc<dyn Tree>,
+    pub(super) softfailedeventids: Arc<dyn Tree>,
 
     /// RoomId + EventId -> Parent PDU EventId.
     pub(super) referencedevents: Arc<dyn Tree>,
@@ -100,6 +102,7 @@ pub struct Rooms {
     pub(super) eventidshort_cache: Mutex<LruCache<EventId, u64>>,
     pub(super) statekeyshort_cache: Mutex<LruCache<(EventType, String), u64>>,
     pub(super) shortstatekey_cache: Mutex<LruCache<u64, (EventType, String)>>,
+    pub(super) our_real_users_cache: RwLock<HashMap<RoomId, Arc<HashSet<UserId>>>>,
     pub(super) stateinfo_cache: Mutex<
         LruCache<
             u64,
@@ -425,7 +428,7 @@ impl Rooms {
             }
         }
 
-        self.update_joined_count(room_id)?;
+        self.update_joined_count(room_id, &db)?;
 
         self.roomid_shortstatehash
             .insert(room_id.as_bytes(), &new_shortstatehash.to_be_bytes())?;
@@ -1229,9 +1232,19 @@ impl Rooms {
         self.eventid_outlierpdu.insert(
             &event_id.as_bytes(),
             &serde_json::to_vec(&pdu).expect("CanonicalJsonObject is valid"),
-        )?;
+        )
+    }
 
-        Ok(())
+    #[tracing::instrument(skip(self))]
+    pub fn mark_event_soft_failed(&self, event_id: &EventId) -> Result<()> {
+        self.softfailedeventids.insert(&event_id.as_bytes(), &[])
+    }
+
+    #[tracing::instrument(skip(self))]
+    pub fn is_event_soft_failed(&self, event_id: &EventId) -> Result<bool> {
+        self.softfailedeventids
+            .get(&event_id.as_bytes())
+            .map(|o| o.is_some())
     }
 
     /// Creates a new persisted data unit and adds it to a room.
@@ -1334,15 +1347,9 @@ impl Rooms {
         let mut notifies = Vec::new();
         let mut highlights = Vec::new();
 
-        for user in db
-            .rooms
-            .room_members(&pdu.room_id)
-            .filter_map(|r| r.ok())
-            .filter(|user_id| user_id.server_name() == db.globals.server_name())
-            .filter(|user_id| !db.users.is_deactivated(user_id).unwrap_or(true))
-        {
+        for user in self.get_our_real_users(&pdu.room_id, db)?.iter() {
             // Don't notify the user of their own events
-            if user == pdu.sender {
+            if user == &pdu.sender {
                 continue;
             }
 
@@ -2443,28 +2450,44 @@ impl Rooms {
         }
 
         if update_joined_count {
-            self.update_joined_count(room_id)?;
+            self.update_joined_count(room_id, db)?;
         }
 
         Ok(())
     }
 
-    #[tracing::instrument(skip(self))]
-    pub fn update_joined_count(&self, room_id: &RoomId) -> Result<()> {
+    #[tracing::instrument(skip(self, room_id, db))]
+    pub fn update_joined_count(&self, room_id: &RoomId, db: &Database) -> Result<()> {
         let mut joinedcount = 0_u64;
+        let mut invitedcount = 0_u64;
         let mut joined_servers = HashSet::new();
+        let mut real_users = HashSet::new();
 
         for joined in self.room_members(&room_id).filter_map(|r| r.ok()) {
             joined_servers.insert(joined.server_name().to_owned());
+            if joined.server_name() == db.globals.server_name()
+                && !db.users.is_deactivated(&joined).unwrap_or(true)
+            {
+                real_users.insert(joined);
+            }
             joinedcount += 1;
         }
 
         for invited in self.room_members_invited(&room_id).filter_map(|r| r.ok()) {
             joined_servers.insert(invited.server_name().to_owned());
+            invitedcount += 1;
         }
 
         self.roomid_joinedcount
             .insert(room_id.as_bytes(), &joinedcount.to_be_bytes())?;
+
+        self.roomid_invitedcount
+            .insert(room_id.as_bytes(), &invitedcount.to_be_bytes())?;
+
+        self.our_real_users_cache
+            .write()
+            .unwrap()
+            .insert(room_id.clone(), Arc::new(real_users));
 
         for old_joined_server in self.room_servers(room_id).filter_map(|r| r.ok()) {
             if !joined_servers.remove(&old_joined_server) {
@@ -2497,6 +2520,32 @@ impl Rooms {
         }
 
         Ok(())
+    }
+
+    #[tracing::instrument(skip(self, room_id, db))]
+    pub fn get_our_real_users(
+        &self,
+        room_id: &RoomId,
+        db: &Database,
+    ) -> Result<Arc<HashSet<UserId>>> {
+        let maybe = self
+            .our_real_users_cache
+            .read()
+            .unwrap()
+            .get(room_id)
+            .cloned();
+        if let Some(users) = maybe {
+            Ok(users)
+        } else {
+            self.update_joined_count(room_id, &db)?;
+            Ok(Arc::clone(
+                self.our_real_users_cache
+                    .read()
+                    .unwrap()
+                    .get(room_id)
+                    .unwrap(),
+            ))
+        }
     }
 
     #[tracing::instrument(skip(self, db))]
@@ -2969,6 +3018,18 @@ impl Rooms {
     pub fn room_joined_count(&self, room_id: &RoomId) -> Result<Option<u64>> {
         Ok(self
             .roomid_joinedcount
+            .get(room_id.as_bytes())?
+            .map(|b| {
+                utils::u64_from_bytes(&b)
+                    .map_err(|_| Error::bad_database("Invalid joinedcount in db."))
+            })
+            .transpose()?)
+    }
+
+    #[tracing::instrument(skip(self))]
+    pub fn room_invited_count(&self, room_id: &RoomId) -> Result<Option<u64>> {
+        Ok(self
+            .roomid_invitedcount
             .get(room_id.as_bytes())?
             .map(|b| {
                 utils::u64_from_bytes(&b)

@@ -252,6 +252,7 @@ impl Database {
                 userroomid_joined: builder.open_tree("userroomid_joined")?,
                 roomuserid_joined: builder.open_tree("roomuserid_joined")?,
                 roomid_joinedcount: builder.open_tree("roomid_joinedcount")?,
+                roomid_invitedcount: builder.open_tree("roomid_invitedcount")?,
                 roomuseroncejoinedids: builder.open_tree("roomuseroncejoinedids")?,
                 userroomid_invitestate: builder.open_tree("userroomid_invitestate")?,
                 roomuserid_invitecount: builder.open_tree("roomuserid_invitecount")?,
@@ -277,6 +278,8 @@ impl Database {
                 statehash_shortstatehash: builder.open_tree("statehash_shortstatehash")?,
 
                 eventid_outlierpdu: builder.open_tree("eventid_outlierpdu")?,
+                softfailedeventids: builder.open_tree("softfailedeventids")?,
+
                 referencedevents: builder.open_tree("referencedevents")?,
                 pdu_cache: Mutex::new(LruCache::new(100_000)),
                 auth_chain_cache: Mutex::new(LruCache::new(1_000_000)),
@@ -285,6 +288,7 @@ impl Database {
                 shortstatekey_cache: Mutex::new(LruCache::new(1_000_000)),
                 statekeyshort_cache: Mutex::new(LruCache::new(1_000_000)),
                 stateinfo_cache: Mutex::new(LruCache::new(1000)),
+                our_real_users_cache: RwLock::new(HashMap::new()),
             },
             account_data: account_data::AccountData {
                 roomuserdataid_accountdata: builder.open_tree("roomuserdataid_accountdata")?,
@@ -442,7 +446,7 @@ impl Database {
                     let room_id =
                         RoomId::try_from(utils::string_from_bytes(&roomid).unwrap()).unwrap();
 
-                    db.rooms.update_joined_count(&room_id)?;
+                    db.rooms.update_joined_count(&room_id, &db)?;
                 }
 
                 db.globals.bump_database_version(6)?;
