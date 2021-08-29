@@ -227,7 +227,11 @@ impl Globals {
     /// Remove the outdated keys and insert the new ones.
     ///
     /// This doesn't actually check that the keys provided are newer than the old set.
-    pub fn add_signing_key(&self, origin: &ServerName, new_keys: ServerSigningKeys) -> Result<()> {
+    pub fn add_signing_key(
+        &self,
+        origin: &ServerName,
+        new_keys: ServerSigningKeys,
+    ) -> Result<BTreeMap<ServerSigningKeyId, VerifyKey>> {
         // Not atomic, but this is not critical
         let signingkeys = self.server_signingkeys.get(origin.as_bytes())?;
 
@@ -252,7 +256,14 @@ impl Globals {
             &serde_json::to_vec(&keys).expect("serversigningkeys can be serialized"),
         )?;
 
-        Ok(())
+        let mut tree = keys.verify_keys;
+        tree.extend(
+            keys.old_verify_keys
+                .into_iter()
+                .map(|old| (old.0, VerifyKey::new(old.1.key))),
+        );
+
+        Ok(tree)
     }
 
     /// This returns an empty `Ok(BTreeMap<..>)` when there are no keys found for the server.

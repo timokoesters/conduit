@@ -3279,13 +3279,18 @@ pub(crate) async fn fetch_required_signing_keys(
     Ok(())
 }
 
-pub fn get_missing_signing_keys_for_pdus(
+// Gets a list of servers for which we don't have the signing key yet. We go over
+// the PDUs and either cache the key or add it to the list that needs to be retrieved.
+fn get_missing_servers_for_pdus(
     pdus: &Vec<Raw<Pdu>>,
     servers: &mut BTreeMap<Box<ServerName>, BTreeMap<ServerSigningKeyId, QueryCriteria>>,
     room_version: &RoomVersionId,
     pub_key_map: &RwLock<BTreeMap<String, BTreeMap<String, String>>>,
     db: &Database,
 ) -> Result<()> {
+    let mut pkm = pub_key_map
+        .write()
+        .map_err(|_| Error::bad_database("RwLock is poisoned."))?;
     for pdu in pdus {
         let value = serde_json::from_str::<CanonicalJsonObject>(pdu.json().get()).map_err(|e| {
             error!("Invalid PDU in server response: {:?}: {:?}", pdu, e);
@@ -3342,6 +3347,10 @@ pub fn get_missing_signing_keys_for_pdus(
                 Error::BadServerResponse("Invalid servername in signatures of server response pdu.")
             })?;
 
+            if servers.contains_key(origin) {
+                continue;
+            }
+
             trace!("Loading signing keys for {}", origin);
 
             let result = db
@@ -3359,10 +3368,7 @@ pub fn get_missing_signing_keys_for_pdus(
                 );
             }
 
-            pub_key_map
-                .write()
-                .map_err(|_| Error::bad_database("RwLock is poisoned."))?
-                .insert(origin.to_string(), result);
+            pkm.insert(origin.to_string(), result);
         }
     }
 
@@ -3378,14 +3384,14 @@ pub async fn fetch_join_signing_keys(
     let mut servers =
         BTreeMap::<Box<ServerName>, BTreeMap<ServerSigningKeyId, QueryCriteria>>::new();
 
-    get_missing_signing_keys_for_pdus(
+    get_missing_servers_for_pdus(
         &event.room_state.state,
         &mut servers,
         &room_version,
         &pub_key_map,
         &db,
     )?;
-    get_missing_signing_keys_for_pdus(
+    get_missing_servers_for_pdus(
         &event.room_state.auth_chain,
         &mut servers,
         &room_version,
@@ -3424,23 +3430,19 @@ pub async fn fetch_join_signing_keys(
             .await
         {
             trace!("Got signing keys: {:?}", keys);
+            let mut pkm = pub_key_map
+                .write()
+                .map_err(|_| Error::bad_database("RwLock is poisoned."))?;
             for k in keys.server_keys {
                 // TODO: Check signature
                 servers.remove(&k.server_name);
 
-                db.globals.add_signing_key(&k.server_name, k.clone())?;
-
-                let result = db
-                    .globals
-                    .signing_keys_for(&k.server_name)?
+                let result = db.globals.add_signing_key(&k.server_name, k.clone())?
                     .into_iter()
                     .map(|(k, v)| (k.to_string(), v.key))
                     .collect::<BTreeMap<_, _>>();
 
-                pub_key_map
-                    .write()
-                    .map_err(|_| Error::bad_database("RwLock is poisoned."))?
-                    .insert(k.server_name.to_string(), result);
+                pkm.insert(k.server_name.to_string(), result);
             }
         }
         if servers.is_empty() {
@@ -3457,12 +3459,8 @@ pub async fn fetch_join_signing_keys(
         if let Ok(get_keys_response) = result {
             // TODO: We should probably not trust the server_name in the response.
             let server = &get_keys_response.server_key.server_name;
-            db.globals
-                .add_signing_key(server, get_keys_response.server_key.clone())?;
-
-            let result = db
-                .globals
-                .signing_keys_for(server)?
+            let result = db.globals
+                .add_signing_key(server, get_keys_response.server_key.clone())?
                 .into_iter()
                 .map(|(k, v)| (k.to_string(), v.key))
                 .collect::<BTreeMap<_, _>>();
