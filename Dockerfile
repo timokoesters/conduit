@@ -7,25 +7,29 @@
 # Alpine build image to build Conduit's statically compiled binary
 FROM alpine:3.14 as builder
 
+# Install packages needed for building all crates
+RUN apk add --no-cache \
+        cargo \
+        openssl-dev
+
 # Specifies if the local project is build or if Conduit gets build
 # from the official git repository. Defaults to the git repo.
 ARG LOCAL=false
 # Specifies which revision/commit is build. Defaults to HEAD
 ARG GIT_REF=origin/master
 
-# Install packages needed for building all crates
-RUN apk add --no-cache \
-        cargo \
-        openssl-dev
-
-
 # Copy project files from current folder
 COPY . .
 # Build it from the copied local files or from the official git repository
 RUN if [[ $LOCAL == "true" ]]; then \
+        mv ./docker/healthcheck.sh . ; \
+        echo "Building from local source..." ; \
         cargo install --path . ; \
     else \
-        cargo install --git "https://gitlab.com/famedly/conduit.git" --rev ${GIT_REF}; \
+        echo "Building revision '${GIT_REF}' from online source..." ; \
+        cargo install --git "https://gitlab.com/famedly/conduit.git" --rev ${GIT_REF} ; \
+        echo "Loadings healthcheck script from online source..." ; \
+        wget "https://gitlab.com/famedly/conduit/-/raw/${GIT_REF#origin/}/docker/healthcheck.sh" ; \
     fi
 
 ########################## RUNTIME IMAGE ##########################
@@ -64,6 +68,7 @@ EXPOSE 6167
 # /srv/conduit and create data folder for database
 RUN mkdir -p /srv/conduit/.local/share/conduit
 COPY --from=builder /root/.cargo/bin/conduit /srv/conduit/
+COPY --from=builder ./healthcheck.sh /srv/conduit/
 
 # Add www-data user and group with UID 82, as used by alpine
 # https://git.alpinelinux.org/aports/tree/main/nginx/nginx.pre-install
@@ -82,10 +87,7 @@ RUN apk add --no-cache \
         libgcc
 
 # Test if Conduit is still alive, uses the same endpoint as Element
-HEALTHCHECK --start-period=5s \
-    CMD curl --fail -s "http://localhost:$(grep -m1 -o 'port\s=\s[0-9]*' conduit.toml | grep -m1 -o '[0-9]*')/_matrix/client/versions" || \
-        curl -k --fail -s "https://localhost:$(grep -m1 -o 'port\s=\s[0-9]*' conduit.toml | grep -m1 -o '[0-9]*')/_matrix/client/versions" || \
-        exit 1
+HEALTHCHECK --start-period=5s --interval=60s CMD ./healthcheck.sh
 
 # Set user to www-data
 USER www-data
