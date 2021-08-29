@@ -48,7 +48,7 @@ use ruma::{
     state_res::{self, RoomVersion, StateMap},
     to_device::DeviceIdOrAllDevices,
     uint, EventId, MilliSecondsSinceUnixEpoch, RoomId, RoomVersionId, ServerName,
-    ServerSigningKeyId, UserId,
+    ServerSigningKeyId,
 };
 use std::{
     collections::{btree_map, hash_map, BTreeMap, BTreeSet, HashMap, HashSet},
@@ -2017,6 +2017,11 @@ fn append_incoming_pdu(
     )?;
 
     for appservice in db.appservice.all()? {
+        if db.rooms.appservice_in_room(&pdu.room_id, &appservice, db)? {
+            db.sending.send_pdu_appservice(&appservice.0, &pdu_id)?;
+            continue;
+        }
+
         if let Some(namespaces) = appservice.1.get("namespaces") {
             let users = namespaces
                 .get("users")
@@ -2029,45 +2034,35 @@ fn append_incoming_pdu(
                 });
             let aliases = namespaces
                 .get("aliases")
-                .and_then(|users| users.get("regex"))
-                .and_then(|regex| regex.as_str())
-                .and_then(|regex| Regex::new(regex).ok());
+                .and_then(|aliases| aliases.as_sequence())
+                .map_or_else(Vec::new, |aliases| {
+                    aliases
+                        .iter()
+                        .filter_map(|aliases| Regex::new(aliases.get("regex")?.as_str()?).ok())
+                        .collect::<Vec<_>>()
+                });
             let rooms = namespaces
                 .get("rooms")
                 .and_then(|rooms| rooms.as_sequence());
 
-            let room_aliases = db.rooms.room_aliases(&pdu.room_id);
-
-            let bridge_user_id = appservice
-                .1
-                .get("sender_localpart")
-                .and_then(|string| string.as_str())
-                .and_then(|string| {
-                    UserId::parse_with_server_name(string, db.globals.server_name()).ok()
-                });
-
-            #[allow(clippy::blocks_in_if_conditions)]
-            if bridge_user_id.map_or(false, |bridge_user_id| {
-                db.rooms
-                    .is_joined(&bridge_user_id, &pdu.room_id)
-                    .unwrap_or(false)
-            }) || users.iter().any(|users| {
+            let matching_users = |users: &Regex| {
                 users.is_match(pdu.sender.as_str())
                     || pdu.kind == EventType::RoomMember
                         && pdu
                             .state_key
                             .as_ref()
                             .map_or(false, |state_key| users.is_match(&state_key))
-            }) || aliases.map_or(false, |aliases| {
-                room_aliases
+            };
+            let matching_aliases = |aliases: &Regex| {
+                db.rooms
+                    .room_aliases(&pdu.room_id)
                     .filter_map(|r| r.ok())
                     .any(|room_alias| aliases.is_match(room_alias.as_str()))
-            }) || rooms.map_or(false, |rooms| rooms.contains(&pdu.room_id.as_str().into()))
-                || db
-                    .rooms
-                    .room_members(&pdu.room_id)
-                    .filter_map(|r| r.ok())
-                    .any(|member| users.iter().any(|regex| regex.is_match(member.as_str())))
+            };
+
+            if aliases.iter().any(matching_aliases)
+                || rooms.map_or(false, |rooms| rooms.contains(&pdu.room_id.as_str().into()))
+                || users.iter().any(matching_users)
             {
                 db.sending.send_pdu_appservice(&appservice.0, &pdu_id)?;
             }

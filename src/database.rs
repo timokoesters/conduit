@@ -287,8 +287,9 @@ impl Database {
                 eventidshort_cache: Mutex::new(LruCache::new(1_000_000)),
                 shortstatekey_cache: Mutex::new(LruCache::new(1_000_000)),
                 statekeyshort_cache: Mutex::new(LruCache::new(1_000_000)),
-                stateinfo_cache: Mutex::new(LruCache::new(1000)),
                 our_real_users_cache: RwLock::new(HashMap::new()),
+                appservice_in_room_cache: RwLock::new(HashMap::new()),
+                stateinfo_cache: Mutex::new(LruCache::new(1000)),
             },
             account_data: account_data::AccountData {
                 roomuserdataid_accountdata: builder.open_tree("roomuserdataid_accountdata")?,

@@ -103,6 +103,7 @@ pub struct Rooms {
     pub(super) statekeyshort_cache: Mutex<LruCache<(EventType, String), u64>>,
     pub(super) shortstatekey_cache: Mutex<LruCache<u64, (EventType, String)>>,
     pub(super) our_real_users_cache: RwLock<HashMap<RoomId, Arc<HashSet<UserId>>>>,
+    pub(super) appservice_in_room_cache: RwLock<HashMap<RoomId, HashMap<String, bool>>>,
     pub(super) stateinfo_cache: Mutex<
         LruCache<
             u64,
@@ -2110,6 +2111,11 @@ impl Rooms {
         }
 
         for appservice in db.appservice.all()? {
+            if self.appservice_in_room(room_id, &appservice, db)? {
+                db.sending.send_pdu_appservice(&appservice.0, &pdu_id)?;
+                continue;
+            }
+
             if let Some(namespaces) = appservice.1.get("namespaces") {
                 let users = namespaces
                     .get("users")
@@ -2133,17 +2139,6 @@ impl Rooms {
                     .get("rooms")
                     .and_then(|rooms| rooms.as_sequence());
 
-                let bridge_user_id = appservice
-                    .1
-                    .get("sender_localpart")
-                    .and_then(|string| string.as_str())
-                    .and_then(|string| {
-                        UserId::parse_with_server_name(string, db.globals.server_name()).ok()
-                    });
-
-                let user_is_joined =
-                    |bridge_user_id| self.is_joined(&bridge_user_id, room_id).unwrap_or(false);
-
                 let matching_users = |users: &Regex| {
                     users.is_match(pdu.sender.as_str())
                         || pdu.kind == EventType::RoomMember
@@ -2151,9 +2146,6 @@ impl Rooms {
                                 .state_key
                                 .as_ref()
                                 .map_or(false, |state_key| users.is_match(&state_key))
-                        || self.room_members(&room_id).any(|userid| {
-                            userid.map_or(false, |userid| users.is_match(userid.as_str()))
-                        })
                 };
                 let matching_aliases = |aliases: &Regex| {
                     self.room_aliases(&room_id)
@@ -2161,8 +2153,7 @@ impl Rooms {
                         .any(|room_alias| aliases.is_match(room_alias.as_str()))
                 };
 
-                if bridge_user_id.map_or(false, user_is_joined)
-                    || aliases.iter().any(matching_aliases)
+                if aliases.iter().any(matching_aliases)
                     || rooms.map_or(false, |rooms| rooms.contains(&room_id.as_str().into()))
                     || users.iter().any(matching_users)
                 {
@@ -2579,6 +2570,11 @@ impl Rooms {
             self.serverroomids.insert(&serverroom_id, &[])?;
         }
 
+        self.appservice_in_room_cache
+            .write()
+            .unwrap()
+            .remove(room_id);
+
         Ok(())
     }
 
@@ -2605,6 +2601,65 @@ impl Rooms {
                     .get(room_id)
                     .unwrap(),
             ))
+        }
+    }
+
+    #[tracing::instrument(skip(self, room_id, appservice, db))]
+    pub fn appservice_in_room(
+        &self,
+        room_id: &RoomId,
+        appservice: &(String, serde_yaml::Value),
+        db: &Database,
+    ) -> Result<bool> {
+        let maybe = self
+            .appservice_in_room_cache
+            .read()
+            .unwrap()
+            .get(room_id)
+            .and_then(|map| map.get(&appservice.0))
+            .copied();
+
+        if let Some(b) = maybe {
+            Ok(b)
+        } else {
+            if let Some(namespaces) = appservice.1.get("namespaces") {
+                let users = namespaces
+                    .get("users")
+                    .and_then(|users| users.as_sequence())
+                    .map_or_else(Vec::new, |users| {
+                        users
+                            .iter()
+                            .filter_map(|users| Regex::new(users.get("regex")?.as_str()?).ok())
+                            .collect::<Vec<_>>()
+                    });
+
+                let bridge_user_id = appservice
+                    .1
+                    .get("sender_localpart")
+                    .and_then(|string| string.as_str())
+                    .and_then(|string| {
+                        UserId::parse_with_server_name(string, db.globals.server_name()).ok()
+                    });
+
+                let in_room = bridge_user_id
+                    .map_or(false, |id| self.is_joined(&id, room_id).unwrap_or(false))
+                    || self.room_members(&room_id).any(|userid| {
+                        userid.map_or(false, |userid| {
+                            users.iter().any(|r| r.is_match(userid.as_str()))
+                        })
+                    });
+
+                self.appservice_in_room_cache
+                    .write()
+                    .unwrap()
+                    .entry(room_id.clone())
+                    .or_default()
+                    .insert(appservice.0.clone(), in_room);
+
+                Ok(in_room)
+            } else {
+                Ok(false)
+            }
         }
     }
 

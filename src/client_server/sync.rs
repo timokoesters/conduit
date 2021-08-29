@@ -246,12 +246,6 @@ async fn sync_helper(
             .current_shortstatehash(&room_id)?
             .expect("All rooms have state");
 
-        let pdus_after_since = db
-            .rooms
-            .pdus_after(&sender_user, &room_id, since)?
-            .next()
-            .is_some();
-
         let since_shortstatehash = db.rooms.get_token_shortstatehash(&room_id, since)?;
 
         // Calculates joined_member_count, invited_member_count and heroes
@@ -341,7 +335,7 @@ async fn sync_helper(
                 true,
                 state_events,
             )
-        } else if !pdus_after_since && since_shortstatehash == Some(current_shortstatehash) {
+        } else if timeline_pdus.len() == 0 && since_shortstatehash == Some(current_shortstatehash) {
             // No state changes
             (Vec::new(), None, None, false, Vec::new())
         } else {
@@ -401,10 +395,7 @@ async fn sync_helper(
 
             let send_member_count = state_events
                 .iter()
-                .any(|event| event.kind == EventType::RoomMember)
-                || timeline_pdus.iter().any(|(_, event)| {
-                    event.state_key.is_some() && event.kind == EventType::RoomMember
-                });
+                .any(|event| event.kind == EventType::RoomMember);
 
             if encrypted_room {
                 for state_event in &state_events {
