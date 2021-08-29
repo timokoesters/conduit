@@ -113,7 +113,7 @@ pub async fn claim_keys_route(
 
 #[cfg_attr(
     feature = "conduit_bin",
-    post("/_matrix/client/unstable/keys/device_signing/upload", data = "<body>")
+    post("/_matrix/client/r0/keys/device_signing/upload", data = "<body>")
 )]
 #[tracing::instrument(skip(db, body))]
 pub async fn upload_signing_keys_route(
@@ -174,7 +174,7 @@ pub async fn upload_signing_keys_route(
 
 #[cfg_attr(
     feature = "conduit_bin",
-    post("/_matrix/client/unstable/keys/signatures/upload", data = "<body>")
+    post("/_matrix/client/r0/keys/signatures/upload", data = "<body>")
 )]
 #[tracing::instrument(skip(db, body))]
 pub async fn upload_signatures_route(
