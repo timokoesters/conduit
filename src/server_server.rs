@@ -3437,7 +3437,9 @@ pub async fn fetch_join_signing_keys(
                 // TODO: Check signature
                 servers.remove(&k.server_name);
 
-                let result = db.globals.add_signing_key(&k.server_name, k.clone())?
+                let result = db
+                    .globals
+                    .add_signing_key(&k.server_name, k.clone())?
                     .into_iter()
                     .map(|(k, v)| (k.to_string(), v.key))
                     .collect::<BTreeMap<_, _>>();
@@ -3459,7 +3461,8 @@ pub async fn fetch_join_signing_keys(
         if let Ok(get_keys_response) = result {
             // TODO: We should probably not trust the server_name in the response.
             let server = &get_keys_response.server_key.server_name;
-            let result = db.globals
+            let result = db
+                .globals
                 .add_signing_key(server, get_keys_response.server_key.clone())?
                 .into_iter()
                 .map(|(k, v)| (k.to_string(), v.key))
