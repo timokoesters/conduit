@@ -53,10 +53,7 @@ RUN apk add --no-cache \
         libgcc
 
 # Test if Conduit is still alive, uses the same endpoint as Element
-HEALTHCHECK --start-period=5s \
-    CMD curl --fail -s "http://localhost:$(grep -m1 -o 'port\s=\s[0-9]*' conduit.toml | grep -m1 -o '[0-9]*')/_matrix/client/versions" || \
-        curl -k --fail -s "https://localhost:$(grep -m1 -o 'port\s=\s[0-9]*' conduit.toml | grep -m1 -o '[0-9]*')/_matrix/client/versions" || \
-        exit 1
+HEALTHCHECK --start-period=5s --interval=60s CMD ./healthcheck.sh
 
 # Set user to www-data
 USER www-data
@@ -68,3 +65,4 @@ ENTRYPOINT [ "/srv/conduit/conduit" ]
 
 # Copy the Conduit binary into the image at the latest possible moment to maximise caching:
 COPY ./conduit-x86_64-unknown-linux-musl /srv/conduit/conduit
+COPY ./docker/healthcheck.sh /srv/conduit/
