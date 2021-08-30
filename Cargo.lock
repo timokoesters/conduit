@@ -267,6 +267,7 @@ dependencies = [
  "serde_yaml",
  "sled",
  "thiserror",
+ "thread_local",
  "threadpool",
  "tokio",
  "tracing",
