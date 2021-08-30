@@ -1497,6 +1497,47 @@ async fn upgrade_outlier_to_timeline_pdu(
         )
         .map_err(|_| "Failed to get_auth_events.".to_owned())?;
 
+    let state_ids_compressed = state_at_incoming_event
+        .iter()
+        .map(|(shortstatekey, id)| {
+            db.rooms
+                .compress_state_event(*shortstatekey, &id, &db.globals)
+                .map_err(|_| "Failed to compress_state_event".to_owned())
+        })
+        .collect::<StdResult<_, String>>()?;
+
+    // 13. Check if the event passes auth based on the "current state" of the room, if not "soft fail" it
+    debug!("starting soft fail auth check");
+
+    let soft_fail = !state_res::event_auth::auth_check(
+        &room_version,
+        &incoming_pdu,
+        previous_create,
+        None,
+        |k, s| auth_events.get(&(k.clone(), s.to_owned())).map(Arc::clone),
+    )
+    .map_err(|_e| "Auth check failed.".to_owned())?;
+
+    if soft_fail {
+        append_incoming_pdu(
+            &db,
+            &incoming_pdu,
+            val,
+            extremities,
+            state_ids_compressed,
+            soft_fail,
+            &state_lock
+        )
+        .map_err(|_| "Failed to add pdu to db.".to_owned())?;
+
+        // Soft fail, we keep the event as an outlier but don't add it to the timeline
+        warn!("Event was soft failed: {:?}", incoming_pdu);
+        db.rooms
+            .mark_event_soft_failed(&incoming_pdu.event_id)
+            .map_err(|_| "Failed to set soft failed flag".to_owned())?;
+        return Err("Event has been soft failed".into());
+    }
+
     if incoming_pdu.state_key.is_some() {
         let mut extremity_sstatehashes = HashMap::new();
 
@@ -1651,30 +1692,9 @@ async fn upgrade_outlier_to_timeline_pdu(
 
     extremities.insert(incoming_pdu.event_id.clone());
 
-    // 13. Check if the event passes auth based on the "current state" of the room, if not "soft fail" it
-    debug!("starting soft fail auth check");
-
-    let soft_fail = !state_res::event_auth::auth_check(
-        &room_version,
-        &incoming_pdu,
-        previous_create,
-        None,
-        |k, s| auth_events.get(&(k.clone(), s.to_owned())).map(Arc::clone),
-    )
-    .map_err(|_e| "Auth check failed.".to_owned())?;
-
     // Now that the event has passed all auth it is added into the timeline.
     // We use the `state_at_event` instead of `state_after` so we accurately
     // represent the state for this event.
-
-    let state_ids_compressed = state_at_incoming_event
-        .iter()
-        .map(|(shortstatekey, id)| {
-            db.rooms
-                .compress_state_event(*shortstatekey, &id, &db.globals)
-                .map_err(|_| "Failed to compress_state_event".to_owned())
-        })
-        .collect::<StdResult<_, String>>()?;
 
     let pdu_id = append_incoming_pdu(
         &db,
@@ -1688,15 +1708,6 @@ async fn upgrade_outlier_to_timeline_pdu(
     .map_err(|_| "Failed to add pdu to db.".to_owned())?;
 
     debug!("Appended incoming pdu.");
-
-    if soft_fail {
-        // Soft fail, we keep the event as an outlier but don't add it to the timeline
-        warn!("Event was soft failed: {:?}", incoming_pdu);
-        db.rooms
-            .mark_event_soft_failed(&incoming_pdu.event_id)
-            .map_err(|_| "Failed to set soft failed flag".to_owned())?;
-        return Err("Event has been soft failed".into());
-    }
 
     // Event has passed all auth/stateres checks
     drop(state_lock);
