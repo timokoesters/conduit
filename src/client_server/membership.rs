@@ -973,6 +973,14 @@ pub async fn invite_helper<'a>(
             (room_version_id, pdu_json, invite_room_state)
         };
 
+        // Generate event id
+        let expected_event_id = EventId::try_from(&*format!(
+            "${}",
+            ruma::signatures::reference_hash(&pdu_json, &room_version_id)
+                .expect("ruma can calculate reference hashes")
+        ))
+        .expect("ruma's reference hashes are valid event ids");
+
         let response = db
             .sending
             .send_federation_request(
@@ -980,9 +988,9 @@ pub async fn invite_helper<'a>(
                 user_id.server_name(),
                 create_invite::v2::Request {
                     room_id: room_id.clone(),
-                    event_id: ruma::event_id!("$receivingservershouldsetthis"),
+                    event_id: expected_event_id.clone(),
                     room_version: room_version_id,
-                    event: PduEvent::convert_to_outgoing_federation_event(pdu_json),
+                    event: PduEvent::convert_to_outgoing_federation_event(pdu_json.clone()),
                     invite_room_state,
                 },
             )
@@ -1001,6 +1009,10 @@ pub async fn invite_helper<'a>(
                 ));
             }
         };
+
+        if expected_event_id != event_id {
+            warn!("Server {} changed invite event, that's not allowed in the spec: ours: {:?}, theirs: {:?}", user_id.server_name(), pdu_json, value);
+        }
 
         let origin = serde_json::from_value::<Box<ServerName>>(
             serde_json::to_value(value.get("origin").ok_or(Error::BadRequest(

@@ -1526,7 +1526,7 @@ async fn upgrade_outlier_to_timeline_pdu(
             extremities,
             state_ids_compressed,
             soft_fail,
-            &state_lock
+            &state_lock,
         )
         .map_err(|_| "Failed to add pdu to db.".to_owned())?;
 
