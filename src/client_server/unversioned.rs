@@ -10,7 +10,7 @@ use rocket::get;
 ///
 /// - Versions take the form MAJOR.MINOR.PATCH
 /// - Only the latest PATCH release will be reported for each MAJOR.MINOR value
-/// - Unstable features should be namespaced and may include version information in their name
+/// - Unstable features are namespaced and may include version information in their name
 ///
 /// Note: Unstable features are used while developing new features. Clients should avoid using
 /// unstable features in their stable releases

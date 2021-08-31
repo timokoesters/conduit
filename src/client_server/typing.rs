@@ -5,6 +5,9 @@ use ruma::api::client::r0::typing::create_typing_event;
 #[cfg(feature = "conduit_bin")]
 use rocket::put;
 
+/// # `PUT /_matrix/client/r0/rooms/{roomId}/typing/{userId}`
+///
+/// Sets the typing state of the sender user.
 #[cfg_attr(
     feature = "conduit_bin",
     put("/_matrix/client/r0/rooms/<_>/typing/<_>", data = "<body>")

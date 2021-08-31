@@ -13,7 +13,7 @@ use rocket::get;
 
 /// # `GET /_matrix/client/r0/capabilities`
 ///
-/// Get information on this server's supported feature set and other relevent capabilities.
+/// Get information on the supported feature set and other relevent capabilities of this server.
 #[cfg_attr(
     feature = "conduit_bin",
     get("/_matrix/client/r0/capabilities", data = "<_body>")

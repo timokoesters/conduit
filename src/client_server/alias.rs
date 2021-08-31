@@ -15,6 +15,9 @@ use ruma::{
 #[cfg(feature = "conduit_bin")]
 use rocket::{delete, get, put};
 
+/// # `PUT /_matrix/client/r0/directory/room/{roomAlias}`
+///
+/// Creates a new room alias on this server.
 #[cfg_attr(
     feature = "conduit_bin",
     put("/_matrix/client/r0/directory/room/<_>", data = "<body>")
@@ -24,6 +27,10 @@ pub async fn create_alias_route(
     db: DatabaseGuard,
     body: Ruma<create_alias::Request<'_>>,
 ) -> ConduitResult<create_alias::Response> {
+    if body.room_alias.server_name() != db.globals.server_name() {
+        return Err(Error::BadRequest(ErrorKind::InvalidParam, "Alias is from another server."));
+    }
+
     if db.rooms.id_from_alias(&body.room_alias)?.is_some() {
         return Err(Error::Conflict("Alias already exists."));
     }
@@ -36,6 +43,12 @@ pub async fn create_alias_route(
     Ok(create_alias::Response::new().into())
 }
 
+/// # `DELETE /_matrix/client/r0/directory/room/{roomAlias}`
+///
+/// Deletes a room alias from this server.
+///
+/// - TODO: additional access control checks
+/// - TODO: Update canonical alias event
 #[cfg_attr(
     feature = "conduit_bin",
     delete("/_matrix/client/r0/directory/room/<_>", data = "<body>")
@@ -45,13 +58,24 @@ pub async fn delete_alias_route(
     db: DatabaseGuard,
     body: Ruma<delete_alias::Request<'_>>,
 ) -> ConduitResult<delete_alias::Response> {
+    if body.room_alias.server_name() != db.globals.server_name() {
+        return Err(Error::BadRequest(ErrorKind::InvalidParam, "Alias is from another server."));
+    }
+
     db.rooms.set_alias(&body.room_alias, None, &db.globals)?;
+
+    // TODO: update alt_aliases?
 
     db.flush()?;
 
     Ok(delete_alias::Response::new().into())
 }
 
+/// # `GET /_matrix/client/r0/directory/room/{roomAlias}`
+///
+/// Resolve an alias locally or over federation.
+///
+/// - TODO: Suggest more servers to join via
 #[cfg_attr(
     feature = "conduit_bin",
     get("/_matrix/client/r0/directory/room/<_>", data = "<body>")
@@ -64,7 +88,7 @@ pub async fn get_alias_route(
     get_alias_helper(&db, &body.room_alias).await
 }
 
-pub async fn get_alias_helper(
+pub(crate) async fn get_alias_helper(
     db: &Database,
     room_alias: &RoomAliasId,
 ) -> ConduitResult<get_alias::Response> {

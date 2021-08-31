@@ -12,6 +12,9 @@ use rocket::{get, post};
 
 const MXC_LENGTH: usize = 32;
 
+/// # `GET /_matrix/media/r0/config`
+///
+/// Returns max upload size.
 #[cfg_attr(feature = "conduit_bin", get("/_matrix/media/r0/config"))]
 #[tracing::instrument(skip(db))]
 pub async fn get_media_config_route(
@@ -23,6 +26,12 @@ pub async fn get_media_config_route(
     .into())
 }
 
+/// # `POST /_matrix/media/r0/upload`
+///
+/// Permanently save media in the server.
+///
+/// - Some metadata will be saved in the database
+/// - Media will be saved in the media/ directory
 #[cfg_attr(
     feature = "conduit_bin",
     post("/_matrix/media/r0/upload", data = "<body>")
@@ -61,6 +70,11 @@ pub async fn create_content_route(
     .into())
 }
 
+/// # `POST /_matrix/media/r0/download/{serverName}/{mediaId}`
+///
+/// Load media from our server or over federation.
+///
+/// - Only allows federation if `allow_remote` is true
 #[cfg_attr(
     feature = "conduit_bin",
     get("/_matrix/media/r0/download/<_>/<_>", data = "<body>")
@@ -114,6 +128,11 @@ pub async fn get_content_route(
     }
 }
 
+/// # `POST /_matrix/media/r0/thumbnail/{serverName}/{mediaId}`
+///
+/// Load media thumbnail from our server or over federation.
+///
+/// - Only allows federation if `allow_remote` is true
 #[cfg_attr(
     feature = "conduit_bin",
     get("/_matrix/media/r0/thumbnail/<_>/<_>", data = "<body>")

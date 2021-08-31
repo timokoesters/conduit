@@ -16,6 +16,9 @@ use serde_json::{json, value::RawValue as RawJsonValue};
 #[cfg(feature = "conduit_bin")]
 use rocket::{get, put};
 
+/// # `PUT /_matrix/client/r0/user/{userId}/account_data/{type}`
+///
+/// Sets some account data for the sender user.
 #[cfg_attr(
     feature = "conduit_bin",
     put("/_matrix/client/r0/user/<_>/account_data/<_>", data = "<body>")
@@ -48,6 +51,9 @@ pub async fn set_global_account_data_route(
     Ok(set_global_account_data::Response {}.into())
 }
 
+/// # `PUT /_matrix/client/r0/user/{userId}/rooms/{roomId}/account_data/{type}`
+///
+/// Sets some room account data for the sender user.
 #[cfg_attr(
     feature = "conduit_bin",
     put(
@@ -83,6 +89,9 @@ pub async fn set_room_account_data_route(
     Ok(set_room_account_data::Response {}.into())
 }
 
+/// # `GET /_matrix/client/r0/user/{userId}/account_data/{type}`
+///
+/// Gets some account data for the sender user.
 #[cfg_attr(
     feature = "conduit_bin",
     get("/_matrix/client/r0/user/<_>/account_data/<_>", data = "<body>")
@@ -98,7 +107,6 @@ pub async fn get_global_account_data_route(
         .account_data
         .get::<Box<RawJsonValue>>(None, sender_user, body.event_type.clone().into())?
         .ok_or(Error::BadRequest(ErrorKind::NotFound, "Data not found."))?;
-    db.flush()?;
 
     let account_data = serde_json::from_str::<ExtractGlobalEventContent>(event.get())
         .map_err(|_| Error::bad_database("Invalid account data event in db."))?
@@ -107,6 +115,9 @@ pub async fn get_global_account_data_route(
     Ok(get_global_account_data::Response { account_data }.into())
 }
 
+/// # `GET /_matrix/client/r0/user/{userId}/rooms/{roomId}/account_data/{type}`
+///
+/// Gets some room account data for the sender user.
 #[cfg_attr(
     feature = "conduit_bin",
     get(
@@ -129,7 +140,6 @@ pub async fn get_room_account_data_route(
             body.event_type.clone().into(),
         )?
         .ok_or(Error::BadRequest(ErrorKind::NotFound, "Data not found."))?;
-    db.flush()?;
 
     let account_data = serde_json::from_str::<ExtractRoomEventContent>(event.get())
         .map_err(|_| Error::bad_database("Invalid account data event in db."))?

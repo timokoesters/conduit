@@ -9,7 +9,7 @@ use std::{
 };
 use tracing::warn;
 
-pub async fn send_request<T: OutgoingRequest>(
+pub(crate) async fn send_request<T: OutgoingRequest>(
     globals: &crate::database::globals::Globals,
     registration: serde_yaml::Value,
     request: T,

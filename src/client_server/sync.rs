@@ -22,12 +22,33 @@ use rocket::{get, tokio};
 /// Synchronize the client's state with the latest state on the server.
 ///
 /// - This endpoint takes a `since` parameter which should be the `next_batch` value from a
-/// previous request.
-/// - Calling this endpoint without a `since` parameter will return all recent events, the state
-/// of all rooms and more data. This should only be called on the initial login of the device.
-/// - To get incremental updates, you can call this endpoint with a `since` parameter. This will
-/// return all recent events, state updates and more data that happened since the last /sync
-/// request.
+/// previous request for incremental syncs.
+///
+/// Calling this endpoint without a `since` parameter returns:
+/// - Some of the most recent events of each timeline
+/// - Notification counts for each room
+/// - Joined and invited member counts, heroes
+/// - All state events
+///
+/// Calling this endpoint with a `since` parameter from a previous `next_batch` returns:
+/// For joined rooms:
+/// - Some of the most recent events of each timeline that happened after since
+/// - If user joined the room after since: All state events and device list updates in that room
+/// - If the user was already in the room: A list of all events that are in the state now, but were
+/// not in the state at `since`
+/// - If the state we send contains a member event: Joined and invited member counts, heroes
+/// - Device list updates that happened after `since`
+/// - If there are events in the timeline we send or the user send updated his read mark: Notification counts
+/// - EDUs that are active now (read receipts, typing updates, presence)
+///
+/// For invited rooms: 
+/// - If the user was invited after `since`: A subset of the state of the room at the point of the invite
+///
+/// For left rooms: 
+/// - If the user left after `since`: prev_batch token, empty state (TODO: subset of the state at the point of the leave)
+///
+/// - Sync is handled in an async task, multiple requests from the same device with the same
+/// `since` will be cached
 #[cfg_attr(
     feature = "conduit_bin",
     get("/_matrix/client/r0/sync", data = "<body>")
@@ -106,7 +127,7 @@ pub async fn sync_events_route(
     result
 }
 
-pub async fn sync_helper_wrapper(
+async fn sync_helper_wrapper(
     db: Arc<DatabaseGuard>,
     sender_user: UserId,
     sender_device: Box<DeviceId>,

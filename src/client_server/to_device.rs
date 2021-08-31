@@ -13,6 +13,9 @@ use ruma::{
 #[cfg(feature = "conduit_bin")]
 use rocket::put;
 
+/// # `PUT /_matrix/client/r0/sendToDevice/{eventType}/{txnId}`
+///
+/// Send a to-device event to a set of client devices.
 #[cfg_attr(
     feature = "conduit_bin",
     put("/_matrix/client/r0/sendToDevice/<_>/<_>", data = "<body>")

@@ -5,6 +5,9 @@ use std::{convert::TryInto, time::Duration};
 #[cfg(feature = "conduit_bin")]
 use rocket::{get, put};
 
+/// # `PUT /_matrix/client/r0/presence/{userId}/status`
+///
+/// Sets the presence state of the sender user.
 #[cfg_attr(
     feature = "conduit_bin",
     put("/_matrix/client/r0/presence/<_>/status", data = "<body>")
@@ -46,6 +49,11 @@ pub async fn set_presence_route(
     Ok(set_presence::Response {}.into())
 }
 
+/// # `GET /_matrix/client/r0/presence/{userId}/status`
+///
+/// Gets the presence state of the given user.
+///
+/// - Only works if you share a room with the user
 #[cfg_attr(
     feature = "conduit_bin",
     get("/_matrix/client/r0/presence/<_>/status", data = "<body>")
@@ -71,6 +79,7 @@ pub async fn get_presence_route(
             .get_last_presence_event(&sender_user, &room_id)?
         {
             presence_event = Some(presence);
+            break;
         }
     }
 

@@ -20,6 +20,22 @@ use tracing::{info, warn};
 #[cfg(feature = "conduit_bin")]
 use rocket::{get, post};
 
+/// # `POST /_matrix/client/r0/createRoom`
+///
+/// Creates a new room.
+///
+/// - Room ID is randomly generated
+/// - Create alias if room_alias_name is set
+/// - Send create event
+/// - Join sender user
+/// - Send power levels event
+/// - Send canonical room alias
+/// - Send join rules
+/// - Send history visibility
+/// - Send guest access
+/// - Send events listed in initial state
+/// - Send events implied by `name` and `topic`
+/// - Send invite events
 #[cfg_attr(
     feature = "conduit_bin",
     post("/_matrix/client/r0/createRoom", data = "<body>")
@@ -344,6 +360,11 @@ pub async fn create_room_route(
     Ok(create_room::Response::new(room_id).into())
 }
 
+/// # `GET /_matrix/client/r0/rooms/{roomId}/event/{eventId}`
+///
+/// Gets a single event.
+///
+/// - You have to currently be joined to the room (TODO: Respect history visibility)
 #[cfg_attr(
     feature = "conduit_bin",
     get("/_matrix/client/r0/rooms/<_>/event/<_>", data = "<body>")
@@ -372,6 +393,11 @@ pub async fn get_room_event_route(
     .into())
 }
 
+/// # `GET /_matrix/client/r0/rooms/{roomId}/aliases`
+///
+/// Lists all aliases of the room.
+///
+/// - Only users joined to the room are allowed to call this TODO: Allow any user to call it if history_visibility is world readable
 #[cfg_attr(
     feature = "conduit_bin",
     get("/_matrix/client/r0/rooms/<_>/aliases", data = "<body>")
@@ -400,6 +426,16 @@ pub async fn get_room_aliases_route(
     .into())
 }
 
+/// # `GET /_matrix/client/r0/rooms/{roomId}/upgrade`
+///
+/// Upgrades the room.
+///
+/// - Creates a replacement room
+/// - Sends a tombstone event into the current room
+/// - Sender user joins the room
+/// - Transfers some state events
+/// - Moves local aliases
+/// - Modifies old room power levels to prevent users from speaking
 #[cfg_attr(
     feature = "conduit_bin",
     post("/_matrix/client/r0/rooms/<_>/upgrade", data = "<body>")

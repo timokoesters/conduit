@@ -17,6 +17,11 @@ use std::{convert::TryInto, sync::Arc};
 #[cfg(feature = "conduit_bin")]
 use rocket::{get, put};
 
+/// # `PUT /_matrix/client/r0/profile/{userId}/displayname`
+///
+/// Updates the displayname.
+///
+/// - Also makes sure other users receive the update using presence EDUs
 #[cfg_attr(
     feature = "conduit_bin",
     put("/_matrix/client/r0/profile/<_>/displayname", data = "<body>")
@@ -115,6 +120,11 @@ pub async fn set_displayname_route(
     Ok(set_display_name::Response {}.into())
 }
 
+/// # `GET /_matrix/client/r0/profile/{userId}/displayname`
+///
+/// Returns the displayname of the user.
+///
+/// - If user is on another server: Fetches displayname over federation
 #[cfg_attr(
     feature = "conduit_bin",
     get("/_matrix/client/r0/profile/<_>/displayname", data = "<body>")
@@ -149,6 +159,11 @@ pub async fn get_displayname_route(
     .into())
 }
 
+/// # `PUT /_matrix/client/r0/profile/{userId}/avatar_url`
+///
+/// Updates the avatar_url and blurhash.
+///
+/// - Also makes sure other users receive the update using presence EDUs
 #[cfg_attr(
     feature = "conduit_bin",
     put("/_matrix/client/r0/profile/<_>/avatar_url", data = "<body>")
@@ -249,6 +264,11 @@ pub async fn set_avatar_url_route(
     Ok(set_avatar_url::Response {}.into())
 }
 
+/// # `GET /_matrix/client/r0/profile/{userId}/avatar_url`
+///
+/// Returns the avatar_url and blurhash of the user.
+///
+/// - If user is on another server: Fetches avatar_url and blurhash over federation
 #[cfg_attr(
     feature = "conduit_bin",
     get("/_matrix/client/r0/profile/<_>/avatar_url", data = "<body>")
@@ -285,6 +305,11 @@ pub async fn get_avatar_url_route(
     .into())
 }
 
+/// # `GET /_matrix/client/r0/profile/{userId}`
+///
+/// Returns the displayname, avatar_url and blurhash of the user.
+///
+/// - If user is on another server: Fetches profile over federation
 #[cfg_attr(
     feature = "conduit_bin",
     get("/_matrix/client/r0/profile/<_>", data = "<body>")

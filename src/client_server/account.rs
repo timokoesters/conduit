@@ -40,8 +40,12 @@ const GUEST_NAME_LENGTH: usize = 10;
 ///
 /// Checks if a username is valid and available on this server.
 ///
-/// - Returns true if no user or appservice on this server claimed this username
-/// - This will not reserve the username, so the username might become invalid when trying to register
+/// Conditions for returning true:
+/// - The user id is not historical
+/// - The server name of the user id matches this server
+/// - No user or appservice on this server already claimed this username
+///
+/// Note: This will not reserve the username, so the username might become invalid when trying to register
 #[cfg_attr(
     feature = "conduit_bin",
     get("/_matrix/client/r0/register/available", data = "<body>")
@@ -80,11 +84,15 @@ pub async fn get_register_available_route(
 ///
 /// Register an account on this homeserver.
 ///
-/// - Returns the device id and access_token unless `inhibit_login` is true
-/// - When registering a guest account, all parameters except initial_device_display_name will be
-/// ignored
-/// - Creates a new account and a device for it
-/// - The account will be populated with default account data
+/// You can use [`GET /_matrix/client/r0/register/available`](fn.get_register_available_route.html)
+/// to check if the user id is valid and available.
+///
+/// - Only works if registration is enabled
+/// - If type is guest: ignores all parameters except initial_device_display_name
+/// - If sender is not appservice: Requires UIAA (but we only use a dummy stage)
+/// - If type is not guest and no username is given: Always fails after UIAA check
+/// - Creates a new account and populates it with default account data
+/// - If `inhibit_login` is false: Creates a device and returns device id and access_token
 #[cfg_attr(
     feature = "conduit_bin",
     post("/_matrix/client/r0/register", data = "<body>")
@@ -129,7 +137,7 @@ pub async fn register_route(
     ))?;
 
     // Check if username is creative enough
-    if !missing_username && db.users.exists(&user_id)? {
+    if db.users.exists(&user_id)? {
         return Err(Error::BadRequest(
             ErrorKind::UserInUse,
             "Desired user ID is already taken.",
@@ -193,12 +201,12 @@ pub async fn register_route(
     // Create user
     db.users.create(&user_id, password)?;
 
+    // Default to pretty displayname
     let displayname = format!("{} ⚡️", user_id.localpart());
-
     db.users
         .set_displayname(&user_id, Some(displayname.clone()))?;
 
-    // Initial data
+    // Initial account data
     db.account_data.update(
         None,
         &user_id,
@@ -211,6 +219,7 @@ pub async fn register_route(
         &db.globals,
     )?;
 
+    // Inhibit login does not work for guests
     if !is_guest && body.inhibit_login {
         return Ok(register::Response {
             access_token: None,
@@ -231,7 +240,7 @@ pub async fn register_route(
     // Generate new token for the device
     let token = utils::random_string(TOKEN_LENGTH);
 
-    // Add device
+    // Create device for this account
     db.users.create_device(
         &user_id,
         &device_id,
@@ -239,7 +248,7 @@ pub async fn register_route(
         body.initial_device_display_name.clone(),
     )?;
 
-    // If this is the first user on this server, create the admins room
+    // If this is the first user on this server, create the admin room
     if db.users.count()? == 1 {
         // Create a user for the server
         let conduit_user = UserId::parse_with_server_name("conduit", db.globals.server_name())
@@ -529,9 +538,16 @@ pub async fn register_route(
 ///
 /// Changes the password of this account.
 ///
-/// - Invalidates all other access tokens if logout_devices is true
-/// - Deletes all other devices and most of their data (to-device events, last seen, etc.) if
-/// logout_devices is true
+/// - Requires UIAA to verify user password
+/// - Changes the password of the sender user
+/// - The password hash is calculated using argon2 with 32 character salt, the plain password is
+/// not saved
+///
+/// If logout_devices is true it does the following for each device except the sender device:
+/// - Invalidates access token
+/// - Deletes device metadata (device id, device display name, last seen ip, last seen ts)
+/// - Forgets to-device events
+/// - Triggers device list updates
 #[cfg_attr(
     feature = "conduit_bin",
     post("/_matrix/client/r0/account/password", data = "<body>")
@@ -598,9 +614,9 @@ pub async fn change_password_route(
 
 /// # `GET _matrix/client/r0/account/whoami`
 ///
-/// Get user_id of this account.
+/// Get user_id of the sender user.
 ///
-/// - Also works for Application Services
+/// Note: Also works for Application Services
 #[cfg_attr(
     feature = "conduit_bin",
     get("/_matrix/client/r0/account/whoami", data = "<body>")
@@ -616,11 +632,13 @@ pub async fn whoami_route(body: Ruma<whoami::Request>) -> ConduitResult<whoami::
 
 /// # `POST /_matrix/client/r0/account/deactivate`
 ///
-/// Deactivate this user's account
+/// Deactivate sender user account.
 ///
 /// - Leaves all rooms and rejects all invitations
 /// - Invalidates all access tokens
-/// - Deletes all devices
+/// - Deletes all device metadata (device id, device display name, last seen ip, last seen ts)
+/// - Forgets all to-device events
+/// - Triggers device list updates
 /// - Removes ability to log in again
 #[cfg_attr(
     feature = "conduit_bin",
@@ -667,6 +685,7 @@ pub async fn deactivate_route(
     }
 
     // Leave all joined rooms and reject all invitations
+    // TODO: work over federation invites
     let all_rooms = db
         .rooms
         .rooms_joined(&sender_user)
@@ -730,6 +749,8 @@ pub async fn deactivate_route(
 /// # `GET _matrix/client/r0/account/3pid`
 ///
 /// Get a list of third party identifiers associated with this account.
+///
+/// - Currently always returns empty list
 #[cfg_attr(
     feature = "conduit_bin",
     get("/_matrix/client/r0/account/3pid", data = "<body>")

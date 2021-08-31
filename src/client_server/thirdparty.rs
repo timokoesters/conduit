@@ -5,6 +5,9 @@ use ruma::api::client::r0::thirdparty::get_protocols;
 use rocket::get;
 use std::collections::BTreeMap;
 
+/// # `GET /_matrix/client/r0/thirdparty/protocols`
+///
+/// TODO: Fetches all metadata about protocols supported by the homeserver.
 #[cfg_attr(
     feature = "conduit_bin",
     get("/_matrix/client/r0/thirdparty/protocols")

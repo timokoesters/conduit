@@ -1529,19 +1529,35 @@ impl Rooms {
                                 "get_auth_chain" => {
                                     if args.len() == 1 {
                                         if let Ok(event_id) = EventId::try_from(args[0]) {
-                                            let start = Instant::now();
-                                            let count = server_server::get_auth_chain(
-                                                vec![Arc::new(event_id)],
-                                                db,
-                                            )?
-                                            .count();
-                                            let elapsed = start.elapsed();
-                                            db.admin.send(AdminCommand::SendMessage(
-                                                message::MessageEventContent::text_plain(format!(
+                                            if let Some(event) = db.rooms.get_pdu_json(&event_id)? {
+                                                let room_id_str = event
+                                                    .get("room_id")
+                                                    .and_then(|val| val.as_str())
+                                                    .ok_or_else(|| {
+                                                        Error::bad_database(
+                                                            "Invalid event in database",
+                                                        )
+                                                    })?;
+
+                                                let room_id = RoomId::try_from(room_id_str)
+                                                .map_err(|_| Error::bad_database("Invalid room id field in event in database"))?;
+                                                let start = Instant::now();
+                                                let count = server_server::get_auth_chain(
+                                                    &room_id,
+                                                    vec![Arc::new(event_id)],
+                                                    db,
+                                                )?
+                                                .count();
+                                                let elapsed = start.elapsed();
+                                                db.admin.send(AdminCommand::SendMessage(
+                                                    message::MessageEventContent::text_plain(
+                                                        format!(
                                                     "Loaded auth chain with length {} in {:?}",
                                                     count, elapsed
-                                                )),
-                                            ));
+                                                ),
+                                                    ),
+                                                ));
+                                            }
                                         }
                                     }
                                 }
@@ -3081,6 +3097,15 @@ impl Rooms {
             )
             .map_err(|_| Error::bad_database("Server name in roomserverids is invalid."))
         })
+    }
+
+    #[tracing::instrument(skip(self))]
+    pub fn server_in_room<'a>(&'a self, server: &ServerName, room_id: &RoomId) -> Result<bool> {
+        let mut key = server.as_bytes().to_vec();
+        key.push(0xff);
+        key.extend_from_slice(room_id.as_bytes());
+
+        self.serverroomids.get(&key).map(|o| o.is_some())
     }
 
     /// Returns an iterator of all rooms a server participates in (as far as we know).
