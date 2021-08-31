@@ -218,7 +218,7 @@ build:docker:main:
       --context $CI_PROJECT_DIR
       --build-arg CREATED=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
       --build-arg VERSION=$(grep -m1 -o '[0-9].[0-9].[0-9]' Cargo.toml)
-      --build-arg "GIT_REF=$CI_COMMIT_REF_NAME"
+      --build-arg "GIT_REF=$CI_COMMIT_SHORT_SHA"
       --dockerfile "$CI_PROJECT_DIR/docker/ci-binaries-packaging.Dockerfile"
       --destination "$CI_REGISTRY_IMAGE/conduit:latest"
       --destination "$CI_REGISTRY_IMAGE/conduit:alpine"
