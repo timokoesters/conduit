@@ -9,6 +9,12 @@
 
 FROM alpine:3.14
 
+# Install packages needed to run Conduit
+RUN apk add --no-cache \
+        ca-certificates \
+        curl \
+        libgcc
+
 ARG CREATED
 ARG VERSION
 ARG GIT_REF
@@ -36,6 +42,10 @@ EXPOSE 6167
 # create data folder for database
 RUN mkdir -p /srv/conduit/.local/share/conduit
 
+# Copy the Conduit binary into the image at the latest possible moment to maximise caching:
+COPY ./conduit-x86_64-unknown-linux-musl /srv/conduit/conduit
+COPY ./docker/healthcheck.sh /srv/conduit/
+
 # Add www-data user and group with UID 82, as used by alpine
 # https://git.alpinelinux.org/aports/tree/main/nginx/nginx.pre-install
 RUN set -x ; \
@@ -45,12 +55,8 @@ RUN set -x ; \
 
 # Change ownership of Conduit files to www-data user and group
 RUN chown -cR www-data:www-data /srv/conduit
+RUN chmod +x /srv/conduit/healthcheck.sh
 
-# Install packages needed to run Conduit
-RUN apk add --no-cache \
-        ca-certificates \
-        curl \
-        libgcc
 
 # Test if Conduit is still alive, uses the same endpoint as Element
 HEALTHCHECK --start-period=5s --interval=60s CMD ./healthcheck.sh
@@ -61,8 +67,3 @@ USER www-data
 WORKDIR /srv/conduit
 # Run Conduit
 ENTRYPOINT [ "/srv/conduit/conduit" ]
-
-
-# Copy the Conduit binary into the image at the latest possible moment to maximise caching:
-COPY ./conduit-x86_64-unknown-linux-musl /srv/conduit/conduit
-COPY ./docker/healthcheck.sh /srv/conduit/
