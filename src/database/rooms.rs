@@ -97,8 +97,8 @@ pub struct Rooms {
     pub(super) referencedevents: Arc<dyn Tree>,
 
     pub(super) pdu_cache: Mutex<LruCache<EventId, Arc<PduEvent>>>,
-    pub(super) shorteventid_cache: Mutex<LruCache<u64, Arc<EventId>>>,
     pub(super) auth_chain_cache: Mutex<LruCache<Vec<u64>, Arc<HashSet<u64>>>>,
+    pub(super) shorteventid_cache: Mutex<LruCache<u64, EventId>>,
     pub(super) eventidshort_cache: Mutex<LruCache<EventId, u64>>,
     pub(super) statekeyshort_cache: Mutex<LruCache<(EventType, String), u64>>,
     pub(super) shortstatekey_cache: Mutex<LruCache<u64, (EventType, String)>>,
@@ -121,7 +121,7 @@ impl Rooms {
     /// Builds a StateMap by iterating over all keys that start
     /// with state_hash, this gives the full state for the given state_hash.
     #[tracing::instrument(skip(self))]
-    pub fn state_full_ids(&self, shortstatehash: u64) -> Result<BTreeMap<u64, Arc<EventId>>> {
+    pub fn state_full_ids(&self, shortstatehash: u64) -> Result<BTreeMap<u64, EventId>> {
         let full_state = self
             .load_shortstatehash_info(shortstatehash)?
             .pop()
@@ -172,7 +172,7 @@ impl Rooms {
         shortstatehash: u64,
         event_type: &EventType,
         state_key: &str,
-    ) -> Result<Option<Arc<EventId>>> {
+    ) -> Result<Option<EventId>> {
         let shortstatekey = match self.get_shortstatekey(event_type, state_key)? {
             Some(s) => s,
             None => return Ok(None),
@@ -527,7 +527,7 @@ impl Rooms {
     pub fn parse_compressed_state_event(
         &self,
         compressed_event: CompressedStateEvent,
-    ) -> Result<(u64, Arc<EventId>)> {
+    ) -> Result<(u64, EventId)> {
         Ok((
             utils::u64_from_bytes(&compressed_event[0..size_of::<u64>()])
                 .expect("bytes have right length"),
@@ -843,14 +843,14 @@ impl Rooms {
     }
 
     #[tracing::instrument(skip(self))]
-    pub fn get_eventid_from_short(&self, shorteventid: u64) -> Result<Arc<EventId>> {
+    pub fn get_eventid_from_short(&self, shorteventid: u64) -> Result<EventId> {
         if let Some(id) = self
             .shorteventid_cache
             .lock()
             .unwrap()
             .get_mut(&shorteventid)
         {
-            return Ok(Arc::clone(id));
+            return Ok(id.clone());
         }
 
         let bytes = self
@@ -858,17 +858,15 @@ impl Rooms {
             .get(&shorteventid.to_be_bytes())?
             .ok_or_else(|| Error::bad_database("Shorteventid does not exist"))?;
 
-        let event_id = Arc::new(
-            EventId::try_from(utils::string_from_bytes(&bytes).map_err(|_| {
-                Error::bad_database("EventID in shorteventid_eventid is invalid unicode.")
-            })?)
-            .map_err(|_| Error::bad_database("EventId in shorteventid_eventid is invalid."))?,
-        );
+        let event_id = EventId::try_from(utils::string_from_bytes(&bytes).map_err(|_| {
+            Error::bad_database("EventID in shorteventid_eventid is invalid unicode.")
+        })?)
+        .map_err(|_| Error::bad_database("EventId in shorteventid_eventid is invalid."))?;
 
         self.shorteventid_cache
             .lock()
             .unwrap()
-            .insert(shorteventid, Arc::clone(&event_id));
+            .insert(shorteventid, event_id.clone());
 
         Ok(event_id)
     }
@@ -935,7 +933,7 @@ impl Rooms {
         room_id: &RoomId,
         event_type: &EventType,
         state_key: &str,
-    ) -> Result<Option<Arc<EventId>>> {
+    ) -> Result<Option<EventId>> {
         if let Some(current_shortstatehash) = self.current_shortstatehash(room_id)? {
             self.state_get_id(current_shortstatehash, event_type, state_key)
         } else {
@@ -1543,7 +1541,7 @@ impl Rooms {
                                                 let start = Instant::now();
                                                 let count = server_server::get_auth_chain(
                                                     &room_id,
-                                                    vec![Arc::new(event_id)],
+                                                    vec![event_id],
                                                     db,
                                                 )?
                                                 .count();

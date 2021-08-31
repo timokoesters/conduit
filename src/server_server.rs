@@ -1006,12 +1006,7 @@ pub(crate) async fn handle_incoming_pdu<'a>(
     // 9. Fetch any missing prev events doing all checks listed here starting at 1. These are timeline events
     let mut graph = HashMap::new();
     let mut eventid_info = HashMap::new();
-    let mut todo_outlier_stack = incoming_pdu
-        .prev_events
-        .iter()
-        .cloned()
-        .map(Arc::new)
-        .collect::<Vec<_>>();
+    let mut todo_outlier_stack = incoming_pdu.prev_events.clone();
 
     let mut amount = 0;
 
@@ -1030,7 +1025,7 @@ pub(crate) async fn handle_incoming_pdu<'a>(
             if amount > 100 {
                 // Max limit reached
                 warn!("Max prev event limit reached!");
-                graph.insert((*prev_event_id).clone(), HashSet::new());
+                graph.insert(prev_event_id.clone(), HashSet::new());
                 continue;
             }
 
@@ -1047,27 +1042,27 @@ pub(crate) async fn handle_incoming_pdu<'a>(
                     amount += 1;
                     for prev_prev in &pdu.prev_events {
                         if !graph.contains_key(prev_prev) {
-                            todo_outlier_stack.push(dbg!(Arc::new(prev_prev.clone())));
+                            todo_outlier_stack.push(dbg!(prev_prev.clone()));
                         }
                     }
 
                     graph.insert(
-                        (*prev_event_id).clone(),
+                        prev_event_id.clone(),
                         pdu.prev_events.iter().cloned().collect(),
                     );
                     eventid_info.insert(prev_event_id.clone(), (pdu, json));
                 } else {
                     // Time based check failed
-                    graph.insert((*prev_event_id).clone(), HashSet::new());
+                    graph.insert(prev_event_id.clone(), HashSet::new());
                     eventid_info.insert(prev_event_id.clone(), (pdu, json));
                 }
             } else {
                 // Get json failed
-                graph.insert((*prev_event_id).clone(), HashSet::new());
+                graph.insert(prev_event_id.clone(), HashSet::new());
             }
         } else {
             // Fetch and handle failed
-            graph.insert((*prev_event_id).clone(), HashSet::new());
+            graph.insert(prev_event_id.clone(), HashSet::new());
         }
     }
 
@@ -1082,7 +1077,7 @@ pub(crate) async fn handle_incoming_pdu<'a>(
                 MilliSecondsSinceUnixEpoch(
                     eventid_info
                         .get(event_id)
-                        .map_or_else(|| uint!(0), |info| info.0.origin_server_ts),
+                        .map_or_else(|| uint!(0), |info| info.0.origin_server_ts.clone()),
                 ),
                 ruma::event_id!("$notimportant"),
             ))
@@ -1207,12 +1202,7 @@ fn handle_outlier_pdu<'a>(
         fetch_and_handle_outliers(
             db,
             origin,
-            &incoming_pdu
-                .auth_events
-                .iter()
-                .cloned()
-                .map(Arc::new)
-                .collect::<Vec<_>>(),
+            &incoming_pdu.auth_events,
             &create_event,
             &room_id,
             pub_key_map,
@@ -1281,7 +1271,7 @@ fn handle_outlier_pdu<'a>(
         if !state_res::event_auth::auth_check(
             &room_version,
             &incoming_pdu,
-            previous_create,
+            previous_create.clone(),
             None, // TODO: third party invite
             |k, s| auth_events.get(&(k.clone(), s.to_owned())).map(Arc::clone),
         )
@@ -1368,7 +1358,7 @@ async fn upgrade_outlier_to_timeline_pdu(
                     .get_or_create_shortstatekey(&prev_pdu.kind, state_key, &db.globals)
                     .map_err(|_| "Failed to create shortstatekey.".to_owned())?;
 
-                state.insert(shortstatekey, Arc::new(prev_event.clone()));
+                state.insert(shortstatekey, prev_event.clone());
                 // Now it's the state after the pdu
             }
 
@@ -1411,7 +1401,7 @@ async fn upgrade_outlier_to_timeline_pdu(
                             .rooms
                             .get_or_create_shortstatekey(&prev_event.kind, state_key, &db.globals)
                             .map_err(|_| "Failed to create shortstatekey.".to_owned())?;
-                        leaf_state.insert(shortstatekey, Arc::new(prev_event.event_id.clone()));
+                        leaf_state.insert(shortstatekey, prev_event.event_id.clone());
                         // Now it's the state after the pdu
                     }
 
@@ -1432,14 +1422,14 @@ async fn upgrade_outlier_to_timeline_pdu(
                         db,
                     )
                     .map_err(|_| "Failed to load auth chain.".to_owned())?
-                    .map(|event_id| (*event_id).clone())
+                    .map(|event_id| event_id.clone())
                     .collect(),
                 );
             }
 
             let fork_states = &fork_states
                 .into_iter()
-                .map(|map| map.into_iter().map(|(k, id)| (k, (*id).clone())).collect())
+                .map(|map| map.into_iter().map(|(k, id)| (k, id.clone())).collect())
                 .collect::<Vec<_>>();
 
             state_at_incoming_event = match state_res::StateResolution::resolve(
@@ -1463,7 +1453,7 @@ async fn upgrade_outlier_to_timeline_pdu(
                                 .rooms
                                 .get_or_create_shortstatekey(&event_type, &state_key, &db.globals)
                                 .map_err(|_| "Failed to get_or_create_shortstatekey".to_owned())?;
-                            Ok((shortstatekey, Arc::new(event_id)))
+                            Ok((shortstatekey, event_id))
                         })
                         .collect::<StdResult<_, String>>()?,
                 ),
@@ -1496,11 +1486,7 @@ async fn upgrade_outlier_to_timeline_pdu(
                 let state_vec = fetch_and_handle_outliers(
                     &db,
                     origin,
-                    &res.pdu_ids
-                        .iter()
-                        .cloned()
-                        .map(Arc::new)
-                        .collect::<Vec<_>>(),
+                    &res.pdu_ids,
                     &create_event,
                     &room_id,
                     pub_key_map,
@@ -1521,7 +1507,7 @@ async fn upgrade_outlier_to_timeline_pdu(
 
                     match state.entry(shortstatekey) {
                         btree_map::Entry::Vacant(v) => {
-                            v.insert(Arc::new(pdu.event_id.clone()));
+                            v.insert(pdu.event_id.clone());
                         }
                         btree_map::Entry::Occupied(_) => return Err(
                             "State event's type and state_key combination exists multiple times."
@@ -1537,9 +1523,7 @@ async fn upgrade_outlier_to_timeline_pdu(
                     .map_err(|_| "Failed to talk to db.")?
                     .expect("Room exists");
 
-                if state.get(&create_shortstatekey).map(|id| id.as_ref())
-                    != Some(&create_event.event_id)
-                {
+                if state.get(&create_shortstatekey) != Some(&create_event.event_id) {
                     return Err("Incoming event refers to wrong create event.".to_owned());
                 }
 
@@ -1734,7 +1718,7 @@ async fn upgrade_outlier_to_timeline_pdu(
                     .rooms
                     .get_or_create_shortstatekey(&leaf_pdu.kind, state_key, &db.globals)
                     .map_err(|_| "Failed to create shortstatekey.".to_owned())?;
-                leaf_state.insert(shortstatekey, Arc::new(leaf_pdu.event_id.clone()));
+                leaf_state.insert(shortstatekey, leaf_pdu.event_id.clone());
                 // Now it's the state after the pdu
             }
 
@@ -1749,9 +1733,9 @@ async fn upgrade_outlier_to_timeline_pdu(
                 .get_or_create_shortstatekey(&incoming_pdu.kind, state_key, &db.globals)
                 .map_err(|_| "Failed to create shortstatekey.".to_owned())?;
 
-            state_after.insert(shortstatekey, Arc::new(incoming_pdu.event_id.clone()));
+            state_after.insert(shortstatekey, incoming_pdu.event_id.clone());
         }
-        fork_states.push(state_after);
+        fork_states.push(state_after.clone());
 
         let mut update_state = false;
         // 14. Use state resolution to find new room state
@@ -1781,7 +1765,7 @@ async fn upgrade_outlier_to_timeline_pdu(
                         db,
                     )
                     .map_err(|_| "Failed to load auth chain.".to_owned())?
-                    .map(|event_id| (*event_id).clone())
+                    .map(|event_id| event_id.clone())
                     .collect(),
                 );
             }
@@ -1790,11 +1774,7 @@ async fn upgrade_outlier_to_timeline_pdu(
                 .into_iter()
                 .map(|map| {
                     map.into_iter()
-                        .map(|(k, id)| {
-                            db.rooms
-                                .get_statekey_from_short(k)
-                                .map(|k| (k, (*id).clone()))
-                        })
+                        .map(|(k, id)| db.rooms.get_statekey_from_short(k).map(|k| (k, id.clone())))
                         .collect::<Result<StateMap<_>>>()
                 })
                 .collect::<Result<Vec<_>>>()
@@ -1879,7 +1859,7 @@ async fn upgrade_outlier_to_timeline_pdu(
 pub(crate) fn fetch_and_handle_outliers<'a>(
     db: &'a Database,
     origin: &'a ServerName,
-    events: &'a [Arc<EventId>],
+    events: &'a [EventId],
     create_event: &'a PduEvent,
     room_id: &'a RoomId,
     pub_key_map: &'a RwLock<BTreeMap<String, BTreeMap<String, String>>>,
@@ -1934,12 +1914,12 @@ pub(crate) fn fetch_and_handle_outliers<'a>(
                                 match crate::pdu::gen_event_id_canonical_json(&res.pdu) {
                                     Ok(t) => t,
                                     Err(_) => {
-                                        back_off((**id).clone());
+                                        back_off(id.clone());
                                         continue;
                                     }
                                 };
 
-                            if calculated_event_id != **id {
+                            if calculated_event_id != *id {
                                 warn!("Server didn't return event id we requested: requested: {}, we got {}. Event: {:?}",
                                     id, calculated_event_id, &res.pdu);
                             }
@@ -1959,14 +1939,14 @@ pub(crate) fn fetch_and_handle_outliers<'a>(
                                 Ok((pdu, json)) => (pdu, Some(json)),
                                 Err(e) => {
                                     warn!("Authentication of event {} failed: {:?}", id, e);
-                                    back_off((**id).clone());
+                                    back_off(id.clone());
                                     continue;
                                 }
                             }
                         }
                         Err(_) => {
                             warn!("Failed to fetch event: {}", id);
-                            back_off((**id).clone());
+                            back_off(id.clone());
                             continue;
                         }
                     }
@@ -2238,9 +2218,9 @@ fn append_incoming_pdu(
 #[tracing::instrument(skip(starting_events, db))]
 pub(crate) fn get_auth_chain<'a>(
     room_id: &RoomId,
-    starting_events: Vec<Arc<EventId>>,
+    starting_events: Vec<EventId>,
     db: &'a Database,
-) -> Result<impl Iterator<Item = Arc<EventId>> + 'a> {
+) -> Result<impl Iterator<Item = EventId> + 'a> {
     const NUM_BUCKETS: usize = 50;
 
     let mut buckets = vec![BTreeSet::new(); NUM_BUCKETS];
@@ -2516,12 +2496,12 @@ pub fn get_event_authorization_route(
         return Err(Error::BadRequest(ErrorKind::NotFound, "Event not found."));
     }
 
-    let auth_chain_ids = get_auth_chain(&room_id, vec![Arc::new(body.event_id.clone())], &db)?;
+    let auth_chain_ids = get_auth_chain(&room_id, vec![body.event_id.clone()], &db)?;
 
     Ok(get_event_authorization::v1::Response {
         auth_chain: auth_chain_ids
-            .filter_map(|id| db.rooms.get_pdu_json(&id).ok()?)
-            .map(PduEvent::convert_to_outgoing_federation_event)
+            .filter_map(|id| Some(db.rooms.get_pdu_json(&id).ok()??))
+            .map(|event| PduEvent::convert_to_outgoing_federation_event(event))
             .collect(),
     }
     .into())
@@ -2574,7 +2554,7 @@ pub fn get_room_state_route(
         })
         .collect();
 
-    let auth_chain_ids = get_auth_chain(&body.room_id, vec![Arc::new(body.event_id.clone())], &db)?;
+    let auth_chain_ids = get_auth_chain(&body.room_id, vec![body.event_id.clone()], &db)?;
 
     Ok(get_room_state::v1::Response {
         auth_chain: auth_chain_ids
@@ -2630,13 +2610,13 @@ pub fn get_room_state_ids_route(
         .rooms
         .state_full_ids(shortstatehash)?
         .into_iter()
-        .map(|(_, id)| (*id).clone())
+        .map(|(_, id)| id)
         .collect();
 
-    let auth_chain_ids = get_auth_chain(&body.room_id, vec![Arc::new(body.event_id.clone())], &db)?;
+    let auth_chain_ids = get_auth_chain(&body.room_id, vec![body.event_id.clone()], &db)?;
 
     Ok(get_room_state_ids::v1::Response {
-        auth_chain_ids: auth_chain_ids.map(|id| (*id).clone()).collect(),
+        auth_chain_ids: auth_chain_ids.collect(),
         pdu_ids,
     }
     .into())
