@@ -1084,7 +1084,11 @@ pub(crate) async fn handle_incoming_pdu<'a>(
         })
         .map_err(|_| "Error sorting prev events".to_owned())?;
 
+    let mut errors = 0;
     for prev_id in dbg!(sorted) {
+        if errors >= 5 {
+            break;
+        }
         if let Some((pdu, json)) = eventid_info.remove(&prev_id) {
             let start_time = Instant::now();
             let event_id = pdu.event_id.clone();
@@ -1099,6 +1103,7 @@ pub(crate) async fn handle_incoming_pdu<'a>(
             )
             .await
             {
+                errors += 1;
                 warn!("Prev event {} failed: {}", event_id, e);
             }
             let elapsed = start_time.elapsed();
