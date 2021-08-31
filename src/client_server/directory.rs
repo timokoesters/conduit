@@ -251,8 +251,7 @@ pub(crate) async fn get_public_rooms_filtered_helper(
                             .map_err(|_| {
                                 Error::bad_database("Invalid room name event in database.")
                             })?
-                            .name
-                            .map(|n| n.to_owned().into()))
+                            .name)
                         })?,
                     num_joined_members: db
                         .rooms
