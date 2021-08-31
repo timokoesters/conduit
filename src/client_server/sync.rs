@@ -356,7 +356,7 @@ async fn sync_helper(
                 true,
                 state_events,
             )
-        } else if timeline_pdus.len() == 0 && since_shortstatehash == Some(current_shortstatehash) {
+        } else if timeline_pdus.is_empty() && since_shortstatehash == Some(current_shortstatehash) {
             // No state changes
             (Vec::new(), None, None, false, Vec::new())
         } else {

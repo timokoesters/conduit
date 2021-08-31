@@ -65,12 +65,12 @@ impl Engine {
         self.writer.lock()
     }
 
-    fn read_lock<'a>(&'a self) -> &'a Connection {
+    fn read_lock(&self) -> &Connection {
         self.read_conn_tls
             .get_or(|| Self::prepare_conn(&self.path, self.cache_size_per_thread).unwrap())
     }
 
-    fn read_lock_iterator<'a>(&'a self) -> &'a Connection {
+    fn read_lock_iterator(&self) -> &Connection {
         self.read_iterator_conn_tls
             .get_or(|| Self::prepare_conn(&self.path, self.cache_size_per_thread).unwrap())
     }

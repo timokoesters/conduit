@@ -655,7 +655,7 @@ impl Database {
 
             if db.globals.database_version()? < 9 {
                 // Update tokenids db layout
-                let batch = db
+                let mut iter = db
                     .rooms
                     .tokenids
                     .iter()
@@ -683,9 +683,7 @@ impl Database {
                         println!("new {:?}", new_key);
                         Some((new_key, Vec::new()))
                     })
-                    .collect::<Vec<_>>();
-
-                let mut iter = batch.into_iter().peekable();
+                    .peekable();
 
                 while iter.peek().is_some() {
                     db.rooms

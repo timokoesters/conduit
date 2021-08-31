@@ -40,7 +40,7 @@ impl AccountData {
         roomuserdataid.push(0xff);
         roomuserdataid.extend_from_slice(&event_type.as_bytes());
 
-        let mut key = prefix.clone();
+        let mut key = prefix;
         key.extend_from_slice(event_type.as_bytes());
 
         let json = serde_json::to_value(data).expect("all types here can be serialized"); // TODO: maybe add error handling

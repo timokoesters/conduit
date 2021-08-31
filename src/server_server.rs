@@ -147,7 +147,7 @@ where
 
         let result = find_actual_destination(globals, &destination).await;
 
-        (result.0, result.1.clone().into_uri_string())
+        (result.0, result.1.into_uri_string())
     };
 
     let actual_destination_str = actual_destination.clone().into_https_string();
@@ -1562,7 +1562,7 @@ async fn upgrade_outlier_to_timeline_pdu(
         None
     };
 
-    if !state_res::event_auth::auth_check(
+    let check_result = state_res::event_auth::auth_check(
         &room_version,
         &incoming_pdu,
         previous_create.clone(),
@@ -1576,8 +1576,9 @@ async fn upgrade_outlier_to_timeline_pdu(
                 .and_then(|event_id| db.rooms.get_pdu(&event_id).ok().flatten())
         },
     )
-    .map_err(|_e| "Auth check failed.".to_owned())?
-    {
+    .map_err(|_e| "Auth check failed.".to_owned())?;
+
+    if !check_result {
         return Err("Event has failed auth check with state at the event.".into());
     }
     debug!("Auth check succeeded.");

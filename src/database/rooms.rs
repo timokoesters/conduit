@@ -385,7 +385,7 @@ impl Rooms {
             self.save_state_from_diff(
                 new_shortstatehash,
                 statediffnew.clone(),
-                statediffremoved.clone(),
+                statediffremoved,
                 2, // every state change is 2 event changes on average
                 states_parents,
             )?;
@@ -497,8 +497,7 @@ impl Rooms {
 
             Ok(response)
         } else {
-            let mut response = Vec::new();
-            response.push((shortstatehash, added.clone(), added, removed));
+            let response = vec![(shortstatehash, added.clone(), added, removed)];
             self.stateinfo_cache
                 .lock()
                 .unwrap()
@@ -609,7 +608,7 @@ impl Rooms {
             return Ok(());
         }
 
-        if parent_states.len() == 0 {
+        if parent_states.is_empty() {
             // There is no parent layer, create a new state
             let mut value = 0_u64.to_be_bytes().to_vec(); // 0 means no parent
             for new in &statediffnew {
@@ -689,7 +688,7 @@ impl Rooms {
         state_hash: &StateHashId,
         globals: &super::globals::Globals,
     ) -> Result<(u64, bool)> {
-        Ok(match self.statehash_shortstatehash.get(&state_hash)? {
+        Ok(match self.statehash_shortstatehash.get(state_hash)? {
             Some(shortstatehash) => (
                 utils::u64_from_bytes(&shortstatehash)
                     .map_err(|_| Error::bad_database("Invalid shortstatehash in db."))?,
@@ -698,7 +697,7 @@ impl Rooms {
             None => {
                 let shortstatehash = globals.next_count()?;
                 self.statehash_shortstatehash
-                    .insert(&state_hash, &shortstatehash.to_be_bytes())?;
+                    .insert(state_hash, &shortstatehash.to_be_bytes())?;
                 (shortstatehash, false)
             }
         })
@@ -1784,8 +1783,8 @@ impl Rooms {
                 };
             self.save_state_from_diff(
                 shortstatehash,
-                statediffnew.clone(),
-                statediffremoved.clone(),
+                statediffnew,
+                statediffremoved,
                 1_000_000, // high number because no state will be based on this one
                 states_parents,
             )?;
@@ -1930,15 +1929,14 @@ impl Rooms {
         let mut key = shortroomid.to_be_bytes().to_vec();
         key.extend_from_slice(&token.to_be_bytes());
 
-        Ok(self
-            .roomsynctoken_shortstatehash
+        self.roomsynctoken_shortstatehash
             .get(&key)?
             .map(|bytes| {
                 utils::u64_from_bytes(&bytes).map_err(|_| {
                     Error::bad_database("Invalid shortstatehash in roomsynctoken_shortstatehash")
                 })
             })
-            .transpose()?)
+            .transpose()
     }
 
     /// Creates a new persisted data unit and adds it to a room.
@@ -2491,16 +2489,15 @@ impl Rooms {
                 self.roomuserid_leftcount.remove(&roomuser_id)?;
             }
             member::MembershipState::Leave | member::MembershipState::Ban => {
-                if update_joined_count {
-                    if self
+                if update_joined_count
+                    && self
                         .room_members(room_id)
                         .chain(self.room_members_invited(room_id))
                         .filter_map(|r| r.ok())
                         .all(|u| u.server_name() != user_id.server_name())
-                    {
-                        self.roomserverids.remove(&roomserver_id)?;
-                        self.serverroomids.remove(&serverroom_id)?;
-                    }
+                {
+                    self.roomserverids.remove(&roomserver_id)?;
+                    self.serverroomids.remove(&serverroom_id)?;
                 }
                 self.userroomid_leftstate.insert(
                     &userroom_id,
@@ -2637,45 +2634,43 @@ impl Rooms {
 
         if let Some(b) = maybe {
             Ok(b)
+        } else if let Some(namespaces) = appservice.1.get("namespaces") {
+            let users = namespaces
+                .get("users")
+                .and_then(|users| users.as_sequence())
+                .map_or_else(Vec::new, |users| {
+                    users
+                        .iter()
+                        .filter_map(|users| Regex::new(users.get("regex")?.as_str()?).ok())
+                        .collect::<Vec<_>>()
+                });
+
+            let bridge_user_id = appservice
+                .1
+                .get("sender_localpart")
+                .and_then(|string| string.as_str())
+                .and_then(|string| {
+                    UserId::parse_with_server_name(string, db.globals.server_name()).ok()
+                });
+
+            let in_room = bridge_user_id
+                .map_or(false, |id| self.is_joined(&id, room_id).unwrap_or(false))
+                || self.room_members(&room_id).any(|userid| {
+                    userid.map_or(false, |userid| {
+                        users.iter().any(|r| r.is_match(userid.as_str()))
+                    })
+                });
+
+            self.appservice_in_room_cache
+                .write()
+                .unwrap()
+                .entry(room_id.clone())
+                .or_default()
+                .insert(appservice.0.clone(), in_room);
+
+            Ok(in_room)
         } else {
-            if let Some(namespaces) = appservice.1.get("namespaces") {
-                let users = namespaces
-                    .get("users")
-                    .and_then(|users| users.as_sequence())
-                    .map_or_else(Vec::new, |users| {
-                        users
-                            .iter()
-                            .filter_map(|users| Regex::new(users.get("regex")?.as_str()?).ok())
-                            .collect::<Vec<_>>()
-                    });
-
-                let bridge_user_id = appservice
-                    .1
-                    .get("sender_localpart")
-                    .and_then(|string| string.as_str())
-                    .and_then(|string| {
-                        UserId::parse_with_server_name(string, db.globals.server_name()).ok()
-                    });
-
-                let in_room = bridge_user_id
-                    .map_or(false, |id| self.is_joined(&id, room_id).unwrap_or(false))
-                    || self.room_members(&room_id).any(|userid| {
-                        userid.map_or(false, |userid| {
-                            users.iter().any(|r| r.is_match(userid.as_str()))
-                        })
-                    });
-
-                self.appservice_in_room_cache
-                    .write()
-                    .unwrap()
-                    .entry(room_id.clone())
-                    .or_default()
-                    .insert(appservice.0.clone(), in_room);
-
-                Ok(in_room)
-            } else {
-                Ok(false)
-            }
+            Ok(false)
         }
     }
 
@@ -3477,10 +3472,7 @@ impl Rooms {
         }
 
         // Cache in RAM
-        self.auth_chain_cache
-            .lock()
-            .unwrap()
-            .insert(key.clone(), chain);
+        self.auth_chain_cache.lock().unwrap().insert(key, chain);
 
         Ok(())
     }

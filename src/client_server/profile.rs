@@ -37,10 +37,9 @@ pub async fn set_displayname_route(
         .set_displayname(&sender_user, body.displayname.clone())?;
 
     // Send a new membership event and presence update into all joined rooms
-    let all_rooms_joined = db.rooms.rooms_joined(&sender_user).collect::<Vec<_>>();
-
-    for (pdu_builder, room_id) in all_rooms_joined
-        .into_iter()
+    let all_rooms_joined: Vec<_> = db
+        .rooms
+        .rooms_joined(&sender_user)
         .filter_map(|r| r.ok())
         .map(|room_id| {
             Ok::<_, Error>((
@@ -58,7 +57,7 @@ pub async fn set_displayname_route(
                                 .ok_or_else(|| {
                                     Error::bad_database(
                                         "Tried to send displayname update for user not in the \
-                                         room.",
+                                     room.",
                                     )
                                 })?
                                 .content
@@ -77,7 +76,9 @@ pub async fn set_displayname_route(
             ))
         })
         .filter_map(|r| r.ok())
-    {
+        .collect();
+
+    for (pdu_builder, room_id) in all_rooms_joined {
         let mutex_state = Arc::clone(
             db.globals
                 .roomid_mutex_state
@@ -181,10 +182,9 @@ pub async fn set_avatar_url_route(
     db.users.set_blurhash(&sender_user, body.blurhash.clone())?;
 
     // Send a new membership event and presence update into all joined rooms
-    let all_joined_rooms = db.rooms.rooms_joined(&sender_user).collect::<Vec<_>>();
-
-    for (pdu_builder, room_id) in all_joined_rooms
-        .into_iter()
+    let all_joined_rooms: Vec<_> = db
+        .rooms
+        .rooms_joined(&sender_user)
         .filter_map(|r| r.ok())
         .map(|room_id| {
             Ok::<_, Error>((
@@ -202,7 +202,7 @@ pub async fn set_avatar_url_route(
                                 .ok_or_else(|| {
                                     Error::bad_database(
                                         "Tried to send displayname update for user not in the \
-                                         room.",
+                                     room.",
                                     )
                                 })?
                                 .content
@@ -221,7 +221,9 @@ pub async fn set_avatar_url_route(
             ))
         })
         .filter_map(|r| r.ok())
-    {
+        .collect();
+
+    for (pdu_builder, room_id) in all_joined_rooms {
         let mutex_state = Arc::clone(
             db.globals
                 .roomid_mutex_state
