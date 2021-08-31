@@ -9,6 +9,11 @@ use ruma::{
 #[cfg(feature = "conduit_bin")]
 use rocket::put;
 
+/// # `PUT /_matrix/client/r0/rooms/{roomId}/redact/{eventId}/{txnId}`
+///
+/// Tries to send a redaction event into the room.
+///
+/// - TODO: Handle txn id
 #[cfg_attr(
     feature = "conduit_bin",
     put("/_matrix/client/r0/rooms/<_>/redact/<_>/<_>", data = "<body>")

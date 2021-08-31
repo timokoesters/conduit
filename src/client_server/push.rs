@@ -15,6 +15,9 @@ use ruma::{
 #[cfg(feature = "conduit_bin")]
 use rocket::{delete, get, post, put};
 
+/// # `GET /_matrix/client/r0/pushrules`
+///
+/// Retrieves the push rules event for this user.
 #[cfg_attr(
     feature = "conduit_bin",
     get("/_matrix/client/r0/pushrules", data = "<body>")
@@ -40,6 +43,9 @@ pub async fn get_pushrules_all_route(
     .into())
 }
 
+/// # `GET /_matrix/client/r0/pushrules/{scope}/{kind}/{ruleId}`
+///
+/// Retrieves a single specified push rule for this user.
 #[cfg_attr(
     feature = "conduit_bin",
     get("/_matrix/client/r0/pushrules/<_>/<_>/<_>", data = "<body>")
@@ -94,6 +100,9 @@ pub async fn get_pushrule_route(
     }
 }
 
+/// # `PUT /_matrix/client/r0/pushrules/{scope}/{kind}/{ruleId}`
+///
+/// Creates a single specified push rule for this user.
 #[cfg_attr(
     feature = "conduit_bin",
     put("/_matrix/client/r0/pushrules/<_>/<_>/<_>", data = "<req>")
@@ -197,6 +206,9 @@ pub async fn set_pushrule_route(
     Ok(set_pushrule::Response {}.into())
 }
 
+/// # `GET /_matrix/client/r0/pushrules/{scope}/{kind}/{ruleId}/actions`
+///
+/// Gets the actions of a single specified push rule for this user.
 #[cfg_attr(
     feature = "conduit_bin",
     get("/_matrix/client/r0/pushrules/<_>/<_>/<_>/actions", data = "<body>")
@@ -256,6 +268,9 @@ pub async fn get_pushrule_actions_route(
     .into())
 }
 
+/// # `PUT /_matrix/client/r0/pushrules/{scope}/{kind}/{ruleId}/actions`
+///
+/// Sets the actions of a single specified push rule for this user.
 #[cfg_attr(
     feature = "conduit_bin",
     put("/_matrix/client/r0/pushrules/<_>/<_>/<_>/actions", data = "<body>")
@@ -330,6 +345,9 @@ pub async fn set_pushrule_actions_route(
     Ok(set_pushrule_actions::Response {}.into())
 }
 
+/// # `GET /_matrix/client/r0/pushrules/{scope}/{kind}/{ruleId}/enabled`
+///
+/// Gets the enabled status of a single specified push rule for this user.
 #[cfg_attr(
     feature = "conduit_bin",
     get("/_matrix/client/r0/pushrules/<_>/<_>/<_>/enabled", data = "<body>")
@@ -391,6 +409,9 @@ pub async fn get_pushrule_enabled_route(
     Ok(get_pushrule_enabled::Response { enabled }.into())
 }
 
+/// # `PUT /_matrix/client/r0/pushrules/{scope}/{kind}/{ruleId}/enabled`
+///
+/// Sets the enabled status of a single specified push rule for this user.
 #[cfg_attr(
     feature = "conduit_bin",
     put("/_matrix/client/r0/pushrules/<_>/<_>/<_>/enabled", data = "<body>")
@@ -470,6 +491,9 @@ pub async fn set_pushrule_enabled_route(
     Ok(set_pushrule_enabled::Response {}.into())
 }
 
+/// # `DELETE /_matrix/client/r0/pushrules/{scope}/{kind}/{ruleId}`
+///
+/// Deletes a single specified push rule for this user.
 #[cfg_attr(
     feature = "conduit_bin",
     delete("/_matrix/client/r0/pushrules/<_>/<_>/<_>", data = "<body>")
@@ -539,6 +563,9 @@ pub async fn delete_pushrule_route(
     Ok(delete_pushrule::Response {}.into())
 }
 
+/// # `GET /_matrix/client/r0/pushers`
+///
+/// Gets all currently active pushers for the sender user.
 #[cfg_attr(
     feature = "conduit_bin",
     get("/_matrix/client/r0/pushers", data = "<body>")
@@ -556,6 +583,11 @@ pub async fn get_pushers_route(
     .into())
 }
 
+/// # `POST /_matrix/client/r0/pushers/set`
+///
+/// Adds a pusher for the sender user.
+///
+/// - TODO: Handle `append`
 #[cfg_attr(
     feature = "conduit_bin",
     post("/_matrix/client/r0/pushers/set", data = "<body>")

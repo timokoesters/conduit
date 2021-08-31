@@ -24,6 +24,12 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 #[cfg(feature = "conduit_bin")]
 use rocket::{get, post};
 
+/// # `POST /_matrix/client/r0/keys/upload`
+///
+/// Publish end-to-end encryption keys for the sender device.
+///
+/// - Adds one time keys
+/// - If there are no device keys yet: Adds device keys (TODO: merge with existing keys?)
 #[cfg_attr(
     feature = "conduit_bin",
     post("/_matrix/client/r0/keys/upload", data = "<body>")
@@ -49,6 +55,7 @@ pub async fn upload_keys_route(
     }
 
     if let Some(device_keys) = &body.device_keys {
+        // TODO: merge this and the existing event?
         // This check is needed to assure that signatures are kept
         if db
             .users
@@ -73,6 +80,13 @@ pub async fn upload_keys_route(
     .into())
 }
 
+/// # `POST /_matrix/client/r0/keys/query`
+///
+/// Get end-to-end encryption keys for the given users.
+///
+/// - Always fetches users from other servers over federation
+/// - Gets master keys, self-signing keys, user signing keys and device keys.
+/// - The master and self-signing keys contain signatures that the user is allowed to see
 #[cfg_attr(
     feature = "conduit_bin",
     post("/_matrix/client/r0/keys/query", data = "<body>")
@@ -95,6 +109,9 @@ pub async fn get_keys_route(
     Ok(response.into())
 }
 
+/// # `POST /_matrix/client/r0/keys/claim`
+///
+/// Claims one-time keys
 #[cfg_attr(
     feature = "conduit_bin",
     post("/_matrix/client/r0/keys/claim", data = "<body>")
@@ -111,6 +128,11 @@ pub async fn claim_keys_route(
     Ok(response.into())
 }
 
+/// # `POST /_matrix/client/r0/keys/device_signing/upload`
+///
+/// Uploads end-to-end key information for the sender user.
+///
+/// - Requires UIAA to verify password
 #[cfg_attr(
     feature = "conduit_bin",
     post("/_matrix/client/unstable/keys/device_signing/upload", data = "<body>")
@@ -172,6 +194,9 @@ pub async fn upload_signing_keys_route(
     Ok(upload_signing_keys::Response {}.into())
 }
 
+/// # `POST /_matrix/client/r0/keys/signatures/upload`
+///
+/// Uploads end-to-end key signatures from the sender user.
 #[cfg_attr(
     feature = "conduit_bin",
     post("/_matrix/client/unstable/keys/signatures/upload", data = "<body>")
@@ -233,6 +258,11 @@ pub async fn upload_signatures_route(
     Ok(upload_signatures::Response {}.into())
 }
 
+/// # `POST /_matrix/client/r0/keys/changes`
+///
+/// Gets a list of users who have updated their device identity keys since the previous sync token.
+///
+/// - TODO: left users
 #[cfg_attr(
     feature = "conduit_bin",
     get("/_matrix/client/r0/keys/changes", data = "<body>")
@@ -284,7 +314,7 @@ pub async fn get_key_changes_route(
     .into())
 }
 
-pub async fn get_keys_helper<F: Fn(&UserId) -> bool>(
+pub(crate) async fn get_keys_helper<F: Fn(&UserId) -> bool>(
     sender_user: Option<&UserId>,
     device_keys_input: &BTreeMap<UserId, Vec<Box<DeviceId>>>,
     allowed_signatures: F,
@@ -409,7 +439,7 @@ pub async fn get_keys_helper<F: Fn(&UserId) -> bool>(
     })
 }
 
-pub async fn claim_keys_helper(
+pub(crate) async fn claim_keys_helper(
     one_time_keys_input: &BTreeMap<UserId, BTreeMap<Box<DeviceId>, DeviceKeyAlgorithm>>,
     db: &Database,
 ) -> Result<claim_keys::Response> {

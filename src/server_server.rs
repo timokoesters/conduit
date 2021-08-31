@@ -119,7 +119,7 @@ impl FedDest {
 }
 
 #[tracing::instrument(skip(globals, request))]
-pub async fn send_request<T: OutgoingRequest>(
+pub(crate) async fn send_request<T: OutgoingRequest>(
     globals: &crate::database::globals::Globals,
     destination: &ServerName,
     request: T,
@@ -487,7 +487,7 @@ async fn query_srv_record(
 }
 
 #[tracing::instrument(skip(globals))]
-pub async fn request_well_known(
+async fn request_well_known(
     globals: &crate::database::globals::Globals,
     destination: &str,
 ) -> Option<String> {
@@ -512,6 +512,9 @@ pub async fn request_well_known(
     Some(body.get("m.server")?.as_str()?.to_owned())
 }
 
+/// # `GET /_matrix/federation/v1/version`
+///
+/// Get version information on this server.
 #[cfg_attr(feature = "conduit_bin", get("/_matrix/federation/v1/version"))]
 #[tracing::instrument(skip(db))]
 pub fn get_server_version_route(
@@ -530,6 +533,12 @@ pub fn get_server_version_route(
     .into())
 }
 
+/// # `GET /_matrix/key/v2/server`
+///
+/// Gets the public signing keys of this server.
+///
+/// - Matrix does not support invalidating public keys, so the key returned by this will be valid
+/// forever.
 // Response type for this endpoint is Json because we need to calculate a signature for the response
 #[cfg_attr(feature = "conduit_bin", get("/_matrix/key/v2/server"))]
 #[tracing::instrument(skip(db))]
@@ -578,12 +587,21 @@ pub fn get_server_keys_route(db: DatabaseGuard) -> Json<String> {
     Json(serde_json::to_string(&response).expect("JSON is canonical"))
 }
 
+/// # `GET /_matrix/key/v2/server/{keyId}`
+///
+/// Gets the public signing keys of this server.
+///
+/// - Matrix does not support invalidating public keys, so the key returned by this will be valid
+/// forever.
 #[cfg_attr(feature = "conduit_bin", get("/_matrix/key/v2/server/<_>"))]
 #[tracing::instrument(skip(db))]
 pub fn get_server_keys_deprecated_route(db: DatabaseGuard) -> Json<String> {
     get_server_keys_route(db)
 }
 
+/// # `POST /_matrix/federation/v1/publicRooms`
+///
+/// Lists the public rooms on this server.
 #[cfg_attr(
     feature = "conduit_bin",
     post("/_matrix/federation/v1/publicRooms", data = "<body>")
@@ -628,6 +646,9 @@ pub async fn get_public_rooms_filtered_route(
     .into())
 }
 
+/// # `GET /_matrix/federation/v1/publicRooms`
+///
+/// Lists the public rooms on this server.
 #[cfg_attr(
     feature = "conduit_bin",
     get("/_matrix/federation/v1/publicRooms", data = "<body>")
@@ -672,6 +693,9 @@ pub async fn get_public_rooms_route(
     .into())
 }
 
+/// # `PUT /_matrix/federation/v1/send/{txnId}`
+///
+/// Push EDUs and PDUs to this server.
 #[cfg_attr(
     feature = "conduit_bin",
     put("/_matrix/federation/v1/send/<_>", data = "<body>")
@@ -921,7 +945,7 @@ type AsyncRecursiveType<'a, T> = Pin<Box<dyn Future<Output = T> + 'a + Send>>;
 /// 14. Use state resolution to find new room state
 // We use some AsyncRecursiveType hacks here so we can call this async funtion recursively
 #[tracing::instrument(skip(value, is_timeline_event, db, pub_key_map))]
-pub async fn handle_incoming_pdu<'a>(
+pub(crate) async fn handle_incoming_pdu<'a>(
     origin: &'a ServerName,
     event_id: &'a EventId,
     room_id: &'a RoomId,
@@ -1397,9 +1421,13 @@ async fn upgrade_outlier_to_timeline_pdu(
             let mut auth_chain_sets = Vec::new();
             for state in fork_states {
                 auth_chain_sets.push(
-                    get_auth_chain(state.iter().map(|(_, id)| id.clone()).collect(), db)
-                        .map_err(|_| "Failed to load auth chain.".to_owned())?
-                        .collect(),
+                    get_auth_chain(
+                        &room_id,
+                        state.iter().map(|(_, id)| id.clone()).collect(),
+                        db,
+                    )
+                    .map_err(|_| "Failed to load auth chain.".to_owned())?
+                    .collect(),
                 );
             }
 
@@ -1745,9 +1773,13 @@ async fn upgrade_outlier_to_timeline_pdu(
             let mut auth_chain_sets = Vec::new();
             for state in fork_states {
                 auth_chain_sets.push(
-                    get_auth_chain(state.iter().map(|(_, id)| id.clone()).collect(), db)
-                        .map_err(|_| "Failed to load auth chain.".to_owned())?
-                        .collect(),
+                    get_auth_chain(
+                        &room_id,
+                        state.iter().map(|(_, id)| id.clone()).collect(),
+                        db,
+                    )
+                    .map_err(|_| "Failed to load auth chain.".to_owned())?
+                    .collect(),
                 );
             }
 
@@ -2187,10 +2219,11 @@ fn append_incoming_pdu(
 }
 
 #[tracing::instrument(skip(starting_events, db))]
-pub fn get_auth_chain(
+pub(crate) fn get_auth_chain<'a>(
+    room_id: &RoomId,
     starting_events: Vec<Arc<EventId>>,
-    db: &Database,
-) -> Result<impl Iterator<Item = Arc<EventId>> + '_> {
+    db: &'a Database,
+) -> Result<impl Iterator<Item = Arc<EventId>> + 'a> {
     const NUM_BUCKETS: usize = 50;
 
     let mut buckets = vec![BTreeSet::new(); NUM_BUCKETS];
@@ -2231,7 +2264,7 @@ pub fn get_auth_chain(
                 chunk_cache.extend(cached.iter().cloned());
             } else {
                 misses2 += 1;
-                let auth_chain = Arc::new(get_auth_chain_inner(&event_id, db)?);
+                let auth_chain = Arc::new(get_auth_chain_inner(&room_id, &event_id, db)?);
                 db.rooms
                     .cache_auth_chain(vec![sevent_id], Arc::clone(&auth_chain))?;
                 println!(
@@ -2267,13 +2300,20 @@ pub fn get_auth_chain(
 }
 
 #[tracing::instrument(skip(event_id, db))]
-fn get_auth_chain_inner(event_id: &EventId, db: &Database) -> Result<HashSet<u64>> {
+fn get_auth_chain_inner(
+    room_id: &RoomId,
+    event_id: &EventId,
+    db: &Database,
+) -> Result<HashSet<u64>> {
     let mut todo = vec![event_id.clone()];
     let mut found = HashSet::new();
 
     while let Some(event_id) = todo.pop() {
         match db.rooms.get_pdu(&event_id) {
             Ok(Some(pdu)) => {
+                if &pdu.room_id != room_id {
+                    return Err(Error::BadRequest(ErrorKind::Forbidden, "Evil event in db"));
+                }
                 for auth_event in &pdu.auth_events {
                     let sauthevent = db
                         .rooms
@@ -2297,6 +2337,11 @@ fn get_auth_chain_inner(event_id: &EventId, db: &Database) -> Result<HashSet<u64
     Ok(found)
 }
 
+/// # `GET /_matrix/federation/v1/event/{eventId}`
+///
+/// Retrieves a single event from the server.
+///
+/// - Only works if a user of this server is currently invited or joined the room
 #[cfg_attr(
     feature = "conduit_bin",
     get("/_matrix/federation/v1/event/<_>", data = "<body>")
@@ -2310,18 +2355,39 @@ pub fn get_event_route(
         return Err(Error::bad_config("Federation is disabled."));
     }
 
+    let sender_servername = body
+        .sender_servername
+        .as_ref()
+        .expect("server is authenticated");
+
+    let event = db
+        .rooms
+        .get_pdu_json(&body.event_id)?
+        .ok_or(Error::BadRequest(ErrorKind::NotFound, "Event not found."))?;
+
+    let room_id_str = event
+        .get("room_id")
+        .and_then(|val| val.as_str())
+        .ok_or_else(|| Error::bad_database("Invalid event in database"))?;
+
+    let room_id = RoomId::try_from(room_id_str)
+        .map_err(|_| Error::bad_database("Invalid room id field in event in database"))?;
+
+    if !db.rooms.server_in_room(sender_servername, &room_id)? {
+        return Err(Error::BadRequest(ErrorKind::NotFound, "Event not found."));
+    }
+
     Ok(get_event::v1::Response {
         origin: db.globals.server_name().to_owned(),
         origin_server_ts: MilliSecondsSinceUnixEpoch::now(),
-        pdu: PduEvent::convert_to_outgoing_federation_event(
-            db.rooms
-                .get_pdu_json(&body.event_id)?
-                .ok_or(Error::BadRequest(ErrorKind::NotFound, "Event not found."))?,
-        ),
+        pdu: PduEvent::convert_to_outgoing_federation_event(event),
     }
     .into())
 }
 
+/// # `POST /_matrix/federation/v1/get_missing_events/{roomId}`
+///
+/// Retrieves events that the sender is missing.
 #[cfg_attr(
     feature = "conduit_bin",
     post("/_matrix/federation/v1/get_missing_events/<_>", data = "<body>")
@@ -2335,22 +2401,44 @@ pub fn get_missing_events_route(
         return Err(Error::bad_config("Federation is disabled."));
     }
 
+    let sender_servername = body
+        .sender_servername
+        .as_ref()
+        .expect("server is authenticated");
+
+    if !db.rooms.server_in_room(sender_servername, &body.room_id)? {
+        return Err(Error::BadRequest(
+            ErrorKind::Forbidden,
+            "Server is not in room",
+        ));
+    }
+
     let mut queued_events = body.latest_events.clone();
     let mut events = Vec::new();
 
     let mut i = 0;
     while i < queued_events.len() && events.len() < u64::from(body.limit) as usize {
         if let Some(pdu) = db.rooms.get_pdu_json(&queued_events[i])? {
-            let event_id =
-                serde_json::from_value(
-                    serde_json::to_value(pdu.get("event_id").cloned().ok_or_else(|| {
-                        Error::bad_database("Event in db has no event_id field.")
-                    })?)
-                    .expect("canonical json is valid json value"),
-                )
-                .map_err(|_| Error::bad_database("Invalid event_id field in pdu in db."))?;
+            let room_id_str = pdu
+                .get("room_id")
+                .and_then(|val| val.as_str())
+                .ok_or_else(|| Error::bad_database("Invalid event in database"))?;
 
-            if body.earliest_events.contains(&event_id) {
+            let event_room_id = RoomId::try_from(room_id_str)
+                .map_err(|_| Error::bad_database("Invalid room id field in event in database"))?;
+
+            if event_room_id != body.room_id {
+                warn!(
+                    "Evil event detected: Event {} found while searching in room {}",
+                    queued_events[i], body.room_id
+                );
+                return Err(Error::BadRequest(
+                    ErrorKind::InvalidParam,
+                    "Evil event detected",
+                ));
+            }
+
+            if body.earliest_events.contains(&queued_events[i]) {
                 i += 1;
                 continue;
             }
@@ -2371,6 +2459,11 @@ pub fn get_missing_events_route(
     Ok(get_missing_events::v1::Response { events }.into())
 }
 
+/// # `GET /_matrix/federation/v1/event_auth/{roomId}/{eventId}`
+///
+/// Retrieves the auth chain for a given event.
+///
+/// - This does not include the event itself
 #[cfg_attr(
     feature = "conduit_bin",
     get("/_matrix/federation/v1/event_auth/<_>/<_>", data = "<body>")
@@ -2384,7 +2477,29 @@ pub fn get_event_authorization_route(
         return Err(Error::bad_config("Federation is disabled."));
     }
 
-    let auth_chain_ids = get_auth_chain(vec![Arc::new(body.event_id.clone())], &db)?;
+    let sender_servername = body
+        .sender_servername
+        .as_ref()
+        .expect("server is authenticated");
+
+    let event = db
+        .rooms
+        .get_pdu_json(&body.event_id)?
+        .ok_or(Error::BadRequest(ErrorKind::NotFound, "Event not found."))?;
+
+    let room_id_str = event
+        .get("room_id")
+        .and_then(|val| val.as_str())
+        .ok_or_else(|| Error::bad_database("Invalid event in database"))?;
+
+    let room_id = RoomId::try_from(room_id_str)
+        .map_err(|_| Error::bad_database("Invalid room id field in event in database"))?;
+
+    if !db.rooms.server_in_room(sender_servername, &room_id)? {
+        return Err(Error::BadRequest(ErrorKind::NotFound, "Event not found."));
+    }
+
+    let auth_chain_ids = get_auth_chain(&room_id, vec![Arc::new(body.event_id.clone())], &db)?;
 
     Ok(get_event_authorization::v1::Response {
         auth_chain: auth_chain_ids
@@ -2395,6 +2510,9 @@ pub fn get_event_authorization_route(
     .into())
 }
 
+/// # `GET /_matrix/federation/v1/state/{roomId}`
+///
+/// Retrieves the current state of the room.
 #[cfg_attr(
     feature = "conduit_bin",
     get("/_matrix/federation/v1/state/<_>", data = "<body>")
@@ -2406,6 +2524,18 @@ pub fn get_room_state_route(
 ) -> ConduitResult<get_room_state::v1::Response> {
     if !db.globals.allow_federation() {
         return Err(Error::bad_config("Federation is disabled."));
+    }
+
+    let sender_servername = body
+        .sender_servername
+        .as_ref()
+        .expect("server is authenticated");
+
+    if !db.rooms.server_in_room(sender_servername, &body.room_id)? {
+        return Err(Error::BadRequest(
+            ErrorKind::Forbidden,
+            "Server is not in room.",
+        ));
     }
 
     let shortstatehash = db
@@ -2427,7 +2557,7 @@ pub fn get_room_state_route(
         })
         .collect();
 
-    let auth_chain_ids = get_auth_chain(vec![Arc::new(body.event_id.clone())], &db)?;
+    let auth_chain_ids = get_auth_chain(&body.room_id, vec![Arc::new(body.event_id.clone())], &db)?;
 
     Ok(get_room_state::v1::Response {
         auth_chain: auth_chain_ids
@@ -2443,6 +2573,9 @@ pub fn get_room_state_route(
     .into())
 }
 
+/// # `GET /_matrix/federation/v1/state_ids/{roomId}`
+///
+/// Retrieves the current state of the room.
 #[cfg_attr(
     feature = "conduit_bin",
     get("/_matrix/federation/v1/state_ids/<_>", data = "<body>")
@@ -2454,6 +2587,18 @@ pub fn get_room_state_ids_route(
 ) -> ConduitResult<get_room_state_ids::v1::Response> {
     if !db.globals.allow_federation() {
         return Err(Error::bad_config("Federation is disabled."));
+    }
+
+    let sender_servername = body
+        .sender_servername
+        .as_ref()
+        .expect("server is authenticated");
+
+    if !db.rooms.server_in_room(sender_servername, &body.room_id)? {
+        return Err(Error::BadRequest(
+            ErrorKind::Forbidden,
+            "Server is not in room.",
+        ));
     }
 
     let shortstatehash = db
@@ -2471,7 +2616,7 @@ pub fn get_room_state_ids_route(
         .map(|(_, id)| (*id).clone())
         .collect();
 
-    let auth_chain_ids = get_auth_chain(vec![Arc::new(body.event_id.clone())], &db)?;
+    let auth_chain_ids = get_auth_chain(&body.room_id, vec![Arc::new(body.event_id.clone())], &db)?;
 
     Ok(get_room_state_ids::v1::Response {
         auth_chain_ids: auth_chain_ids.map(|id| (*id).clone()).collect(),
@@ -2480,6 +2625,9 @@ pub fn get_room_state_ids_route(
     .into())
 }
 
+/// # `GET /_matrix/federation/v1/make_join/{roomId}/{userId}`
+///
+/// Creates a join template.
 #[cfg_attr(
     feature = "conduit_bin",
     get("/_matrix/federation/v1/make_join/<_>/<_>", data = "<body>")
@@ -2719,7 +2867,11 @@ async fn create_join_event(
     drop(mutex_lock);
 
     let state_ids = db.rooms.state_full_ids(shortstatehash)?;
-    let auth_chain_ids = get_auth_chain(state_ids.iter().map(|(_, id)| id.clone()).collect(), &db)?;
+    let auth_chain_ids = get_auth_chain(
+        &room_id,
+        state_ids.iter().map(|(_, id)| id.clone()).collect(),
+        &db,
+    )?;
 
     for server in db
         .rooms
@@ -2745,6 +2897,9 @@ async fn create_join_event(
     })
 }
 
+/// # `PUT /_matrix/federation/v1/send_join/{roomId}/{eventId}`
+///
+/// Submits a signed join event.
 #[cfg_attr(
     feature = "conduit_bin",
     put("/_matrix/federation/v1/send_join/<_>/<_>", data = "<body>")
@@ -2759,6 +2914,9 @@ pub async fn create_join_event_v1_route(
     Ok(create_join_event::v1::Response { room_state }.into())
 }
 
+/// # `PUT /_matrix/federation/v2/send_join/{roomId}/{eventId}`
+///
+/// Submits a signed join event.
 #[cfg_attr(
     feature = "conduit_bin",
     put("/_matrix/federation/v2/send_join/<_>/<_>", data = "<body>")
@@ -2773,6 +2931,9 @@ pub async fn create_join_event_v2_route(
     Ok(create_join_event::v2::Response { room_state }.into())
 }
 
+/// # `PUT /_matrix/federation/v2/invite/{roomId}/{eventId}`
+///
+/// Invites a remote user to a room.
 #[cfg_attr(
     feature = "conduit_bin",
     put("/_matrix/federation/v2/invite/<_>/<_>", data = "<body>")
@@ -2882,6 +3043,9 @@ pub async fn create_invite_route(
     .into())
 }
 
+/// # `GET /_matrix/federation/v1/user/devices/{userId}`
+///
+/// Gets information on all devices of the user.
 #[cfg_attr(
     feature = "conduit_bin",
     get("/_matrix/federation/v1/user/devices/<_>", data = "<body>")
@@ -2922,6 +3086,9 @@ pub fn get_devices_route(
     .into())
 }
 
+/// # `GET /_matrix/federation/v1/query/directory`
+///
+/// Resolve a room alias to a room id.
 #[cfg_attr(
     feature = "conduit_bin",
     get("/_matrix/federation/v1/query/directory", data = "<body>")
@@ -2950,6 +3117,9 @@ pub fn get_room_information_route(
     .into())
 }
 
+/// # `GET /_matrix/federation/v1/query/profile`
+///
+/// Gets information on a profile.
 #[cfg_attr(
     feature = "conduit_bin",
     get("/_matrix/federation/v1/query/profile", data = "<body>")
@@ -2990,6 +3160,9 @@ pub fn get_profile_information_route(
     .into())
 }
 
+/// # `POST /_matrix/federation/v1/user/keys/query`
+///
+/// Gets devices and identity keys for the given users.
 #[cfg_attr(
     feature = "conduit_bin",
     post("/_matrix/federation/v1/user/keys/query", data = "<body>")
@@ -3021,6 +3194,9 @@ pub async fn get_keys_route(
     .into())
 }
 
+/// # `POST /_matrix/federation/v1/user/keys/claim`
+///
+/// Claims one-time keys.
 #[cfg_attr(
     feature = "conduit_bin",
     post("/_matrix/federation/v1/user/keys/claim", data = "<body>")
@@ -3045,7 +3221,7 @@ pub async fn claim_keys_route(
 }
 
 #[tracing::instrument(skip(event, pub_key_map, db))]
-pub async fn fetch_required_signing_keys(
+pub(crate) async fn fetch_required_signing_keys(
     event: &BTreeMap<String, CanonicalJsonValue>,
     pub_key_map: &RwLock<BTreeMap<String, BTreeMap<String, String>>>,
     db: &Database,

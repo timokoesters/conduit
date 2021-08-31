@@ -71,6 +71,9 @@ pub const DEVICE_ID_LENGTH: usize = 10;
 pub const TOKEN_LENGTH: usize = 256;
 pub const SESSION_ID_LENGTH: usize = 256;
 
+/// # `OPTIONS`
+///
+/// Web clients use this to get CORS headers.
 #[cfg(feature = "conduit_bin")]
 #[options("/<_..>")]
 #[tracing::instrument]

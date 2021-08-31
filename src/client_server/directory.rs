@@ -28,6 +28,11 @@ use tracing::{info, warn};
 #[cfg(feature = "conduit_bin")]
 use rocket::{get, post, put};
 
+/// # `POST /_matrix/client/r0/publicRooms`
+///
+/// Lists the public rooms on this server.
+///
+/// - Rooms are ordered by the number of joined members
 #[cfg_attr(
     feature = "conduit_bin",
     post("/_matrix/client/r0/publicRooms", data = "<body>")
@@ -48,6 +53,11 @@ pub async fn get_public_rooms_filtered_route(
     .await
 }
 
+/// # `GET /_matrix/client/r0/publicRooms`
+///
+/// Lists the public rooms on this server.
+///
+/// - Rooms are ordered by the number of joined members
 #[cfg_attr(
     feature = "conduit_bin",
     get("/_matrix/client/r0/publicRooms", data = "<body>")
@@ -77,6 +87,11 @@ pub async fn get_public_rooms_route(
     .into())
 }
 
+/// # `PUT /_matrix/client/r0/directory/list/room/{roomId}`
+///
+/// Sets the visibility of a given room in the room directory.
+///
+/// - TODO: Access control checks
 #[cfg_attr(
     feature = "conduit_bin",
     put("/_matrix/client/r0/directory/list/room/<_>", data = "<body>")
@@ -107,6 +122,9 @@ pub async fn set_room_visibility_route(
     Ok(set_room_visibility::Response {}.into())
 }
 
+/// # `GET /_matrix/client/r0/directory/list/room/{roomId}`
+///
+/// Gets the visibility of a given room in the room directory.
 #[cfg_attr(
     feature = "conduit_bin",
     get("/_matrix/client/r0/directory/list/room/<_>", data = "<body>")
@@ -126,7 +144,7 @@ pub async fn get_room_visibility_route(
     .into())
 }
 
-pub async fn get_public_rooms_filtered_helper(
+pub(crate) async fn get_public_rooms_filtered_helper(
     db: &Database,
     server: Option<&ServerName>,
     limit: Option<UInt>,

@@ -24,7 +24,7 @@ use rocket::{get, post};
 
 /// # `GET /_matrix/client/r0/login`
 ///
-/// Get the homeserver's supported login types. One of these should be used as the `type` field
+/// Get the supported login types of this server. One of these should be used as the `type` field
 /// when logging in.
 #[cfg_attr(feature = "conduit_bin", get("/_matrix/client/r0/login"))]
 #[tracing::instrument]
@@ -41,9 +41,10 @@ pub async fn get_login_types_route() -> ConduitResult<get_login_types::Response>
 ///
 /// Authenticates the user and returns an access token it can use in subsequent requests.
 ///
-/// - The returned access token is associated with the user and device
-/// - Old access tokens of that device should be invalidated
-/// - If `device_id` is unknown, a new device will be created
+/// - The user needs to authenticate using their password (or if enabled using a json web token)
+/// - If `device_id` is known: invalidates old access token of that device
+/// - If `device_id` is unknown: creates a new device
+/// - Returns access token that is associated with the user and device
 ///
 /// Note: You can use [`GET /_matrix/client/r0/login`](fn.get_supported_versions_route.html) to see
 /// supported login types.
@@ -162,8 +163,10 @@ pub async fn login_route(
 ///
 /// Log out the current device.
 ///
-/// - Invalidates the access token
-/// - Deletes the device and most of it's data (to-device events, last seen, etc.)
+/// - Invalidates access token
+/// - Deletes device metadata (device id, device display name, last seen ip, last seen ts)
+/// - Forgets to-device events
+/// - Triggers device list updates
 #[cfg_attr(
     feature = "conduit_bin",
     post("/_matrix/client/r0/logout", data = "<body>")
@@ -188,7 +191,9 @@ pub async fn logout_route(
 /// Log out all devices of this user.
 ///
 /// - Invalidates all access tokens
-/// - Deletes devices and most of their data (to-device events, last seen, etc.)
+/// - Deletes all device metadata (device id, device display name, last seen ip, last seen ts)
+/// - Forgets all to-device events
+/// - Triggers device list updates
 ///
 /// Note: This is equivalent to calling [`GET /_matrix/client/r0/logout`](fn.logout_route.html)
 /// from each device of this user.

@@ -12,6 +12,9 @@ use ruma::api::client::{
 #[cfg(feature = "conduit_bin")]
 use rocket::{delete, get, post, put};
 
+/// # `POST /_matrix/client/r0/room_keys/version`
+///
+/// Creates a new backup.
 #[cfg_attr(
     feature = "conduit_bin",
     post("/_matrix/client/unstable/room_keys/version", data = "<body>")
@@ -31,6 +34,9 @@ pub async fn create_backup_route(
     Ok(create_backup::Response { version }.into())
 }
 
+/// # `PUT /_matrix/client/r0/room_keys/version/{version}`
+///
+/// Update information about an existing backup. Only `auth_data` can be modified.
 #[cfg_attr(
     feature = "conduit_bin",
     put("/_matrix/client/unstable/room_keys/version/<_>", data = "<body>")
@@ -49,6 +55,9 @@ pub async fn update_backup_route(
     Ok(update_backup::Response {}.into())
 }
 
+/// # `GET /_matrix/client/r0/room_keys/version`
+///
+/// Get information about the latest backup version.
 #[cfg_attr(
     feature = "conduit_bin",
     get("/_matrix/client/unstable/room_keys/version", data = "<body>")
@@ -77,6 +86,9 @@ pub async fn get_latest_backup_route(
     .into())
 }
 
+/// # `GET /_matrix/client/r0/room_keys/version`
+///
+/// Get information about an existing backup.
 #[cfg_attr(
     feature = "conduit_bin",
     get("/_matrix/client/unstable/room_keys/version/<_>", data = "<body>")
@@ -104,6 +116,11 @@ pub async fn get_backup_route(
     .into())
 }
 
+/// # `DELETE /_matrix/client/r0/room_keys/version/{version}`
+///
+/// Delete an existing key backup.
+///
+/// - Deletes both information about the backup, as well as all key data related to the backup
 #[cfg_attr(
     feature = "conduit_bin",
     delete("/_matrix/client/unstable/room_keys/version/<_>", data = "<body>")
@@ -122,7 +139,13 @@ pub async fn delete_backup_route(
     Ok(delete_backup::Response {}.into())
 }
 
+/// # `PUT /_matrix/client/r0/room_keys/keys`
+///
 /// Add the received backup keys to the database.
+///
+/// - Only manipulating the most recently created version of the backup is allowed
+/// - Adds the keys to the backup
+/// - Returns the new number of keys in this backup and the etag
 #[cfg_attr(
     feature = "conduit_bin",
     put("/_matrix/client/unstable/room_keys/keys", data = "<body>")
@@ -133,6 +156,18 @@ pub async fn add_backup_keys_route(
     body: Ruma<add_backup_keys::Request<'_>>,
 ) -> ConduitResult<add_backup_keys::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
+
+    if Some(&body.version)
+        != db
+            .key_backups
+            .get_latest_backup_version(sender_user)?
+            .as_ref()
+    {
+        return Err(Error::BadRequest(
+            ErrorKind::InvalidParam,
+            "You may only manipulate the most recently created version of the backup.",
+        ));
+    }
 
     for (room_id, room) in &body.rooms {
         for (session_id, key_data) in &room.sessions {
@@ -156,7 +191,13 @@ pub async fn add_backup_keys_route(
     .into())
 }
 
+/// # `PUT /_matrix/client/r0/room_keys/keys/{roomId}`
+///
 /// Add the received backup keys to the database.
+///
+/// - Only manipulating the most recently created version of the backup is allowed
+/// - Adds the keys to the backup
+/// - Returns the new number of keys in this backup and the etag
 #[cfg_attr(
     feature = "conduit_bin",
     put("/_matrix/client/unstable/room_keys/keys/<_>", data = "<body>")
@@ -167,6 +208,18 @@ pub async fn add_backup_key_sessions_route(
     body: Ruma<add_backup_key_sessions::Request<'_>>,
 ) -> ConduitResult<add_backup_key_sessions::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
+
+    if Some(&body.version)
+        != db
+            .key_backups
+            .get_latest_backup_version(sender_user)?
+            .as_ref()
+    {
+        return Err(Error::BadRequest(
+            ErrorKind::InvalidParam,
+            "You may only manipulate the most recently created version of the backup.",
+        ));
+    }
 
     for (session_id, key_data) in &body.sessions {
         db.key_backups.add_key(
@@ -188,7 +241,13 @@ pub async fn add_backup_key_sessions_route(
     .into())
 }
 
+/// # `PUT /_matrix/client/r0/room_keys/keys/{roomId}/{sessionId}`
+///
 /// Add the received backup key to the database.
+///
+/// - Only manipulating the most recently created version of the backup is allowed
+/// - Adds the keys to the backup
+/// - Returns the new number of keys in this backup and the etag
 #[cfg_attr(
     feature = "conduit_bin",
     put("/_matrix/client/unstable/room_keys/keys/<_>/<_>", data = "<body>")
@@ -199,6 +258,18 @@ pub async fn add_backup_key_session_route(
     body: Ruma<add_backup_key_session::Request<'_>>,
 ) -> ConduitResult<add_backup_key_session::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
+
+    if Some(&body.version)
+        != db
+            .key_backups
+            .get_latest_backup_version(sender_user)?
+            .as_ref()
+    {
+        return Err(Error::BadRequest(
+            ErrorKind::InvalidParam,
+            "You may only manipulate the most recently created version of the backup.",
+        ));
+    }
 
     db.key_backups.add_key(
         &sender_user,
@@ -218,6 +289,9 @@ pub async fn add_backup_key_session_route(
     .into())
 }
 
+/// # `GET /_matrix/client/r0/room_keys/keys`
+///
+/// Retrieves all keys from the backup.
 #[cfg_attr(
     feature = "conduit_bin",
     get("/_matrix/client/unstable/room_keys/keys", data = "<body>")
@@ -234,6 +308,9 @@ pub async fn get_backup_keys_route(
     Ok(get_backup_keys::Response { rooms }.into())
 }
 
+/// # `GET /_matrix/client/r0/room_keys/keys/{roomId}`
+///
+/// Retrieves all keys from the backup for a given room.
 #[cfg_attr(
     feature = "conduit_bin",
     get("/_matrix/client/unstable/room_keys/keys/<_>", data = "<body>")
@@ -252,6 +329,9 @@ pub async fn get_backup_key_sessions_route(
     Ok(get_backup_key_sessions::Response { sessions }.into())
 }
 
+/// # `GET /_matrix/client/r0/room_keys/keys/{roomId}/{sessionId}`
+///
+/// Retrieves a key from the backup.
 #[cfg_attr(
     feature = "conduit_bin",
     get("/_matrix/client/unstable/room_keys/keys/<_>/<_>", data = "<body>")
@@ -274,6 +354,9 @@ pub async fn get_backup_key_session_route(
     Ok(get_backup_key_session::Response { key_data }.into())
 }
 
+/// # `DELETE /_matrix/client/r0/room_keys/keys`
+///
+/// Delete the keys from the backup.
 #[cfg_attr(
     feature = "conduit_bin",
     delete("/_matrix/client/unstable/room_keys/keys", data = "<body>")
@@ -297,6 +380,9 @@ pub async fn delete_backup_keys_route(
     .into())
 }
 
+/// # `DELETE /_matrix/client/r0/room_keys/keys/{roomId}`
+///
+/// Delete the keys from the backup for a given room.
 #[cfg_attr(
     feature = "conduit_bin",
     delete("/_matrix/client/unstable/room_keys/keys/<_>", data = "<body>")
@@ -320,6 +406,9 @@ pub async fn delete_backup_key_sessions_route(
     .into())
 }
 
+/// # `DELETE /_matrix/client/r0/room_keys/keys/{roomId}/{sessionId}`
+///
+/// Delete a key from the backup.
 #[cfg_attr(
     feature = "conduit_bin",
     delete("/_matrix/client/unstable/room_keys/keys/<_>/<_>", data = "<body>")

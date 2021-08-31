@@ -4,6 +4,11 @@ use ruma::api::client::r0::user_directory::search_users;
 #[cfg(feature = "conduit_bin")]
 use rocket::post;
 
+/// # `POST /_matrix/client/r0/user_directory/search`
+///
+/// Searches all known users for a match.
+///
+/// - TODO: Hide users that are not in any public rooms?
 #[cfg_attr(
     feature = "conduit_bin",
     post("/_matrix/client/r0/user_directory/search", data = "<body>")

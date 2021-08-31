@@ -84,6 +84,27 @@ impl KeyBackups {
         Ok(version.to_string())
     }
 
+    pub fn get_latest_backup_version(&self, user_id: &UserId) -> Result<Option<String>> {
+        let mut prefix = user_id.as_bytes().to_vec();
+        prefix.push(0xff);
+        let mut last_possible_key = prefix.clone();
+        last_possible_key.extend_from_slice(&u64::MAX.to_be_bytes());
+
+        self.backupid_algorithm
+            .iter_from(&last_possible_key, true)
+            .take_while(move |(k, _)| k.starts_with(&prefix))
+            .next()
+            .map_or(Ok(None), |(key, _)| {
+                utils::string_from_bytes(
+                    key.rsplit(|&b| b == 0xff)
+                        .next()
+                        .expect("rsplit always returns an element"),
+                )
+                .map_err(|_| Error::bad_database("backupid_algorithm key is invalid."))
+                .map(Some)
+            })
+    }
+
     pub fn get_latest_backup(&self, user_id: &UserId) -> Result<Option<(String, BackupAlgorithm)>> {
         let mut prefix = user_id.as_bytes().to_vec();
         prefix.push(0xff);

@@ -16,6 +16,13 @@ use std::{
 #[cfg(feature = "conduit_bin")]
 use rocket::{get, put};
 
+/// # `PUT /_matrix/client/r0/rooms/{roomId}/send/{eventType}/{txnId}`
+///
+/// Send a message event into the room.
+///
+/// - Is a NOOP if the txn id was already used before and returns the same event id again
+/// - The only requirement for the content is that it has to be valid json
+/// - Tries to send the event into the room, auth rules will determine if it is allowed
 #[cfg_attr(
     feature = "conduit_bin",
     put("/_matrix/client/r0/rooms/<_>/send/<_>/<_>", data = "<body>")
@@ -92,6 +99,12 @@ pub async fn send_message_event_route(
     Ok(send_message_event::Response::new(event_id).into())
 }
 
+/// # `GET /_matrix/client/r0/rooms/{roomId}/messages`
+///
+/// Allows paginating through room history.
+///
+/// - Only works if the user is joined (TODO: always allow, but only show events where the user was
+/// joined, depending on history_visibility)
 #[cfg_attr(
     feature = "conduit_bin",
     get("/_matrix/client/r0/rooms/<_>/messages", data = "<body>")

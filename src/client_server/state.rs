@@ -22,6 +22,13 @@ use ruma::{
 #[cfg(feature = "conduit_bin")]
 use rocket::{get, put};
 
+/// # `PUT /_matrix/client/r0/rooms/{roomId}/state/{eventType}/{stateKey}`
+///
+/// Sends a state event into the room.
+///
+/// - The only requirement for the content is that it has to be valid json
+/// - Tries to send the event into the room, auth rules will determine if it is allowed
+/// - If event is new canonical_alias: Rejects if alias is incorrect
 #[cfg_attr(
     feature = "conduit_bin",
     put("/_matrix/client/r0/rooms/<_>/state/<_>/<_>", data = "<body>")
@@ -48,6 +55,13 @@ pub async fn send_state_event_for_key_route(
     Ok(send_state_event::Response { event_id }.into())
 }
 
+/// # `PUT /_matrix/client/r0/rooms/{roomId}/state/{eventType}`
+///
+/// Sends a state event into the room.
+///
+/// - The only requirement for the content is that it has to be valid json
+/// - Tries to send the event into the room, auth rules will determine if it is allowed
+/// - If event is new canonical_alias: Rejects if alias is incorrect
 #[cfg_attr(
     feature = "conduit_bin",
     put("/_matrix/client/r0/rooms/<_>/state/<_>", data = "<body>")
@@ -74,6 +88,11 @@ pub async fn send_state_event_for_empty_key_route(
     Ok(send_state_event::Response { event_id }.into())
 }
 
+/// # `GET /_matrix/client/r0/rooms/{roomid}/state`
+///
+/// Get all state events for a room.
+///
+/// - If not joined: Only works if current room history visibility is world readable
 #[cfg_attr(
     feature = "conduit_bin",
     get("/_matrix/client/r0/rooms/<_>/state", data = "<body>")
@@ -121,6 +140,11 @@ pub async fn get_state_events_route(
     .into())
 }
 
+/// # `GET /_matrix/client/r0/rooms/{roomid}/state/{eventType}/{stateKey}`
+///
+/// Get single state event of a room.
+///
+/// - If not joined: Only works if current room history visibility is world readable
 #[cfg_attr(
     feature = "conduit_bin",
     get("/_matrix/client/r0/rooms/<_>/state/<_>/<_>", data = "<body>")
@@ -172,6 +196,11 @@ pub async fn get_state_events_for_key_route(
     .into())
 }
 
+/// # `GET /_matrix/client/r0/rooms/{roomid}/state/{eventType}`
+///
+/// Get single state event of a room.
+///
+/// - If not joined: Only works if current room history visibility is world readable
 #[cfg_attr(
     feature = "conduit_bin",
     get("/_matrix/client/r0/rooms/<_>/state/<_>", data = "<body>")
@@ -223,7 +252,7 @@ pub async fn get_state_events_for_empty_key_route(
     .into())
 }
 
-pub async fn send_state_event_for_key_helper(
+async fn send_state_event_for_key_helper(
     db: &Database,
     sender: &UserId,
     room_id: &RoomId,
@@ -233,6 +262,8 @@ pub async fn send_state_event_for_key_helper(
 ) -> Result<EventId> {
     let sender_user = sender;
 
+    // TODO: Review this check, error if event is unparsable, use event type, allow alias if it
+    // previously existed
     if let Ok(canonical_alias) =
         serde_json::from_str::<CanonicalAliasEventContent>(json.json().get())
     {
