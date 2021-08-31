@@ -53,7 +53,7 @@ pub struct Config {
     max_request_size: u32,
     #[serde(default = "default_max_concurrent_requests")]
     max_concurrent_requests: u16,
-    #[serde(default = "true_fn")]
+    #[serde(default = "false_fn")]
     allow_registration: bool,
     #[serde(default = "true_fn")]
     allow_encryption: bool,

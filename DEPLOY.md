@@ -107,8 +107,8 @@ port = 6167
 # Max size for uploads
 max_request_size = 20_000_000 # in bytes
 
-# Disabling registration means no new users will be able to register on this server
-allow_registration = false
+# Enables registration. If set to false, no users can register on this server.
+allow_registration = true
 
 # Disable encryption, so no new encrypted rooms can be created
 # Note: existing rooms will continue to work

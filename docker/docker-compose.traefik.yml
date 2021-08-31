@@ -27,6 +27,7 @@ services:
         environment:
             CONDUIT_SERVER_NAME: localhost:6167  # replace with your own name
             CONDUIT_TRUSTED_SERVERS: '["matrix.org"]'
+            CONDUIT_ALLOW_REGISTRATION : 'true'
             ### Uncomment and change values as desired
             # CONDUIT_ADDRESS: 0.0.0.0
             # CONDUIT_PORT: 6167
@@ -34,7 +35,6 @@ services:
             # Available levels are: error, warn, info, debug, trace - more info at: https://docs.rs/env_logger/*/env_logger/#enabling-logging
             # CONDUIT_LOG: info  # default is: "info,rocket=off,_=off,sled=off"
             # CONDUIT_ALLOW_JAEGER: 'false'
-            # CONDUIT_ALLOW_REGISTRATION : 'false'
             # CONDUIT_ALLOW_ENCRYPTION: 'false'
             # CONDUIT_ALLOW_FEDERATION: 'false'
             # CONDUIT_DATABASE_PATH: /srv/conduit/.local/share/conduit
