@@ -1030,7 +1030,7 @@ pub(crate) async fn handle_incoming_pdu<'a>(
             if amount > 100 {
                 // Max limit reached
                 warn!("Max prev event limit reached!");
-                graph.insert(prev_event_id.clone(), HashSet::new());
+                graph.insert((*prev_event_id).clone(), HashSet::new());
                 continue;
             }
 
@@ -1052,22 +1052,22 @@ pub(crate) async fn handle_incoming_pdu<'a>(
                     }
 
                     graph.insert(
-                        prev_event_id.clone(),
-                        pdu.prev_events.iter().cloned().map(Arc::new).collect(),
+                        (*prev_event_id).clone(),
+                        pdu.prev_events.iter().cloned().collect(),
                     );
                     eventid_info.insert(prev_event_id.clone(), (pdu, json));
                 } else {
                     // Time based check failed
-                    graph.insert(prev_event_id.clone(), HashSet::new());
+                    graph.insert((*prev_event_id).clone(), HashSet::new());
                     eventid_info.insert(prev_event_id.clone(), (pdu, json));
                 }
             } else {
                 // Get json failed
-                graph.insert(prev_event_id.clone(), HashSet::new());
+                graph.insert((*prev_event_id).clone(), HashSet::new());
             }
         } else {
             // Fetch and handle failed
-            graph.insert(prev_event_id.clone(), HashSet::new());
+            graph.insert((*prev_event_id).clone(), HashSet::new());
         }
     }
 
@@ -1084,7 +1084,7 @@ pub(crate) async fn handle_incoming_pdu<'a>(
                         .get(event_id)
                         .map_or_else(|| uint!(0), |info| info.0.origin_server_ts),
                 ),
-                Arc::new(ruma::event_id!("$notimportant")),
+                ruma::event_id!("$notimportant"),
             ))
         })
         .map_err(|_| "Error sorting prev events".to_owned())?;
@@ -1432,9 +1432,21 @@ async fn upgrade_outlier_to_timeline_pdu(
                         db,
                     )
                     .map_err(|_| "Failed to load auth chain.".to_owned())?
+                    .map(|event_id| (*event_id).clone())
                     .collect(),
                 );
             }
+
+            let fork_states = &fork_states
+                .into_iter()
+                .map(|map| {
+                    map.into_iter()
+                        .map(|(k, id)| {
+                            (k, (*id).clone())
+                        })
+                        .collect()
+                })
+                .collect::<Vec<_>>();
 
             state_at_incoming_event = match state_res::StateResolution::resolve(
                 &room_id,
@@ -1457,7 +1469,7 @@ async fn upgrade_outlier_to_timeline_pdu(
                                 .rooms
                                 .get_or_create_shortstatekey(&event_type, &state_key, &db.globals)
                                 .map_err(|_| "Failed to get_or_create_shortstatekey".to_owned())?;
-                            Ok((shortstatekey, event_id))
+                            Ok((shortstatekey, Arc::new(event_id)))
                         })
                         .collect::<StdResult<_, String>>()?,
                 ),
@@ -1766,18 +1778,8 @@ async fn upgrade_outlier_to_timeline_pdu(
             // We do need to force an update to this room's state
             update_state = true;
 
-            let fork_states = &fork_states
-                .into_iter()
-                .map(|map| {
-                    map.into_iter()
-                        .map(|(k, id)| (db.rooms.get_statekey_from_short(k).map(|k| (k, id))))
-                        .collect::<Result<StateMap<_>>>()
-                })
-                .collect::<Result<Vec<_>>>()
-                .map_err(|_| "Failed to get_statekey_from_short.".to_owned())?;
-
             let mut auth_chain_sets = Vec::new();
-            for state in fork_states {
+            for state in &fork_states {
                 auth_chain_sets.push(
                     get_auth_chain(
                         &room_id,
@@ -1785,9 +1787,24 @@ async fn upgrade_outlier_to_timeline_pdu(
                         db,
                     )
                     .map_err(|_| "Failed to load auth chain.".to_owned())?
+                    .map(|event_id| (*event_id).clone())
                     .collect(),
                 );
             }
+
+            let fork_states = &fork_states
+                .into_iter()
+                .map(|map| {
+                    map.into_iter()
+                        .map(|(k, id)| {
+                            db.rooms
+                                .get_statekey_from_short(k)
+                                .map(|k| (k, (*id).clone()))
+                        })
+                        .collect::<Result<StateMap<_>>>()
+                })
+                .collect::<Result<Vec<_>>>()
+                .map_err(|_| "Failed to get_statekey_from_short.".to_owned())?;
 
             let state = match state_res::StateResolution::resolve(
                 &room_id,
