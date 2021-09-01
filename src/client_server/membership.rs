@@ -976,10 +976,10 @@ pub(crate) async fn invite_helper<'a>(
 
             let auth_check = state_res::auth_check(
                 &room_version,
-                &Arc::new(pdu.clone()),
+                &pdu,
                 create_prev_event,
-                None, // TODO: third_party_invite
-                |k, s| auth_events.get(&(k.clone(), s.to_owned())).map(Arc::clone),
+                None::<PduEvent>, // TODO: third_party_invite
+                |k, s| auth_events.get(&(k.clone(), s.to_owned())),
             )
             .map_err(|e| {
                 error!("{:?}", e);

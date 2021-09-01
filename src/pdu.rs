@@ -260,37 +260,47 @@ impl state_res::Event for PduEvent {
     fn sender(&self) -> &UserId {
         &self.sender
     }
-    fn kind(&self) -> EventType {
-        self.kind.clone()
+
+    fn event_type(&self) -> &EventType {
+        &self.kind
     }
 
-    fn content(&self) -> serde_json::Value {
-        self.content.clone()
+    fn content(&self) -> &serde_json::Value {
+        &self.content
     }
+
     fn origin_server_ts(&self) -> MilliSecondsSinceUnixEpoch {
         MilliSecondsSinceUnixEpoch(self.origin_server_ts)
     }
-    fn state_key(&self) -> Option<String> {
-        self.state_key.clone()
+
+    fn state_key(&self) -> Option<&str> {
+        self.state_key.as_deref()
     }
-    fn prev_events(&self) -> Vec<EventId> {
-        self.prev_events.to_vec()
+
+    fn prev_events(&self) -> Box<dyn DoubleEndedIterator<Item = &EventId> + '_> {
+        Box::new(self.prev_events.iter())
     }
+
     fn depth(&self) -> &UInt {
         &self.depth
     }
-    fn auth_events(&self) -> Vec<EventId> {
-        self.auth_events.to_vec()
+
+    fn auth_events(&self) -> Box<dyn DoubleEndedIterator<Item = &EventId> + '_> {
+        Box::new(self.auth_events.iter())
     }
+
     fn redacts(&self) -> Option<&EventId> {
         self.redacts.as_ref()
     }
+
     fn hashes(&self) -> &EventHash {
         &self.hashes
     }
+
     fn signatures(&self) -> BTreeMap<Box<ServerName>, BTreeMap<ruma::ServerSigningKeyId, String>> {
         self.signatures.clone()
     }
+
     fn unsigned(&self) -> &BTreeMap<String, serde_json::Value> {
         &self.unsigned
     }

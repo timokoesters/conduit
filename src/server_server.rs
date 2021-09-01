@@ -1065,23 +1065,22 @@ pub(crate) async fn handle_incoming_pdu<'a>(
         }
     }
 
-    let sorted =
-        state_res::StateResolution::lexicographical_topological_sort(dbg!(&graph), |event_id| {
-            // This return value is the key used for sorting events,
-            // events are then sorted by power level, time,
-            // and lexically by event_id.
-            println!("{}", event_id);
-            Ok((
-                0,
-                MilliSecondsSinceUnixEpoch(
-                    eventid_info
-                        .get(event_id)
-                        .map_or_else(|| uint!(0), |info| info.0.origin_server_ts),
-                ),
-                ruma::event_id!("$notimportant"),
-            ))
-        })
-        .map_err(|_| "Error sorting prev events".to_owned())?;
+    let sorted = state_res::lexicographical_topological_sort(dbg!(&graph), |event_id| {
+        // This return value is the key used for sorting events,
+        // events are then sorted by power level, time,
+        // and lexically by event_id.
+        println!("{}", event_id);
+        Ok((
+            0,
+            MilliSecondsSinceUnixEpoch(
+                eventid_info
+                    .get(event_id)
+                    .map_or_else(|| uint!(0), |info| info.0.origin_server_ts),
+            ),
+            ruma::event_id!("$notimportant"),
+        ))
+    })
+    .map_err(|_| "Error sorting prev events".to_owned())?;
 
     let mut errors = 0;
     for prev_id in dbg!(sorted) {
@@ -1280,8 +1279,8 @@ fn handle_outlier_pdu<'a>(
             &room_version,
             &incoming_pdu,
             previous_create,
-            None, // TODO: third party invite
-            |k, s| auth_events.get(&(k.clone(), s.to_owned())).map(Arc::clone),
+            None::<PduEvent>, // TODO: third party invite
+            |k, s| auth_events.get(&(k.clone(), s.to_owned())),
         )
         .map_err(|_e| "Auth check failed".to_string())?
         {
@@ -1437,8 +1436,7 @@ async fn upgrade_outlier_to_timeline_pdu(
                 fork_states.push(state);
             }
 
-            state_at_incoming_event = match state_res::StateResolution::resolve(
-                &room_id,
+            state_at_incoming_event = match state_res::resolve(
                 room_version_id,
                 &fork_states,
                 auth_chain_sets,
@@ -1566,8 +1564,8 @@ async fn upgrade_outlier_to_timeline_pdu(
     let check_result = state_res::event_auth::auth_check(
         &room_version,
         &incoming_pdu,
-        previous_create.clone(),
-        None, // TODO: third party invite
+        previous_create.as_deref(),
+        None::<PduEvent>, // TODO: third party invite
         |k, s| {
             db.rooms
                 .get_shortstatekey(&k, &s)
@@ -1650,9 +1648,9 @@ async fn upgrade_outlier_to_timeline_pdu(
     let soft_fail = !state_res::event_auth::auth_check(
         &room_version,
         &incoming_pdu,
-        previous_create,
-        None,
-        |k, s| auth_events.get(&(k.clone(), s.to_owned())).map(Arc::clone),
+        previous_create.as_deref(),
+        None::<PduEvent>,
+        |k, s| auth_events.get(&(k.clone(), s.to_owned())),
     )
     .map_err(|_e| "Auth check failed.".to_owned())?;
 
@@ -1795,8 +1793,7 @@ async fn upgrade_outlier_to_timeline_pdu(
                 .collect::<Result<Vec<_>>>()
                 .map_err(|_| "Failed to get_statekey_from_short.".to_owned())?;
 
-            let state = match state_res::StateResolution::resolve(
-                &room_id,
+            let state = match state_res::resolve(
                 room_version_id,
                 fork_states,
                 auth_chain_sets,
@@ -2773,10 +2770,10 @@ pub fn create_join_event_template_route(
 
     let auth_check = state_res::auth_check(
         &room_version,
-        &Arc::new(pdu.clone()),
-        create_prev_event,
-        None, // TODO: third_party_invite
-        |k, s| auth_events.get(&(k.clone(), s.to_owned())).map(Arc::clone),
+        &pdu,
+        create_prev_event.as_deref(),
+        None::<PduEvent>, // TODO: third_party_invite
+        |k, s| auth_events.get(&(k.clone(), s.to_owned())),
     )
     .map_err(|e| {
         error!("{:?}", e);
