@@ -1066,23 +1066,22 @@ pub(crate) async fn handle_incoming_pdu<'a>(
         }
     }
 
-    let sorted =
-        state_res::StateResolution::lexicographical_topological_sort(dbg!(&graph), |event_id| {
-            // This return value is the key used for sorting events,
-            // events are then sorted by power level, time,
-            // and lexically by event_id.
-            println!("{}", event_id);
-            Ok((
-                0,
-                MilliSecondsSinceUnixEpoch(
-                    eventid_info
-                        .get(event_id)
-                        .map_or_else(|| uint!(0), |info| info.0.origin_server_ts.clone()),
-                ),
-                ruma::event_id!("$notimportant"),
-            ))
-        })
-        .map_err(|_| "Error sorting prev events".to_owned())?;
+    let sorted = state_res::lexicographical_topological_sort(dbg!(&graph), |event_id| {
+        // This return value is the key used for sorting events,
+        // events are then sorted by power level, time,
+        // and lexically by event_id.
+        println!("{}", event_id);
+        Ok((
+            0,
+            MilliSecondsSinceUnixEpoch(
+                eventid_info
+                    .get(event_id)
+                    .map_or_else(|| uint!(0), |info| info.0.origin_server_ts.clone()),
+            ),
+            ruma::event_id!("$notimportant"),
+        ))
+    })
+    .map_err(|_| "Error sorting prev events".to_owned())?;
 
     let mut errors = 0;
     for prev_id in dbg!(sorted) {
@@ -1427,12 +1426,12 @@ async fn upgrade_outlier_to_timeline_pdu(
                 );
             }
 
-            let fork_states = &fork_states
+            let fork_states = fork_states
                 .into_iter()
                 .map(|map| map.into_iter().map(|(k, id)| (k, id.clone())).collect())
                 .collect::<Vec<_>>();
 
-            state_at_incoming_event = match state_res::StateResolution::resolve(
+            state_at_incoming_event = match state_res::resolve(
                 &room_id,
                 room_version_id,
                 &fork_states,
@@ -1780,7 +1779,7 @@ async fn upgrade_outlier_to_timeline_pdu(
                 .collect::<Result<Vec<_>>>()
                 .map_err(|_| "Failed to get_statekey_from_short.".to_owned())?;
 
-            let state = match state_res::StateResolution::resolve(
+            let state = match state_res::resolve(
                 &room_id,
                 room_version_id,
                 fork_states,
