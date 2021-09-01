@@ -47,6 +47,8 @@ pub struct Config {
     database_path: String,
     #[serde(default = "default_db_cache_capacity_mb")]
     db_cache_capacity_mb: f64,
+    #[serde(default = "default_pdu_cache_capacity")]
+    pdu_cache_capacity: u32,
     #[serde(default = "default_sqlite_wal_clean_second_interval")]
     sqlite_wal_clean_second_interval: u32,
     #[serde(default = "default_max_request_size")]
@@ -105,6 +107,10 @@ fn true_fn() -> bool {
 
 fn default_db_cache_capacity_mb() -> f64 {
     200.0
+}
+
+fn default_pdu_cache_capacity() -> u32 {
+    100_000
 }
 
 fn default_sqlite_wal_clean_second_interval() -> u32 {
@@ -281,7 +287,12 @@ impl Database {
                 softfailedeventids: builder.open_tree("softfailedeventids")?,
 
                 referencedevents: builder.open_tree("referencedevents")?,
-                pdu_cache: Mutex::new(LruCache::new(100_000)),
+                pdu_cache: Mutex::new(LruCache::new(
+                    config
+                        .pdu_cache_capacity
+                        .try_into()
+                        .expect("pdu cache capacity fits into usize"),
+                )),
                 auth_chain_cache: Mutex::new(LruCache::new(1_000_000)),
                 shorteventid_cache: Mutex::new(LruCache::new(1_000_000)),
                 eventidshort_cache: Mutex::new(LruCache::new(1_000_000)),
