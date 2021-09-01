@@ -6,7 +6,7 @@ authors = ["timokoesters <timo@koesters.xyz>"]
 homepage = "https://conduit.rs"
 repository = "https://gitlab.com/famedly/conduit"
 readme = "README.md"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

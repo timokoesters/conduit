@@ -231,4 +231,15 @@ Set it to start automatically when your system boots with:
 $ sudo systemctl enable conduit
 ```
 
+## How do I know it works?
+
+You can open <https://app.element.io>, enter your homeserver and try to register.
+
+You can also use these commands as a quick health check.
+
+```bash
+$ curl https://your.server.name/_matrix/client/versions
+$ curl https://your.server.name:8448/_matrix/client/versions
+```
+
 If you want to set up an appservice, take a look at the [Appservice Guide](APPSERVICES.md).

@@ -3,37 +3,26 @@
 
 #### What is the goal?
 
-A fast Matrix homeserver that's easy to set up and just works. You can install
+An efficient Matrix homeserver that's easy to set up and just works. You can install
 it on a mini-computer like the Raspberry Pi to host Matrix for your family,
 friends or company.
 
 
 #### Can I try it out?
 
-Yes! Just open a Matrix client (<https://app.element.io> or Element Android for
-example) and register on the `https://conduit.koesters.xyz` homeserver.
+Yes! You can test our Conduit instance by opening a Matrix client (<https://app.element.io> or Element Android for
+example) and registering on the `conduit.rs` homeserver.
 
-
-#### What is it built on?
-
-- [Ruma](https://www.ruma.io): Useful structures for endpoint requests and
-  responses that can be (de)serialized
-- [Sled](https://github.com/spacejam/sled): A simple (key, value) database with
-  good performance
-- [Rocket](https://rocket.rs): A flexible web framework
+It is hosted on a ODROID HC 2 with 2GB RAM and a SAMSUNG Exynos 5422 CPU, which
+was used in the Samsung Galaxy S5. It joined many big rooms including Matrix
+HQ.
 
 
 #### What is the current status?
 
-Conduit can already be used chat with other users on Conduit, chat with users
-from other Matrix servers and even to chat with users on other platforms using
-appservices. When chatting with users on the same Conduit server, everything
-should work assuming you use a compatible client.
-
-**You should not join Matrix rooms without asking the admins first.** We do not
-know whether Conduit is safe for general use yet, so you should assume there is
-some chance that it breaks rooms permanently for all participating users. We
-are not aware of such a bug today, but we would like to do more testing.
+As of 2021-09-01 Conduit is Beta, meaning you can join and participate in most
+Matrix rooms, but not all features are supported and you might run into bugs
+from time to time.
 
 There are still a few important features missing:
 
@@ -47,46 +36,11 @@ Check out the [Conduit 1.0 Release Milestone](https://gitlab.com/famedly/conduit
 
 #### How can I deploy my own?
 
-##### Deploy
+Simple install (this was tested the most): [DEPLOY.md](DEPLOY.md)\
+Debian package: [debian/README.Debian](debian/README.Debian)\
+Docker: [docker/README.md](docker/README.md)
 
-Download or compile a Conduit binary, set up the config and call it from somewhere like a systemd script. [Read
-more](DEPLOY.md)
-
-If you want to connect an Appservice to Conduit, take a look at the [Appservice Guide](docs/configuration/appservices.md).
-
-##### Deploy using a Debian package
-
-You need to have the `deb` helper command installed that creates Debian packages from Cargo projects (see [cargo-deb](https://github.com/mmstick/cargo-deb/) for more info):
-
-```shell
-$ cargo install cargo-deb
-```
-
-Then, you can create and install a Debian package at a whim:
-
-```shell
-$ cargo deb
-$ dpkg -i target/debian/matrix-conduit_0.1.0_amd64.deb
-```
-
-This will build, package, install, configure and start Conduit. [Read more](debian/README.Debian).
-
-Note that `cargo deb` supports [cross-compilation](https://github.com/mmstick/cargo-deb/#cross-compilation) too!
-Official Debian packages will follow once Conduit starts to have stable releases.
-
-##### Deploy using Docker
-
-Pull and run the docker image with
-
-``` bash
-docker pull matrixconduit/matrix-conduit:latest
-docker run -d -p 8448:6167 -v ~/conduit.toml:/srv/conduit/conduit.toml -v db:/srv/conduit/.local/share/conduit matrixconduit/matrix-conduit:latest
-```
-
-> <b>Note:</b> You also need to supply a `conduit.toml` config file, you can find an example [here](./conduit-example.toml).
-> Or you can pass in `-e CONDUIT_CONFIG=""` and configure Conduit purely with env vars.
-
-Or build and run it with docker or docker-compose. [Read more](docker/README.md)
+If you want to connect an Appservice to Conduit, take a look at [APPSERVICES.md](APPSERVICES.md).
 
 
 #### How can I contribute?
