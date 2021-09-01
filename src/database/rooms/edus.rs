@@ -422,7 +422,7 @@ impl RoomEdus {
     }
 
     /// Sets all users to offline who have been quiet for too long.
-    fn presence_maintain(
+    fn _presence_maintain(
         &self,
         rooms: &super::Rooms,
         globals: &super::super::globals::Globals,
@@ -489,13 +489,13 @@ impl RoomEdus {
     }
 
     /// Returns an iterator over the most recent presence updates that happened after the event with id `since`.
-    #[tracing::instrument(skip(self, globals, rooms))]
+    #[tracing::instrument(skip(self, since, _rooms, _globals))]
     pub fn presence_since(
         &self,
         room_id: &RoomId,
         since: u64,
-        rooms: &super::Rooms,
-        globals: &super::super::globals::Globals,
+        _rooms: &super::Rooms,
+        _globals: &super::super::globals::Globals,
     ) -> Result<HashMap<UserId, PresenceEvent>> {
         //self.presence_maintain(rooms, globals)?;
 
