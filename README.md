@@ -20,16 +20,14 @@ HQ.
 
 #### What is the current status?
 
-As of 2021-09-01 Conduit is Beta, meaning you can join and participate in most
+As of 2021-09-01, Conduit is Beta, meaning you can join and participate in most
 Matrix rooms, but not all features are supported and you might run into bugs
 from time to time.
 
 There are still a few important features missing:
 
-- Database stability (currently you might have to do manual upgrades or even wipe the db for new versions)
-- Edge cases for end-to-end encryption over federation
-- Typing and presence over federation
-- Lots of testing
+- E2EE verification over federation
+- Outgoing read receipts, typing, presence over federation
 
 Check out the [Conduit 1.0 Release Milestone](https://gitlab.com/famedly/conduit/-/milestones/3).
 

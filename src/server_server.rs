@@ -1439,13 +1439,7 @@ async fn upgrade_outlier_to_timeline_pdu(
 
             let fork_states = &fork_states
                 .into_iter()
-                .map(|map| {
-                    map.into_iter()
-                        .map(|(k, id)| {
-                            (k, (*id).clone())
-                        })
-                        .collect()
-                })
+                .map(|map| map.into_iter().map(|(k, id)| (k, (*id).clone())).collect())
                 .collect::<Vec<_>>();
 
             state_at_incoming_event = match state_res::StateResolution::resolve(

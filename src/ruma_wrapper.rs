@@ -66,7 +66,11 @@ where
         let limit = db.globals.max_request_size();
         let mut handle = data.open(ByteUnit::Byte(limit.into()));
         let mut body = Vec::new();
-        handle.read_to_end(&mut body).await.unwrap();
+        if let Err(_) = handle.read_to_end(&mut body).await {
+            // Client disconnected
+            // Missing Token
+            return Failure((Status::new(582), ()));
+        }
 
         let mut json_body = serde_json::from_slice::<CanonicalJsonValue>(&body).ok();
 
