@@ -1397,39 +1397,34 @@ async fn upgrade_outlier_to_timeline_pdu(
             extremity_sstatehashes.insert(sstatehash, prev_event);
         }
 
-        let mut fork_states = Vec::new();
-
         if okay {
-            for (sstatehash, prev_event) in extremity_sstatehashes {
-                let mut leaf_state = db
-                    .rooms
-                    .state_full_ids(sstatehash)
-                    .map_err(|_| "Failed to ask db for room state.".to_owned())?;
-
-                if let Some(state_key) = &prev_event.state_key {
-                    let shortstatekey = db
-                        .rooms
-                        .get_or_create_shortstatekey(&prev_event.kind, state_key, &db.globals)
-                        .map_err(|_| "Failed to create shortstatekey.".to_owned())?;
-                    leaf_state.insert(shortstatekey, Arc::new(prev_event.event_id.clone()));
-                    // Now it's the state after the pdu
-                }
-
-                fork_states.push(leaf_state);
-            }
-
-            let fork_states = &fork_states
+            let fork_states: Vec<_> = extremity_sstatehashes
                 .into_iter()
-                .map(|map| {
-                    map.into_iter()
+                .map(|(sstatehash, prev_event)| {
+                    let mut leaf_state = db
+                        .rooms
+                        .state_full_ids(sstatehash)
+                        .map_err(|_| "Failed to ask db for room state.".to_owned())?;
+
+                    if let Some(state_key) = &prev_event.state_key {
+                        let shortstatekey = db
+                            .rooms
+                            .get_or_create_shortstatekey(&prev_event.kind, state_key, &db.globals)
+                            .map_err(|_| "Failed to create shortstatekey.".to_owned())?;
+                        leaf_state.insert(shortstatekey, Arc::new(prev_event.event_id.clone()));
+                        // Now it's the state after the pdu
+                    }
+
+                    leaf_state
+                        .into_iter()
                         .map(|(k, id)| (db.rooms.get_statekey_from_short(k).map(|k| (k, id))))
                         .collect::<Result<StateMap<_>>>()
+                        .map_err(|_| "Failed to get_statekey_from_short.".to_owned())
                 })
-                .collect::<Result<Vec<_>>>()
-                .map_err(|_| "Failed to get_statekey_from_short.".to_owned())?;
+                .collect::<StdResult<_, _>>()?;
 
             let mut auth_chain_sets = Vec::new();
-            for state in fork_states {
+            for state in &fork_states {
                 auth_chain_sets.push(
                     get_auth_chain(
                         &room_id,
