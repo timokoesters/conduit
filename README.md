@@ -50,6 +50,17 @@ If you want to connect an Appservice to Conduit, take a look at [APPSERVICES.md]
 3. Fork the repo and work on the issue. #conduit:nordgedanken.dev is happy to help :)
 4. Submit a MR
 
+
+#### Thanks to
+
+Thanks to Famedly, Prototype Fund (DLR and German BMBF) and all other individuals for financially supporting this project.
+
+Thanks to the contributors to Conduit and all libraries we use, for example:
+
+- Ruma: A clean library for the Matrix Spec in Rust
+- Rocket: A flexible web framework
+
+
 #### Donate
 
 Liberapay: <https://liberapay.com/timokoesters/>\
