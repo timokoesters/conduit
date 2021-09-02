@@ -19,7 +19,8 @@ variables:
   stage: "build"
   needs: []
   rules:
-    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - if: '$CI_COMMIT_BRANCH == "master"'
+    - if: '$CI_COMMIT_BRANCH == "next"'
     - if: '$CI_COMMIT_TAG'
   interruptible: true
   image: "rust:latest"
@@ -43,6 +44,8 @@ variables:
   script:
     - time cargo build --target $TARGET --release
     - 'mv "target/$TARGET/release/conduit" "conduit-$TARGET"'
+  artifacts:
+    expire_in: never
 
 
 build:release:cargo:x86_64-unknown-linux-gnu:
@@ -114,6 +117,8 @@ build:release:cargo:x86_64-unknown-linux-musl:
   script:
     - "time cargo build --target $TARGET"
     - 'mv "target/$TARGET/debug/conduit" "conduit-debug-$TARGET"'
+  artifacts:
+    expire_in: 4 weeks
 
 build:debug:cargo:x86_64-unknown-linux-gnu:
   extends: ".cargo-debug-shared-settings"
@@ -153,7 +158,8 @@ build:debug:cargo:x86_64-unknown-linux-musl:
   stage: "build"
   needs: [ ]
   rules:
-    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - if: '$CI_COMMIT_BRANCH == "master"'
+    - if: '$CI_COMMIT_BRANCH == "next"'
     - if: '$CI_COMMIT_TAG'
   interruptible: true
   image: "rust:latest"
@@ -188,11 +194,11 @@ build:cargo-deb:x86_64-unknown-linux-gnu:
     expose_as: "Debian Package x86_64"
 
 
-
 # --------------------------------------------------------------------- #
 #  Create and publish docker image                                      #
 # --------------------------------------------------------------------- #
 
+# Build a docker image by packaging up the x86_64-unknown-linux-musl binary into an alpine image
 .docker-shared-settings:
   stage: "build docker image"
   needs: []
@@ -209,8 +215,30 @@ build:cargo-deb:x86_64-unknown-linux-gnu:
     - 'echo "{\"auths\":{\"$CI_REGISTRY\":{\"username\":\"$CI_REGISTRY_USER\",\"password\":\"$CI_REGISTRY_PASSWORD\"},\"$DOCKER_HUB\":{\"username\":\"$DOCKER_HUB_USER\",\"password\":\"$DOCKER_HUB_PASSWORD\"}}}" > /kaniko/.docker/config.json'
 
 
-# Build a docker image by packaging up the x86_64-unknown-linux-musl binary into an alpine image
-build:docker:main:
+build:docker:next:
+  extends: .docker-shared-settings
+  needs:
+    - "build:release:cargo:x86_64-unknown-linux-musl"
+  script:
+    - >
+      /kaniko/executor
+      $KANIKO_CACHE_ARGS
+      --context $CI_PROJECT_DIR
+      --build-arg CREATED=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+      --build-arg VERSION=$(grep -m1 -o '[0-9].[0-9].[0-9]' Cargo.toml)
+      --build-arg "GIT_REF=$CI_COMMIT_SHORT_SHA"
+      --dockerfile "$CI_PROJECT_DIR/docker/ci-binaries-packaging.Dockerfile"
+      --destination "$CI_REGISTRY_IMAGE/conduit:next"
+      --destination "$CI_REGISTRY_IMAGE/conduit:next-alpine"
+      --destination "$CI_REGISTRY_IMAGE/conduit:commit-$CI_COMMIT_SHORT_SHA"
+      --destination "$DOCKER_HUB_IMAGE/matrixconduit/matrix-conduit:next"
+      --destination "$DOCKER_HUB_IMAGE/matrixconduit/matrix-conduit:next-alpine"
+      --destination "$DOCKER_HUB_IMAGE/matrixconduit/matrix-conduit:commit-$CI_COMMIT_SHORT_SHA"
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "next"'
+
+
+build:docker:master:
   extends: .docker-shared-settings
   needs:
     - "build:release:cargo:x86_64-unknown-linux-musl"
@@ -224,13 +252,31 @@ build:docker:main:
       --build-arg "GIT_REF=$CI_COMMIT_SHORT_SHA"
       --dockerfile "$CI_PROJECT_DIR/docker/ci-binaries-packaging.Dockerfile"
       --destination "$CI_REGISTRY_IMAGE/conduit:latest"
-      --destination "$CI_REGISTRY_IMAGE/conduit:alpine"
-      --destination "$CI_REGISTRY_IMAGE/conduit:commit-$CI_COMMIT_SHORT_SHA"
+      --destination "$CI_REGISTRY_IMAGE/conduit:latest-alpine"
       --destination "$DOCKER_HUB_IMAGE/matrixconduit/matrix-conduit:latest"
-      --destination "$DOCKER_HUB_IMAGE/matrixconduit/matrix-conduit:alpine"
-      --destination "$DOCKER_HUB_IMAGE/matrixconduit/matrix-conduit:commit-$CI_COMMIT_SHORT_SHA"
+      --destination "$DOCKER_HUB_IMAGE/matrixconduit/matrix-conduit:latest-alpine"
   rules:
-    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - if: '$CI_COMMIT_BRANCH == "master"'
+
+
+build:docker:tags:
+  extends: .docker-shared-settings
+  needs:
+    - "build:release:cargo:x86_64-unknown-linux-musl"
+  script:
+    - >
+      /kaniko/executor
+      $KANIKO_CACHE_ARGS
+      --context $CI_PROJECT_DIR
+      --build-arg CREATED=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+      --build-arg VERSION=$(grep -m1 -o '[0-9].[0-9].[0-9]' Cargo.toml)
+      --build-arg "GIT_REF=$CI_COMMIT_SHORT_SHA"
+      --dockerfile "$CI_PROJECT_DIR/docker/ci-binaries-packaging.Dockerfile"
+      --destination "$CI_REGISTRY_IMAGE/conduit:$CI_COMMIT_TAG"
+      --destination "$CI_REGISTRY_IMAGE/conduit:$CI_COMMIT_TAG-alpine"
+      --destination "$DOCKER_HUB_IMAGE/matrixconduit/matrix-conduit:$CI_COMMIT_TAG"
+      --destination "$DOCKER_HUB_IMAGE/matrixconduit/matrix-conduit:$CI_COMMIT_TAG-alpine"
+  rules:
     - if: '$CI_COMMIT_TAG'
 
 
@@ -332,7 +378,8 @@ publish:package:
     - "build:release:cargo:x86_64-unknown-linux-musl"
     - "build:cargo-deb:x86_64-unknown-linux-gnu"
   rules:
-    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - if: '$CI_COMMIT_BRANCH == "master"'
+    - if: '$CI_COMMIT_BRANCH == "next"'
     - if: '$CI_COMMIT_TAG'
   image: curlimages/curl:latest
   tags: ["docker"]
