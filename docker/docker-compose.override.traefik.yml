@@ -12,7 +12,7 @@ services:
             - "traefik.http.routers.to-conduit.tls.certresolver=letsencrypt"
             - "traefik.http.routers.to-conduit.middlewares=cors-headers@docker"
 
-            - "traefik.http.middlewares.cors-headers.headers.accessControlAllowOrigin=*"
+            - "traefik.http.middlewares.cors-headers.headers.accessControlAllowOriginList=*"
             - "traefik.http.middlewares.cors-headers.headers.accessControlAllowHeaders=Origin, X-Requested-With, Content-Type, Accept, Authorization"
             - "traefik.http.middlewares.cors-headers.headers.accessControlAllowMethods=GET, POST, PUT, DELETE, OPTIONS"
 
@@ -29,7 +29,7 @@ services:
             - "traefik.http.routers.to-matrix-wellknown.tls.certresolver=letsencrypt"
             - "traefik.http.routers.to-matrix-wellknown.middlewares=cors-headers@docker"
 
-            - "traefik.http.middlewares.cors-headers.headers.accessControlAllowOrigin=*"
+            - "traefik.http.middlewares.cors-headers.headers.accessControlAllowOriginList=*"
             - "traefik.http.middlewares.cors-headers.headers.accessControlAllowHeaders=Origin, X-Requested-With, Content-Type, Accept, Authorization"
             - "traefik.http.middlewares.cors-headers.headers.accessControlAllowMethods=GET, POST, PUT, DELETE, OPTIONS"
 
