@@ -977,6 +977,12 @@ pub(crate) async fn handle_incoming_pdu<'a>(
         .map_err(|_| "Failed to ask database for event.".to_owned())?
         .ok_or_else(|| "Failed to find create event in db.".to_owned())?;
 
+    let first_pdu_in_room = db
+        .rooms
+        .first_pdu_in_room(&room_id)
+        .map_err(|_| "Error loading first room event.".to_owned())?
+        .expect("Room exists");
+
     let (incoming_pdu, val) = handle_outlier_pdu(
         origin,
         &create_event,
@@ -993,13 +999,7 @@ pub(crate) async fn handle_incoming_pdu<'a>(
         return Ok(None);
     }
 
-    if incoming_pdu.origin_server_ts
-        < db.rooms
-            .first_pdu_in_room(&room_id)
-            .map_err(|_| "Error loading first room event.".to_owned())?
-            .expect("Room exists")
-            .origin_server_ts
-    {
+    if incoming_pdu.origin_server_ts < first_pdu_in_room.origin_server_ts {
         return Ok(None);
     }
 
@@ -1037,13 +1037,7 @@ pub(crate) async fn handle_incoming_pdu<'a>(
             if let Some(json) =
                 json_opt.or_else(|| db.rooms.get_outlier_pdu_json(&prev_event_id).ok().flatten())
             {
-                if pdu.origin_server_ts
-                    > db.rooms
-                        .first_pdu_in_room(&room_id)
-                        .map_err(|_| "Error loading first room event.".to_owned())?
-                        .expect("Room exists")
-                        .origin_server_ts
-                {
+                if pdu.origin_server_ts > first_pdu_in_room.origin_server_ts {
                     amount += 1;
                     for prev_prev in &pdu.prev_events {
                         if !graph.contains_key(prev_prev) {
@@ -1095,6 +1089,10 @@ pub(crate) async fn handle_incoming_pdu<'a>(
             break;
         }
         if let Some((pdu, json)) = eventid_info.remove(&prev_id) {
+            if pdu.origin_server_ts < first_pdu_in_room.origin_server_ts {
+                continue;
+            }
+
             let start_time = Instant::now();
             let event_id = pdu.event_id.clone();
             if let Err(e) = upgrade_outlier_to_timeline_pdu(
