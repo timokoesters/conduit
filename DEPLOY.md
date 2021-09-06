@@ -162,9 +162,6 @@ AllowEncodedSlashes NoDecode
 ProxyPass /_matrix/ http://127.0.0.1:6167/_matrix/ nocanon
 ProxyPassReverse /_matrix/ http://127.0.0.1:6167/_matrix/
 
-Include /etc/letsencrypt/options-ssl-apache.conf
-SSLCertificateFile /etc/letsencrypt/live/your.server.name/fullchain.pem # EDIT THIS
-SSLCertificateKeyFile /etc/letsencrypt/live/your.server.name/privkey.pem # EDIT THIS
 </VirtualHost>
 ```
 
