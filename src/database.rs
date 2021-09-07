@@ -198,6 +198,11 @@ impl Database {
     pub async fn load_or_create(config: &Config) -> Result<Arc<TokioRwLock<Self>>> {
         Self::check_sled_or_sqlite_db(&config)?;
 
+        if !Path::new(&config.database_path).exists() {
+            std::fs::create_dir_all(&config.database_path)
+                .map_err(|_| Error::BadConfig("Database folder doesn't exists and couldn't be created (e.g. due to missing permissions). Please create the database folder yourself."))?;
+        }
+
         let builder = Engine::open(&config)?;
 
         if config.max_request_size < 1024 {

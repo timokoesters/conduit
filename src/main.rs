@@ -199,16 +199,27 @@ async fn main() {
 
     std::env::set_var("RUST_LOG", "warn");
 
-    let config = raw_config
-        .extract::<Config>()
-        .expect("It looks like your config is invalid. Please take a look at the error");
+    let config = match raw_config.extract::<Config>() {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("It looks like your config is invalid. The following error occured while parsing it: {}", e);
+            std::process::exit(1);
+        }
+    };
 
     let start = async {
         config.warn_deprecated();
 
-        let db = Database::load_or_create(&config)
-            .await
-            .expect("config is valid");
+        let db = match Database::load_or_create(&config).await {
+            Ok(db) => db,
+            Err(e) => {
+                eprintln!(
+                    "The database couldn't be loaded or created. The following error occured: {}",
+                    e
+                );
+                std::process::exit(1);
+            }
+        };
 
         let rocket = setup_rocket(raw_config, Arc::clone(&db))
             .ignite()
