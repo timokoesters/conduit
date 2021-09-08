@@ -815,12 +815,21 @@ impl Database {
 
         // Events for rooms we are in
         for room_id in self.rooms.rooms_joined(user_id).filter_map(|r| r.ok()) {
+            let short_roomid = self
+                .rooms
+                .get_shortroomid(&room_id)
+                .ok()
+                .flatten()
+                .expect("room exists")
+                .to_be_bytes()
+                .to_vec();
+
             let roomid_bytes = room_id.as_bytes().to_vec();
             let mut roomid_prefix = roomid_bytes.clone();
             roomid_prefix.push(0xff);
 
             // PDUs
-            futures.push(self.rooms.pduid_pdu.watch_prefix(&roomid_prefix));
+            futures.push(self.rooms.pduid_pdu.watch_prefix(&short_roomid));
 
             // EDUs
             futures.push(
