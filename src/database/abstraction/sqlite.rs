@@ -56,7 +56,7 @@ impl Engine {
         conn.pragma_update(Some(Main), "journal_mode", &"WAL")?;
         conn.pragma_update(Some(Main), "synchronous", &"NORMAL")?;
         conn.pragma_update(Some(Main), "cache_size", &(-i64::from(cache_size_kb)))?;
-        conn.pragma_update(Some(Main), "wal_autocheckpoint", &2000)?;
+        conn.pragma_update(Some(Main), "wal_autocheckpoint", &0)?;
 
         Ok(conn)
     }
@@ -77,7 +77,7 @@ impl Engine {
 
     pub fn flush_wal(self: &Arc<Self>) -> Result<()> {
         self.write_lock()
-            .pragma_update(Some(Main), "wal_checkpoint", &"TRUNCATE")?;
+            .pragma_update(Some(Main), "wal_checkpoint", &"RESTART")?;
         Ok(())
     }
 }
