@@ -27,7 +27,7 @@ pub async fn search_events_route(
 
     let room_ids = filter.rooms.clone().unwrap_or_else(|| {
         db.rooms
-            .rooms_joined(&sender_user)
+            .rooms_joined(sender_user)
             .filter_map(|r| r.ok())
             .collect()
     });
@@ -88,7 +88,7 @@ pub async fn search_events_route(
                 rank: None,
                 result: db
                     .rooms
-                    .get_pdu_from_id(&result)?
+                    .get_pdu_from_id(result)?
                     .map(|pdu| pdu.to_room_event()),
             })
         })

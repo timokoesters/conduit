@@ -196,14 +196,14 @@ impl Database {
 
     /// Load an existing database or create a new one.
     pub async fn load_or_create(config: &Config) -> Result<Arc<TokioRwLock<Self>>> {
-        Self::check_sled_or_sqlite_db(&config)?;
+        Self::check_sled_or_sqlite_db(config)?;
 
         if !Path::new(&config.database_path).exists() {
             std::fs::create_dir_all(&config.database_path)
                 .map_err(|_| Error::BadConfig("Database folder doesn't exists and couldn't be created (e.g. due to missing permissions). Please create the database folder yourself."))?;
         }
 
-        let builder = Engine::open(&config)?;
+        let builder = Engine::open(config)?;
 
         if config.max_request_size < 1024 {
             eprintln!("ERROR: Max request size is less than 1KB. Please increase it.");
@@ -618,7 +618,7 @@ impl Database {
                     let short_room_id = db
                         .rooms
                         .roomid_shortroomid
-                        .get(&room_id)
+                        .get(room_id)
                         .unwrap()
                         .expect("shortroomid should exist");
 
@@ -641,7 +641,7 @@ impl Database {
                     let short_room_id = db
                         .rooms
                         .roomid_shortroomid
-                        .get(&room_id)
+                        .get(room_id)
                         .unwrap()
                         .expect("shortroomid should exist");
 
@@ -677,7 +677,7 @@ impl Database {
                         let short_room_id = db
                             .rooms
                             .roomid_shortroomid
-                            .get(&room_id)
+                            .get(room_id)
                             .unwrap()
                             .expect("shortroomid should exist");
                         let mut new_key = short_room_id;
@@ -757,7 +757,7 @@ impl Database {
 
         #[cfg(feature = "sqlite")]
         {
-            Self::start_wal_clean_task(Arc::clone(&db), &config).await;
+            Self::start_wal_clean_task(Arc::clone(&db), config).await;
         }
 
         Ok(db)
@@ -964,7 +964,7 @@ impl<'r> FromRequest<'r> for DatabaseGuard {
     async fn from_request(req: &'r Request<'_>) -> rocket::request::Outcome<Self, ()> {
         let db = try_outcome!(req.guard::<&State<Arc<TokioRwLock<Database>>>>().await);
 
-        Ok(DatabaseGuard(Arc::clone(&db).read_owned().await)).or_forward(())
+        Ok(DatabaseGuard(Arc::clone(db).read_owned().await)).or_forward(())
     }
 }
 

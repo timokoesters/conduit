@@ -572,7 +572,7 @@ pub async fn change_password_route(
 
     if let Some(auth) = &body.auth {
         let (worked, uiaainfo) = db.uiaa.try_auth(
-            &sender_user,
+            sender_user,
             sender_device,
             auth,
             &uiaainfo,
@@ -586,24 +586,24 @@ pub async fn change_password_route(
     } else if let Some(json) = body.json_body {
         uiaainfo.session = Some(utils::random_string(SESSION_ID_LENGTH));
         db.uiaa
-            .create(&sender_user, &sender_device, &uiaainfo, &json)?;
+            .create(sender_user, sender_device, &uiaainfo, &json)?;
         return Err(Error::Uiaa(uiaainfo));
     } else {
         return Err(Error::BadRequest(ErrorKind::NotJson, "Not json."));
     }
 
     db.users
-        .set_password(&sender_user, Some(&body.new_password))?;
+        .set_password(sender_user, Some(&body.new_password))?;
 
     if body.logout_devices {
         // Logout all devices except the current one
         for id in db
             .users
-            .all_device_ids(&sender_user)
+            .all_device_ids(sender_user)
             .filter_map(|id| id.ok())
             .filter(|id| id != sender_device)
         {
-            db.users.remove_device(&sender_user, &id)?;
+            db.users.remove_device(sender_user, &id)?;
         }
     }
 
@@ -664,8 +664,8 @@ pub async fn deactivate_route(
 
     if let Some(auth) = &body.auth {
         let (worked, uiaainfo) = db.uiaa.try_auth(
-            &sender_user,
-            &sender_device,
+            sender_user,
+            sender_device,
             auth,
             &uiaainfo,
             &db.users,
@@ -678,7 +678,7 @@ pub async fn deactivate_route(
     } else if let Some(json) = body.json_body {
         uiaainfo.session = Some(utils::random_string(SESSION_ID_LENGTH));
         db.uiaa
-            .create(&sender_user, &sender_device, &uiaainfo, &json)?;
+            .create(sender_user, sender_device, &uiaainfo, &json)?;
         return Err(Error::Uiaa(uiaainfo));
     } else {
         return Err(Error::BadRequest(ErrorKind::NotJson, "Not json."));
@@ -688,10 +688,10 @@ pub async fn deactivate_route(
     // TODO: work over federation invites
     let all_rooms = db
         .rooms
-        .rooms_joined(&sender_user)
+        .rooms_joined(sender_user)
         .chain(
             db.rooms
-                .rooms_invited(&sender_user)
+                .rooms_invited(sender_user)
                 .map(|t| t.map(|(r, _)| r)),
         )
         .collect::<Vec<_>>();
@@ -726,7 +726,7 @@ pub async fn deactivate_route(
                 state_key: Some(sender_user.to_string()),
                 redacts: None,
             },
-            &sender_user,
+            sender_user,
             &room_id,
             &db,
             &state_lock,
@@ -734,7 +734,7 @@ pub async fn deactivate_route(
     }
 
     // Remove devices and mark account as deactivated
-    db.users.deactivate_account(&sender_user)?;
+    db.users.deactivate_account(sender_user)?;
 
     info!("{} deactivated their account", sender_user);
 

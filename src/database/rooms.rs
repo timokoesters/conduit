@@ -252,7 +252,7 @@ impl Rooms {
                 return Ok(HashMap::new());
             };
 
-        let auth_events = state_res::auth_types_for_event(kind, sender, state_key, &content);
+        let auth_events = state_res::auth_types_for_event(kind, sender, state_key, content);
 
         let mut sauthevents = auth_events
             .into_iter()
@@ -339,7 +339,7 @@ impl Rooms {
         new_state_ids_compressed: HashSet<CompressedStateEvent>,
         db: &Database,
     ) -> Result<()> {
-        let previous_shortstatehash = self.current_shortstatehash(&room_id)?;
+        let previous_shortstatehash = self.current_shortstatehash(room_id)?;
 
         let state_hash = self.calculate_hash(
             &new_state_ids_compressed
@@ -424,7 +424,7 @@ impl Rooms {
             }
         }
 
-        self.update_joined_count(room_id, &db)?;
+        self.update_joined_count(room_id, db)?;
 
         self.roomid_shortstatehash
             .insert(room_id.as_bytes(), &new_shortstatehash.to_be_bytes())?;
@@ -704,7 +704,7 @@ impl Rooms {
         event_id: &EventId,
         globals: &super::globals::Globals,
     ) -> Result<u64> {
-        if let Some(short) = self.eventidshort_cache.lock().unwrap().get_mut(&event_id) {
+        if let Some(short) = self.eventidshort_cache.lock().unwrap().get_mut(event_id) {
             return Ok(*short);
         }
 
@@ -732,7 +732,7 @@ impl Rooms {
     #[tracing::instrument(skip(self))]
     pub fn get_shortroomid(&self, room_id: &RoomId) -> Result<Option<u64>> {
         self.roomid_shortroomid
-            .get(&room_id.as_bytes())?
+            .get(room_id.as_bytes())?
             .map(|bytes| {
                 utils::u64_from_bytes(&bytes)
                     .map_err(|_| Error::bad_database("Invalid shortroomid in db."))
@@ -757,7 +757,7 @@ impl Rooms {
 
         let mut statekey = event_type.as_ref().as_bytes().to_vec();
         statekey.push(0xff);
-        statekey.extend_from_slice(&state_key.as_bytes());
+        statekey.extend_from_slice(state_key.as_bytes());
 
         let short = self
             .statekey_shortstatekey
@@ -784,13 +784,13 @@ impl Rooms {
         room_id: &RoomId,
         globals: &super::globals::Globals,
     ) -> Result<u64> {
-        Ok(match self.roomid_shortroomid.get(&room_id.as_bytes())? {
+        Ok(match self.roomid_shortroomid.get(room_id.as_bytes())? {
             Some(short) => utils::u64_from_bytes(&short)
                 .map_err(|_| Error::bad_database("Invalid shortroomid in db."))?,
             None => {
                 let short = globals.next_count()?;
                 self.roomid_shortroomid
-                    .insert(&room_id.as_bytes(), &short.to_be_bytes())?;
+                    .insert(room_id.as_bytes(), &short.to_be_bytes())?;
                 short
             }
         })
@@ -814,7 +814,7 @@ impl Rooms {
 
         let mut statekey = event_type.as_ref().as_bytes().to_vec();
         statekey.push(0xff);
-        statekey.extend_from_slice(&state_key.as_bytes());
+        statekey.extend_from_slice(state_key.as_bytes());
 
         let short = match self.statekey_shortstatekey.get(&statekey)? {
             Some(shortstatekey) => utils::u64_from_bytes(&shortstatekey)
@@ -891,12 +891,12 @@ impl Rooms {
             .ok_or_else(|| Error::bad_database("Invalid statekey in shortstatekey_statekey."))?;
 
         let event_type =
-            EventType::try_from(utils::string_from_bytes(&eventtype_bytes).map_err(|_| {
+            EventType::try_from(utils::string_from_bytes(eventtype_bytes).map_err(|_| {
                 Error::bad_database("Event type in shortstatekey_statekey is invalid unicode.")
             })?)
             .map_err(|_| Error::bad_database("Event type in shortstatekey_statekey is invalid."))?;
 
-        let state_key = utils::string_from_bytes(&statekey_bytes).map_err(|_| {
+        let state_key = utils::string_from_bytes(statekey_bytes).map_err(|_| {
             Error::bad_database("Statekey in shortstatekey_statekey is invalid unicode.")
         })?;
 
@@ -956,10 +956,8 @@ impl Rooms {
     /// Returns the `count` of this pdu's id.
     #[tracing::instrument(skip(self))]
     pub fn pdu_count(&self, pdu_id: &[u8]) -> Result<u64> {
-        Ok(
-            utils::u64_from_bytes(&pdu_id[pdu_id.len() - size_of::<u64>()..])
-                .map_err(|_| Error::bad_database("PDU has invalid count bytes."))?,
-        )
+        utils::u64_from_bytes(&pdu_id[pdu_id.len() - size_of::<u64>()..])
+            .map_err(|_| Error::bad_database("PDU has invalid count bytes."))
     }
 
     /// Returns the `count` of this pdu's id.
@@ -1076,7 +1074,7 @@ impl Rooms {
     /// Checks the `eventid_outlierpdu` Tree if not found in the timeline.
     #[tracing::instrument(skip(self))]
     pub fn get_pdu(&self, event_id: &EventId) -> Result<Option<Arc<PduEvent>>> {
-        if let Some(p) = self.pdu_cache.lock().unwrap().get_mut(&event_id) {
+        if let Some(p) = self.pdu_cache.lock().unwrap().get_mut(event_id) {
             return Ok(Some(Arc::clone(p)));
         }
 
@@ -1138,9 +1136,9 @@ impl Rooms {
     /// Removes a pdu and creates a new one with the same id.
     #[tracing::instrument(skip(self))]
     fn replace_pdu(&self, pdu_id: &[u8], pdu: &PduEvent) -> Result<()> {
-        if self.pduid_pdu.get(&pdu_id)?.is_some() {
+        if self.pduid_pdu.get(pdu_id)?.is_some() {
             self.pduid_pdu.insert(
-                &pdu_id,
+                pdu_id,
                 &serde_json::to_vec(pdu).expect("PduEvent::to_vec always works"),
             )?;
             Ok(())
@@ -1225,20 +1223,20 @@ impl Rooms {
     #[tracing::instrument(skip(self, pdu))]
     pub fn add_pdu_outlier(&self, event_id: &EventId, pdu: &CanonicalJsonObject) -> Result<()> {
         self.eventid_outlierpdu.insert(
-            &event_id.as_bytes(),
+            event_id.as_bytes(),
             &serde_json::to_vec(&pdu).expect("CanonicalJsonObject is valid"),
         )
     }
 
     #[tracing::instrument(skip(self))]
     pub fn mark_event_soft_failed(&self, event_id: &EventId) -> Result<()> {
-        self.softfailedeventids.insert(&event_id.as_bytes(), &[])
+        self.softfailedeventids.insert(event_id.as_bytes(), &[])
     }
 
     #[tracing::instrument(skip(self))]
     pub fn is_event_soft_failed(&self, event_id: &EventId) -> Result<bool> {
         self.softfailedeventids
-            .get(&event_id.as_bytes())
+            .get(event_id.as_bytes())
             .map(|o| o.is_some())
     }
 
@@ -1268,7 +1266,7 @@ impl Rooms {
             {
                 if let Some(shortstatehash) = self.pdu_shortstatehash(&pdu.event_id).unwrap() {
                     if let Some(prev_state) = self
-                        .state_get(shortstatehash, &pdu.kind, &state_key)
+                        .state_get(shortstatehash, &pdu.kind, state_key)
                         .unwrap()
                     {
                         unsigned.insert(
@@ -1350,15 +1348,15 @@ impl Rooms {
 
             let rules_for_user = db
                 .account_data
-                .get::<push_rules::PushRulesEvent>(None, &user, EventType::PushRules)?
+                .get::<push_rules::PushRulesEvent>(None, user, EventType::PushRules)?
                 .map(|ev| ev.content.global)
-                .unwrap_or_else(|| push::Ruleset::server_default(&user));
+                .unwrap_or_else(|| push::Ruleset::server_default(user));
 
             let mut highlight = false;
             let mut notify = false;
 
             for action in pusher::get_actions(
-                &user,
+                user,
                 &rules_for_user,
                 &power_levels,
                 &sync_pdu,
@@ -1388,7 +1386,7 @@ impl Rooms {
                 highlights.push(userroom_id);
             }
 
-            for senderkey in db.pusher.get_pusher_senderkeys(&user) {
+            for senderkey in db.pusher.get_pusher_senderkeys(user) {
                 db.sending.send_push_pdu(&*pdu_id, senderkey)?;
             }
         }
@@ -1401,7 +1399,7 @@ impl Rooms {
         match pdu.kind {
             EventType::RoomRedaction => {
                 if let Some(redact_id) = &pdu.redacts {
-                    self.redact_pdu(&redact_id, &pdu)?;
+                    self.redact_pdu(redact_id, pdu)?;
                 }
             }
             EventType::RoomMember => {
@@ -1741,9 +1739,9 @@ impl Rooms {
         state_ids_compressed: HashSet<CompressedStateEvent>,
         globals: &super::globals::Globals,
     ) -> Result<()> {
-        let shorteventid = self.get_or_create_shorteventid(&event_id, globals)?;
+        let shorteventid = self.get_or_create_shorteventid(event_id, globals)?;
 
-        let previous_shortstatehash = self.current_shortstatehash(&room_id)?;
+        let previous_shortstatehash = self.current_shortstatehash(room_id)?;
 
         let state_hash = self.calculate_hash(
             &state_ids_compressed
@@ -1815,7 +1813,7 @@ impl Rooms {
                 .map_or_else(|| Ok(Vec::new()), |p| self.load_shortstatehash_info(p))?;
 
             let shortstatekey =
-                self.get_or_create_shortstatekey(&new_pdu.kind, &state_key, globals)?;
+                self.get_or_create_shortstatekey(&new_pdu.kind, state_key, globals)?;
 
             let new = self.compress_state_event(shortstatekey, &new_pdu.event_id, globals)?;
 
@@ -1840,7 +1838,7 @@ impl Rooms {
 
             let mut statediffremoved = HashSet::new();
             if let Some(replaces) = replaces {
-                statediffremoved.insert(replaces.clone());
+                statediffremoved.insert(*replaces);
             }
 
             self.save_state_from_diff(
@@ -1953,12 +1951,12 @@ impl Rooms {
         } = pdu_builder;
 
         let prev_events = self
-            .get_pdu_leaves(&room_id)?
+            .get_pdu_leaves(room_id)?
             .into_iter()
             .take(20)
             .collect::<Vec<_>>();
 
-        let create_event = self.room_state_get(&room_id, &EventType::RoomCreate, "")?;
+        let create_event = self.room_state_get(room_id, &EventType::RoomCreate, "")?;
 
         let create_event_content = create_event
             .as_ref()
@@ -1988,13 +1986,8 @@ impl Rooms {
             });
         let room_version = RoomVersion::new(&room_version_id).expect("room version is supported");
 
-        let auth_events = self.get_auth_events(
-            &room_id,
-            &event_type,
-            &sender,
-            state_key.as_deref(),
-            &content,
-        )?;
+        let auth_events =
+            self.get_auth_events(room_id, &event_type, sender, state_key.as_deref(), &content)?;
 
         // Our depth is the maximum depth of prev_events + 1
         let depth = prev_events
@@ -2006,7 +1999,7 @@ impl Rooms {
 
         let mut unsigned = unsigned.unwrap_or_default();
         if let Some(state_key) = &state_key {
-            if let Some(prev_pdu) = self.room_state_get(&room_id, &event_type, &state_key)? {
+            if let Some(prev_pdu) = self.room_state_get(room_id, &event_type, state_key)? {
                 unsigned.insert("prev_content".to_owned(), prev_pdu.content.clone());
                 unsigned.insert(
                     "prev_sender".to_owned(),
@@ -2109,7 +2102,7 @@ impl Rooms {
 
         // We set the room state after inserting the pdu, so that we never have a moment in time
         // where events in the current room state do not exist
-        self.set_room_state(&room_id, statehashid)?;
+        self.set_room_state(room_id, statehashid)?;
 
         for server in self
             .room_servers(room_id)
@@ -2154,10 +2147,10 @@ impl Rooms {
                             && pdu
                                 .state_key
                                 .as_ref()
-                                .map_or(false, |state_key| users.is_match(&state_key))
+                                .map_or(false, |state_key| users.is_match(state_key))
                 };
                 let matching_aliases = |aliases: &Regex| {
-                    self.room_aliases(&room_id)
+                    self.room_aliases(room_id)
                         .filter_map(|r| r.ok())
                         .any(|room_alias| aliases.is_match(room_alias.as_str()))
                 };
@@ -2300,7 +2293,7 @@ impl Rooms {
             let mut pdu = self
                 .get_pdu_from_id(&pdu_id)?
                 .ok_or_else(|| Error::bad_database("PDU ID points to invalid PDU."))?;
-            pdu.redact(&reason)?;
+            pdu.redact(reason)?;
             self.replace_pdu(&pdu_id, &pdu)?;
             Ok(())
         } else {
@@ -2348,13 +2341,13 @@ impl Rooms {
         match &membership {
             member::MembershipState::Join => {
                 // Check if the user never joined this room
-                if !self.once_joined(&user_id, &room_id)? {
+                if !self.once_joined(user_id, room_id)? {
                     // Add the user ID to the join list then
                     self.roomuseroncejoinedids.insert(&userroom_id, &[])?;
 
                     // Check if the room has a predecessor
                     if let Some(predecessor) = self
-                        .room_state_get(&room_id, &EventType::RoomCreate, "")?
+                        .room_state_get(room_id, &EventType::RoomCreate, "")?
                         .and_then(|create| {
                             serde_json::from_value::<
                                 Raw<ruma::events::room::create::CreateEventContent>,
@@ -2455,12 +2448,12 @@ impl Rooms {
                 let is_ignored = db
                     .account_data
                     .get::<ignored_user_list::IgnoredUserListEvent>(
-                        None,     // Ignored users are in global account data
-                        &user_id, // Receiver
+                        None,    // Ignored users are in global account data
+                        user_id, // Receiver
                         EventType::IgnoredUserList,
                     )?
                     .map_or(false, |ignored| {
-                        ignored.content.ignored_users.contains(&sender)
+                        ignored.content.ignored_users.contains(sender)
                     });
 
                 if is_ignored {
@@ -2522,7 +2515,7 @@ impl Rooms {
         let mut joined_servers = HashSet::new();
         let mut real_users = HashSet::new();
 
-        for joined in self.room_members(&room_id).filter_map(|r| r.ok()) {
+        for joined in self.room_members(room_id).filter_map(|r| r.ok()) {
             joined_servers.insert(joined.server_name().to_owned());
             if joined.server_name() == db.globals.server_name()
                 && !db.users.is_deactivated(&joined).unwrap_or(true)
@@ -2532,7 +2525,7 @@ impl Rooms {
             joinedcount += 1;
         }
 
-        for invited in self.room_members_invited(&room_id).filter_map(|r| r.ok()) {
+        for invited in self.room_members_invited(room_id).filter_map(|r| r.ok()) {
             joined_servers.insert(invited.server_name().to_owned());
             invitedcount += 1;
         }
@@ -2601,7 +2594,7 @@ impl Rooms {
         if let Some(users) = maybe {
             Ok(users)
         } else {
-            self.update_joined_count(room_id, &db)?;
+            self.update_joined_count(room_id, db)?;
             Ok(Arc::clone(
                 self.our_real_users_cache
                     .read()
@@ -2650,7 +2643,7 @@ impl Rooms {
 
             let in_room = bridge_user_id
                 .map_or(false, |id| self.is_joined(&id, room_id).unwrap_or(false))
-                || self.room_members(&room_id).any(|userid| {
+                || self.room_members(room_id).any(|userid| {
                     userid.map_or(false, |userid| {
                         users.iter().any(|r| r.is_match(userid.as_str()))
                     })
@@ -2890,21 +2883,21 @@ impl Rooms {
         if let Some(room_id) = room_id {
             // New alias
             self.alias_roomid
-                .insert(&alias.alias().as_bytes(), room_id.as_bytes())?;
+                .insert(alias.alias().as_bytes(), room_id.as_bytes())?;
             let mut aliasid = room_id.as_bytes().to_vec();
             aliasid.push(0xff);
             aliasid.extend_from_slice(&globals.next_count()?.to_be_bytes());
             self.aliasid_alias.insert(&aliasid, &*alias.as_bytes())?;
         } else {
             // room_id=None means remove alias
-            if let Some(room_id) = self.alias_roomid.get(&alias.alias().as_bytes())? {
+            if let Some(room_id) = self.alias_roomid.get(alias.alias().as_bytes())? {
                 let mut prefix = room_id.to_vec();
                 prefix.push(0xff);
 
                 for (key, _) in self.aliasid_alias.scan_prefix(prefix) {
                     self.aliasid_alias.remove(&key)?;
                 }
-                self.alias_roomid.remove(&alias.alias().as_bytes())?;
+                self.alias_roomid.remove(alias.alias().as_bytes())?;
             } else {
                 return Err(Error::BadRequest(
                     ErrorKind::NotFound,
@@ -3077,7 +3070,7 @@ impl Rooms {
         self.roomserverids.scan_prefix(prefix).map(|(key, _)| {
             Box::<ServerName>::try_from(
                 utils::string_from_bytes(
-                    &key.rsplit(|&b| b == 0xff)
+                    key.rsplit(|&b| b == 0xff)
                         .next()
                         .expect("rsplit always returns an element"),
                 )
@@ -3110,7 +3103,7 @@ impl Rooms {
         self.serverroomids.scan_prefix(prefix).map(|(key, _)| {
             RoomId::try_from(
                 utils::string_from_bytes(
-                    &key.rsplit(|&b| b == 0xff)
+                    key.rsplit(|&b| b == 0xff)
                         .next()
                         .expect("rsplit always returns an element"),
                 )
@@ -3132,7 +3125,7 @@ impl Rooms {
         self.roomuserid_joined.scan_prefix(prefix).map(|(key, _)| {
             UserId::try_from(
                 utils::string_from_bytes(
-                    &key.rsplit(|&b| b == 0xff)
+                    key.rsplit(|&b| b == 0xff)
                         .next()
                         .expect("rsplit always returns an element"),
                 )
@@ -3146,26 +3139,24 @@ impl Rooms {
 
     #[tracing::instrument(skip(self))]
     pub fn room_joined_count(&self, room_id: &RoomId) -> Result<Option<u64>> {
-        Ok(self
-            .roomid_joinedcount
+        self.roomid_joinedcount
             .get(room_id.as_bytes())?
             .map(|b| {
                 utils::u64_from_bytes(&b)
                     .map_err(|_| Error::bad_database("Invalid joinedcount in db."))
             })
-            .transpose()?)
+            .transpose()
     }
 
     #[tracing::instrument(skip(self))]
     pub fn room_invited_count(&self, room_id: &RoomId) -> Result<Option<u64>> {
-        Ok(self
-            .roomid_invitedcount
+        self.roomid_invitedcount
             .get(room_id.as_bytes())?
             .map(|b| {
                 utils::u64_from_bytes(&b)
                     .map_err(|_| Error::bad_database("Invalid joinedcount in db."))
             })
-            .transpose()?)
+            .transpose()
     }
 
     /// Returns an iterator over all User IDs who ever joined a room.
@@ -3182,7 +3173,7 @@ impl Rooms {
             .map(|(key, _)| {
                 UserId::try_from(
                     utils::string_from_bytes(
-                        &key.rsplit(|&b| b == 0xff)
+                        key.rsplit(|&b| b == 0xff)
                             .next()
                             .expect("rsplit always returns an element"),
                     )
@@ -3208,7 +3199,7 @@ impl Rooms {
             .map(|(key, _)| {
                 UserId::try_from(
                     utils::string_from_bytes(
-                        &key.rsplit(|&b| b == 0xff)
+                        key.rsplit(|&b| b == 0xff)
                             .next()
                             .expect("rsplit always returns an element"),
                     )
@@ -3261,7 +3252,7 @@ impl Rooms {
             .map(|(key, _)| {
                 RoomId::try_from(
                     utils::string_from_bytes(
-                        &key.rsplit(|&b| b == 0xff)
+                        key.rsplit(|&b| b == 0xff)
                             .next()
                             .expect("rsplit always returns an element"),
                     )
@@ -3287,7 +3278,7 @@ impl Rooms {
             .map(|(key, state)| {
                 let room_id = RoomId::try_from(
                     utils::string_from_bytes(
-                        &key.rsplit(|&b| b == 0xff)
+                        key.rsplit(|&b| b == 0xff)
                             .next()
                             .expect("rsplit always returns an element"),
                     )
@@ -3312,7 +3303,7 @@ impl Rooms {
     ) -> Result<Option<Vec<Raw<AnyStrippedStateEvent>>>> {
         let mut key = user_id.as_bytes().to_vec();
         key.push(0xff);
-        key.extend_from_slice(&room_id.as_bytes());
+        key.extend_from_slice(room_id.as_bytes());
 
         self.userroomid_invitestate
             .get(&key)?
@@ -3333,7 +3324,7 @@ impl Rooms {
     ) -> Result<Option<Vec<Raw<AnyStrippedStateEvent>>>> {
         let mut key = user_id.as_bytes().to_vec();
         key.push(0xff);
-        key.extend_from_slice(&room_id.as_bytes());
+        key.extend_from_slice(room_id.as_bytes());
 
         self.userroomid_leftstate
             .get(&key)?
@@ -3360,7 +3351,7 @@ impl Rooms {
             .map(|(key, state)| {
                 let room_id = RoomId::try_from(
                     utils::string_from_bytes(
-                        &key.rsplit(|&b| b == 0xff)
+                        key.rsplit(|&b| b == 0xff)
                             .next()
                             .expect("rsplit always returns an element"),
                     )

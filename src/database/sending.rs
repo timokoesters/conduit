@@ -58,9 +58,9 @@ impl OutgoingKind {
             }
             OutgoingKind::Push(user, pushkey) => {
                 let mut p = b"$".to_vec();
-                p.extend_from_slice(&user);
+                p.extend_from_slice(user);
                 p.push(0xff);
-                p.extend_from_slice(&pushkey);
+                p.extend_from_slice(pushkey);
                 p
             }
             OutgoingKind::Normal(server) => {
@@ -179,8 +179,8 @@ impl Sending {
                                     // Insert pdus we found
                                     for (e, key) in &new_events {
                                         let value = if let SendingEventType::Edu(value) = &e.1 { &**value } else { &[] };
-                                        guard.sending.servercurrentevent_data.insert(&key, value).unwrap();
-                                        guard.sending.servernameevent_data.remove(&key).unwrap();
+                                        guard.sending.servercurrentevent_data.insert(key, value).unwrap();
+                                        guard.sending.servernameevent_data.remove(key).unwrap();
                                     }
 
                                     drop(guard);
@@ -345,7 +345,7 @@ impl Sending {
                 }
 
                 let event =
-                    serde_json::from_str::<AnySyncEphemeralRoomEvent>(&read_receipt.json().get())
+                    serde_json::from_str::<AnySyncEphemeralRoomEvent>(read_receipt.json().get())
                         .map_err(|_| Error::bad_database("Invalid edu event in read_receipts."))?;
                 let federation_event = match event {
                     AnySyncEphemeralRoomEvent::Receipt(r) => {
@@ -486,7 +486,7 @@ impl Sending {
                     match event {
                         SendingEventType::Pdu(pdu_id) => {
                             pdu_jsons.push(db.rooms
-                                .get_pdu_from_id(&pdu_id)
+                                .get_pdu_from_id(pdu_id)
                                 .map_err(|e| (kind.clone(), e))?
                                 .ok_or_else(|| {
                                     (
@@ -543,7 +543,7 @@ impl Sending {
                         SendingEventType::Pdu(pdu_id) => {
                             pdus.push(
                                 db.rooms
-                                    .get_pdu_from_id(&pdu_id)
+                                    .get_pdu_from_id(pdu_id)
                                     .map_err(|e| (kind.clone(), e))?
                                     .ok_or_else(|| {
                                         (
@@ -636,7 +636,7 @@ impl Sending {
                             // TODO: check room version and remove event_id if needed
                             let raw = PduEvent::convert_to_outgoing_federation_event(
                                 db.rooms
-                                    .get_pdu_json_from_id(&pdu_id)
+                                    .get_pdu_json_from_id(pdu_id)
                                     .map_err(|e| (OutgoingKind::Normal(server.clone()), e))?
                                     .ok_or_else(|| {
                                         (
@@ -711,7 +711,7 @@ impl Sending {
             let event = parts
                 .next()
                 .ok_or_else(|| Error::bad_database("Invalid bytes in servercurrentpdus."))?;
-            let server = utils::string_from_bytes(&server).map_err(|_| {
+            let server = utils::string_from_bytes(server).map_err(|_| {
                 Error::bad_database("Invalid server bytes in server_currenttransaction")
             })?;
 
@@ -750,7 +750,7 @@ impl Sending {
             let event = parts
                 .next()
                 .ok_or_else(|| Error::bad_database("Invalid bytes in servercurrentpdus."))?;
-            let server = utils::string_from_bytes(&server).map_err(|_| {
+            let server = utils::string_from_bytes(server).map_err(|_| {
                 Error::bad_database("Invalid server bytes in server_currenttransaction")
             })?;
 

@@ -81,13 +81,13 @@ impl Users {
                 })?;
 
                 Ok(Some((
-                    UserId::try_from(utils::string_from_bytes(&user_bytes).map_err(|_| {
+                    UserId::try_from(utils::string_from_bytes(user_bytes).map_err(|_| {
                         Error::bad_database("User ID in token_userdeviceid is invalid unicode.")
                     })?)
                     .map_err(|_| {
                         Error::bad_database("User ID in token_userdeviceid is invalid.")
                     })?,
-                    utils::string_from_bytes(&device_bytes).map_err(|_| {
+                    utils::string_from_bytes(device_bytes).map_err(|_| {
                         Error::bad_database("Device ID in token_userdeviceid is invalid.")
                     })?,
                 )))
@@ -121,7 +121,7 @@ impl Users {
     #[tracing::instrument(skip(self, user_id, password))]
     pub fn set_password(&self, user_id: &UserId, password: Option<&str>) -> Result<()> {
         if let Some(password) = password {
-            if let Ok(hash) = utils::calculate_hash(&password) {
+            if let Ok(hash) = utils::calculate_hash(password) {
                 self.userid_password
                     .insert(user_id.as_bytes(), hash.as_bytes())?;
                 Ok(())
@@ -245,7 +245,7 @@ impl Users {
             .expect("Device::to_string never fails."),
         )?;
 
-        self.set_token(user_id, &device_id, token)?;
+        self.set_token(user_id, device_id, token)?;
 
         Ok(())
     }
@@ -294,7 +294,7 @@ impl Users {
             .scan_prefix(prefix)
             .map(|(bytes, _)| {
                 Ok(utils::string_from_bytes(
-                    &bytes
+                    bytes
                         .rsplit(|&b| b == 0xff)
                         .next()
                         .ok_or_else(|| Error::bad_database("UserDevice ID in db is invalid."))?,
@@ -357,7 +357,7 @@ impl Users {
         // TODO: Use DeviceKeyId::to_string when it's available (and update everything,
         // because there are no wrapping quotation marks anymore)
         key.extend_from_slice(
-            &serde_json::to_string(one_time_key_key)
+            serde_json::to_string(one_time_key_key)
                 .expect("DeviceKeyId::to_string always works")
                 .as_bytes(),
         );
@@ -368,7 +368,7 @@ impl Users {
         )?;
 
         self.userid_lastonetimekeyupdate
-            .insert(&user_id.as_bytes(), &globals.next_count()?.to_be_bytes())?;
+            .insert(user_id.as_bytes(), &globals.next_count()?.to_be_bytes())?;
 
         Ok(())
     }
@@ -376,7 +376,7 @@ impl Users {
     #[tracing::instrument(skip(self, user_id))]
     pub fn last_one_time_keys_update(&self, user_id: &UserId) -> Result<u64> {
         self.userid_lastonetimekeyupdate
-            .get(&user_id.as_bytes())?
+            .get(user_id.as_bytes())?
             .map(|bytes| {
                 utils::u64_from_bytes(&bytes).map_err(|_| {
                     Error::bad_database("Count in roomid_lastroomactiveupdate is invalid.")
@@ -402,7 +402,7 @@ impl Users {
         prefix.push(b':');
 
         self.userid_lastonetimekeyupdate
-            .insert(&user_id.as_bytes(), &globals.next_count()?.to_be_bytes())?;
+            .insert(user_id.as_bytes(), &globals.next_count()?.to_be_bytes())?;
 
         self.onetimekeyid_onetimekeys
             .scan_prefix(prefix)
@@ -680,7 +680,7 @@ impl Users {
         globals: &super::globals::Globals,
     ) -> Result<()> {
         let count = globals.next_count()?.to_be_bytes();
-        for room_id in rooms.rooms_joined(&user_id).filter_map(|r| r.ok()) {
+        for room_id in rooms.rooms_joined(user_id).filter_map(|r| r.ok()) {
             // Don't send key updates to unencrypted rooms
             if rooms
                 .room_state_get(&room_id, &EventType::RoomEncryption, "")?
@@ -961,7 +961,7 @@ impl Users {
     pub fn deactivate_account(&self, user_id: &UserId) -> Result<()> {
         // Remove all associated devices
         for device_id in self.all_device_ids(user_id) {
-            self.remove_device(&user_id, &device_id?)?;
+            self.remove_device(user_id, &device_id?)?;
         }
 
         // Set the password to "" to indicate a deactivated account. Hashes will never result in an

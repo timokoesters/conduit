@@ -27,7 +27,7 @@ pub async fn create_backup_route(
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
     let version = db
         .key_backups
-        .create_backup(&sender_user, &body.algorithm, &db.globals)?;
+        .create_backup(sender_user, &body.algorithm, &db.globals)?;
 
     db.flush()?;
 
@@ -48,7 +48,7 @@ pub async fn update_backup_route(
 ) -> ConduitResult<update_backup::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
     db.key_backups
-        .update_backup(&sender_user, &body.version, &body.algorithm, &db.globals)?;
+        .update_backup(sender_user, &body.version, &body.algorithm, &db.globals)?;
 
     db.flush()?;
 
@@ -71,7 +71,7 @@ pub async fn get_latest_backup_route(
 
     let (version, algorithm) =
         db.key_backups
-            .get_latest_backup(&sender_user)?
+            .get_latest_backup(sender_user)?
             .ok_or(Error::BadRequest(
                 ErrorKind::NotFound,
                 "Key backup does not exist.",
@@ -101,7 +101,7 @@ pub async fn get_backup_route(
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
     let algorithm = db
         .key_backups
-        .get_backup(&sender_user, &body.version)?
+        .get_backup(sender_user, &body.version)?
         .ok_or(Error::BadRequest(
             ErrorKind::NotFound,
             "Key backup does not exist.",
@@ -132,7 +132,7 @@ pub async fn delete_backup_route(
 ) -> ConduitResult<delete_backup::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
-    db.key_backups.delete_backup(&sender_user, &body.version)?;
+    db.key_backups.delete_backup(sender_user, &body.version)?;
 
     db.flush()?;
 
@@ -172,11 +172,11 @@ pub async fn add_backup_keys_route(
     for (room_id, room) in &body.rooms {
         for (session_id, key_data) in &room.sessions {
             db.key_backups.add_key(
-                &sender_user,
+                sender_user,
                 &body.version,
-                &room_id,
-                &session_id,
-                &key_data,
+                room_id,
+                session_id,
+                key_data,
                 &db.globals,
             )?
         }
@@ -223,11 +223,11 @@ pub async fn add_backup_key_sessions_route(
 
     for (session_id, key_data) in &body.sessions {
         db.key_backups.add_key(
-            &sender_user,
+            sender_user,
             &body.version,
             &body.room_id,
-            &session_id,
-            &key_data,
+            session_id,
+            key_data,
             &db.globals,
         )?
     }
@@ -272,7 +272,7 @@ pub async fn add_backup_key_session_route(
     }
 
     db.key_backups.add_key(
-        &sender_user,
+        sender_user,
         &body.version,
         &body.room_id,
         &body.session_id,
@@ -303,7 +303,7 @@ pub async fn get_backup_keys_route(
 ) -> ConduitResult<get_backup_keys::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
-    let rooms = db.key_backups.get_all(&sender_user, &body.version)?;
+    let rooms = db.key_backups.get_all(sender_user, &body.version)?;
 
     Ok(get_backup_keys::Response { rooms }.into())
 }
@@ -324,7 +324,7 @@ pub async fn get_backup_key_sessions_route(
 
     let sessions = db
         .key_backups
-        .get_room(&sender_user, &body.version, &body.room_id)?;
+        .get_room(sender_user, &body.version, &body.room_id)?;
 
     Ok(get_backup_key_sessions::Response { sessions }.into())
 }
@@ -345,7 +345,7 @@ pub async fn get_backup_key_session_route(
 
     let key_data = db
         .key_backups
-        .get_session(&sender_user, &body.version, &body.room_id, &body.session_id)?
+        .get_session(sender_user, &body.version, &body.room_id, &body.session_id)?
         .ok_or(Error::BadRequest(
             ErrorKind::NotFound,
             "Backup key not found for this user's session.",
@@ -368,8 +368,7 @@ pub async fn delete_backup_keys_route(
 ) -> ConduitResult<delete_backup_keys::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
-    db.key_backups
-        .delete_all_keys(&sender_user, &body.version)?;
+    db.key_backups.delete_all_keys(sender_user, &body.version)?;
 
     db.flush()?;
 
@@ -395,7 +394,7 @@ pub async fn delete_backup_key_sessions_route(
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
     db.key_backups
-        .delete_room_keys(&sender_user, &body.version, &body.room_id)?;
+        .delete_room_keys(sender_user, &body.version, &body.room_id)?;
 
     db.flush()?;
 
@@ -421,7 +420,7 @@ pub async fn delete_backup_key_session_route(
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
     db.key_backups
-        .delete_room_key(&sender_user, &body.version, &body.room_id, &body.session_id)?;
+        .delete_room_key(sender_user, &body.version, &body.room_id, &body.session_id)?;
 
     db.flush()?;
 

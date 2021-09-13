@@ -192,7 +192,7 @@ impl SqliteTable {
 impl Tree for SqliteTable {
     #[tracing::instrument(skip(self, key))]
     fn get(&self, key: &[u8]) -> Result<Option<Vec<u8>>> {
-        self.get_with_guard(&self.engine.read_lock(), key)
+        self.get_with_guard(self.engine.read_lock(), key)
     }
 
     #[tracing::instrument(skip(self, key, value))]
@@ -275,7 +275,7 @@ impl Tree for SqliteTable {
     fn iter<'a>(&'a self) -> Box<dyn Iterator<Item = TupleOfBytes> + 'a> {
         let guard = self.engine.read_lock_iterator();
 
-        self.iter_with_guard(&guard)
+        self.iter_with_guard(guard)
     }
 
     #[tracing::instrument(skip(self, from, backwards))]

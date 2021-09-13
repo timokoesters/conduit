@@ -106,7 +106,7 @@ pub async fn create_room_route(
             state_key: Some("".to_owned()),
             redacts: None,
         },
-        &sender_user,
+        sender_user,
         &room_id,
         &db,
         &state_lock,
@@ -118,11 +118,11 @@ pub async fn create_room_route(
             event_type: EventType::RoomMember,
             content: serde_json::to_value(member::MemberEventContent {
                 membership: member::MembershipState::Join,
-                displayname: db.users.displayname(&sender_user)?,
-                avatar_url: db.users.avatar_url(&sender_user)?,
+                displayname: db.users.displayname(sender_user)?,
+                avatar_url: db.users.avatar_url(sender_user)?,
                 is_direct: Some(body.is_direct),
                 third_party_invite: None,
-                blurhash: db.users.blurhash(&sender_user)?,
+                blurhash: db.users.blurhash(sender_user)?,
                 reason: None,
             })
             .expect("event is valid, we just created it"),
@@ -130,7 +130,7 @@ pub async fn create_room_route(
             state_key: Some(sender_user.to_string()),
             redacts: None,
         },
-        &sender_user,
+        sender_user,
         &room_id,
         &db,
         &state_lock,
@@ -185,7 +185,7 @@ pub async fn create_room_route(
             state_key: Some("".to_owned()),
             redacts: None,
         },
-        &sender_user,
+        sender_user,
         &room_id,
         &db,
         &state_lock,
@@ -207,7 +207,7 @@ pub async fn create_room_route(
                 state_key: Some("".to_owned()),
                 redacts: None,
             },
-            &sender_user,
+            sender_user,
             &room_id,
             &db,
             &state_lock,
@@ -235,7 +235,7 @@ pub async fn create_room_route(
             state_key: Some("".to_owned()),
             redacts: None,
         },
-        &sender_user,
+        sender_user,
         &room_id,
         &db,
         &state_lock,
@@ -253,7 +253,7 @@ pub async fn create_room_route(
             state_key: Some("".to_owned()),
             redacts: None,
         },
-        &sender_user,
+        sender_user,
         &room_id,
         &db,
         &state_lock,
@@ -279,7 +279,7 @@ pub async fn create_room_route(
             state_key: Some("".to_owned()),
             redacts: None,
         },
-        &sender_user,
+        sender_user,
         &room_id,
         &db,
         &state_lock,
@@ -298,7 +298,7 @@ pub async fn create_room_route(
         }
 
         db.rooms
-            .build_and_append_pdu(pdu_builder, &sender_user, &room_id, &db, &state_lock)?;
+            .build_and_append_pdu(pdu_builder, sender_user, &room_id, &db, &state_lock)?;
     }
 
     // 7. Events implied by name and topic
@@ -312,7 +312,7 @@ pub async fn create_room_route(
                 state_key: Some("".to_owned()),
                 redacts: None,
             },
-            &sender_user,
+            sender_user,
             &room_id,
             &db,
             &state_lock,
@@ -331,7 +331,7 @@ pub async fn create_room_route(
                 state_key: Some("".to_owned()),
                 redacts: None,
             },
-            &sender_user,
+            sender_user,
             &room_id,
             &db,
             &state_lock,
@@ -551,11 +551,11 @@ pub async fn upgrade_room_route(
             event_type: EventType::RoomMember,
             content: serde_json::to_value(member::MemberEventContent {
                 membership: member::MembershipState::Join,
-                displayname: db.users.displayname(&sender_user)?,
-                avatar_url: db.users.avatar_url(&sender_user)?,
+                displayname: db.users.displayname(sender_user)?,
+                avatar_url: db.users.avatar_url(sender_user)?,
                 is_direct: None,
                 third_party_invite: None,
-                blurhash: db.users.blurhash(&sender_user)?,
+                blurhash: db.users.blurhash(sender_user)?,
                 reason: None,
             })
             .expect("event is valid, we just created it"),

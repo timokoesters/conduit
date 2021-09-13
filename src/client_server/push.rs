@@ -31,7 +31,7 @@ pub async fn get_pushrules_all_route(
 
     let event = db
         .account_data
-        .get::<push_rules::PushRulesEvent>(None, &sender_user, EventType::PushRules)?
+        .get::<push_rules::PushRulesEvent>(None, sender_user, EventType::PushRules)?
         .ok_or(Error::BadRequest(
             ErrorKind::NotFound,
             "PushRules event not found.",
@@ -59,7 +59,7 @@ pub async fn get_pushrule_route(
 
     let event = db
         .account_data
-        .get::<push_rules::PushRulesEvent>(None, &sender_user, EventType::PushRules)?
+        .get::<push_rules::PushRulesEvent>(None, sender_user, EventType::PushRules)?
         .ok_or(Error::BadRequest(
             ErrorKind::NotFound,
             "PushRules event not found.",
@@ -124,7 +124,7 @@ pub async fn set_pushrule_route(
 
     let mut event = db
         .account_data
-        .get::<push_rules::PushRulesEvent>(None, &sender_user, EventType::PushRules)?
+        .get::<push_rules::PushRulesEvent>(None, sender_user, EventType::PushRules)?
         .ok_or(Error::BadRequest(
             ErrorKind::NotFound,
             "PushRules event not found.",
@@ -193,13 +193,8 @@ pub async fn set_pushrule_route(
         _ => {}
     }
 
-    db.account_data.update(
-        None,
-        &sender_user,
-        EventType::PushRules,
-        &event,
-        &db.globals,
-    )?;
+    db.account_data
+        .update(None, sender_user, EventType::PushRules, &event, &db.globals)?;
 
     db.flush()?;
 
@@ -229,7 +224,7 @@ pub async fn get_pushrule_actions_route(
 
     let mut event = db
         .account_data
-        .get::<push_rules::PushRulesEvent>(None, &sender_user, EventType::PushRules)?
+        .get::<push_rules::PushRulesEvent>(None, sender_user, EventType::PushRules)?
         .ok_or(Error::BadRequest(
             ErrorKind::NotFound,
             "PushRules event not found.",
@@ -291,7 +286,7 @@ pub async fn set_pushrule_actions_route(
 
     let mut event = db
         .account_data
-        .get::<push_rules::PushRulesEvent>(None, &sender_user, EventType::PushRules)?
+        .get::<push_rules::PushRulesEvent>(None, sender_user, EventType::PushRules)?
         .ok_or(Error::BadRequest(
             ErrorKind::NotFound,
             "PushRules event not found.",
@@ -332,13 +327,8 @@ pub async fn set_pushrule_actions_route(
         _ => {}
     };
 
-    db.account_data.update(
-        None,
-        &sender_user,
-        EventType::PushRules,
-        &event,
-        &db.globals,
-    )?;
+    db.account_data
+        .update(None, sender_user, EventType::PushRules, &event, &db.globals)?;
 
     db.flush()?;
 
@@ -368,7 +358,7 @@ pub async fn get_pushrule_enabled_route(
 
     let mut event = db
         .account_data
-        .get::<push_rules::PushRulesEvent>(None, &sender_user, EventType::PushRules)?
+        .get::<push_rules::PushRulesEvent>(None, sender_user, EventType::PushRules)?
         .ok_or(Error::BadRequest(
             ErrorKind::NotFound,
             "PushRules event not found.",
@@ -432,7 +422,7 @@ pub async fn set_pushrule_enabled_route(
 
     let mut event = db
         .account_data
-        .get::<ruma::events::push_rules::PushRulesEvent>(None, &sender_user, EventType::PushRules)?
+        .get::<ruma::events::push_rules::PushRulesEvent>(None, sender_user, EventType::PushRules)?
         .ok_or(Error::BadRequest(
             ErrorKind::NotFound,
             "PushRules event not found.",
@@ -478,13 +468,8 @@ pub async fn set_pushrule_enabled_route(
         _ => {}
     }
 
-    db.account_data.update(
-        None,
-        &sender_user,
-        EventType::PushRules,
-        &event,
-        &db.globals,
-    )?;
+    db.account_data
+        .update(None, sender_user, EventType::PushRules, &event, &db.globals)?;
 
     db.flush()?;
 
@@ -514,7 +499,7 @@ pub async fn delete_pushrule_route(
 
     let mut event = db
         .account_data
-        .get::<push_rules::PushRulesEvent>(None, &sender_user, EventType::PushRules)?
+        .get::<push_rules::PushRulesEvent>(None, sender_user, EventType::PushRules)?
         .ok_or(Error::BadRequest(
             ErrorKind::NotFound,
             "PushRules event not found.",
@@ -550,13 +535,8 @@ pub async fn delete_pushrule_route(
         _ => {}
     }
 
-    db.account_data.update(
-        None,
-        &sender_user,
-        EventType::PushRules,
-        &event,
-        &db.globals,
-    )?;
+    db.account_data
+        .update(None, sender_user, EventType::PushRules, &event, &db.globals)?;
 
     db.flush()?;
 

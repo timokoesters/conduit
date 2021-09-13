@@ -21,7 +21,7 @@ pub fn create_typing_event_route(
 
     if let Typing::Yes(duration) = body.state {
         db.rooms.edus.typing_add(
-            &sender_user,
+            sender_user,
             &body.room_id,
             duration.as_millis() as u64 + utils::millis_since_unix_epoch(),
             &db.globals,
@@ -29,7 +29,7 @@ pub fn create_typing_event_route(
     } else {
         db.rooms
             .edus
-            .typing_remove(&sender_user, &body.room_id, &db.globals)?;
+            .typing_remove(sender_user, &body.room_id, &db.globals)?;
     }
 
     Ok(create_typing_event::Response {}.into())

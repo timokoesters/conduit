@@ -100,8 +100,8 @@ pub async fn login_route(
         login::IncomingLoginInfo::Token { token } => {
             if let Some(jwt_decoding_key) = db.globals.jwt_decoding_key() {
                 let token = jsonwebtoken::decode::<Claims>(
-                    &token,
-                    &jwt_decoding_key,
+                    token,
+                    jwt_decoding_key,
                     &jsonwebtoken::Validation::default(),
                 )
                 .map_err(|_| Error::BadRequest(ErrorKind::InvalidUsername, "Token is invalid."))?;
@@ -179,7 +179,7 @@ pub async fn logout_route(
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
     let sender_device = body.sender_device.as_ref().expect("user is authenticated");
 
-    db.users.remove_device(&sender_user, sender_device)?;
+    db.users.remove_device(sender_user, sender_device)?;
 
     db.flush()?;
 
@@ -209,7 +209,7 @@ pub async fn logout_all_route(
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
     for device_id in db.users.all_device_ids(sender_user).flatten() {
-        db.users.remove_device(&sender_user, &device_id)?;
+        db.users.remove_device(sender_user, &device_id)?;
     }
 
     db.flush()?;

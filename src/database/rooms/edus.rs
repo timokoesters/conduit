@@ -60,7 +60,7 @@ impl RoomEdus {
         let mut room_latest_id = prefix;
         room_latest_id.extend_from_slice(&globals.next_count()?.to_be_bytes());
         room_latest_id.push(0xff);
-        room_latest_id.extend_from_slice(&user_id.as_bytes());
+        room_latest_id.extend_from_slice(user_id.as_bytes());
 
         self.readreceiptid_readreceipt.insert(
             &room_latest_id,
@@ -126,7 +126,7 @@ impl RoomEdus {
     ) -> Result<()> {
         let mut key = room_id.as_bytes().to_vec();
         key.push(0xff);
-        key.extend_from_slice(&user_id.as_bytes());
+        key.extend_from_slice(user_id.as_bytes());
 
         self.roomuserid_privateread
             .insert(&key, &count.to_be_bytes())?;
@@ -142,7 +142,7 @@ impl RoomEdus {
     pub fn private_read_get(&self, room_id: &RoomId, user_id: &UserId) -> Result<Option<u64>> {
         let mut key = room_id.as_bytes().to_vec();
         key.push(0xff);
-        key.extend_from_slice(&user_id.as_bytes());
+        key.extend_from_slice(user_id.as_bytes());
 
         self.roomuserid_privateread
             .get(&key)?
@@ -157,7 +157,7 @@ impl RoomEdus {
     pub fn last_privateread_update(&self, user_id: &UserId, room_id: &RoomId) -> Result<u64> {
         let mut key = room_id.as_bytes().to_vec();
         key.push(0xff);
-        key.extend_from_slice(&user_id.as_bytes());
+        key.extend_from_slice(user_id.as_bytes());
 
         Ok(self
             .roomuserid_lastprivatereadupdate
@@ -193,7 +193,7 @@ impl RoomEdus {
             .insert(&room_typing_id, &*user_id.as_bytes())?;
 
         self.roomid_lasttypingupdate
-            .insert(&room_id.as_bytes(), &count)?;
+            .insert(room_id.as_bytes(), &count)?;
 
         Ok(())
     }
@@ -224,7 +224,7 @@ impl RoomEdus {
 
         if found_outdated {
             self.roomid_lasttypingupdate
-                .insert(&room_id.as_bytes(), &globals.next_count()?.to_be_bytes())?;
+                .insert(room_id.as_bytes(), &globals.next_count()?.to_be_bytes())?;
         }
 
         Ok(())
@@ -268,7 +268,7 @@ impl RoomEdus {
 
         if found_outdated {
             self.roomid_lasttypingupdate
-                .insert(&room_id.as_bytes(), &globals.next_count()?.to_be_bytes())?;
+                .insert(room_id.as_bytes(), &globals.next_count()?.to_be_bytes())?;
         }
 
         Ok(())
@@ -285,7 +285,7 @@ impl RoomEdus {
 
         Ok(self
             .roomid_lasttypingupdate
-            .get(&room_id.as_bytes())?
+            .get(room_id.as_bytes())?
             .map_or(Ok::<_, Error>(None), |bytes| {
                 Ok(Some(utils::u64_from_bytes(&bytes).map_err(|_| {
                     Error::bad_database("Count in roomid_lastroomactiveupdate is invalid.")
@@ -342,7 +342,7 @@ impl RoomEdus {
         presence_id.push(0xff);
         presence_id.extend_from_slice(&count);
         presence_id.push(0xff);
-        presence_id.extend_from_slice(&presence.sender.as_bytes());
+        presence_id.extend_from_slice(presence.sender.as_bytes());
 
         self.presenceid_presence.insert(
             &presence_id,
@@ -361,7 +361,7 @@ impl RoomEdus {
     #[tracing::instrument(skip(self))]
     pub fn ping_presence(&self, user_id: &UserId) -> Result<()> {
         self.userid_lastpresenceupdate.insert(
-            &user_id.as_bytes(),
+            user_id.as_bytes(),
             &utils::millis_since_unix_epoch().to_be_bytes(),
         )?;
 
@@ -371,7 +371,7 @@ impl RoomEdus {
     /// Returns the timestamp of the last presence update of this user in millis since the unix epoch.
     pub fn last_presence_update(&self, user_id: &UserId) -> Result<Option<u64>> {
         self.userid_lastpresenceupdate
-            .get(&user_id.as_bytes())?
+            .get(user_id.as_bytes())?
             .map(|bytes| {
                 utils::u64_from_bytes(&bytes).map_err(|_| {
                     Error::bad_database("Invalid timestamp in userid_lastpresenceupdate.")
@@ -394,7 +394,7 @@ impl RoomEdus {
         presence_id.push(0xff);
         presence_id.extend_from_slice(&last_update.to_be_bytes());
         presence_id.push(0xff);
-        presence_id.extend_from_slice(&user_id.as_bytes());
+        presence_id.extend_from_slice(user_id.as_bytes());
 
         self.presenceid_presence
             .get(&presence_id)?
@@ -480,7 +480,7 @@ impl RoomEdus {
             }
 
             self.userid_lastpresenceupdate.insert(
-                &user_id.as_bytes(),
+                user_id.as_bytes(),
                 &utils::millis_since_unix_epoch().to_be_bytes(),
             )?;
         }

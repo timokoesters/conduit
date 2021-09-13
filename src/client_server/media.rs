@@ -1,5 +1,6 @@
 use crate::{
-    database::media::FileMeta, database::DatabaseGuard, utils, ConduitResult, Error, Ruma,
+    database::{media::FileMeta, DatabaseGuard},
+    utils, ConduitResult, Error, Ruma,
 };
 use ruma::api::client::{
     error::ErrorKind,

@@ -50,7 +50,7 @@ pub async fn get_context_route(
 
     let events_before = db
         .rooms
-        .pdus_until(&sender_user, &body.room_id, base_token)?
+        .pdus_until(sender_user, &body.room_id, base_token)?
         .take(
             u32::try_from(body.limit).map_err(|_| {
                 Error::BadRequest(ErrorKind::InvalidParam, "Limit value is invalid.")
@@ -72,7 +72,7 @@ pub async fn get_context_route(
 
     let events_after = db
         .rooms
-        .pdus_after(&sender_user, &body.room_id, base_token)?
+        .pdus_after(sender_user, &body.room_id, base_token)?
         .take(
             u32::try_from(body.limit).map_err(|_| {
                 Error::BadRequest(ErrorKind::InvalidParam, "Limit value is invalid.")

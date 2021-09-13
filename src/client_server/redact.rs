@@ -46,7 +46,7 @@ pub async fn redact_event_route(
             state_key: None,
             redacts: Some(body.event_id.clone()),
         },
-        &sender_user,
+        sender_user,
         &body.room_id,
         &db,
         &state_lock,

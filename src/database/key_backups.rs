@@ -27,7 +27,7 @@ impl KeyBackups {
 
         let mut key = user_id.as_bytes().to_vec();
         key.push(0xff);
-        key.extend_from_slice(&version.as_bytes());
+        key.extend_from_slice(version.as_bytes());
 
         self.backupid_algorithm.insert(
             &key,
@@ -41,7 +41,7 @@ impl KeyBackups {
     pub fn delete_backup(&self, user_id: &UserId, version: &str) -> Result<()> {
         let mut key = user_id.as_bytes().to_vec();
         key.push(0xff);
-        key.extend_from_slice(&version.as_bytes());
+        key.extend_from_slice(version.as_bytes());
 
         self.backupid_algorithm.remove(&key)?;
         self.backupid_etag.remove(&key)?;
@@ -64,7 +64,7 @@ impl KeyBackups {
     ) -> Result<String> {
         let mut key = user_id.as_bytes().to_vec();
         key.push(0xff);
-        key.extend_from_slice(&version.as_bytes());
+        key.extend_from_slice(version.as_bytes());
 
         if self.backupid_algorithm.get(&key)?.is_none() {
             return Err(Error::BadRequest(
@@ -75,7 +75,7 @@ impl KeyBackups {
 
         self.backupid_algorithm.insert(
             &key,
-            &serde_json::to_string(backup_metadata)
+            serde_json::to_string(backup_metadata)
                 .expect("BackupAlgorithm::to_string always works")
                 .as_bytes(),
         )?;
@@ -192,7 +192,7 @@ impl KeyBackups {
     pub fn get_etag(&self, user_id: &UserId, version: &str) -> Result<String> {
         let mut key = user_id.as_bytes().to_vec();
         key.push(0xff);
-        key.extend_from_slice(&version.as_bytes());
+        key.extend_from_slice(version.as_bytes());
 
         Ok(utils::u64_from_bytes(
             &self
@@ -223,7 +223,7 @@ impl KeyBackups {
                 let mut parts = key.rsplit(|&b| b == 0xff);
 
                 let session_id =
-                    utils::string_from_bytes(&parts.next().ok_or_else(|| {
+                    utils::string_from_bytes(parts.next().ok_or_else(|| {
                         Error::bad_database("backupkeyid_backup key is invalid.")
                     })?)
                     .map_err(|_| {
@@ -231,7 +231,7 @@ impl KeyBackups {
                     })?;
 
                 let room_id = RoomId::try_from(
-                    utils::string_from_bytes(&parts.next().ok_or_else(|| {
+                    utils::string_from_bytes(parts.next().ok_or_else(|| {
                         Error::bad_database("backupkeyid_backup key is invalid.")
                     })?)
                     .map_err(|_| Error::bad_database("backupkeyid_backup room_id is invalid."))?,
@@ -280,7 +280,7 @@ impl KeyBackups {
                 let mut parts = key.rsplit(|&b| b == 0xff);
 
                 let session_id =
-                    utils::string_from_bytes(&parts.next().ok_or_else(|| {
+                    utils::string_from_bytes(parts.next().ok_or_else(|| {
                         Error::bad_database("backupkeyid_backup key is invalid.")
                     })?)
                     .map_err(|_| {
@@ -325,7 +325,7 @@ impl KeyBackups {
     pub fn delete_all_keys(&self, user_id: &UserId, version: &str) -> Result<()> {
         let mut key = user_id.as_bytes().to_vec();
         key.push(0xff);
-        key.extend_from_slice(&version.as_bytes());
+        key.extend_from_slice(version.as_bytes());
         key.push(0xff);
 
         for (outdated_key, _) in self.backupkeyid_backup.scan_prefix(key) {
@@ -343,9 +343,9 @@ impl KeyBackups {
     ) -> Result<()> {
         let mut key = user_id.as_bytes().to_vec();
         key.push(0xff);
-        key.extend_from_slice(&version.as_bytes());
+        key.extend_from_slice(version.as_bytes());
         key.push(0xff);
-        key.extend_from_slice(&room_id.as_bytes());
+        key.extend_from_slice(room_id.as_bytes());
         key.push(0xff);
 
         for (outdated_key, _) in self.backupkeyid_backup.scan_prefix(key) {
@@ -364,11 +364,11 @@ impl KeyBackups {
     ) -> Result<()> {
         let mut key = user_id.as_bytes().to_vec();
         key.push(0xff);
-        key.extend_from_slice(&version.as_bytes());
+        key.extend_from_slice(version.as_bytes());
         key.push(0xff);
-        key.extend_from_slice(&room_id.as_bytes());
+        key.extend_from_slice(room_id.as_bytes());
         key.push(0xff);
-        key.extend_from_slice(&session_id.as_bytes());
+        key.extend_from_slice(session_id.as_bytes());
 
         for (outdated_key, _) in self.backupkeyid_backup.scan_prefix(key) {
             self.backupkeyid_backup.remove(&outdated_key)?;

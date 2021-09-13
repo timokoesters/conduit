@@ -32,13 +32,13 @@ impl AccountData {
             .as_bytes()
             .to_vec();
         prefix.push(0xff);
-        prefix.extend_from_slice(&user_id.as_bytes());
+        prefix.extend_from_slice(user_id.as_bytes());
         prefix.push(0xff);
 
         let mut roomuserdataid = prefix.clone();
         roomuserdataid.extend_from_slice(&globals.next_count()?.to_be_bytes());
         roomuserdataid.push(0xff);
-        roomuserdataid.extend_from_slice(&event_type.as_bytes());
+        roomuserdataid.extend_from_slice(event_type.as_bytes());
 
         let mut key = prefix;
         key.extend_from_slice(event_type.as_bytes());
@@ -83,7 +83,7 @@ impl AccountData {
             .as_bytes()
             .to_vec();
         key.push(0xff);
-        key.extend_from_slice(&user_id.as_bytes());
+        key.extend_from_slice(user_id.as_bytes());
         key.push(0xff);
         key.extend_from_slice(kind.as_ref().as_bytes());
 
@@ -118,7 +118,7 @@ impl AccountData {
             .as_bytes()
             .to_vec();
         prefix.push(0xff);
-        prefix.extend_from_slice(&user_id.as_bytes());
+        prefix.extend_from_slice(user_id.as_bytes());
         prefix.push(0xff);
 
         // Skip the data that's exactly at since, because we sent that last time

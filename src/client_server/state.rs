@@ -308,9 +308,9 @@ async fn send_state_event_for_key_helper(
             state_key: Some(state_key),
             redacts: None,
         },
-        &sender_user,
-        &room_id,
-        &db,
+        sender_user,
+        room_id,
+        db,
         &state_lock,
     )?;
 

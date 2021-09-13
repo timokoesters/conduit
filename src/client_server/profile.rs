@@ -34,12 +34,12 @@ pub async fn set_displayname_route(
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
     db.users
-        .set_displayname(&sender_user, body.displayname.clone())?;
+        .set_displayname(sender_user, body.displayname.clone())?;
 
     // Send a new membership event and presence update into all joined rooms
     let all_rooms_joined: Vec<_> = db
         .rooms
-        .rooms_joined(&sender_user)
+        .rooms_joined(sender_user)
         .filter_map(|r| r.ok())
         .map(|room_id| {
             Ok::<_, Error>((
@@ -89,19 +89,19 @@ pub async fn set_displayname_route(
         );
         let state_lock = mutex_state.lock().await;
 
-        let _ =
-            db.rooms
-                .build_and_append_pdu(pdu_builder, &sender_user, &room_id, &db, &state_lock);
+        let _ = db
+            .rooms
+            .build_and_append_pdu(pdu_builder, sender_user, &room_id, &db, &state_lock);
 
         // Presence update
         db.rooms.edus.update_presence(
-            &sender_user,
+            sender_user,
             &room_id,
             ruma::events::presence::PresenceEvent {
                 content: ruma::events::presence::PresenceEventContent {
-                    avatar_url: db.users.avatar_url(&sender_user)?,
+                    avatar_url: db.users.avatar_url(sender_user)?,
                     currently_active: None,
-                    displayname: db.users.displayname(&sender_user)?,
+                    displayname: db.users.displayname(sender_user)?,
                     last_active_ago: Some(
                         utils::millis_since_unix_epoch()
                             .try_into()
@@ -177,14 +177,14 @@ pub async fn set_avatar_url_route(
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
     db.users
-        .set_avatar_url(&sender_user, body.avatar_url.clone())?;
+        .set_avatar_url(sender_user, body.avatar_url.clone())?;
 
-    db.users.set_blurhash(&sender_user, body.blurhash.clone())?;
+    db.users.set_blurhash(sender_user, body.blurhash.clone())?;
 
     // Send a new membership event and presence update into all joined rooms
     let all_joined_rooms: Vec<_> = db
         .rooms
-        .rooms_joined(&sender_user)
+        .rooms_joined(sender_user)
         .filter_map(|r| r.ok())
         .map(|room_id| {
             Ok::<_, Error>((
@@ -234,19 +234,19 @@ pub async fn set_avatar_url_route(
         );
         let state_lock = mutex_state.lock().await;
 
-        let _ =
-            db.rooms
-                .build_and_append_pdu(pdu_builder, &sender_user, &room_id, &db, &state_lock);
+        let _ = db
+            .rooms
+            .build_and_append_pdu(pdu_builder, sender_user, &room_id, &db, &state_lock);
 
         // Presence update
         db.rooms.edus.update_presence(
-            &sender_user,
+            sender_user,
             &room_id,
             ruma::events::presence::PresenceEvent {
                 content: ruma::events::presence::PresenceEventContent {
-                    avatar_url: db.users.avatar_url(&sender_user)?,
+                    avatar_url: db.users.avatar_url(sender_user)?,
                     currently_active: None,
-                    displayname: db.users.displayname(&sender_user)?,
+                    displayname: db.users.displayname(sender_user)?,
                     last_active_ago: Some(
                         utils::millis_since_unix_epoch()
                             .try_into()

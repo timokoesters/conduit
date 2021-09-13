@@ -79,7 +79,7 @@ pub async fn send_message_event_route(
             state_key: None,
             redacts: None,
         },
-        &sender_user,
+        sender_user,
         &body.room_id,
         &db,
         &state_lock,
@@ -141,7 +141,7 @@ pub async fn get_message_events_route(
         get_message_events::Direction::Forward => {
             let events_after = db
                 .rooms
-                .pdus_after(&sender_user, &body.room_id, from)?
+                .pdus_after(sender_user, &body.room_id, from)?
                 .take(limit)
                 .filter_map(|r| r.ok()) // Filter out buggy events
                 .filter_map(|(pdu_id, pdu)| {
@@ -171,7 +171,7 @@ pub async fn get_message_events_route(
         get_message_events::Direction::Backward => {
             let events_before = db
                 .rooms
-                .pdus_until(&sender_user, &body.room_id, from)?
+                .pdus_until(sender_user, &body.room_id, from)?
                 .take(limit)
                 .filter_map(|r| r.ok()) // Filter out buggy events
                 .filter_map(|(pdu_id, pdu)| {

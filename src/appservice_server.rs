@@ -21,7 +21,7 @@ where
     let hs_token = registration.get("hs_token").unwrap().as_str().unwrap();
 
     let mut http_request = request
-        .try_into_http_request::<BytesMut>(&destination, SendAccessToken::IfRequired(""))
+        .try_into_http_request::<BytesMut>(destination, SendAccessToken::IfRequired(""))
         .unwrap()
         .map(|body| body.freeze());
 

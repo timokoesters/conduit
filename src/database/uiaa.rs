@@ -54,7 +54,7 @@ impl Uiaa {
     ) -> Result<(bool, UiaaInfo)> {
         let mut uiaainfo = auth
             .session()
-            .map(|session| self.get_uiaa_session(&user_id, &device_id, session))
+            .map(|session| self.get_uiaa_session(user_id, device_id, session))
             .unwrap_or_else(|| Ok(uiaainfo.clone()))?;
 
         if uiaainfo.session.is_none() {

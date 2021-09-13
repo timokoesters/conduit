@@ -66,7 +66,7 @@ where
         let limit = db.globals.max_request_size();
         let mut handle = data.open(ByteUnit::Byte(limit.into()));
         let mut body = Vec::new();
-        if let Err(_) = handle.read_to_end(&mut body).await {
+        if handle.read_to_end(&mut body).await.is_err() {
             // Client disconnected
             // Missing Token
             return Failure((Status::new(582), ()));
@@ -123,7 +123,7 @@ where
             match metadata.authentication {
                 AuthScheme::AccessToken | AuthScheme::QueryOnlyAccessToken => {
                     if let Some(token) = token {
-                        match db.users.find_from_token(&token).unwrap() {
+                        match db.users.find_from_token(token).unwrap() {
                             // Unknown Token
                             None => return Failure((Status::new(581), ())),
                             Some((user_id, device_id)) => (

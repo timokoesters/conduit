@@ -236,7 +236,7 @@ pub fn get_actions<'a>(
         member_count: 10_u32.into(), // TODO: get member count efficiently
         user_display_name: db
             .users
-            .displayname(&user)?
+            .displayname(user)?
             .unwrap_or_else(|| user.localpart().to_owned()),
         users_power_levels: power_levels.users.clone(),
         default_power_level: power_levels.users_default,
@@ -302,7 +302,7 @@ async fn send_notice(
     if event_id_only {
         send_request(
             &db.globals,
-            &url,
+            url,
             send_event_notification::v1::Request::new(notifi),
         )
         .await?;
@@ -332,7 +332,7 @@ async fn send_notice(
 
         send_request(
             &db.globals,
-            &url,
+            url,
             send_event_notification::v1::Request::new(notifi),
         )
         .await?;

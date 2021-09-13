@@ -158,8 +158,8 @@ pub async fn upload_signing_keys_route(
 
     if let Some(auth) = &body.auth {
         let (worked, uiaainfo) = db.uiaa.try_auth(
-            &sender_user,
-            &sender_device,
+            sender_user,
+            sender_device,
             auth,
             &uiaainfo,
             &db.users,
@@ -172,7 +172,7 @@ pub async fn upload_signing_keys_route(
     } else if let Some(json) = body.json_body {
         uiaainfo.session = Some(utils::random_string(SESSION_ID_LENGTH));
         db.uiaa
-            .create(&sender_user, &sender_device, &uiaainfo, &json)?;
+            .create(sender_user, sender_device, &uiaainfo, &json)?;
         return Err(Error::Uiaa(uiaainfo));
     } else {
         return Err(Error::BadRequest(ErrorKind::NotJson, "Not json."));
@@ -181,7 +181,7 @@ pub async fn upload_signing_keys_route(
     if let Some(master_key) = &body.master_key {
         db.users.add_cross_signing_keys(
             sender_user,
-            &master_key,
+            master_key,
             &body.self_signing_key,
             &body.user_signing_key,
             &db.rooms,
@@ -242,10 +242,10 @@ pub async fn upload_signatures_route(
                         .to_owned(),
                 );
                 db.users.sign_key(
-                    &user_id,
-                    &key_id,
+                    user_id,
+                    key_id,
                     signature,
-                    &sender_user,
+                    sender_user,
                     &db.rooms,
                     &db.globals,
                 )?;
@@ -359,8 +359,8 @@ pub(crate) async fn get_keys_helper<F: Fn(&UserId) -> bool>(
         } else {
             for device_id in device_ids {
                 let mut container = BTreeMap::new();
-                if let Some(mut keys) = db.users.get_device_keys(&user_id.clone(), &device_id)? {
-                    let metadata = db.users.get_device_metadata(user_id, &device_id)?.ok_or(
+                if let Some(mut keys) = db.users.get_device_keys(&user_id.clone(), device_id)? {
+                    let metadata = db.users.get_device_metadata(user_id, device_id)?.ok_or(
                         Error::BadRequest(
                             ErrorKind::InvalidParam,
                             "Tried to get keys for nonexistent device.",

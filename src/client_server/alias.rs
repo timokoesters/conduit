@@ -112,7 +112,7 @@ pub(crate) async fn get_alias_helper(
     }
 
     let mut room_id = None;
-    match db.rooms.id_from_alias(&room_alias)? {
+    match db.rooms.id_from_alias(room_alias)? {
         Some(r) => room_id = Some(r),
         None => {
             for (_id, registration) in db.appservice.all()? {
@@ -140,7 +140,7 @@ pub(crate) async fn get_alias_helper(
                         .await
                         .is_ok()
                 {
-                    room_id = Some(db.rooms.id_from_alias(&room_alias)?.ok_or_else(|| {
+                    room_id = Some(db.rooms.id_from_alias(room_alias)?.ok_or_else(|| {
                         Error::bad_config("Appservice lied to us. Room does not exist.")
                     })?);
                     break;

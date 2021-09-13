@@ -1,5 +1,4 @@
-use crate::ConduitResult;
-use crate::Ruma;
+use crate::{ConduitResult, Ruma};
 use ruma::{
     api::client::r0::capabilities::{
         get_capabilities, Capabilities, RoomVersionStability, RoomVersionsCapability,
