@@ -341,30 +341,6 @@ test:sytest:
       junit: "$CI_PROJECT_DIR/sytest.xml"
 
 
-test:register:element-web-stable:
-  stage: "test"
-  needs:
-    - "build:debug:cargo:x86_64-unknown-linux-gnu"
-  image: "buildkite/puppeteer:latest"
-  tags: [ "docker" ]
-  interruptible: true
-  script:
-    - "CONDUIT_CONFIG=tests/test-config.toml ./conduit-debug-x86_64-unknown-linux-gnu > conduit.log &"
-    - "cd tests/client-element-web/"
-    - "npm install puppeteer"
-    - "node test-element-web-registration.js \"https://app.element.io/\" \"http://localhost:6167\""
-    - "killall --regexp \"conduit\""
-    - "cd ../.."
-    - "cat conduit.log"
-  artifacts:
-    paths:
-      - "tests/client-element-web/*.png"
-      - "*.log"
-    expire_in: 1 week
-    when: always
-  retry: 1
-
-
 # --------------------------------------------------------------------- #
 #  Store binaries as package so they have download urls                 #
 # --------------------------------------------------------------------- #
