@@ -96,7 +96,7 @@ pub struct Rooms {
     /// RoomId + EventId -> Parent PDU EventId.
     pub(super) referencedevents: Arc<dyn Tree>,
 
-    pub(super) pdu_cache: Mutex<LruCache<EventId, Arc<PduEvent>>>,
+    pub(super) pdu_cache: Mutex<LruCache<EventId, Vec<u8>>>,
     pub(super) shorteventid_cache: Mutex<LruCache<u64, Arc<EventId>>>,
     pub(super) auth_chain_cache: Mutex<LruCache<Vec<u64>, Arc<HashSet<u64>>>>,
     pub(super) eventidshort_cache: Mutex<LruCache<EventId, u64>>,
@@ -137,7 +137,7 @@ impl Rooms {
     pub fn state_full(
         &self,
         shortstatehash: u64,
-    ) -> Result<HashMap<(EventType, String), Arc<PduEvent>>> {
+    ) -> Result<HashMap<(EventType, String), PduEvent>> {
         let full_state = self
             .load_shortstatehash_info(shortstatehash)?
             .pop()
@@ -199,7 +199,7 @@ impl Rooms {
         shortstatehash: u64,
         event_type: &EventType,
         state_key: &str,
-    ) -> Result<Option<Arc<PduEvent>>> {
+    ) -> Result<Option<PduEvent>> {
         self.state_get_id(shortstatehash, event_type, state_key)?
             .map_or(Ok(None), |event_id| self.get_pdu(&event_id))
     }
@@ -244,7 +244,7 @@ impl Rooms {
         sender: &UserId,
         state_key: Option<&str>,
         content: &serde_json::Value,
-    ) -> Result<StateMap<Arc<PduEvent>>> {
+    ) -> Result<StateMap<PduEvent>> {
         let shortstatehash =
             if let Some(current_shortstatehash) = self.current_shortstatehash(room_id)? {
                 current_shortstatehash
@@ -309,7 +309,7 @@ impl Rooms {
 
     /// Checks if a room exists.
     #[tracing::instrument(skip(self))]
-    pub fn first_pdu_in_room(&self, room_id: &RoomId) -> Result<Option<Arc<PduEvent>>> {
+    pub fn first_pdu_in_room(&self, room_id: &RoomId) -> Result<Option<PduEvent>> {
         let prefix = self
             .get_shortroomid(room_id)?
             .expect("room exists")
@@ -323,7 +323,6 @@ impl Rooms {
             .map(|(_, pdu)| {
                 serde_json::from_slice(&pdu)
                     .map_err(|_| Error::bad_database("Invalid first PDU in db."))
-                    .map(Arc::new)
             })
             .next()
             .transpose()
@@ -915,7 +914,7 @@ impl Rooms {
     pub fn room_state_full(
         &self,
         room_id: &RoomId,
-    ) -> Result<HashMap<(EventType, String), Arc<PduEvent>>> {
+    ) -> Result<HashMap<(EventType, String), PduEvent>> {
         if let Some(current_shortstatehash) = self.current_shortstatehash(room_id)? {
             self.state_full(current_shortstatehash)
         } else {
@@ -945,7 +944,7 @@ impl Rooms {
         room_id: &RoomId,
         event_type: &EventType,
         state_key: &str,
-    ) -> Result<Option<Arc<PduEvent>>> {
+    ) -> Result<Option<PduEvent>> {
         if let Some(current_shortstatehash) = self.current_shortstatehash(room_id)? {
             self.state_get(current_shortstatehash, event_type, state_key)
         } else {
@@ -1073,12 +1072,12 @@ impl Rooms {
     ///
     /// Checks the `eventid_outlierpdu` Tree if not found in the timeline.
     #[tracing::instrument(skip(self))]
-    pub fn get_pdu(&self, event_id: &EventId) -> Result<Option<Arc<PduEvent>>> {
+    pub fn get_pdu(&self, event_id: &EventId) -> Result<Option<PduEvent>> {
         if let Some(p) = self.pdu_cache.lock().unwrap().get_mut(event_id) {
-            return Ok(Some(Arc::clone(p)));
+            return Ok(Some(serde_json::from_slice(p).expect("pdus in cache are valid")));
         }
 
-        if let Some(pdu) = self
+        if let Some((pdu, pdu_slice)) = self
             .eventid_pduid
             .get(event_id.as_bytes())?
             .map_or_else::<Result<_>, _, _>(
@@ -1092,17 +1091,17 @@ impl Rooms {
                     })?))
                 },
             )?
-            .map(|pdu| {
-                serde_json::from_slice(&pdu)
-                    .map_err(|_| Error::bad_database("Invalid PDU in db."))
-                    .map(Arc::new)
+            .map(|bytes| {
+                    serde_json::from_slice(&bytes)
+                        .map_err(|_| Error::bad_database("Invalid PDU in db."))
+                        .map(|p| (p, bytes))
             })
             .transpose()?
         {
             self.pdu_cache
                 .lock()
                 .unwrap()
-                .insert(event_id.clone(), Arc::clone(&pdu));
+                .insert(event_id.clone(), pdu_slice);
             Ok(Some(pdu))
         } else {
             Ok(None)

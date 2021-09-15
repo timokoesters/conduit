@@ -1139,7 +1139,7 @@ fn handle_outlier_pdu<'a>(
     value: BTreeMap<String, CanonicalJsonValue>,
     db: &'a Database,
     pub_key_map: &'a RwLock<BTreeMap<String, BTreeMap<String, String>>>,
-) -> AsyncRecursiveType<'a, StdResult<(Arc<PduEvent>, BTreeMap<String, CanonicalJsonValue>), String>>
+) -> AsyncRecursiveType<'a, StdResult<(PduEvent, BTreeMap<String, CanonicalJsonValue>), String>>
 {
     Box::pin(async move {
         // TODO: For RoomVersion6 we must check that Raw<..> is canonical do we anywhere?: https://matrix.org/docs/spec/rooms/v6#canonical-json
@@ -1255,7 +1255,6 @@ fn handle_outlier_pdu<'a>(
         // The original create event must be in the auth events
         if auth_events
             .get(&(EventType::RoomCreate, "".to_owned()))
-            .map(|a| a.as_ref())
             != Some(create_event)
         {
             return Err("Incoming event refers to wrong create event.".to_owned());
@@ -1268,7 +1267,7 @@ fn handle_outlier_pdu<'a>(
             db.rooms
                 .get_pdu(&incoming_pdu.auth_events[0])
                 .map_err(|e| e.to_string())?
-                .filter(|maybe_create| **maybe_create == *create_event)
+                .filter(|maybe_create| maybe_create == create_event)
         } else {
             None
         };
@@ -1293,13 +1292,13 @@ fn handle_outlier_pdu<'a>(
             .map_err(|_| "Failed to add pdu as outlier.".to_owned())?;
         debug!("Added pdu as outlier.");
 
-        Ok((Arc::new(incoming_pdu), val))
+        Ok((incoming_pdu, val))
     })
 }
 
 #[tracing::instrument(skip(incoming_pdu, val, create_event, origin, db, room_id, pub_key_map))]
 async fn upgrade_outlier_to_timeline_pdu(
-    incoming_pdu: Arc<PduEvent>,
+    incoming_pdu: PduEvent,
     val: BTreeMap<String, CanonicalJsonValue>,
     create_event: &PduEvent,
     origin: &ServerName,
@@ -1554,7 +1553,7 @@ async fn upgrade_outlier_to_timeline_pdu(
         db.rooms
             .get_pdu(&incoming_pdu.auth_events[0])
             .map_err(|e| e.to_string())?
-            .filter(|maybe_create| **maybe_create == *create_event)
+            .filter(|maybe_create| maybe_create == create_event)
     } else {
         None
     };
@@ -1562,7 +1561,7 @@ async fn upgrade_outlier_to_timeline_pdu(
     let check_result = state_res::event_auth::auth_check(
         &room_version,
         &incoming_pdu,
-        previous_create.as_deref(),
+        previous_create.as_ref(),
         None::<PduEvent>, // TODO: third party invite
         |k, s| {
             db.rooms
@@ -1646,7 +1645,7 @@ async fn upgrade_outlier_to_timeline_pdu(
     let soft_fail = !state_res::event_auth::auth_check(
         &room_version,
         &incoming_pdu,
-        previous_create.as_deref(),
+        previous_create.as_ref(),
         None::<PduEvent>,
         |k, s| auth_events.get(&(k.clone(), s.to_owned())),
     )
@@ -1873,7 +1872,7 @@ pub(crate) fn fetch_and_handle_outliers<'a>(
     create_event: &'a PduEvent,
     room_id: &'a RoomId,
     pub_key_map: &'a RwLock<BTreeMap<String, BTreeMap<String, String>>>,
-) -> AsyncRecursiveType<'a, Vec<(Arc<PduEvent>, Option<BTreeMap<String, CanonicalJsonValue>>)>> {
+) -> AsyncRecursiveType<'a, Vec<(PduEvent, Option<BTreeMap<String, CanonicalJsonValue>>)>> {
     Box::pin(async move {
         let back_off = |id| match db.globals.bad_event_ratelimiter.write().unwrap().entry(id) {
             hash_map::Entry::Vacant(e) => {
@@ -2769,7 +2768,7 @@ pub fn create_join_event_template_route(
     let auth_check = state_res::auth_check(
         &room_version,
         &pdu,
-        create_prev_event.as_deref(),
+        create_prev_event.as_ref(),
         None::<PduEvent>, // TODO: third_party_invite
         |k, s| auth_events.get(&(k.clone(), s.to_owned())),
     )
