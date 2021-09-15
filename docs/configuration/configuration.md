@@ -32,8 +32,8 @@ information.
 - Envirnoment variable: `CONDUIT_DATABASE_PATH`
 - Default value: _None, but many people like to use `/var/lib/conduit/`_.
 
-A directory where Conduit stores its database and media files. This directory must exist, have enough free space and be
-readable and writable by the user Conduit is running as.
+A **directory** where Conduit stores its database and media files. This directory must exist, have enough free space and
+be readable and writable by the user Conduit is running as.
 
 What does _enough free space_ mean? It heavily on the amount of messages your Conduit server will see and the amount and
 size of media files users on your Conduit server send. As a rule of thumb, you should have at least 10 GB of free space
@@ -129,14 +129,15 @@ You should only set this to include trustworthy servers. Most people consider a 
 
 Only relevant if you have federation enabled.
 
-### Limit Amount of concurrent requests
+### Limit amount of concurrent requests
 
 - Config file key: `max_concurrent_requests`
 - Environment variable: `CONDUIT_MAX_CONCURRENT_REQUESTS`
 - Default value: `100`
-- Possible values: `0` - `4294967295` (u32)
+- Suggested values: `10` - `500` (u16)
 
-How many requests Conduit sends to other servers at the same time.
+How many requests Conduit can make at the same time. This affects federation with other Matrix servers, push
+notifications and app_services.
 
 ### Configure logging
 
@@ -185,7 +186,7 @@ The total amount of memory (RAM) that the database cache will be able to use.
 - Config file key: `pdu_cache_capacity`
 - Environment variable: `CONDUIT_PDU_CACHE_CAPACITY`
 - Default value: `100_000`
-- Possible values: `0` - `4294967295` (u32)
+- Suggested values: `5_000` - `1_000_000` (u32)
 
 The total capacity (read: number of items) the pdu cache can hold in memory. Setting this to a lower number may slow
 Conduit down, as it must fetch more data from the database.
@@ -209,16 +210,8 @@ large WAL file.
 
 Only relevant when using SQLite as the database.
 
+### Still undocumented config options
 
---------------
-
-Template
-
-### XXX
-
-- Config file key: `xxxxxxxxx`
-- Environment variable: `xxxxxxxxx`
-- Default value: `xxxxxxxxx`
-- Possible values: `xxxxxxxxx`
-
-xxxxxxxxx
+- `tracing_flame`
+- `proxy`
+- `jwt_secret`
