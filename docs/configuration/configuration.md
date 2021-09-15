@@ -134,10 +134,12 @@ Only relevant if you have federation enabled.
 - Config file key: `max_concurrent_requests`
 - Environment variable: `CONDUIT_MAX_CONCURRENT_REQUESTS`
 - Default value: `100`
-- Suggested values: `10` - `500` (u16)
+- Suggested values: `1` - `1000` (u16)
 
 How many requests Conduit can make at the same time. This affects federation with other Matrix servers, push
 notifications and app_services.
+
+// TODO Timo: When does it make sense to change this?
 
 ### Configure logging
 
@@ -186,10 +188,11 @@ The total amount of memory (RAM) that the database cache will be able to use.
 - Config file key: `pdu_cache_capacity`
 - Environment variable: `CONDUIT_PDU_CACHE_CAPACITY`
 - Default value: `100_000`
-- Suggested values: `5_000` - `1_000_000` (u32)
+- Suggested values: `1_000` - `1_000_000` (u32)
 
 The total capacity (read: number of items) the pdu cache can hold in memory. Setting this to a lower number may slow
-Conduit down, as it must fetch more data from the database.
+Conduit down, as it must fetch more data from the database. Increasing it will mean that Conduit will start to use more
+memory as the cache slowly fills up.
 
 ### SQLite WAL clean interval
 
