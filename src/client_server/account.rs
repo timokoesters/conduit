@@ -28,6 +28,7 @@ use ruma::{
     identifiers::RoomName,
     push, RoomAliasId, RoomId, RoomVersionId, UserId,
 };
+use serde_json::value::RawValue;
 use tracing::info;
 
 use register::RegistrationKind;
@@ -279,7 +280,10 @@ pub async fn register_route(
         db.rooms.build_and_append_pdu(
             PduBuilder {
                 event_type: EventType::RoomCreate,
-                content: serde_json::to_value(content).expect("event is valid, we just created it"),
+                content: RawValue::from_string(
+                    serde_json::to_string(&content).expect("event is valid, we just created it"),
+                )
+                .expect("string is valid"),
                 unsigned: None,
                 state_key: Some("".to_owned()),
                 redacts: None,
@@ -294,16 +298,19 @@ pub async fn register_route(
         db.rooms.build_and_append_pdu(
             PduBuilder {
                 event_type: EventType::RoomMember,
-                content: serde_json::to_value(member::MemberEventContent {
-                    membership: member::MembershipState::Join,
-                    displayname: None,
-                    avatar_url: None,
-                    is_direct: None,
-                    third_party_invite: None,
-                    blurhash: None,
-                    reason: None,
-                })
-                .expect("event is valid, we just created it"),
+                content: RawValue::from_string(
+                    serde_json::to_string(&member::MemberEventContent {
+                        membership: member::MembershipState::Join,
+                        displayname: None,
+                        avatar_url: None,
+                        is_direct: None,
+                        third_party_invite: None,
+                        blurhash: None,
+                        reason: None,
+                    })
+                    .expect("event is valid, we just created it"),
+                )
+                .expect("string is valid"),
                 unsigned: None,
                 state_key: Some(conduit_user.to_string()),
                 redacts: None,
@@ -322,13 +329,16 @@ pub async fn register_route(
         db.rooms.build_and_append_pdu(
             PduBuilder {
                 event_type: EventType::RoomPowerLevels,
-                content: serde_json::to_value(
-                    ruma::events::room::power_levels::PowerLevelsEventContent {
-                        users,
-                        ..Default::default()
-                    },
+                content: RawValue::from_string(
+                    serde_json::to_string(
+                        &ruma::events::room::power_levels::PowerLevelsEventContent {
+                            users,
+                            ..Default::default()
+                        },
+                    )
+                    .expect("event is valid, we just created it"),
                 )
-                .expect("event is valid, we just created it"),
+                .expect("string is valid"),
                 unsigned: None,
                 state_key: Some("".to_owned()),
                 redacts: None,
@@ -343,10 +353,13 @@ pub async fn register_route(
         db.rooms.build_and_append_pdu(
             PduBuilder {
                 event_type: EventType::RoomJoinRules,
-                content: serde_json::to_value(join_rules::JoinRulesEventContent::new(
-                    join_rules::JoinRule::Invite,
-                ))
-                .expect("event is valid, we just created it"),
+                content: RawValue::from_string(
+                    serde_json::to_string(&join_rules::JoinRulesEventContent::new(
+                        join_rules::JoinRule::Invite,
+                    ))
+                    .expect("event is valid, we just created it"),
+                )
+                .expect("string is valid"),
                 unsigned: None,
                 state_key: Some("".to_owned()),
                 redacts: None,
@@ -361,12 +374,13 @@ pub async fn register_route(
         db.rooms.build_and_append_pdu(
             PduBuilder {
                 event_type: EventType::RoomHistoryVisibility,
-                content: serde_json::to_value(
-                    history_visibility::HistoryVisibilityEventContent::new(
+                content: RawValue::from_string(
+                    serde_json::to_string(&history_visibility::HistoryVisibilityEventContent::new(
                         history_visibility::HistoryVisibility::Shared,
-                    ),
+                    ))
+                    .expect("event is valid, we just created it"),
                 )
-                .expect("event is valid, we just created it"),
+                .expect("string is valid"),
                 unsigned: None,
                 state_key: Some("".to_owned()),
                 redacts: None,
@@ -381,10 +395,13 @@ pub async fn register_route(
         db.rooms.build_and_append_pdu(
             PduBuilder {
                 event_type: EventType::RoomGuestAccess,
-                content: serde_json::to_value(guest_access::GuestAccessEventContent::new(
-                    guest_access::GuestAccess::Forbidden,
-                ))
-                .expect("event is valid, we just created it"),
+                content: RawValue::from_string(
+                    serde_json::to_string(&guest_access::GuestAccessEventContent::new(
+                        guest_access::GuestAccess::Forbidden,
+                    ))
+                    .expect("event is valid, we just created it"),
+                )
+                .expect("string is valid"),
                 unsigned: None,
                 state_key: Some("".to_owned()),
                 redacts: None,
@@ -402,8 +419,11 @@ pub async fn register_route(
         db.rooms.build_and_append_pdu(
             PduBuilder {
                 event_type: EventType::RoomName,
-                content: serde_json::to_value(name::NameEventContent::new(Some(room_name)))
-                    .expect("event is valid, we just created it"),
+                content: RawValue::from_string(
+                    serde_json::to_string(&name::NameEventContent::new(Some(room_name)))
+                        .expect("event is valid, we just created it"),
+                )
+                .expect("string is valid"),
                 unsigned: None,
                 state_key: Some("".to_owned()),
                 redacts: None,
@@ -417,10 +437,13 @@ pub async fn register_route(
         db.rooms.build_and_append_pdu(
             PduBuilder {
                 event_type: EventType::RoomTopic,
-                content: serde_json::to_value(topic::TopicEventContent {
-                    topic: format!("Manage {}", db.globals.server_name()),
-                })
-                .expect("event is valid, we just created it"),
+                content: RawValue::from_string(
+                    serde_json::to_string(&topic::TopicEventContent {
+                        topic: format!("Manage {}", db.globals.server_name()),
+                    })
+                    .expect("event is valid, we just created it"),
+                )
+                .expect("string is valid"),
                 unsigned: None,
                 state_key: Some("".to_owned()),
                 redacts: None,
@@ -439,11 +462,14 @@ pub async fn register_route(
         db.rooms.build_and_append_pdu(
             PduBuilder {
                 event_type: EventType::RoomCanonicalAlias,
-                content: serde_json::to_value(canonical_alias::CanonicalAliasEventContent {
-                    alias: Some(alias.clone()),
-                    alt_aliases: Vec::new(),
-                })
-                .expect("event is valid, we just created it"),
+                content: RawValue::from_string(
+                    serde_json::to_string(&canonical_alias::CanonicalAliasEventContent {
+                        alias: Some(alias.clone()),
+                        alt_aliases: Vec::new(),
+                    })
+                    .expect("event is valid, we just created it"),
+                )
+                .expect("string is valid"),
                 unsigned: None,
                 state_key: Some("".to_owned()),
                 redacts: None,
@@ -460,16 +486,19 @@ pub async fn register_route(
         db.rooms.build_and_append_pdu(
             PduBuilder {
                 event_type: EventType::RoomMember,
-                content: serde_json::to_value(member::MemberEventContent {
-                    membership: member::MembershipState::Invite,
-                    displayname: None,
-                    avatar_url: None,
-                    is_direct: None,
-                    third_party_invite: None,
-                    blurhash: None,
-                    reason: None,
-                })
-                .expect("event is valid, we just created it"),
+                content: RawValue::from_string(
+                    serde_json::to_string(&member::MemberEventContent {
+                        membership: member::MembershipState::Invite,
+                        displayname: None,
+                        avatar_url: None,
+                        is_direct: None,
+                        third_party_invite: None,
+                        blurhash: None,
+                        reason: None,
+                    })
+                    .expect("event is valid, we just created it"),
+                )
+                .expect("string is valid"),
                 unsigned: None,
                 state_key: Some(user_id.to_string()),
                 redacts: None,
@@ -482,16 +511,19 @@ pub async fn register_route(
         db.rooms.build_and_append_pdu(
             PduBuilder {
                 event_type: EventType::RoomMember,
-                content: serde_json::to_value(member::MemberEventContent {
-                    membership: member::MembershipState::Join,
-                    displayname: Some(displayname),
-                    avatar_url: None,
-                    is_direct: None,
-                    third_party_invite: None,
-                    blurhash: None,
-                    reason: None,
-                })
-                .expect("event is valid, we just created it"),
+                content: RawValue::from_string(
+                    serde_json::to_string(&member::MemberEventContent {
+                        membership: member::MembershipState::Join,
+                        displayname: Some(displayname),
+                        avatar_url: None,
+                        is_direct: None,
+                        third_party_invite: None,
+                        blurhash: None,
+                        reason: None,
+                    })
+                    .expect("event is valid, we just created it"),
+                )
+                .expect("string is valid"),
                 unsigned: None,
                 state_key: Some(user_id.to_string()),
                 redacts: None,
@@ -506,11 +538,11 @@ pub async fn register_route(
         db.rooms.build_and_append_pdu(
             PduBuilder {
                 event_type: EventType::RoomMessage,
-                content: serde_json::to_value(message::MessageEventContent::text_html(
+                content: RawValue::from_string(serde_json::to_string(&message::MessageEventContent::text_html(
                         "## Thank you for trying out Conduit!\n\nConduit is currently in Beta. This means you can join and participate in most Matrix rooms, but not all features are supported and you might run into bugs from time to time.\n\nHelpful links:\n> Website: https://conduit.rs\n> Git and Documentation: https://gitlab.com/famedly/conduit\n> Report issues: https://gitlab.com/famedly/conduit/-/issues\n\nHere are some rooms you can join (by typing the command):\n\nConduit room (Ask questions and get notified on updates):\n`/join #conduit:fachschaften.org`\n\nConduit lounge (Off-topic, only Conduit users are allowed to join)\n`/join #conduit-lounge:conduit.rs`".to_owned(),
                         "<h2>Thank you for trying out Conduit!</h2>\n<p>Conduit is currently in Beta. This means you can join and participate in most Matrix rooms, but not all features are supported and you might run into bugs from time to time.</p>\n<p>Helpful links:</p>\n<blockquote>\n<p>Website: https://conduit.rs<br>Git and Documentation: https://gitlab.com/famedly/conduit<br>Report issues: https://gitlab.com/famedly/conduit/-/issues</p>\n</blockquote>\n<p>Here are some rooms you can join (by typing the command):</p>\n<p>Conduit room (Ask questions and get notified on updates):<br><code>/join #conduit:fachschaften.org</code></p>\n<p>Conduit lounge (Off-topic, only Conduit users are allowed to join)<br><code>/join #conduit-lounge:conduit.rs</code></p>\n".to_owned(),
                 ))
-                .expect("event is valid, we just created it"),
+                .expect("event is valid, we just created it")).expect("string is valid"),
                 unsigned: None,
                 state_key: None,
                 redacts: None,
@@ -721,7 +753,10 @@ pub async fn deactivate_route(
         db.rooms.build_and_append_pdu(
             PduBuilder {
                 event_type: EventType::RoomMember,
-                content: serde_json::to_value(event).expect("event is valid, we just created it"),
+                content: RawValue::from_string(
+                    serde_json::to_string(&event).expect("event is valid, we just created it"),
+                )
+                .expect("string is valid"),
                 unsigned: None,
                 state_key: Some(sender_user.to_string()),
                 redacts: None,

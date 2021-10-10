@@ -6,15 +6,15 @@ use ruma::{
         AnySyncStateEvent, EventType, StateEvent,
     },
     serde::{CanonicalJsonObject, CanonicalJsonValue, Raw},
-    state_res, EventId, MilliSecondsSinceUnixEpoch, RoomId, RoomVersionId, ServerName,
-    ServerSigningKeyId, UInt, UserId,
+    state_res, EventId, MilliSecondsSinceUnixEpoch, RoomId, RoomVersionId, ServerName, UInt,
+    UserId,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::json;
-use std::{cmp::Ordering, collections::BTreeMap, convert::TryFrom};
+use serde_json::{json, value::RawValue};
+use std::{cmp::Ordering, collections::BTreeMap, convert::TryFrom, sync::RwLock};
 use tracing::warn;
 
-#[derive(Clone, Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct PduEvent {
     pub event_id: EventId,
     pub room_id: RoomId,
@@ -22,7 +22,9 @@ pub struct PduEvent {
     pub origin_server_ts: UInt,
     #[serde(rename = "type")]
     pub kind: EventType,
-    pub content: serde_json::Value,
+    pub content: Box<serde_json::value::RawValue>,
+    #[serde(skip)]
+    pub parsed_content: RwLock<Option<serde_json::Value>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub state_key: Option<String>,
     pub prev_events: Vec<EventId>,
@@ -30,16 +32,17 @@ pub struct PduEvent {
     pub auth_events: Vec<EventId>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub redacts: Option<EventId>,
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub unsigned: BTreeMap<String, serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unsigned: Option<Box<serde_json::value::RawValue>>,
     pub hashes: EventHash,
-    pub signatures: BTreeMap<Box<ServerName>, BTreeMap<ServerSigningKeyId, String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signatures: Option<Box<serde_json::value::RawValue>>, // BTreeMap<Box<ServerName>, BTreeMap<ServerSigningKeyId, String>>
 }
 
 impl PduEvent {
     #[tracing::instrument(skip(self))]
     pub fn redact(&mut self, reason: &PduEvent) -> crate::Result<()> {
-        self.unsigned.clear();
+        self.unsigned = None;
 
         let allowed: &[&str] = match self.kind {
             EventType::RoomMember => &["membership"],
@@ -59,10 +62,9 @@ impl PduEvent {
             _ => &[],
         };
 
-        let old_content = self
-            .content
-            .as_object_mut()
-            .ok_or_else(|| Error::bad_database("PDU in db has invalid content."))?;
+        let mut old_content =
+            serde_json::from_str::<BTreeMap<String, serde_json::Value>>(self.content.get())
+                .map_err(|_| Error::bad_database("PDU in db has invalid content."))?;
 
         let mut new_content = serde_json::Map::new();
 
@@ -72,12 +74,29 @@ impl PduEvent {
             }
         }
 
-        self.unsigned.insert(
-            "redacted_because".to_owned(),
-            serde_json::to_value(reason).expect("to_value(PduEvent) always works"),
-        );
+        self.unsigned = Some(RawValue::from_string(serde_json::to_string(&json!({
+            "redacted_because": serde_json::to_value(reason).expect("to_value(PduEvent) always works")
+        })).expect("to string always works")).expect("string is valid"));
 
-        self.content = new_content.into();
+        self.content = RawValue::from_string(
+            serde_json::to_string(&new_content).expect("to string always works"),
+        )
+        .expect("string is valid");
+
+        Ok(())
+    }
+
+    pub fn remove_transaction_id(&mut self) -> crate::Result<()> {
+        if let Some(unsigned) = &self.unsigned {
+            let mut unsigned =
+                serde_json::from_str::<BTreeMap<String, Box<RawValue>>>(unsigned.get())
+                    .map_err(|_| Error::bad_database("Invalid unsigned in pdu event"))?;
+            unsigned.remove("transaction_id");
+            self.unsigned = Some(
+                RawValue::from_string(serde_json::to_string(&unsigned).expect("unsigned is valid"))
+                    .expect("string is valid"),
+            );
+        }
 
         Ok(())
     }
@@ -265,8 +284,14 @@ impl state_res::Event for PduEvent {
         &self.kind
     }
 
-    fn content(&self) -> &serde_json::Value {
-        &self.content
+    fn content(&self) -> serde_json::Value {
+        self.parsed_content
+            .write()
+            .unwrap()
+            .get_or_insert_with(|| {
+                serde_json::to_value(&self.content).expect("content is valid json")
+            })
+            .clone()
     }
 
     fn origin_server_ts(&self) -> MilliSecondsSinceUnixEpoch {
@@ -298,11 +323,17 @@ impl state_res::Event for PduEvent {
     }
 
     fn signatures(&self) -> BTreeMap<Box<ServerName>, BTreeMap<ruma::ServerSigningKeyId, String>> {
-        self.signatures.clone()
+        self.signatures
+            .as_ref()
+            .map(|raw| serde_json::from_str(raw.get()).expect("string is valid signatures json"))
+            .unwrap_or_default()
     }
 
-    fn unsigned(&self) -> &BTreeMap<String, serde_json::Value> {
-        &self.unsigned
+    fn unsigned(&self) -> BTreeMap<String, serde_json::Value> {
+        self.unsigned
+            .as_ref()
+            .map(|raw| serde_json::from_str(raw.get()).expect("string is valid json"))
+            .unwrap_or_default()
     }
 }
 
@@ -352,7 +383,7 @@ pub(crate) fn gen_event_id_canonical_json(
 pub struct PduBuilder {
     #[serde(rename = "type")]
     pub event_type: EventType,
-    pub content: serde_json::Value,
+    pub content: Box<serde_json::value::RawValue>,
     pub unsigned: Option<BTreeMap<String, serde_json::Value>>,
     pub state_key: Option<String>,
     pub redacts: Option<EventId>,
@@ -363,8 +394,12 @@ impl From<AnyInitialStateEvent> for PduBuilder {
     fn from(event: AnyInitialStateEvent) -> Self {
         Self {
             event_type: EventType::from(event.event_type()),
-            content: serde_json::value::to_value(event.content())
-                .expect("AnyStateEventContent came from JSON and can thus turn back into JSON."),
+            content: RawValue::from_string(
+                serde_json::to_string(&event.content()).expect(
+                    "AnyStateEventContent came from JSON and can thus turn back into JSON.",
+                ),
+            )
+            .expect("string is valid"),
             unsigned: None,
             state_key: Some(event.state_key().to_owned()),
             redacts: None,

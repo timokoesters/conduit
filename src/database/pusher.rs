@@ -9,8 +9,10 @@ use ruma::{
         },
         IncomingResponse, OutgoingRequest, SendAccessToken,
     },
-    events::{room::power_levels::PowerLevelsEventContent, AnySyncRoomEvent, EventType},
-    identifiers::RoomName,
+    events::{
+        room::{name::NameEventContent, power_levels::PowerLevelsEventContent},
+        AnySyncRoomEvent, EventType,
+    },
     push::{Action, PushConditionRoomCtx, PushFormat, Ruleset, Tweak},
     serde::Raw,
     uint, RoomId, UInt, UserId,
@@ -181,7 +183,7 @@ pub async fn send_push_notice(
         .rooms
         .room_state_get(&pdu.room_id, &EventType::RoomPowerLevels, "")?
         .map(|ev| {
-            serde_json::from_value(ev.content.clone())
+            serde_json::from_str(ev.content.get())
                 .map_err(|_| Error::bad_database("invalid m.room.power_levels event"))
         })
         .transpose()?
@@ -318,16 +320,18 @@ async fn send_notice(
 
         let user_name = db.users.displayname(&event.sender)?;
         notifi.sender_display_name = user_name.as_deref();
-        let room_name = db
-            .rooms
-            .room_state_get(&event.room_id, &EventType::RoomName, "")?
-            .map(|pdu| match pdu.content.get("name") {
-                Some(serde_json::Value::String(s)) => {
-                    Some(Box::<RoomName>::try_from(&**s).expect("room name is valid"))
-                }
-                _ => None,
-            })
-            .flatten();
+
+        let room_name = if let Some(room_name_pdu) =
+            db.rooms
+                .room_state_get(&event.room_id, &EventType::RoomName, "")?
+        {
+            serde_json::from_str::<NameEventContent>(room_name_pdu.content.get())
+                .map_err(|_| Error::bad_database("Invalid room name event in database."))?
+                .name
+        } else {
+            None
+        };
+
         notifi.room_name = room_name.as_deref();
 
         send_request(

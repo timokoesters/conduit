@@ -112,7 +112,7 @@ pub async fn get_state_events_route(
             db.rooms
                 .room_state_get(&body.room_id, &EventType::RoomHistoryVisibility, "")?
                 .map(|event| {
-                    serde_json::from_value::<HistoryVisibilityEventContent>(event.content.clone())
+                    serde_json::from_str::<HistoryVisibilityEventContent>(event.content.get())
                         .map_err(|_| {
                             Error::bad_database(
                                 "Invalid room history visibility event in database.",
@@ -164,7 +164,7 @@ pub async fn get_state_events_for_key_route(
             db.rooms
                 .room_state_get(&body.room_id, &EventType::RoomHistoryVisibility, "")?
                 .map(|event| {
-                    serde_json::from_value::<HistoryVisibilityEventContent>(event.content.clone())
+                    serde_json::from_str::<HistoryVisibilityEventContent>(event.content.get())
                         .map_err(|_| {
                             Error::bad_database(
                                 "Invalid room history visibility event in database.",
@@ -190,7 +190,7 @@ pub async fn get_state_events_for_key_route(
         ))?;
 
     Ok(get_state_events_for_key::Response {
-        content: serde_json::from_value(event.content.clone())
+        content: serde_json::from_str(event.content.get())
             .map_err(|_| Error::bad_database("Invalid event content in database"))?,
     }
     .into())
@@ -220,7 +220,7 @@ pub async fn get_state_events_for_empty_key_route(
             db.rooms
                 .room_state_get(&body.room_id, &EventType::RoomHistoryVisibility, "")?
                 .map(|event| {
-                    serde_json::from_value::<HistoryVisibilityEventContent>(event.content.clone())
+                    serde_json::from_str::<HistoryVisibilityEventContent>(event.content.get())
                         .map_err(|_| {
                             Error::bad_database(
                                 "Invalid room history visibility event in database.",
@@ -246,7 +246,7 @@ pub async fn get_state_events_for_empty_key_route(
         ))?;
 
     Ok(get_state_events_for_key::Response {
-        content: serde_json::from_value(event.content.clone())
+        content: serde_json::from_str(event.content.get())
             .map_err(|_| Error::bad_database("Invalid event content in database"))?,
     }
     .into())

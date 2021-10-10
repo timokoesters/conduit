@@ -39,7 +39,6 @@ use ruma::{
     },
     directory::{IncomingFilter, IncomingRoomNetwork},
     events::{
-        pdu::Pdu,
         receipt::{ReceiptEvent, ReceiptEventContent},
         room::{
             create::CreateEventContent,
@@ -55,7 +54,9 @@ use ruma::{
     uint, EventId, MilliSecondsSinceUnixEpoch, RoomId, RoomVersionId, ServerName,
     ServerSigningKeyId,
 };
+use serde_json::value::RawValue;
 use std::{
+    cell::RefCell,
     collections::{btree_map, hash_map, BTreeMap, BTreeSet, HashMap, HashSet},
     convert::{TryFrom, TryInto},
     fmt::Debug,
@@ -1095,7 +1096,7 @@ pub(crate) async fn handle_incoming_pdu<'a>(
             let start_time = Instant::now();
             let event_id = pdu.event_id.clone();
             if let Err(e) = upgrade_outlier_to_timeline_pdu(
-                pdu,
+                &pdu,
                 json,
                 &create_event,
                 origin,
@@ -1119,7 +1120,7 @@ pub(crate) async fn handle_incoming_pdu<'a>(
     }
 
     upgrade_outlier_to_timeline_pdu(
-        incoming_pdu,
+        &incoming_pdu,
         val,
         &create_event,
         origin,
@@ -1139,8 +1140,7 @@ fn handle_outlier_pdu<'a>(
     value: BTreeMap<String, CanonicalJsonValue>,
     db: &'a Database,
     pub_key_map: &'a RwLock<BTreeMap<String, BTreeMap<String, String>>>,
-) -> AsyncRecursiveType<'a, StdResult<(Arc<PduEvent>, BTreeMap<String, CanonicalJsonValue>), String>>
-{
+) -> AsyncRecursiveType<'a, StdResult<(PduEvent, BTreeMap<String, CanonicalJsonValue>), String>> {
     Box::pin(async move {
         // TODO: For RoomVersion6 we must check that Raw<..> is canonical do we anywhere?: https://matrix.org/docs/spec/rooms/v6#canonical-json
 
@@ -1153,14 +1153,13 @@ fn handle_outlier_pdu<'a>(
         // 2. Check signatures, otherwise drop
         // 3. check content hash, redact if doesn't match
 
-        let create_event_content =
-            serde_json::from_value::<Raw<CreateEventContent>>(create_event.content.clone())
-                .expect("Raw::from_value always works.")
-                .deserialize()
-                .map_err(|e| {
-                    warn!("Invalid create event: {}", e);
-                    "Invalid create event in db.".to_owned()
-                })?;
+        let create_event_content = serde_json::from_str::<CreateEventContent>(
+            create_event.content.get(),
+        )
+        .map_err(|e| {
+            warn!("Invalid create event: {}", e);
+            "Invalid create event in db.".to_owned()
+        })?;
 
         let room_version_id = &create_event_content.room_version;
         let room_version = RoomVersion::new(room_version_id).expect("room version is supported");
@@ -1241,7 +1240,7 @@ fn handle_outlier_pdu<'a>(
                     .expect("all auth events have state keys"),
             )) {
                 hash_map::Entry::Vacant(v) => {
-                    v.insert(auth_event.clone());
+                    v.insert(auth_event);
                 }
                 hash_map::Entry::Occupied(_) => {
                     return Err(
@@ -1253,11 +1252,7 @@ fn handle_outlier_pdu<'a>(
         }
 
         // The original create event must be in the auth events
-        if auth_events
-            .get(&(EventType::RoomCreate, "".to_owned()))
-            .map(|a| a.as_ref())
-            != Some(create_event)
-        {
+        if auth_events.get(&(EventType::RoomCreate, "".to_owned())) != Some(create_event) {
             return Err("Incoming event refers to wrong create event.".to_owned());
         }
 
@@ -1268,7 +1263,7 @@ fn handle_outlier_pdu<'a>(
             db.rooms
                 .get_pdu(&incoming_pdu.auth_events[0])
                 .map_err(|e| e.to_string())?
-                .filter(|maybe_create| **maybe_create == *create_event)
+                .filter(|maybe_create| maybe_create == create_event)
         } else {
             None
         };
@@ -1276,7 +1271,7 @@ fn handle_outlier_pdu<'a>(
         if !state_res::event_auth::auth_check(
             &room_version,
             &incoming_pdu,
-            previous_create,
+            previous_create.as_ref(),
             None::<PduEvent>, // TODO: third party invite
             |k, s| auth_events.get(&(k.clone(), s.to_owned())),
         )
@@ -1293,13 +1288,13 @@ fn handle_outlier_pdu<'a>(
             .map_err(|_| "Failed to add pdu as outlier.".to_owned())?;
         debug!("Added pdu as outlier.");
 
-        Ok((Arc::new(incoming_pdu), val))
+        Ok((incoming_pdu, val))
     })
 }
 
 #[tracing::instrument(skip(incoming_pdu, val, create_event, origin, db, room_id, pub_key_map))]
 async fn upgrade_outlier_to_timeline_pdu(
-    incoming_pdu: Arc<PduEvent>,
+    incoming_pdu: &PduEvent,
     val: BTreeMap<String, CanonicalJsonValue>,
     create_event: &PduEvent,
     origin: &ServerName,
@@ -1320,13 +1315,10 @@ async fn upgrade_outlier_to_timeline_pdu(
     }
 
     let create_event_content =
-        serde_json::from_value::<Raw<CreateEventContent>>(create_event.content.clone())
-            .expect("Raw::from_value always works.")
-            .deserialize()
-            .map_err(|e| {
-                warn!("Invalid create event: {}", e);
-                "Invalid create event in db.".to_owned()
-            })?;
+        serde_json::from_str::<CreateEventContent>(create_event.content.get()).map_err(|e| {
+            warn!("Invalid create event: {}", e);
+            "Invalid create event in db.".to_owned()
+        })?;
 
     let room_version_id = &create_event_content.room_version;
     let room_version = RoomVersion::new(room_version_id).expect("room version is supported");
@@ -1434,16 +1426,20 @@ async fn upgrade_outlier_to_timeline_pdu(
                 fork_states.push(state);
             }
 
+            let event_cache = RefCell::new(HashMap::new());
             state_at_incoming_event = match state_res::resolve(
                 room_version_id,
                 &fork_states,
                 auth_chain_sets,
-                |id| {
-                    let res = db.rooms.get_pdu(id);
-                    if let Err(e) = &res {
-                        error!("LOOK AT ME Failed to fetch event: {}", e);
+                |id| match event_cache.borrow_mut().entry(id.clone()) {
+                    hash_map::Entry::Vacant(v) => {
+                        let res = db.rooms.get_pdu(id);
+                        if let Err(e) = &res {
+                            error!("LOOK AT ME Failed to fetch event: {}", e);
+                        }
+                        v.insert(res.ok().flatten().map(Arc::new)).clone()
                     }
-                    res.ok().flatten()
+                    hash_map::Entry::Occupied(o) => o.get().as_ref().map(Arc::clone),
                 },
             ) {
                 Ok(new_state) => Some(
@@ -1554,7 +1550,7 @@ async fn upgrade_outlier_to_timeline_pdu(
         db.rooms
             .get_pdu(&incoming_pdu.auth_events[0])
             .map_err(|e| e.to_string())?
-            .filter(|maybe_create| **maybe_create == *create_event)
+            .filter(|maybe_create| maybe_create == create_event)
     } else {
         None
     };
@@ -1562,7 +1558,7 @@ async fn upgrade_outlier_to_timeline_pdu(
     let check_result = state_res::event_auth::auth_check(
         &room_version,
         &incoming_pdu,
-        previous_create.as_deref(),
+        previous_create.as_ref(),
         None::<PduEvent>, // TODO: third party invite
         |k, s| {
             db.rooms
@@ -1646,7 +1642,7 @@ async fn upgrade_outlier_to_timeline_pdu(
     let soft_fail = !state_res::event_auth::auth_check(
         &room_version,
         &incoming_pdu,
-        previous_create.as_deref(),
+        previous_create.as_ref(),
         None::<PduEvent>,
         |k, s| auth_events.get(&(k.clone(), s.to_owned())),
     )
@@ -1791,16 +1787,20 @@ async fn upgrade_outlier_to_timeline_pdu(
                 .collect::<Result<Vec<_>>>()
                 .map_err(|_| "Failed to get_statekey_from_short.".to_owned())?;
 
+            let event_cache = RefCell::new(HashMap::new());
             let state = match state_res::resolve(
                 room_version_id,
                 fork_states,
                 auth_chain_sets,
-                |id| {
-                    let res = db.rooms.get_pdu(id);
-                    if let Err(e) = &res {
-                        error!("LOOK AT ME Failed to fetch event: {}", e);
+                |id| match event_cache.borrow_mut().entry(id.clone()) {
+                    hash_map::Entry::Vacant(v) => {
+                        let res = db.rooms.get_pdu(id);
+                        if let Err(e) = &res {
+                            error!("LOOK AT ME Failed to fetch event: {}", e);
+                        }
+                        v.insert(res.ok().flatten().map(Arc::new)).clone()
                     }
-                    res.ok().flatten()
+                    hash_map::Entry::Occupied(o) => o.get().as_ref().map(Arc::clone),
                 },
             ) {
                 Ok(new_state) => new_state,
@@ -1873,7 +1873,7 @@ pub(crate) fn fetch_and_handle_outliers<'a>(
     create_event: &'a PduEvent,
     room_id: &'a RoomId,
     pub_key_map: &'a RwLock<BTreeMap<String, BTreeMap<String, String>>>,
-) -> AsyncRecursiveType<'a, Vec<(Arc<PduEvent>, Option<BTreeMap<String, CanonicalJsonValue>>)>> {
+) -> AsyncRecursiveType<'a, Vec<(PduEvent, Option<BTreeMap<String, CanonicalJsonValue>>)>> {
     Box::pin(async move {
         let back_off = |id| match db.globals.bad_event_ratelimiter.write().unwrap().entry(id) {
             hash_map::Entry::Vacant(e) => {
@@ -2669,13 +2669,10 @@ pub fn create_join_event_template_route(
     let create_event_content = create_event
         .as_ref()
         .map(|create_event| {
-            serde_json::from_value::<Raw<CreateEventContent>>(create_event.content.clone())
-                .expect("Raw::from_value always works.")
-                .deserialize()
-                .map_err(|e| {
-                    warn!("Invalid create event: {}", e);
-                    Error::bad_database("Invalid create event in db.")
-                })
+            serde_json::from_str::<CreateEventContent>(create_event.content.get()).map_err(|e| {
+                warn!("Invalid create event: {}", e);
+                Error::bad_database("Invalid create event in db.")
+            })
         })
         .transpose()?;
 
@@ -2702,16 +2699,19 @@ pub fn create_join_event_template_route(
         ));
     }
 
-    let content = serde_json::to_value(MemberEventContent {
-        avatar_url: None,
-        blurhash: None,
-        displayname: None,
-        is_direct: None,
-        membership: MembershipState::Join,
-        third_party_invite: None,
-        reason: None,
-    })
-    .expect("member event is valid value");
+    let content = RawValue::from_string(
+        serde_json::to_string(&MemberEventContent {
+            avatar_url: None,
+            blurhash: None,
+            displayname: None,
+            is_direct: None,
+            membership: MembershipState::Join,
+            third_party_invite: None,
+            reason: None,
+        })
+        .expect("member event is valid value"),
+    )
+    .expect("string is valid");
 
     let state_key = body.user_id.to_string();
     let kind = EventType::RoomMember;
@@ -2738,7 +2738,7 @@ pub fn create_join_event_template_route(
         unsigned.insert("prev_content".to_owned(), prev_pdu.content.clone());
         unsigned.insert(
             "prev_sender".to_owned(),
-            serde_json::to_value(&prev_pdu.sender).expect("UserId::to_value always works"),
+            serde_json::from_str(prev_pdu.sender.as_str()).expect("UserId is valid string"),
         );
     }
 
@@ -2751,6 +2751,7 @@ pub fn create_join_event_template_route(
             .expect("time is valid"),
         kind,
         content,
+        parsed_content: RwLock::new(None),
         state_key: Some(state_key),
         prev_events,
         depth,
@@ -2759,17 +2760,26 @@ pub fn create_join_event_template_route(
             .map(|(_, pdu)| pdu.event_id.clone())
             .collect(),
         redacts: None,
-        unsigned,
+        unsigned: if unsigned.is_empty() {
+            None
+        } else {
+            Some(
+                RawValue::from_string(
+                    serde_json::to_string(&unsigned).expect("to_string always works"),
+                )
+                .expect("string is valid"),
+            )
+        },
         hashes: ruma::events::pdu::EventHash {
             sha256: "aaa".to_owned(),
         },
-        signatures: BTreeMap::new(),
+        signatures: None,
     };
 
     let auth_check = state_res::auth_check(
         &room_version,
         &pdu,
-        create_prev_event.as_deref(),
+        create_prev_event,
         None::<PduEvent>, // TODO: third_party_invite
         |k, s| auth_events.get(&(k.clone(), s.to_owned())),
     )
@@ -3279,45 +3289,13 @@ pub(crate) async fn fetch_required_signing_keys(
 
 // Gets a list of servers for which we don't have the signing key yet. We go over
 // the PDUs and either cache the key or add it to the list that needs to be retrieved.
-fn get_server_keys_from_cache(
-    pdu: &Raw<Pdu>,
+pub fn get_server_keys_from_cache(
+    pdu: &CanonicalJsonObject,
     servers: &mut BTreeMap<Box<ServerName>, BTreeMap<ServerSigningKeyId, QueryCriteria>>,
-    room_version: &RoomVersionId,
     pub_key_map: &mut RwLockWriteGuard<'_, BTreeMap<String, BTreeMap<String, String>>>,
     db: &Database,
 ) -> Result<()> {
-    let value = serde_json::from_str::<CanonicalJsonObject>(pdu.json().get()).map_err(|e| {
-        error!("Invalid PDU in server response: {:?}: {:?}", pdu, e);
-        Error::BadServerResponse("Invalid PDU in server response")
-    })?;
-
-    let event_id = EventId::try_from(&*format!(
-        "${}",
-        ruma::signatures::reference_hash(&value, room_version)
-            .expect("ruma can calculate reference hashes")
-    ))
-    .expect("ruma's reference hashes are valid event ids");
-
-    if let Some((time, tries)) = db
-        .globals
-        .bad_event_ratelimiter
-        .read()
-        .unwrap()
-        .get(&event_id)
-    {
-        // Exponential backoff
-        let mut min_elapsed_duration = Duration::from_secs(30) * (*tries) * (*tries);
-        if min_elapsed_duration > Duration::from_secs(60 * 60 * 24) {
-            min_elapsed_duration = Duration::from_secs(60 * 60 * 24);
-        }
-
-        if time.elapsed() < min_elapsed_duration {
-            debug!("Backing off from {}", event_id);
-            return Err(Error::BadServerResponse("bad event, still backing off"));
-        }
-    }
-
-    let signatures = value
+    let signatures = pdu
         .get("signatures")
         .ok_or(Error::BadServerResponse(
             "No signatures in server response pdu.",
@@ -3369,30 +3347,11 @@ fn get_server_keys_from_cache(
 }
 
 pub(crate) async fn fetch_join_signing_keys(
-    event: &create_join_event::v2::Response,
-    room_version: &RoomVersionId,
+    servers: Arc<RwLock<BTreeMap<Box<ServerName>, BTreeMap<ServerSigningKeyId, QueryCriteria>>>>,
     pub_key_map: &RwLock<BTreeMap<String, BTreeMap<String, String>>>,
     db: &Database,
 ) -> Result<()> {
-    let mut servers =
-        BTreeMap::<Box<ServerName>, BTreeMap<ServerSigningKeyId, QueryCriteria>>::new();
-
-    {
-        let mut pkm = pub_key_map
-            .write()
-            .map_err(|_| Error::bad_database("RwLock is poisoned."))?;
-
-        // Try to fetch keys, failure is okay
-        // Servers we couldn't find in the cache will be added to `servers`
-        for pdu in &event.room_state.state {
-            let _ = get_server_keys_from_cache(pdu, &mut servers, room_version, &mut pkm, db);
-        }
-        for pdu in &event.room_state.auth_chain {
-            let _ = get_server_keys_from_cache(pdu, &mut servers, room_version, &mut pkm, db);
-        }
-
-        drop(pkm);
-    }
+    let mut servers = std::mem::take(&mut *servers.write().unwrap());
 
     if servers.is_empty() {
         // We had all keys locally

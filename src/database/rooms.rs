@@ -2,6 +2,7 @@ mod edus;
 
 pub use edus::RoomEdus;
 use member::MembershipState;
+use serde_json::value::RawValue;
 
 use crate::{pdu::PduBuilder, server_server, utils, Database, Error, PduEvent, Result};
 use lru_cache::LruCache;
@@ -96,7 +97,7 @@ pub struct Rooms {
     /// RoomId + EventId -> Parent PDU EventId.
     pub(super) referencedevents: Arc<dyn Tree>,
 
-    pub(super) pdu_cache: Mutex<LruCache<EventId, Arc<PduEvent>>>,
+    pub(super) pdu_cache: Mutex<LruCache<EventId, Vec<u8>>>,
     pub(super) shorteventid_cache: Mutex<LruCache<u64, Arc<EventId>>>,
     pub(super) auth_chain_cache: Mutex<LruCache<Vec<u64>, Arc<HashSet<u64>>>>,
     pub(super) eventidshort_cache: Mutex<LruCache<EventId, u64>>,
@@ -137,7 +138,7 @@ impl Rooms {
     pub fn state_full(
         &self,
         shortstatehash: u64,
-    ) -> Result<HashMap<(EventType, String), Arc<PduEvent>>> {
+    ) -> Result<HashMap<(EventType, String), PduEvent>> {
         let full_state = self
             .load_shortstatehash_info(shortstatehash)?
             .pop()
@@ -199,7 +200,7 @@ impl Rooms {
         shortstatehash: u64,
         event_type: &EventType,
         state_key: &str,
-    ) -> Result<Option<Arc<PduEvent>>> {
+    ) -> Result<Option<PduEvent>> {
         self.state_get_id(shortstatehash, event_type, state_key)?
             .map_or(Ok(None), |event_id| self.get_pdu(&event_id))
     }
@@ -243,8 +244,8 @@ impl Rooms {
         kind: &EventType,
         sender: &UserId,
         state_key: Option<&str>,
-        content: &serde_json::Value,
-    ) -> Result<StateMap<Arc<PduEvent>>> {
+        content: &serde_json::value::RawValue,
+    ) -> Result<StateMap<PduEvent>> {
         let shortstatehash =
             if let Some(current_shortstatehash) = self.current_shortstatehash(room_id)? {
                 current_shortstatehash
@@ -252,7 +253,12 @@ impl Rooms {
                 return Ok(HashMap::new());
             };
 
-        let auth_events = state_res::auth_types_for_event(kind, sender, state_key, content);
+        let auth_events = state_res::auth_types_for_event(
+            kind,
+            sender,
+            state_key,
+            &serde_json::from_str(content.get()).expect("RawValue is valid json"),
+        );
 
         let mut sauthevents = auth_events
             .into_iter()
@@ -329,6 +335,75 @@ impl Rooms {
             .transpose()
     }
 
+    /// Force the creation of a new StateHash and insert it into the db. This version should be
+    /// used when creating new rooms.
+    ///
+    /// Whatever `state` is supplied to `force_state` becomes the new current room state snapshot.
+    #[tracing::instrument(skip(self, new_state_ids_compressed, state_values, db))]
+    pub fn force_state_new(
+        &self,
+        room_id: &RoomId,
+        new_state_ids_compressed: HashSet<CompressedStateEvent>,
+        state_values: &mut dyn Iterator<Item = &CanonicalJsonObject>,
+        db: &Database,
+    ) -> Result<()> {
+        let state_hash = self.calculate_hash(
+            &new_state_ids_compressed
+                .iter()
+                .map(|bytes| &bytes[..])
+                .collect::<Vec<_>>(),
+        );
+
+        let (new_shortstatehash, _) =
+            self.get_or_create_shortstatehash(&state_hash, &db.globals)?;
+
+        self.save_state_from_diff(
+            new_shortstatehash,
+            new_state_ids_compressed.clone(),
+            HashSet::new(),
+            2, // every state change is 2 event changes on average
+            Vec::new(),
+        )?;
+
+        for pdu in state_values {
+            if pdu.get("type").and_then(|val| val.as_str()) == Some("m.room.member") {
+                let content = pdu
+                    .get("content")
+                    .and_then(|o| o.as_object())
+                    .ok_or_else(|| Error::bad_database("Invalid content in pdu."))?;
+                if let Some(membership) = content.get("membership").and_then(|membership| {
+                    serde_json::from_str::<member::MembershipState>(
+                        &serde_json::to_string(membership).expect("json is valid string"),
+                    )
+                    .ok()
+                }) {
+                    if let Some(state_key) = pdu
+                        .get("state_key")
+                        .and_then(|o| o.as_str())
+                        .and_then(|state_key| UserId::try_from(state_key).ok())
+                    {
+                        if let Some(sender) = pdu
+                            .get("sender")
+                            .and_then(|o| o.as_str())
+                            .and_then(|state_key| UserId::try_from(state_key).ok())
+                        {
+                            self.update_membership(
+                                room_id, &state_key, membership, &sender, None, db, false,
+                            )?;
+                        }
+                    }
+                }
+            }
+        }
+
+        self.update_joined_count(room_id, db)?;
+
+        self.roomid_shortstatehash
+            .insert(room_id.as_bytes(), &new_shortstatehash.to_be_bytes())?;
+
+        Ok(())
+    }
+
     /// Force the creation of a new StateHash and insert it into the db.
     ///
     /// Whatever `state` is supplied to `force_state` becomes the new current room state snapshot.
@@ -393,29 +468,28 @@ impl Rooms {
         }) {
             if let Some(pdu) = self.get_pdu_json(&event_id)? {
                 if pdu.get("type").and_then(|val| val.as_str()) == Some("m.room.member") {
-                    if let Ok(pdu) = serde_json::from_value::<PduEvent>(
-                        serde_json::to_value(&pdu).expect("CanonicalJsonObj is a valid JsonValue"),
-                    ) {
-                        if let Some(membership) =
-                            pdu.content.get("membership").and_then(|membership| {
-                                serde_json::from_value::<member::MembershipState>(
-                                    membership.clone(),
-                                )
-                                .ok()
-                            })
+                    let content = pdu
+                        .get("content")
+                        .and_then(|o| o.as_object())
+                        .ok_or_else(|| Error::bad_database("Invalid content in pdu."))?;
+                    if let Some(membership) = content.get("membership").and_then(|membership| {
+                        serde_json::from_str::<member::MembershipState>(
+                            &serde_json::to_string(membership).expect("json is valid string"),
+                        )
+                        .ok()
+                    }) {
+                        if let Some(state_key) = pdu
+                            .get("state_key")
+                            .and_then(|o| o.as_str())
+                            .and_then(|state_key| UserId::try_from(state_key).ok())
                         {
-                            if let Some(state_key) = pdu
-                                .state_key
+                            if let Some(sender) = pdu
+                                .get("sender")
+                                .and_then(|o| o.as_str())
                                 .and_then(|state_key| UserId::try_from(state_key).ok())
                             {
                                 self.update_membership(
-                                    room_id,
-                                    &state_key,
-                                    membership,
-                                    &pdu.sender,
-                                    None,
-                                    db,
-                                    false,
+                                    room_id, &state_key, membership, &sender, None, db, false,
                                 )?;
                             }
                         }
@@ -915,7 +989,7 @@ impl Rooms {
     pub fn room_state_full(
         &self,
         room_id: &RoomId,
-    ) -> Result<HashMap<(EventType, String), Arc<PduEvent>>> {
+    ) -> Result<HashMap<(EventType, String), PduEvent>> {
         if let Some(current_shortstatehash) = self.current_shortstatehash(room_id)? {
             self.state_full(current_shortstatehash)
         } else {
@@ -945,7 +1019,7 @@ impl Rooms {
         room_id: &RoomId,
         event_type: &EventType,
         state_key: &str,
-    ) -> Result<Option<Arc<PduEvent>>> {
+    ) -> Result<Option<PduEvent>> {
         if let Some(current_shortstatehash) = self.current_shortstatehash(room_id)? {
             self.state_get(current_shortstatehash, event_type, state_key)
         } else {
@@ -1073,9 +1147,11 @@ impl Rooms {
     ///
     /// Checks the `eventid_outlierpdu` Tree if not found in the timeline.
     #[tracing::instrument(skip(self))]
-    pub fn get_pdu(&self, event_id: &EventId) -> Result<Option<Arc<PduEvent>>> {
+    pub fn get_pdu(&self, event_id: &EventId) -> Result<Option<PduEvent>> {
         if let Some(p) = self.pdu_cache.lock().unwrap().get_mut(event_id) {
-            return Ok(Some(Arc::clone(p)));
+            return Ok(Some(
+                serde_json::from_slice(p).expect("pdus in cache are valid"),
+            ));
         }
 
         if let Some(pdu) = self
@@ -1092,18 +1168,13 @@ impl Rooms {
                     })?))
                 },
             )?
-            .map(|pdu| {
-                serde_json::from_slice(&pdu)
-                    .map_err(|_| Error::bad_database("Invalid PDU in db."))
-                    .map(Arc::new)
-            })
-            .transpose()?
         {
-            self.pdu_cache
-                .lock()
-                .unwrap()
-                .insert(event_id.clone(), Arc::clone(&pdu));
-            Ok(Some(pdu))
+            let parsed =
+                serde_json::from_slice(&pdu).map_err(|_| Error::bad_database("Invalid PDU in db."));
+
+            self.pdu_cache.lock().unwrap().insert(event_id.clone(), pdu);
+
+            parsed
         } else {
             Ok(None)
         }
@@ -1228,6 +1299,23 @@ impl Rooms {
         )
     }
 
+    /// Append the PDU as an outlier.
+    ///
+    /// Any event given to this will be processed (state-res) on another thread.
+    #[tracing::instrument(skip(self, batch))]
+    pub fn add_pdu_outlier_batch(
+        &self,
+        batch: &mut dyn Iterator<Item = (&EventId, &CanonicalJsonObject)>,
+    ) -> Result<()> {
+        self.eventid_outlierpdu
+            .insert_batch(&mut batch.map(|(event_id, pdu)| {
+                (
+                    event_id.as_bytes().to_vec(),
+                    serde_json::to_vec(&pdu).expect("CanonicalJsonObject is valid"),
+                )
+            }))
+    }
+
     #[tracing::instrument(skip(self))]
     pub fn mark_event_soft_failed(&self, event_id: &EventId) -> Result<()> {
         self.softfailedeventids.insert(event_id.as_bytes(), &[])
@@ -1329,7 +1417,7 @@ impl Rooms {
             .rooms
             .room_state_get(&pdu.room_id, &EventType::RoomPowerLevels, "")?
             .map(|ev| {
-                serde_json::from_value(ev.content.clone())
+                serde_json::from_str(ev.content.get())
                     .map_err(|_| Error::bad_database("invalid m.room.power_levels event"))
             })
             .transpose()?
@@ -1408,8 +1496,11 @@ impl Rooms {
                     let target_user_id = UserId::try_from(state_key.clone())
                         .expect("This state_key was previously validated");
 
+                    let content = serde_json::from_str::<serde_json::Value>(pdu.content.get())
+                        .map_err(|_| Error::bad_database("Invalid content in pdu."))?;
+
                     let membership = serde_json::from_value::<member::MembershipState>(
-                        pdu.content
+                        content
                             .get("membership")
                             .ok_or(Error::BadRequest(
                                 ErrorKind::InvalidParam,
@@ -1447,7 +1538,10 @@ impl Rooms {
                 }
             }
             EventType::RoomMessage => {
-                if let Some(body) = pdu.content.get("body").and_then(|b| b.as_str()) {
+                let content = serde_json::from_str::<serde_json::Value>(pdu.content.get())
+                    .map_err(|_| Error::bad_database("Invalid content in pdu."))?;
+
+                if let Some(body) = content.get("body").and_then(|b| b.as_str()) {
                     let mut batch = body
                         .split_terminator(|c: char| !c.is_alphanumeric())
                         .filter(|s| !s.is_empty())
@@ -1961,7 +2055,7 @@ impl Rooms {
         let create_event_content = create_event
             .as_ref()
             .map(|create_event| {
-                serde_json::from_value::<Raw<CreateEventContent>>(create_event.content.clone())
+                serde_json::from_str::<Raw<CreateEventContent>>(create_event.content.get())
                     .expect("Raw::from_value always works.")
                     .deserialize()
                     .map_err(|e| {
@@ -2000,7 +2094,10 @@ impl Rooms {
         let mut unsigned = unsigned.unwrap_or_default();
         if let Some(state_key) = &state_key {
             if let Some(prev_pdu) = self.room_state_get(room_id, &event_type, state_key)? {
-                unsigned.insert("prev_content".to_owned(), prev_pdu.content.clone());
+                unsigned.insert(
+                    "prev_content".to_owned(),
+                    serde_json::from_str(prev_pdu.content.get()).expect("string is valid json"),
+                );
                 unsigned.insert(
                     "prev_sender".to_owned(),
                     serde_json::to_value(&prev_pdu.sender).expect("UserId::to_value always works"),
@@ -2017,6 +2114,7 @@ impl Rooms {
                 .expect("time is valid"),
             kind: event_type,
             content,
+            parsed_content: RwLock::new(None),
             state_key,
             prev_events,
             depth,
@@ -2025,11 +2123,20 @@ impl Rooms {
                 .map(|(_, pdu)| pdu.event_id.clone())
                 .collect(),
             redacts,
-            unsigned,
+            unsigned: if unsigned.is_empty() {
+                None
+            } else {
+                Some(
+                    RawValue::from_string(
+                        serde_json::to_string(&unsigned).expect("to_string always works"),
+                    )
+                    .expect("string is valid"),
+                )
+            },
             hashes: ruma::events::pdu::EventHash {
                 sha256: "aaa".to_owned(),
             },
-            signatures: BTreeMap::new(),
+            signatures: None,
         };
 
         let auth_check = state_res::auth_check(
@@ -2205,7 +2312,7 @@ impl Rooms {
                 let mut pdu = serde_json::from_slice::<PduEvent>(&v)
                     .map_err(|_| Error::bad_database("PDU in db is invalid."))?;
                 if pdu.sender != user_id {
-                    pdu.unsigned.remove("transaction_id");
+                    pdu.remove_transaction_id()?;
                 }
                 Ok((pdu_id, pdu))
             }))
@@ -2242,7 +2349,7 @@ impl Rooms {
                 let mut pdu = serde_json::from_slice::<PduEvent>(&v)
                     .map_err(|_| Error::bad_database("PDU in db is invalid."))?;
                 if pdu.sender != user_id {
-                    pdu.unsigned.remove("transaction_id");
+                    pdu.remove_transaction_id()?;
                 }
                 Ok((pdu_id, pdu))
             }))
@@ -2279,7 +2386,7 @@ impl Rooms {
                 let mut pdu = serde_json::from_slice::<PduEvent>(&v)
                     .map_err(|_| Error::bad_database("PDU in db is invalid."))?;
                 if pdu.sender != user_id {
-                    pdu.unsigned.remove("transaction_id");
+                    pdu.remove_transaction_id()?;
                 }
                 Ok((pdu_id, pdu))
             }))
@@ -2348,11 +2455,9 @@ impl Rooms {
                     if let Some(predecessor) = self
                         .room_state_get(room_id, &EventType::RoomCreate, "")?
                         .and_then(|create| {
-                            serde_json::from_value::<
-                                Raw<ruma::events::room::create::CreateEventContent>,
-                            >(create.content.clone())
-                            .expect("Raw::from_value always works")
-                            .deserialize()
+                            serde_json::from_str::<ruma::events::room::create::CreateEventContent>(
+                                create.content.get(),
+                            )
                             .ok()
                         })
                         .and_then(|content| content.predecessor)
@@ -2700,17 +2805,15 @@ impl Rooms {
             );
             let state_lock = mutex_state.lock().await;
 
-            let mut event = serde_json::from_value::<Raw<member::MemberEventContent>>(
+            let mut event = serde_json::from_str::<member::MemberEventContent>(
                 self.room_state_get(room_id, &EventType::RoomMember, &user_id.to_string())?
                     .ok_or(Error::BadRequest(
                         ErrorKind::BadState,
                         "Cannot leave a room you are not a member of.",
                     ))?
                     .content
-                    .clone(),
+                    .get(),
             )
-            .expect("from_value::<Raw<..>> can never fail")
-            .deserialize()
             .map_err(|_| Error::bad_database("Invalid member event in database."))?;
 
             event.membership = member::MembershipState::Leave;
@@ -2718,8 +2821,10 @@ impl Rooms {
             self.build_and_append_pdu(
                 PduBuilder {
                     event_type: EventType::RoomMember,
-                    content: serde_json::to_value(event)
-                        .expect("event is valid, we just created it"),
+                    content: RawValue::from_string(
+                        serde_json::to_string(&event).expect("event is valid, we just created it"),
+                    )
+                    .expect("string is valid"),
                     unsigned: None,
                     state_key: Some(user_id.to_string()),
                     redacts: None,

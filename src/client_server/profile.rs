@@ -10,8 +10,8 @@ use ruma::{
         federation::{self, query::get_profile_information::v1::ProfileField},
     },
     events::EventType,
-    serde::Raw,
 };
+use serde_json::value::RawValue;
 use std::{convert::TryInto, sync::Arc};
 
 #[cfg(feature = "conduit_bin")]
@@ -45,29 +45,30 @@ pub async fn set_displayname_route(
             Ok::<_, Error>((
                 PduBuilder {
                     event_type: EventType::RoomMember,
-                    content: serde_json::to_value(ruma::events::room::member::MemberEventContent {
-                        displayname: body.displayname.clone(),
-                        ..serde_json::from_value::<Raw<_>>(
-                            db.rooms
-                                .room_state_get(
-                                    &room_id,
-                                    &EventType::RoomMember,
-                                    &sender_user.to_string(),
-                                )?
-                                .ok_or_else(|| {
-                                    Error::bad_database(
-                                        "Tried to send displayname update for user not in the \
+                    content: RawValue::from_string(
+                        serde_json::to_string(&ruma::events::room::member::MemberEventContent {
+                            displayname: body.displayname.clone(),
+                            ..serde_json::from_str(
+                                db.rooms
+                                    .room_state_get(
+                                        &room_id,
+                                        &EventType::RoomMember,
+                                        &sender_user.to_string(),
+                                    )?
+                                    .ok_or_else(|| {
+                                        Error::bad_database(
+                                            "Tried to send displayname update for user not in the \
                                      room.",
-                                    )
-                                })?
-                                .content
-                                .clone(),
-                        )
-                        .expect("from_value::<Raw<..>> can never fail")
-                        .deserialize()
-                        .map_err(|_| Error::bad_database("Database contains invalid PDU."))?
-                    })
-                    .expect("event is valid, we just created it"),
+                                        )
+                                    })?
+                                    .content
+                                    .get(),
+                            )
+                            .map_err(|_| Error::bad_database("Database contains invalid PDU."))?
+                        })
+                        .expect("event is valid, we just created it"),
+                    )
+                    .expect("string is valid"),
                     unsigned: None,
                     state_key: Some(sender_user.to_string()),
                     redacts: None,
@@ -190,29 +191,30 @@ pub async fn set_avatar_url_route(
             Ok::<_, Error>((
                 PduBuilder {
                     event_type: EventType::RoomMember,
-                    content: serde_json::to_value(ruma::events::room::member::MemberEventContent {
-                        avatar_url: body.avatar_url.clone(),
-                        ..serde_json::from_value::<Raw<_>>(
-                            db.rooms
-                                .room_state_get(
-                                    &room_id,
-                                    &EventType::RoomMember,
-                                    &sender_user.to_string(),
-                                )?
-                                .ok_or_else(|| {
-                                    Error::bad_database(
-                                        "Tried to send displayname update for user not in the \
+                    content: RawValue::from_string(
+                        serde_json::to_string(&ruma::events::room::member::MemberEventContent {
+                            avatar_url: body.avatar_url.clone(),
+                            ..serde_json::from_str(
+                                db.rooms
+                                    .room_state_get(
+                                        &room_id,
+                                        &EventType::RoomMember,
+                                        &sender_user.to_string(),
+                                    )?
+                                    .ok_or_else(|| {
+                                        Error::bad_database(
+                                            "Tried to send displayname update for user not in the \
                                      room.",
-                                    )
-                                })?
-                                .content
-                                .clone(),
-                        )
-                        .expect("from_value::<Raw<..>> can never fail")
-                        .deserialize()
-                        .map_err(|_| Error::bad_database("Database contains invalid PDU."))?
-                    })
-                    .expect("event is valid, we just created it"),
+                                        )
+                                    })?
+                                    .content
+                                    .get(),
+                            )
+                            .map_err(|_| Error::bad_database("Database contains invalid PDU."))?
+                        })
+                        .expect("event is valid, we just created it"),
+                    )
+                    .expect("string is valid"),
                     unsigned: None,
                     state_key: Some(sender_user.to_string()),
                     redacts: None,

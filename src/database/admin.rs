@@ -9,6 +9,7 @@ use ruma::{
     events::{room::message, EventType},
     UserId,
 };
+use serde_json::value::RawValue;
 use tokio::sync::{MutexGuard, RwLock, RwLockReadGuard};
 use tracing::warn;
 
@@ -66,8 +67,11 @@ impl Admin {
                     .build_and_append_pdu(
                         PduBuilder {
                             event_type: EventType::RoomMessage,
-                            content: serde_json::to_value(message)
-                                .expect("event is valid, we just created it"),
+                            content: RawValue::from_string(
+                                serde_json::to_string(&message)
+                                    .expect("event is valid, we just created it"),
+                            )
+                            .expect("string is valid"),
                             unsigned: None,
                             state_key: None,
                             redacts: None,

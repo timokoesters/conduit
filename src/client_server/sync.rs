@@ -287,9 +287,9 @@ async fn sync_helper(
                     .filter_map(|pdu| pdu.ok()) // Ignore all broken pdus
                     .filter(|(_, pdu)| pdu.kind == EventType::RoomMember)
                     .map(|(_, pdu)| {
-                        let content = serde_json::from_value::<
+                        let content = serde_json::from_str::<
                             ruma::events::room::member::MemberEventContent,
-                        >(pdu.content.clone())
+                        >(pdu.content.get())
                         .map_err(|_| Error::bad_database("Invalid member event in database."))?;
 
                         if let Some(state_key) = &pdu.state_key {
@@ -371,11 +371,9 @@ async fn sync_helper(
                     sender_user.as_str(),
                 )?
                 .and_then(|pdu| {
-                    serde_json::from_value::<Raw<ruma::events::room::member::MemberEventContent>>(
-                        pdu.content.clone(),
+                    serde_json::from_str::<ruma::events::room::member::MemberEventContent>(
+                        pdu.content.get(),
                     )
-                    .expect("Raw::from_value always works")
-                    .deserialize()
                     .map_err(|_| Error::bad_database("Invalid PDU in database."))
                     .ok()
                 });
@@ -432,11 +430,9 @@ async fn sync_helper(
                             continue;
                         }
 
-                        let new_membership = serde_json::from_value::<
-                            Raw<ruma::events::room::member::MemberEventContent>,
-                        >(state_event.content.clone())
-                        .expect("Raw::from_value always works")
-                        .deserialize()
+                        let new_membership = serde_json::from_str::<
+                            ruma::events::room::member::MemberEventContent,
+                        >(state_event.content.get())
                         .map_err(|_| Error::bad_database("Invalid PDU in database."))?
                         .membership;
 

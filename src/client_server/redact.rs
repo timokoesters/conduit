@@ -8,6 +8,7 @@ use ruma::{
 
 #[cfg(feature = "conduit_bin")]
 use rocket::put;
+use serde_json::value::RawValue;
 
 /// # `PUT /_matrix/client/r0/rooms/{roomId}/redact/{eventId}/{txnId}`
 ///
@@ -38,10 +39,13 @@ pub async fn redact_event_route(
     let event_id = db.rooms.build_and_append_pdu(
         PduBuilder {
             event_type: EventType::RoomRedaction,
-            content: serde_json::to_value(redaction::RedactionEventContent {
-                reason: body.reason.clone(),
-            })
-            .expect("event is valid, we just created it"),
+            content: RawValue::from_string(
+                serde_json::to_string(&redaction::RedactionEventContent {
+                    reason: body.reason.clone(),
+                })
+                .expect("event is valid, we just created it"),
+            )
+            .expect("string is valid"),
             unsigned: None,
             state_key: None,
             redacts: Some(body.event_id.clone()),
