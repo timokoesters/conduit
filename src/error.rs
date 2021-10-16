@@ -39,6 +39,12 @@ pub enum Error {
     #[cfg(feature = "heed")]
     #[error("There was a problem with the connection to the heed database: {error}")]
     HeedError { error: String },
+    #[cfg(feature = "rocksdb")]
+    #[error("There was a problem with the connection to the rocksdb database: {source}")]
+    RocksDbError {
+        #[from]
+        source: rocksdb::Error,
+    },
     #[error("Could not generate an image.")]
     ImageError {
         #[from]

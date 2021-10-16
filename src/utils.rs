@@ -29,6 +29,17 @@ pub fn increment(old: Option<&[u8]>) -> Option<Vec<u8>> {
     Some(number.to_be_bytes().to_vec())
 }
 
+#[cfg(feature = "rocksdb")]
+pub fn increment_rocksdb(
+    _new_key: &[u8],
+    old: Option<&[u8]>,
+    _operands: &mut rocksdb::MergeOperands,
+) -> Option<Vec<u8>> {
+    dbg!(_new_key);
+    dbg!(old);
+    increment(old)
+}
+
 pub fn generate_keypair() -> Vec<u8> {
     let mut value = random_string(8).as_bytes().to_vec();
     value.push(0xff);
