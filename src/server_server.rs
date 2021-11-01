@@ -2670,10 +2670,12 @@ pub fn create_join_event_template_route(
         None
     };
 
-    // If there was no create event yet, assume we are creating a version 6 room right now
-    let room_version_id = create_event_content.map_or(RoomVersionId::Version6, |create_event| {
-        create_event.room_version
-    });
+    // If there was no create event yet, assume we are creating a room with the default version
+    // right now
+    let room_version_id = create_event_content
+        .map_or(db.globals.default_room_version(), |create_event| {
+            create_event.room_version
+        });
     let room_version = RoomVersion::new(&room_version_id).expect("room version is supported");
 
     if !body.ver.contains(&room_version_id) {
@@ -2937,8 +2939,7 @@ pub async fn create_invite_route(
         return Err(Error::bad_config("Federation is disabled."));
     }
 
-    if body.room_version != RoomVersionId::Version5 && body.room_version != RoomVersionId::Version6
-    {
+    if !db.rooms.is_supported_version(&db, &body.room_version) {
         return Err(Error::BadRequest(
             ErrorKind::IncompatibleRoomVersion {
                 room_version: body.room_version.clone(),

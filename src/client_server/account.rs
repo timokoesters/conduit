@@ -34,7 +34,7 @@ use ruma::{
         EventType,
     },
     identifiers::RoomName,
-    push, RoomAliasId, RoomId, RoomVersionId, UserId,
+    push, RoomAliasId, RoomId, UserId,
 };
 use serde_json::value::to_raw_value;
 use tracing::info;
@@ -282,7 +282,7 @@ pub async fn register_route(
         let mut content = RoomCreateEventContent::new(conduit_user.clone());
         content.federate = true;
         content.predecessor = None;
-        content.room_version = RoomVersionId::Version6;
+        content.room_version = db.globals.default_room_version();
 
         // 1. The room create event
         db.rooms.build_and_append_pdu(

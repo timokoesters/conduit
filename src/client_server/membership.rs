@@ -551,7 +551,7 @@ async fn join_room_by_id_helper(
                     federation::membership::create_join_event_template::v1::Request {
                         room_id,
                         user_id: sender_user,
-                        ver: &[RoomVersionId::Version5, RoomVersionId::Version6],
+                        ver: &db.globals.supported_room_versions(),
                     },
                 )
                 .await;
@@ -566,12 +566,7 @@ async fn join_room_by_id_helper(
         let (make_join_response, remote_server) = make_join_response_and_server?;
 
         let room_version = match make_join_response.room_version {
-            Some(room_version)
-                if room_version == RoomVersionId::Version5
-                    || room_version == RoomVersionId::Version6 =>
-            {
-                room_version
-            }
+            Some(room_version) if db.rooms.is_supported_version(&db, &room_version) => room_version,
             _ => return Err(Error::BadServerResponse("Room version is not supported")),
         };
 
@@ -890,9 +885,10 @@ pub(crate) async fn invite_helper<'a>(
                 None
             };
 
-            // If there was no create event yet, assume we are creating a version 6 room right now
+            // If there was no create event yet, assume we are creating a room with the default
+            // version right now
             let room_version_id = create_event_content
-                .map_or(RoomVersionId::Version6, |create_event| {
+                .map_or(db.globals.default_room_version(), |create_event| {
                     create_event.room_version
                 });
             let room_version =

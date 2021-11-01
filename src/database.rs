@@ -24,7 +24,7 @@ use rocket::{
     request::{FromRequest, Request},
     Shutdown, State,
 };
-use ruma::{DeviceId, EventId, RoomId, ServerName, UserId};
+use ruma::{DeviceId, EventId, RoomId, RoomVersionId, ServerName, UserId};
 use serde::{de::IgnoredAny, Deserialize};
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
@@ -63,8 +63,12 @@ pub struct Config {
     allow_federation: bool,
     #[serde(default = "true_fn")]
     allow_room_creation: bool,
+    #[serde(default = "true_fn")]
+    allow_unstable_room_versions: bool,
     #[serde(default = "false_fn")]
     pub allow_jaeger: bool,
+    #[serde(default = "default_room_version")]
+    default_room_version: RoomVersionId,
     #[serde(default = "false_fn")]
     pub tracing_flame: bool,
     #[serde(default)]
@@ -135,6 +139,10 @@ fn default_max_request_size() -> u32 {
 
 fn default_max_concurrent_requests() -> u16 {
     100
+}
+
+fn default_room_version() -> RoomVersionId {
+    RoomVersionId::Version6
 }
 
 fn default_log() -> String {
