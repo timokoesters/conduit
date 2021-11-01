@@ -1035,7 +1035,8 @@ pub(crate) async fn invite_helper<'a>(
         let pub_key_map = RwLock::new(BTreeMap::new());
 
         // We do not add the event_id field to the pdu here because of signature and hashes checks
-        let (event_id, value) = match crate::pdu::gen_event_id_canonical_json(&response.event) {
+        let (event_id, value) = match crate::pdu::gen_event_id_canonical_json(&response.event, &db)
+        {
             Ok(t) => t,
             Err(_) => {
                 // Event could not be converted to canonical json

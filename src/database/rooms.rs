@@ -3451,4 +3451,27 @@ impl Rooms {
 
         Ok(())
     }
+
+    /// Returns the room's version.
+    #[tracing::instrument(skip(self))]
+    pub fn get_room_version(&self, room_id: &RoomId) -> RoomVersionId {
+        let create_event = self
+            .room_state_get(room_id, &EventType::RoomCreate, "")
+            .unwrap();
+
+        let create_event_content: Option<RoomCreateEventContent> = create_event
+            .as_ref()
+            .map(|create_event| {
+                serde_json::from_str(create_event.content.get()).map_err(|e| {
+                    warn!("Invalid create event: {}", e);
+                    Error::bad_database("Invalid create event in db.")
+                })
+            })
+            .transpose()
+            .unwrap();
+
+        create_event_content
+            .map(|create_event| create_event.room_version)
+            .expect("Invalid room version")
+    }
 }
