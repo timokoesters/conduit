@@ -47,7 +47,6 @@ use ruma::{
         },
         AnyEphemeralRoomEvent, EventType,
     },
-    int,
     receipt::ReceiptType,
     serde::JsonObject,
     signatures::{CanonicalJsonObject, CanonicalJsonValue},
@@ -751,14 +750,14 @@ pub async fn send_transaction_message_route(
                 .roomid_mutex_federation
                 .write()
                 .unwrap()
-                .entry(room_id.clone())
+                .entry(RoomId::try_from("!asdf:asfd.asdf").unwrap())
                 .or_default(),
         );
         let mutex_lock = mutex.lock().await;
         let start_time = Instant::now();
         resolved_map.insert(
             event_id.clone(),
-            handle_incoming_pdu(
+            dbg!(handle_incoming_pdu(
                 &body.origin,
                 &event_id,
                 &room_id,
@@ -767,7 +766,7 @@ pub async fn send_transaction_message_route(
                 &db,
                 &pub_key_map,
             )
-            .await
+            .await)
             .map(|_| ()),
         );
         drop(mutex_lock);
@@ -956,6 +955,7 @@ pub(crate) async fn handle_incoming_pdu<'a>(
     db: &'a Database,
     pub_key_map: &'a RwLock<BTreeMap<String, BTreeMap<String, String>>>,
 ) -> Result<Option<Vec<u8>>, String> {
+    warn!("Handling incoming pdu: {:?}", value);
     match db.rooms.exists(room_id) {
         Ok(true) => {}
         _ => {
@@ -1000,6 +1000,7 @@ pub(crate) async fn handle_incoming_pdu<'a>(
         return Ok(None);
     }
 
+    /* stop fetching prev events for now
     // 9. Fetch any missing prev events doing all checks listed here starting at 1. These are timeline events
     let mut graph = HashMap::new();
     let mut eventid_info = HashMap::new();
@@ -1114,6 +1115,7 @@ pub(crate) async fn handle_incoming_pdu<'a>(
             );
         }
     }
+    */
 
     upgrade_outlier_to_timeline_pdu(
         incoming_pdu,
@@ -2838,7 +2840,7 @@ async fn create_join_event(
             .roomid_mutex_federation
             .write()
             .unwrap()
-            .entry(room_id.clone())
+            .entry(RoomId::try_from("!asdf:asfd.asdf").unwrap()) // make all rooms share the same lock for now
             .or_default(),
     );
     let mutex_lock = mutex.lock().await;

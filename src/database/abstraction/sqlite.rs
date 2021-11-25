@@ -21,7 +21,7 @@ thread_local! {
 
 struct PreparedStatementIterator<'a> {
     pub iterator: Box<dyn Iterator<Item = TupleOfBytes> + 'a>,
-    pub statement_ref: NonAliasingBox<rusqlite::Statement<'a>>,
+    pub statement_ref: NonAliasingBox<rusqlite::CachedStatement<'a>>,
 }
 
 impl Iterator for PreparedStatementIterator<'_> {
@@ -52,7 +52,7 @@ impl Engine {
     fn prepare_conn(path: &Path, cache_size_kb: u32) -> Result<Connection> {
         let conn = Connection::open(&path)?;
 
-        conn.pragma_update(Some(Main), "page_size", &2048)?;
+        conn.pragma_update(Some(Main), "page_size", &32768)?;
         conn.pragma_update(Some(Main), "journal_mode", &"WAL")?;
         conn.pragma_update(Some(Main), "synchronous", &"NORMAL")?;
         conn.pragma_update(Some(Main), "cache_size", &(-i64::from(cache_size_kb)))?;
@@ -136,7 +136,7 @@ impl SqliteTable {
     fn get_with_guard(&self, guard: &Connection, key: &[u8]) -> Result<Option<Vec<u8>>> {
         //dbg!(&self.name);
         Ok(guard
-            .prepare(format!("SELECT value FROM {} WHERE key = ?", self.name).as_str())?
+            .prepare_cached(format!("SELECT value FROM {} WHERE key = ?", self.name).as_str())?
             .query_row([key], |row| row.get(0))
             .optional()?)
     }
@@ -161,7 +161,7 @@ impl SqliteTable {
     ) -> Box<dyn Iterator<Item = TupleOfBytes> + 'a> {
         let statement = Box::leak(Box::new(
             guard
-                .prepare(&format!(
+                .prepare_cached(&format!(
                     "SELECT key, value FROM {} ORDER BY key ASC",
                     &self.name
                 ))
@@ -290,7 +290,7 @@ impl Tree for SqliteTable {
         if backwards {
             let statement = Box::leak(Box::new(
                 guard
-                    .prepare(&format!(
+                    .prepare_cached(&format!(
                         "SELECT key, value FROM {} WHERE key <= ? ORDER BY key DESC",
                         &self.name
                     ))
@@ -315,7 +315,7 @@ impl Tree for SqliteTable {
         } else {
             let statement = Box::leak(Box::new(
                 guard
-                    .prepare(&format!(
+                    .prepare_cached(&format!(
                         "SELECT key, value FROM {} WHERE key >= ? ORDER BY key ASC",
                         &self.name
                     ))
