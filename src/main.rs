@@ -17,11 +17,15 @@ mod pdu;
 mod ruma_wrapper;
 mod utils;
 
+use std::ffi::OsStr;
+use std::io::Cursor;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use database::Config;
 pub use database::Database;
 pub use error::{Error, Result};
+use http::StatusCode;
 use opentelemetry::trace::{FutureExt, Tracer};
 pub use pdu::PduEvent;
 pub use rocket::State;
@@ -34,8 +38,12 @@ use rocket::{
         providers::{Env, Format, Toml},
         Figment,
     },
-    routes, Request,
+    get,
+    http::{ContentType, Status},
+    response, routes, Request,
 };
+
+use rust_embed::RustEmbed;
 use tokio::sync::RwLock;
 use tracing_subscriber::{prelude::*, EnvFilter};
 
@@ -176,6 +184,7 @@ fn setup_rocket(config: Figment, data: Arc<RwLock<Database>>) -> rocket::Rocket<
                 server_server::claim_keys_route,
             ],
         )
+        .mount("/", routes![dist])
         .register(
             "/",
             catchers![
@@ -274,6 +283,34 @@ async fn main() {
             start.await;
         }
     }
+}
+
+#[derive(RustEmbed)]
+#[folder = "element_web"]
+struct ElementWebAsset;
+
+#[get("/<file..>")]
+fn dist<'r>(file: PathBuf) -> response::Result<'r> {
+    let filename = file.display().to_string();
+
+    ElementWebAsset::get(&filename).map_or_else(
+        || Err(Status::NotFound),
+        |embedded_file| {
+            let ext = file
+                .as_path()
+                .extension()
+                .and_then(OsStr::to_str)
+                .ok_or_else(|| Status::new(400))?;
+
+            let content_type = ContentType::from_extension(ext).ok_or_else(|| Status::new(400))?;
+
+            let response: Result<response::Response<'r>, Status> = response::Response::build()
+                .header(content_type)
+                .sized_body(embedded_file.data.len(), Cursor::new(embedded_file.data))
+                .ok();
+            return response;
+        },
+    )
 }
 
 #[catch(404)]

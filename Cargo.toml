@@ -82,6 +82,9 @@ thread_local = "1.1.3"
 # used for TURN server authentication
 hmac = "0.11.0"
 sha-1 = "0.9.8"
+# used to embed Element Web into Conduit
+rust-embed="6.3.0"
+
 
 [features]
 default = ["conduit_bin", "backend_sqlite"]
