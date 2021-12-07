@@ -166,15 +166,16 @@ build:debug:cargo:x86_64-unknown-linux-musl:
     - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
     # Only log in to Dockerhub if the credentials are given:
     - if [ -n "${DOCKER_HUB}" ]; then docker login -u "$DOCKER_HUB_USER" -p "$DOCKER_HUB_PASSWORD" "$DOCKER_HUB"; fi
-  script:
     # Prepare buildx to build multiarch stuff:
     - docker context create 'ci-context'
     - docker buildx create --name 'multiarch-builder' --use 'ci-context'
-    # Copy binaries to their docker arch path
-    - mkdir -p linux/ && mv ./conduit-x86_64-unknown-linux-musl linux/amd64
-    - mkdir -p linux/arm/ && mv ./conduit-arm-unknown-linux-musleabihf linux/arm/v6
-    - mkdir -p linux/arm/ && mv ./conduit-armv7-unknown-linux-musleabihf linux/arm/v7
-    - mv ./conduit-aarch64-unknown-linux-musl linux/arm64
+  script:
+    # Copy binaries to their docker arch path:
+    - test "${PLATFORMS#*'amd64'}" != "$PLATFORMS" && mkdir -p linux/     && mv ./conduit-*x86_64-unknown-linux-musl     linux/amd64
+    - test "${PLATFORMS#*'v6'}"    != "$PLATFORMS" && mkdir -p linux/arm/ && mv ./conduit-arm-unknown-linux-musleabihf   linux/arm/v6
+    - test "${PLATFORMS#*'v7'}"    != "$PLATFORMS" && mkdir -p linux/arm/ && mv ./conduit-armv7-unknown-linux-musleabihf linux/arm/v7
+    - test "${PLATFORMS#*'arm64'}" != "$PLATFORMS" && mkdir -p linux/     && mv ./conduit-aarch64-unknown-linux-musl     linux/arm64
+    # Embed build date in image:
     - 'export CREATED=$(date -u +''%Y-%m-%dT%H:%M:%SZ'') && echo "Docker image creation date: $CREATED"'
     # Build and push image:
     - >
@@ -234,6 +235,14 @@ docker:tags:dockerhub:
   variables:
     TAG: "$DOCKER_HUB_IMAGE/matrixconduit/matrix-conduit:$CI_COMMIT_TAG"
 
+docker:debug:gitlab:
+  extends: .docker-shared-settings
+  needs:
+    - "build:debug:cargo:x86_64-unknown-linux-musl"
+  variables:
+    TAG: "$CI_REGISTRY_IMAGE/debug/matrix-conduit:$CI_COMMIT_BRANCH"
+    PLATFORMS: "linux/amd64"
+
 # --------------------------------------------------------------------- #
 #  Run tests                                                            #
 # --------------------------------------------------------------------- #
@@ -284,6 +293,7 @@ test:audit:
 test:sytest:
   stage: "test"
   allow_failure: true
+  interruptible: true
   needs:
     - "build:debug:cargo:x86_64-unknown-linux-musl"
   image:
@@ -346,6 +356,42 @@ test:dockerlint:
         - .gitlab-ci.yml
     - if: '$CI_COMMIT_REF_NAME == "master"'
     - if: '$CI_COMMIT_REF_NAME == "next"'
+
+test:complement:
+  stage: "test"
+  allow_failure: true
+  interruptible: true
+  needs:
+    - "docker:debug:gitlab"
+  tags: ["docker"]
+  image: "docker:latest"
+  services:
+    - "docker:dind"
+  variables:
+    # Tell docker to use the docker service:
+    DOCKER_HOST: "tcp://docker:2375/"
+    DOCKER_TLS_CERTDIR: ""
+    DOCKER_DRIVER: "overlay2"
+    CI: "true"
+    COMPLEMENT_DEBUG: "1"
+    COMPLEMENT_ALWAYS_PRINT_SERVER_LOGS: "1"
+    COMPLEMENT_CA: "true"
+    COMPLEMENT_BASE_IMAGE: "conduit:complement"
+    CONDUIT_DEBUG_IMAGE: "$CI_REGISTRY_IMAGE/debug/matrix-conduit:$CI_COMMIT_BRANCH"
+  before_script:
+    - 'sed -i "s#matrixconduit/matrix-conduit:next-alpine#$CONDUIT_DEBUG_IMAGE#g" tests/Complement.Dockerfile'
+    - 'echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" "$CI_REGISTRY" --password-stdin'
+    - "docker build -f tests/Complement.Dockerfile -t $COMPLEMENT_BASE_IMAGE ."
+    - "wget https://faulty-storage.de/gotestsum -O /gotestsum && chmod +x /gotestsum"
+    - "apk add go git olm olm-dev musl-dev gcc build-base"
+    - "git clone https://github.com/matrix-org/complement.git"
+  script:
+    - "cd ./complement/"
+    - "/gotestsum --junitfile $CI_PROJECT_DIR/complement-report.xml --format testname --rerun-fails --rerun-fails-max-failures=200"
+  artifacts:
+    when: "always"
+    reports:
+      junit: "$CI_PROJECT_DIR/complement-report.xml"
 
 # --------------------------------------------------------------------- #
 #  Store binaries as package so they have download urls                 #

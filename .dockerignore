@@ -1,6 +1,6 @@
 # Local build and dev artifacts
 target
-tests
+# tests
 
 # Docker files
 Dockerfile*
