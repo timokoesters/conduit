@@ -85,7 +85,7 @@ hmac = "0.11.0"
 sha-1 = "0.9.8"
 
 [features]
-default = ["conduit_bin", "backend_sqlite"]
+default = ["conduit_bin", "backend_rocksdb"]
 backend_sled = ["sled"]
 backend_sqlite = ["sqlite"]
 backend_heed = ["heed", "crossbeam"]
