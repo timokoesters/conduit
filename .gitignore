@@ -60,6 +60,7 @@ $RECYCLE.BIN/
 Rocket.toml
 conduit.toml
 conduit.db
+public/
 
 # Etc.
 **/*.rs.bk

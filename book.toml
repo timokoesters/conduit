@@ -1,0 +1,16 @@
+[book]
+title = "Conduit Docs"
+author = "The Conduit contributors"
+description = "Conduit is a simple, fast and reliable chat server for the Matrix protocol"
+language = "en"
+src = "docs"
+
+[rust]
+edition = "2018"
+
+[build]
+build-dir = "public"
+create-missing = true
+
+[output.html.search]
+limit-results = 15
