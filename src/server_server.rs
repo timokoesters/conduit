@@ -1878,15 +1878,16 @@ pub(crate) fn fetch_and_handle_outliers<'a>(
             if let Ok(Some(local_pdu)) = db.rooms.get_pdu(id) {
                 trace!("Found {} in db", id);
                 pdus.push((local_pdu, None));
+                continue;
             }
 
             // c. Ask origin server over federation
             // We also handle its auth chain here so we don't get a stack overflow in
             // handle_outlier_pdu.
-            let mut todo_auth_events = vec![id];
+            let mut todo_auth_events = vec![Arc::clone(id)];
             let mut events_in_reverse_order = Vec::new();
             while let Some(next_id) = todo_auth_events.pop() {
-                if let Ok(Some(_)) = db.rooms.get_pdu(next_id) {
+                if let Ok(Some(_)) = db.rooms.get_pdu(&next_id) {
                     trace!("Found {} in db", id);
                     continue;
                 }
@@ -1897,7 +1898,7 @@ pub(crate) fn fetch_and_handle_outliers<'a>(
                     .send_federation_request(
                         &db.globals,
                         origin,
-                        get_event::v1::Request { event_id: next_id },
+                        get_event::v1::Request { event_id: &next_id },
                     )
                     .await
                 {
@@ -1907,21 +1908,35 @@ pub(crate) fn fetch_and_handle_outliers<'a>(
                             match crate::pdu::gen_event_id_canonical_json(&res.pdu) {
                                 Ok(t) => t,
                                 Err(_) => {
-                                    back_off((**next_id).to_owned());
+                                    back_off((*next_id).to_owned());
                                     continue;
                                 }
                             };
 
-                        if calculated_event_id != **next_id {
+                        if calculated_event_id != *next_id {
                             warn!("Server didn't return event id we requested: requested: {}, we got {}. Event: {:?}",
                                 next_id, calculated_event_id, &res.pdu);
+                        }
+
+
+                        if let Some(auth_events) = value.get("auth_events").and_then(|c| c.as_array()) {
+                            for auth_event in auth_events {
+                                if let Some(Ok(auth_event)) = auth_event.as_str()
+                                        .map(|e| serde_json::from_str(e)) {
+                                    todo_auth_events.push(auth_event);
+                                } else {
+                                    warn!("Auth event id is not valid");
+                                }
+                            }
+                        } else {
+                            warn!("Auth event list invalid");
                         }
 
                         events_in_reverse_order.push((next_id, value));
                     }
                     Err(_) => {
                         warn!("Failed to fetch event: {}", next_id);
-                        back_off((**next_id).to_owned());
+                        back_off((*next_id).to_owned());
                     }
                 }
             }
@@ -1930,7 +1945,7 @@ pub(crate) fn fetch_and_handle_outliers<'a>(
                 match handle_outlier_pdu(
                     origin,
                     create_event,
-                    next_id,
+                    &next_id,
                     room_id,
                     value.clone(),
                     db,
@@ -1943,7 +1958,7 @@ pub(crate) fn fetch_and_handle_outliers<'a>(
                     }
                     Err(e) => {
                         warn!("Authentication of event {} failed: {:?}", next_id, e);
-                        back_off((**next_id).to_owned());
+                        back_off((*next_id).to_owned());
                     }
                 }
             }
