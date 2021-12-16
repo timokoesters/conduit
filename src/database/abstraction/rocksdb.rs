@@ -22,14 +22,20 @@ impl DatabaseEngine for Engine {
     fn open(config: &Config) -> Result<Arc<Self>> {
         let mut db_opts = rocksdb::Options::default();
         db_opts.create_if_missing(true);
-        db_opts.set_max_open_files(16);
+        db_opts.set_max_open_files(512);
         db_opts.set_compaction_style(rocksdb::DBCompactionStyle::Level);
-        db_opts.set_compression_type(rocksdb::DBCompressionType::Snappy);
-        db_opts.set_target_file_size_base(256 << 20);
-        db_opts.set_write_buffer_size(256 << 20);
+        db_opts.set_compression_type(rocksdb::DBCompressionType::Zstd);
+        db_opts.set_target_file_size_base(2 << 22);
+        db_opts.set_max_bytes_for_level_base(2 << 24);
+        db_opts.set_max_bytes_for_level_multiplier(2.0);
+        db_opts.set_num_levels(8);
+        db_opts.set_write_buffer_size(2 << 27);
+
+        let rocksdb_cache = rocksdb::Cache::new_lru_cache((config.db_cache_capacity_mb * 1024.0 * 1024.0) as usize).unwrap();
 
         let mut block_based_options = rocksdb::BlockBasedOptions::default();
-        block_based_options.set_block_size(512 << 10);
+        block_based_options.set_block_size(2 << 19);
+        block_based_options.set_block_cache(&rocksdb_cache);
         db_opts.set_block_based_table_factory(&block_based_options);
 
         let cfs = rocksdb::DBWithThreadMode::<rocksdb::MultiThreaded>::list_cf(
@@ -45,7 +51,6 @@ impl DatabaseEngine for Engine {
                 let mut options = rocksdb::Options::default();
                 let prefix_extractor = rocksdb::SliceTransform::create_fixed_prefix(1);
                 options.set_prefix_extractor(prefix_extractor);
-                options.set_merge_operator_associative("increment", utils::increment_rocksdb);
 
                 rocksdb::ColumnFamilyDescriptor::new(name, options)
             }),
@@ -63,7 +68,6 @@ impl DatabaseEngine for Engine {
             let mut options = rocksdb::Options::default();
             let prefix_extractor = rocksdb::SliceTransform::create_fixed_prefix(1);
             options.set_prefix_extractor(prefix_extractor);
-            options.set_merge_operator_associative("increment", utils::increment_rocksdb);
 
             let _ = self.rocks.create_cf(name, &options);
             println!("created cf");
