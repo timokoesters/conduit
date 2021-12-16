@@ -1921,8 +1921,7 @@ pub(crate) fn fetch_and_handle_outliers<'a>(
 
                         if let Some(auth_events) = value.get("auth_events").and_then(|c| c.as_array()) {
                             for auth_event in auth_events {
-                                if let Some(Ok(auth_event)) = auth_event.as_str()
-                                        .map(|e| {let ev: std::result::Result<Arc<EventId>, _> = dbg!(serde_json::from_str(dbg!(e))); ev}) {
+                                if let Ok(auth_event) = serde_json::from_value(auth_event.clone().into()) {
                                     let a: Arc<EventId> = auth_event;
                                     todo_auth_events.push(a);
                                 } else {
