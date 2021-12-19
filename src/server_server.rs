@@ -1686,25 +1686,6 @@ async fn upgrade_outlier_to_timeline_pdu(
         // We do this by adding the current state to the list of fork states
         extremity_sstatehashes.remove(&current_sstatehash);
         fork_states.push(current_state_ids);
-        dbg!(&extremity_sstatehashes);
-
-        for (sstatehash, leaf_pdu) in extremity_sstatehashes {
-            let mut leaf_state = db
-                .rooms
-                .state_full_ids(sstatehash)
-                .map_err(|_| "Failed to ask db for room state.".to_owned())?;
-
-            if let Some(state_key) = &leaf_pdu.state_key {
-                let shortstatekey = db
-                    .rooms
-                    .get_or_create_shortstatekey(&leaf_pdu.kind, state_key, &db.globals)
-                    .map_err(|_| "Failed to create shortstatekey.".to_owned())?;
-                leaf_state.insert(shortstatekey, Arc::from(&*leaf_pdu.event_id));
-                // Now it's the state after the pdu
-            }
-
-            fork_states.push(leaf_state);
-        }
 
         // We also add state after incoming event to the fork states
         let mut state_after = state_at_incoming_event.clone();
@@ -1941,7 +1922,7 @@ pub(crate) fn fetch_and_handle_outliers<'a>(
                 }
             }
 
-            while let Some((next_id, value)) = events_in_reverse_order.pop() {
+            for (next_id, value) in events_in_reverse_order {
                 match handle_outlier_pdu(
                     origin,
                     create_event,
@@ -1954,7 +1935,9 @@ pub(crate) fn fetch_and_handle_outliers<'a>(
                 .await
                 {
                     Ok((pdu, json)) => {
-                        pdus.push((pdu, Some(json)));
+                        if next_id == *id {
+                            pdus.push((pdu, Some(json)));
+                        }
                     }
                     Err(e) => {
                         warn!("Authentication of event {} failed: {:?}", next_id, e);
