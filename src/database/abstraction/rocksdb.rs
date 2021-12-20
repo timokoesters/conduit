@@ -16,6 +16,7 @@ pub struct RocksDbEngineTree<'a> {
     db: Arc<Engine>,
     name: &'a str,
     watchers: RwLock<HashMap<Vec<u8>, Vec<tokio::sync::oneshot::Sender<()>>>>,
+    write_lock: RwLock<()>
 }
 
 impl DatabaseEngine for Engine {
@@ -77,6 +78,7 @@ impl DatabaseEngine for Engine {
             name,
             db: Arc::clone(self),
             watchers: RwLock::new(HashMap::new()),
+            write_lock: RwLock::new(()),
         }))
     }
 
@@ -120,7 +122,13 @@ impl Tree for RocksDbEngineTree<'_> {
             }
         }
 
-        Ok(self.db.rocks.put_cf(self.cf(), key, value)?)
+        let lock = self.write_lock.read().unwrap();
+
+        let result = self.db.rocks.put_cf(self.cf(), key, value)?;
+
+        drop(lock);
+
+        Ok(result)
     }
 
     fn insert_batch<'a>(&self, iter: &mut dyn Iterator<Item = (Vec<u8>, Vec<u8>)>) -> Result<()> {
@@ -168,19 +176,26 @@ impl Tree for RocksDbEngineTree<'_> {
     }
 
     fn increment(&self, key: &[u8]) -> Result<Vec<u8>> {
-        // TODO: make atomic
+        let lock = self.write_lock.write().unwrap();
+
         let old = self.db.rocks.get_cf(self.cf(), &key)?;
         let new = utils::increment(old.as_deref()).unwrap();
         self.db.rocks.put_cf(self.cf(), key, &new)?;
+
+        drop(lock);
         Ok(new)
     }
 
     fn increment_batch<'a>(&self, iter: &mut dyn Iterator<Item = Vec<u8>>) -> Result<()> {
+        let lock = self.write_lock.write().unwrap();
+
         for key in iter {
             let old = self.db.rocks.get_cf(self.cf(), &key)?;
             let new = utils::increment(old.as_deref()).unwrap();
             self.db.rocks.put_cf(self.cf(), key, new)?;
         }
+
+        drop(lock);
 
         Ok(())
     }
