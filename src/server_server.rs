@@ -1931,7 +1931,7 @@ pub(crate) fn fetch_and_handle_outliers<'a>(
                 }
             }
 
-            for (next_id, value) in events_in_reverse_order {
+            for (next_id, value) in events_in_reverse_order.iter().rev() {
                 match handle_outlier_pdu(
                     origin,
                     create_event,
@@ -1944,13 +1944,13 @@ pub(crate) fn fetch_and_handle_outliers<'a>(
                 .await
                 {
                     Ok((pdu, json)) => {
-                        if next_id == *id {
+                        if next_id == id {
                             pdus.push((pdu, Some(json)));
                         }
                     }
                     Err(e) => {
                         warn!("Authentication of event {} failed: {:?}", next_id, e);
-                        back_off((*next_id).to_owned());
+                        back_off((**next_id).to_owned());
                     }
                 }
             }
