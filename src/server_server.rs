@@ -1867,7 +1867,12 @@ pub(crate) fn fetch_and_handle_outliers<'a>(
             // handle_outlier_pdu.
             let mut todo_auth_events = vec![Arc::clone(id)];
             let mut events_in_reverse_order = Vec::new();
+            let mut events_all = HashSet::new();
             while let Some(next_id) = todo_auth_events.pop() {
+                if events_all.contains(&next_id) {
+                    continue;
+                }
+
                 if let Ok(Some(_)) = db.rooms.get_pdu(&next_id) {
                     trace!("Found {} in db", id);
                     continue;
@@ -1899,10 +1904,13 @@ pub(crate) fn fetch_and_handle_outliers<'a>(
                                 next_id, calculated_event_id, &res.pdu);
                         }
 
-
-                        if let Some(auth_events) = value.get("auth_events").and_then(|c| c.as_array()) {
+                        if let Some(auth_events) =
+                            value.get("auth_events").and_then(|c| c.as_array())
+                        {
                             for auth_event in auth_events {
-                                if let Ok(auth_event) = serde_json::from_value(auth_event.clone().into()) {
+                                if let Ok(auth_event) =
+                                    serde_json::from_value(auth_event.clone().into())
+                                {
                                     let a: Arc<EventId> = auth_event;
                                     todo_auth_events.push(a);
                                 } else {
@@ -1913,7 +1921,8 @@ pub(crate) fn fetch_and_handle_outliers<'a>(
                             warn!("Auth event list invalid");
                         }
 
-                        events_in_reverse_order.push((next_id, value));
+                        events_in_reverse_order.push((next_id.clone(), value));
+                        events_all.insert(next_id);
                     }
                     Err(_) => {
                         warn!("Failed to fetch event: {}", next_id);
