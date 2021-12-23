@@ -1,11 +1,11 @@
 use super::super::Config;
 use crate::{utils, Result};
-
 use std::{future::Future, pin::Pin, sync::Arc};
-
+use std::{
+    collections::{hash_map, HashMap},
+    sync::RwLock};
 use super::{DatabaseEngine, Tree};
-
-use std::{collections::HashMap, sync::RwLock};
+use tokio::sync::watch;
 
 pub struct Engine {
     rocks: rocksdb::DBWithThreadMode<rocksdb::MultiThreaded>,
@@ -15,7 +15,7 @@ pub struct Engine {
 pub struct RocksDbEngineTree<'a> {
     db: Arc<Engine>,
     name: &'a str,
-    watchers: RwLock<HashMap<Vec<u8>, Vec<tokio::sync::oneshot::Sender<()>>>>,
+    watchers: RwLock<HashMap<Vec<u8>, (watch::Sender<()>, watch::Receiver<()>)>>,
     write_lock: RwLock<()>,
 }
 
@@ -102,6 +102,12 @@ impl Tree for RocksDbEngineTree<'_> {
     }
 
     fn insert(&self, key: &[u8], value: &[u8]) -> Result<()> {
+        let lock = self.write_lock.read().unwrap();
+
+        let result = self.db.rocks.put_cf(self.cf(), key, value)?;
+
+        drop(lock);
+
         let watchers = self.watchers.read().unwrap();
         let mut triggered = Vec::new();
 
@@ -116,19 +122,11 @@ impl Tree for RocksDbEngineTree<'_> {
         if !triggered.is_empty() {
             let mut watchers = self.watchers.write().unwrap();
             for prefix in triggered {
-                if let Some(txs) = watchers.remove(prefix) {
-                    for tx in txs {
-                        let _ = tx.send(());
-                    }
+                if let Some(tx) = watchers.remove(prefix) {
+                    let _ = tx.0.send(());
                 }
             }
-        }
-
-        let lock = self.write_lock.read().unwrap();
-
-        let result = self.db.rocks.put_cf(self.cf(), key, value)?;
-
-        drop(lock);
+        };
 
         Ok(result)
     }
@@ -219,18 +217,18 @@ impl Tree for RocksDbEngineTree<'_> {
     }
 
     fn watch_prefix<'a>(&'a self, prefix: &[u8]) -> Pin<Box<dyn Future<Output = ()> + Send + 'a>> {
-        let (tx, rx) = tokio::sync::oneshot::channel();
-
-        self.watchers
-            .write()
-            .unwrap()
-            .entry(prefix.to_vec())
-            .or_default()
-            .push(tx);
+        let mut rx = match self.watchers.write().unwrap().entry(prefix.to_vec()) {
+            hash_map::Entry::Occupied(o) => o.get().1.clone(),
+            hash_map::Entry::Vacant(v) => {
+                let (tx, rx) = tokio::sync::watch::channel(());
+                v.insert((tx, rx.clone()));
+                rx
+            }
+        };
 
         Box::pin(async move {
             // Tx is never destroyed
-            rx.await.unwrap();
+            rx.changed().await.unwrap();
         })
     }
 }
