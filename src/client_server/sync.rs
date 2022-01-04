@@ -264,6 +264,14 @@ async fn sync_helper(
         // limited unless there are events in non_timeline_pdus
         let limited = non_timeline_pdus.next().is_some();
 
+        let mut timeline_users = HashSet::new();
+        for (_, event) in &timeline_pdus {
+            timeline_users.insert(event.sender.as_str().to_owned());
+        }
+
+        db.rooms
+            .lazy_load_confirm_delivery(&sender_user, &sender_device, &room_id, since)?;
+
         // Database queries:
 
         let current_shortstatehash = db
@@ -344,14 +352,51 @@ async fn sync_helper(
             state_events,
         ) = if since_shortstatehash.is_none() {
             // Probably since = 0, we will do an initial sync
+
             let (joined_member_count, invited_member_count, heroes) = calculate_counts()?;
 
             let current_state_ids = db.rooms.state_full_ids(current_shortstatehash)?;
-            let state_events: Vec<_> = current_state_ids
-                .iter()
-                .map(|(_, id)| db.rooms.get_pdu(id))
-                .filter_map(|r| r.ok().flatten())
-                .collect();
+
+            let mut state_events = Vec::new();
+            let mut lazy_loaded = Vec::new();
+
+            for (_, id) in current_state_ids {
+                let pdu = match db.rooms.get_pdu(&id)? {
+                    Some(pdu) => pdu,
+                    None => {
+                        error!("Pdu in state not found: {}", id);
+                        continue;
+                    }
+                };
+                let state_key = pdu
+                    .state_key
+                    .as_ref()
+                    .expect("state events have state keys");
+                if pdu.kind != EventType::RoomMember {
+                    state_events.push(pdu);
+                } else if full_state || timeline_users.contains(state_key) {
+                    // TODO: check filter: is ll enabled?
+                    lazy_loaded.push(
+                        UserId::parse(state_key.as_ref())
+                            .expect("they are in timeline_users, so they should be correct"),
+                    );
+                    state_events.push(pdu);
+                }
+            }
+
+            // Reset lazy loading because this is an initial sync
+            db.rooms
+                .lazy_load_reset(&sender_user, &sender_device, &room_id)?;
+
+            // The state_events above should contain all timeline_users, let's mark them as lazy
+            // loaded.
+            db.rooms.lazy_load_mark_sent(
+                &sender_user,
+                &sender_device,
+                &room_id,
+                lazy_loaded,
+                next_batch,
+            );
 
             (
                 heroes,
@@ -387,20 +432,66 @@ async fn sync_helper(
 
             let since_state_ids = db.rooms.state_full_ids(since_shortstatehash)?;
 
-            let state_events = if joined_since_last_sync {
+            /*
+            let state_events = if joined_since_last_sync || full_state {
                 current_state_ids
                     .iter()
                     .map(|(_, id)| db.rooms.get_pdu(id))
                     .filter_map(|r| r.ok().flatten())
                     .collect::<Vec<_>>()
             } else {
-                current_state_ids
-                    .iter()
-                    .filter(|(key, id)| since_state_ids.get(key) != Some(id))
-                    .map(|(_, id)| db.rooms.get_pdu(id))
-                    .filter_map(|r| r.ok().flatten())
-                    .collect()
-            };
+                */
+            let mut state_events = Vec::new();
+            let mut lazy_loaded = Vec::new();
+
+            for (key, id) in current_state_ids {
+                let pdu = match db.rooms.get_pdu(&id)? {
+                    Some(pdu) => pdu,
+                    None => {
+                        error!("Pdu in state not found: {}", id);
+                        continue;
+                    }
+                };
+
+                let state_key = pdu
+                    .state_key
+                    .as_ref()
+                    .expect("state events have state keys");
+
+                if pdu.kind != EventType::RoomMember {
+                    if full_state || since_state_ids.get(&key) != Some(&id) {
+                        state_events.push(pdu);
+                    }
+                    continue;
+                }
+
+                // Pdu has to be a member event
+                let state_key_userid = UserId::parse(state_key.as_ref())
+                    .expect("they are in timeline_users, so they should be correct");
+
+                if full_state || since_state_ids.get(&key) != Some(&id) {
+                    lazy_loaded.push(state_key_userid);
+                    state_events.push(pdu);
+                } else if timeline_users.contains(state_key)
+                    && !db.rooms.lazy_load_was_sent_before(
+                        &sender_user,
+                        &sender_device,
+                        &room_id,
+                        &state_key_userid,
+                    )?
+                {
+                    lazy_loaded.push(state_key_userid);
+                    state_events.push(pdu);
+                }
+            }
+
+            db.rooms.lazy_load_mark_sent(
+                &sender_user,
+                &sender_device,
+                &room_id,
+                lazy_loaded,
+                next_batch,
+            );
 
             let encrypted_room = db
                 .rooms

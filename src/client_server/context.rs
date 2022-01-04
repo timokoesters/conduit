@@ -1,5 +1,9 @@
 use crate::{database::DatabaseGuard, ConduitResult, Error, Ruma};
-use ruma::api::client::{error::ErrorKind, r0::context::get_context};
+use ruma::{
+    api::client::{error::ErrorKind, r0::context::get_context},
+    events::EventType,
+};
+use std::collections::HashSet;
 use std::convert::TryFrom;
 
 #[cfg(feature = "conduit_bin")]
@@ -21,6 +25,7 @@ pub async fn get_context_route(
     body: Ruma<get_context::Request<'_>>,
 ) -> ConduitResult<get_context::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
+    let sender_device = body.sender_device.as_ref().expect("user is authenticated");
 
     if !db.rooms.is_joined(sender_user, &body.room_id)? {
         return Err(Error::BadRequest(
@@ -28,6 +33,8 @@ pub async fn get_context_route(
             "You don't have permission to view this room.",
         ));
     }
+
+    let mut lazy_loaded = HashSet::new();
 
     let base_pdu_id = db
         .rooms
@@ -45,8 +52,18 @@ pub async fn get_context_route(
         .ok_or(Error::BadRequest(
             ErrorKind::NotFound,
             "Base event not found.",
-        ))?
-        .to_room_event();
+        ))?;
+
+    if !db.rooms.lazy_load_was_sent_before(
+        &sender_user,
+        &sender_device,
+        &body.room_id,
+        &base_event.sender,
+    )? {
+        lazy_loaded.insert(base_event.sender.clone());
+    }
+
+    let base_event = base_event.to_room_event();
 
     let events_before: Vec<_> = db
         .rooms
@@ -59,6 +76,17 @@ pub async fn get_context_route(
         )
         .filter_map(|r| r.ok()) // Remove buggy events
         .collect();
+
+    for (_, event) in &events_before {
+        if !db.rooms.lazy_load_was_sent_before(
+            &sender_user,
+            &sender_device,
+            &body.room_id,
+            &event.sender,
+        )? {
+            lazy_loaded.insert(event.sender.clone());
+        }
+    }
 
     let start_token = events_before
         .last()
@@ -82,6 +110,17 @@ pub async fn get_context_route(
         .filter_map(|r| r.ok()) // Remove buggy events
         .collect();
 
+    for (_, event) in &events_after {
+        if !db.rooms.lazy_load_was_sent_before(
+            &sender_user,
+            &sender_device,
+            &body.room_id,
+            &event.sender,
+        )? {
+            lazy_loaded.insert(event.sender.clone());
+        }
+    }
+
     let end_token = events_after
         .last()
         .and_then(|(pdu_id, _)| db.rooms.pdu_count(pdu_id).ok())
@@ -98,12 +137,15 @@ pub async fn get_context_route(
     resp.events_before = events_before;
     resp.event = Some(base_event);
     resp.events_after = events_after;
-    resp.state = db // TODO: State at event
-        .rooms
-        .room_state_full(&body.room_id)?
-        .values()
-        .map(|pdu| pdu.to_state_event())
-        .collect();
+    resp.state = Vec::new();
+    for ll_id in &lazy_loaded {
+        if let Some(member_event) =
+            db.rooms
+                .room_state_get(&body.room_id, &EventType::RoomMember, ll_id.as_str())?
+        {
+            resp.state.push(member_event.to_state_event());
+        }
+    }
 
     Ok(resp.into())
 }

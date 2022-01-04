@@ -289,6 +289,8 @@ impl Database {
                 userroomid_leftstate: builder.open_tree("userroomid_leftstate")?,
                 roomuserid_leftcount: builder.open_tree("roomuserid_leftcount")?,
 
+                lazyloadedids: builder.open_tree("lazyloadedids")?,
+
                 userroomid_notificationcount: builder.open_tree("userroomid_notificationcount")?,
                 userroomid_highlightcount: builder.open_tree("userroomid_highlightcount")?,
 
@@ -324,6 +326,7 @@ impl Database {
                 statekeyshort_cache: Mutex::new(LruCache::new(1_000_000)),
                 our_real_users_cache: RwLock::new(HashMap::new()),
                 appservice_in_room_cache: RwLock::new(HashMap::new()),
+                lazy_load_waiting: Mutex::new(HashMap::new()),
                 stateinfo_cache: Mutex::new(LruCache::new(1000)),
             },
             account_data: account_data::AccountData {

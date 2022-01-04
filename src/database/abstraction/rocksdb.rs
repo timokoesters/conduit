@@ -1,10 +1,11 @@
 use super::super::Config;
+use super::{DatabaseEngine, Tree};
 use crate::{utils, Result};
-use std::{future::Future, pin::Pin, sync::Arc};
 use std::{
     collections::{hash_map, HashMap},
-    sync::RwLock};
-use super::{DatabaseEngine, Tree};
+    sync::RwLock,
+};
+use std::{future::Future, pin::Pin, sync::Arc};
 use tokio::sync::watch;
 
 pub struct Engine {
