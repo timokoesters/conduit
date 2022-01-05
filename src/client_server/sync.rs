@@ -376,24 +376,29 @@ async fn sync_helper(
             let mut state_events = Vec::new();
             let mut lazy_loaded = Vec::new();
 
-            for (_, id) in current_state_ids {
-                let pdu = match db.rooms.get_pdu(&id)? {
-                    Some(pdu) => pdu,
-                    None => {
-                        error!("Pdu in state not found: {}", id);
-                        continue;
-                    }
-                };
-                let state_key = pdu
-                    .state_key
-                    .as_ref()
-                    .expect("state events have state keys");
-                if pdu.kind != EventType::RoomMember {
+            for (shortstatekey, id) in current_state_ids {
+                let (event_type, state_key) = db.rooms.get_statekey_from_short(shortstatekey)?;
+
+                if event_type != EventType::RoomMember {
+                    let pdu = match db.rooms.get_pdu(&id)? {
+                        Some(pdu) => pdu,
+                        None => {
+                            error!("Pdu in state not found: {}", id);
+                            continue;
+                        }
+                    };
                     state_events.push(pdu);
                 } else if !lazy_load_enabled
                     || body.full_state
-                    || timeline_users.contains(state_key)
+                    || timeline_users.contains(&state_key)
                 {
+                    let pdu = match db.rooms.get_pdu(&id)? {
+                        Some(pdu) => pdu,
+                        None => {
+                            error!("Pdu in state not found: {}", id);
+                            continue;
+                        }
+                    };
                     lazy_loaded.push(
                         UserId::parse(state_key.as_ref())
                             .expect("they are in timeline_users, so they should be correct"),
