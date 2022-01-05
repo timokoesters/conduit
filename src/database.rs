@@ -249,6 +249,7 @@ impl Database {
                 userid_masterkeyid: builder.open_tree("userid_masterkeyid")?,
                 userid_selfsigningkeyid: builder.open_tree("userid_selfsigningkeyid")?,
                 userid_usersigningkeyid: builder.open_tree("userid_usersigningkeyid")?,
+                userfilterid_filter: builder.open_tree("userfilterid_filter")?,
                 todeviceid_events: builder.open_tree("todeviceid_events")?,
             },
             uiaa: uiaa::Uiaa {
