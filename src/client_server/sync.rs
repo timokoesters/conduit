@@ -374,7 +374,7 @@ async fn sync_helper(
             let current_state_ids = db.rooms.state_full_ids(current_shortstatehash)?;
 
             let mut state_events = Vec::new();
-            let mut lazy_loaded = Vec::new();
+            let mut lazy_loaded = HashSet::new();
 
             for (shortstatekey, id) in current_state_ids {
                 let (event_type, state_key) = db.rooms.get_statekey_from_short(shortstatekey)?;
@@ -399,7 +399,7 @@ async fn sync_helper(
                             continue;
                         }
                     };
-                    lazy_loaded.push(
+                    lazy_loaded.insert(
                         UserId::parse(state_key.as_ref())
                             .expect("they are in timeline_users, so they should be correct"),
                     );
@@ -456,46 +456,57 @@ async fn sync_helper(
             let since_state_ids = db.rooms.state_full_ids(since_shortstatehash)?;
 
             let mut state_events = Vec::new();
-            let mut lazy_loaded = Vec::new();
+            let mut lazy_loaded = HashSet::new();
 
             for (key, id) in current_state_ids {
-                let pdu = match db.rooms.get_pdu(&id)? {
-                    Some(pdu) => pdu,
-                    None => {
-                        error!("Pdu in state not found: {}", id);
+                if body.full_state || since_state_ids.get(&key) != Some(&id) {
+                    let pdu = match db.rooms.get_pdu(&id)? {
+                        Some(pdu) => pdu,
+                        None => {
+                            error!("Pdu in state not found: {}", id);
+                            continue;
+                        }
+                    };
+
+                    if pdu.kind == EventType::RoomMember {
+                        match UserId::parse(
+                            pdu.state_key
+                                .as_ref()
+                                .expect("State event has state key")
+                                .clone(),
+                        ) {
+                            Ok(state_key_userid) => {
+                                lazy_loaded.insert(state_key_userid);
+                            }
+                            Err(e) => error!("Invalid state key for member event: {}", e),
+                        }
+                    }
+
+                    state_events.push(pdu);
+                }
+                for (_, event) in &timeline_pdus {
+                    if lazy_loaded.contains(&event.sender) {
                         continue;
                     }
-                };
 
-                let state_key = pdu
-                    .state_key
-                    .as_ref()
-                    .expect("state events have state keys");
-
-                if pdu.kind != EventType::RoomMember {
-                    if body.full_state || since_state_ids.get(&key) != Some(&id) {
-                        state_events.push(pdu);
-                    }
-                    continue;
-                }
-
-                // Pdu has to be a member event
-                let state_key_userid = UserId::parse(state_key.as_ref())
-                    .expect("they are in timeline_users, so they should be correct");
-
-                if body.full_state || since_state_ids.get(&key) != Some(&id) {
-                    lazy_loaded.push(state_key_userid);
-                    state_events.push(pdu);
-                } else if timeline_users.contains(state_key)
-                    && (!db.rooms.lazy_load_was_sent_before(
+                    if !db.rooms.lazy_load_was_sent_before(
                         &sender_user,
                         &sender_device,
                         &room_id,
-                        &state_key_userid,
-                    )? || lazy_load_send_redundant)
-                {
-                    lazy_loaded.push(state_key_userid);
-                    state_events.push(pdu);
+                        &event.sender,
+                    )? || lazy_load_send_redundant
+                    {
+                        let pdu = match db.rooms.get_pdu(&id)? {
+                            Some(pdu) => pdu,
+                            None => {
+                                error!("Pdu in state not found: {}", id);
+                                continue;
+                            }
+                        };
+
+                        lazy_loaded.insert(event.sender.clone());
+                        state_events.push(pdu);
+                    }
                 }
             }
 

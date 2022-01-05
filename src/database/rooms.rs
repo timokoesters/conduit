@@ -120,7 +120,7 @@ pub struct Rooms {
     pub(super) our_real_users_cache: RwLock<HashMap<Box<RoomId>, Arc<HashSet<Box<UserId>>>>>,
     pub(super) appservice_in_room_cache: RwLock<HashMap<Box<RoomId>, HashMap<String, bool>>>,
     pub(super) lazy_load_waiting:
-        Mutex<HashMap<(Box<UserId>, Box<DeviceId>, Box<RoomId>, u64), Vec<Box<UserId>>>>,
+        Mutex<HashMap<(Box<UserId>, Box<DeviceId>, Box<RoomId>, u64), HashSet<Box<UserId>>>>,
     pub(super) stateinfo_cache: Mutex<
         LruCache<
             u64,
@@ -3482,7 +3482,7 @@ impl Rooms {
         user_id: &UserId,
         device_id: &DeviceId,
         room_id: &RoomId,
-        lazy_load: Vec<Box<UserId>>,
+        lazy_load: HashSet<Box<UserId>>,
         count: u64,
     ) {
         self.lazy_load_waiting.lock().unwrap().insert(

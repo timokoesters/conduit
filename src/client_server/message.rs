@@ -243,7 +243,7 @@ pub async fn get_message_events_route(
             &sender_user,
             &sender_device,
             &body.room_id,
-            lazy_loaded.into_iter().collect(),
+            lazy_loaded,
             next_token,
         );
     }
