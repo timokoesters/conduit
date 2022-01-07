@@ -484,28 +484,27 @@ async fn sync_helper(
 
                     state_events.push(pdu);
                 }
-                for (_, event) in &timeline_pdus {
-                    if lazy_loaded.contains(&event.sender) {
-                        continue;
-                    }
+            }
 
-                    if !db.rooms.lazy_load_was_sent_before(
-                        &sender_user,
-                        &sender_device,
+            for (_, event) in &timeline_pdus {
+                if lazy_loaded.contains(&event.sender) {
+                    continue;
+                }
+
+                if !db.rooms.lazy_load_was_sent_before(
+                    &sender_user,
+                    &sender_device,
+                    &room_id,
+                    &event.sender,
+                )? || lazy_load_send_redundant
+                {
+                    if let Some(member_event) = db.rooms.room_state_get(
                         &room_id,
-                        &event.sender,
-                    )? || lazy_load_send_redundant
-                    {
-                        let pdu = match db.rooms.get_pdu(&id)? {
-                            Some(pdu) => pdu,
-                            None => {
-                                error!("Pdu in state not found: {}", id);
-                                continue;
-                            }
-                        };
-
+                        &EventType::RoomMember,
+                        event.sender.as_str(),
+                    )? {
                         lazy_loaded.insert(event.sender.clone());
-                        state_events.push(pdu);
+                        state_events.push(member_event);
                     }
                 }
             }
