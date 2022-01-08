@@ -45,6 +45,16 @@
               ],
               "terminal": true
             }
+          ],
+          "tls_connection_policies": [
+            {
+              "match": {
+                "sni": ["*"]
+              },
+              "certificate_selection": {
+                "any_tag": ["complement-signed-cert"]
+              }
+            }
           ]
         },
         "srv1": {
@@ -86,13 +96,24 @@
       }
     },
     "tls": {
+      "certificates": {
+        "load_files": [
+          {
+            "certificate": "/conduit.complement.crt.pem",
+            "key": "/conduit.complement.key.pem",
+            "format": "pem",
+            "tags": ["complement-signed-cert"]
+          }
+        ]
+      },
       "automation": {
         "policies": [
           {
             "subjects": ["your.server.name"],
             "issuers": [
               {
-                "module": "internal"
+                "module": "internal",
+                "lifetime": "2d"
               }
             ],
             "on_demand": true
@@ -105,12 +126,12 @@
         "local": {
           "name": "Complement CA",
           "root": {
-            "certificate": "/ca/ca.crt",
-            "private_key": "/ca/ca.key"
+            "certificate": "/complement/ca/ca.crt",
+            "private_key": "/complement/ca/ca.key"
           },
           "intermediate": {
-            "certificate": "/ca/ca.crt",
-            "private_key": "/ca/ca.key"
+            "certificate": "/complement/ca/ca.crt",
+            "private_key": "/complement/ca/ca.key"
           }
         }
       }

@@ -5,6 +5,7 @@ server_name = "localhost"
 
 # With a bit of luck /tmp is a RAM disk, so that the file system does not become the bottleneck while testing
 database_path = "/tmp"
+database_backend = "rocksdb"
 
 # All the other settings are left at their defaults:
 port = 6167

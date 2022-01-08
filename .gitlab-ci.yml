@@ -302,7 +302,6 @@ test:sytest:
   tags: ["docker"]
   variables:
     PLUGINS: "https://github.com/valkum/sytest_conduit/archive/master.tar.gz"
-  interruptible: true
   before_script:
     - "mkdir -p /app"
     - "cp ./conduit-debug-x86_64-unknown-linux-musl /app/conduit"
@@ -360,19 +359,10 @@ test:dockerlint:
 test:complement:
   stage: "test"
   allow_failure: true
-  interruptible: true
+  tags: ["docker"]
   needs:
     - "docker:debug:gitlab"
-  tags: ["docker"]
-  image: "docker:latest"
-  services:
-    - "docker:dind"
   variables:
-    # Tell docker to use the docker service:
-    DOCKER_HOST: "tcp://docker:2375/"
-    DOCKER_TLS_CERTDIR: ""
-    DOCKER_DRIVER: "overlay2"
-    CI: "true"
     COMPLEMENT_DEBUG: "1"
     COMPLEMENT_ALWAYS_PRINT_SERVER_LOGS: "1"
     COMPLEMENT_CA: "true"
@@ -382,12 +372,12 @@ test:complement:
     - 'sed -i "s#matrixconduit/matrix-conduit:next-alpine#$CONDUIT_DEBUG_IMAGE#g" tests/Complement.Dockerfile'
     - 'echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" "$CI_REGISTRY" --password-stdin'
     - "docker build -f tests/Complement.Dockerfile -t $COMPLEMENT_BASE_IMAGE ."
-    - "wget https://faulty-storage.de/gotestsum -O /gotestsum && chmod +x /gotestsum"
-    - "apk add go git olm olm-dev musl-dev gcc build-base"
+    - "wget https://faulty-storage.de/gotestsum -O $CI_PROJECT_DIR/gotestsum && chmod +x $CI_PROJECT_DIR/gotestsum"
     - "git clone https://github.com/matrix-org/complement.git"
   script:
     - "cd ./complement/"
-    - "/gotestsum --junitfile $CI_PROJECT_DIR/complement-report.xml --format testname --rerun-fails --rerun-fails-max-failures=200"
+    #  CI=false -> "true" makes complement assume itself is running IN a docker container, which it is not in this case.
+    - "CI=false $CI_PROJECT_DIR/gotestsum --junitfile $CI_PROJECT_DIR/complement-report.xml --format testname --rerun-fails --rerun-fails-max-failures=200"
   artifacts:
     when: "always"
     reports:
