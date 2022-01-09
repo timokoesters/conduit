@@ -20,8 +20,8 @@ pub struct RocksDbEngineTree<'a> {
     write_lock: RwLock<()>,
 }
 
-impl DatabaseEngine for Engine {
-    fn open(config: &Config) -> Result<Arc<Self>> {
+impl DatabaseEngine for Arc<Engine> {
+    fn open(config: &Config) -> Result<Self> {
         let mut db_opts = rocksdb::Options::default();
         db_opts.create_if_missing(true);
         db_opts.set_max_open_files(512);
@@ -66,7 +66,7 @@ impl DatabaseEngine for Engine {
         }))
     }
 
-    fn open_tree(self: &Arc<Self>, name: &'static str) -> Result<Arc<dyn Tree>> {
+    fn open_tree(&self, name: &'static str) -> Result<Arc<dyn Tree>> {
         if !self.old_cfs.contains(&name.to_owned()) {
             // Create if it didn't exist
             let mut options = rocksdb::Options::default();
@@ -74,7 +74,6 @@ impl DatabaseEngine for Engine {
             options.set_prefix_extractor(prefix_extractor);
 
             let _ = self.rocks.create_cf(name, &options);
-            println!("created cf");
         }
 
         Ok(Arc::new(RocksDbEngineTree {
@@ -85,7 +84,7 @@ impl DatabaseEngine for Engine {
         }))
     }
 
-    fn flush(self: &Arc<Self>) -> Result<()> {
+    fn flush(&self) -> Result<()> {
         // TODO?
         Ok(())
     }

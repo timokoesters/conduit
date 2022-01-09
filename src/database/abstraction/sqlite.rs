@@ -82,8 +82,8 @@ impl Engine {
     }
 }
 
-impl DatabaseEngine for Engine {
-    fn open(config: &Config) -> Result<Arc<Self>> {
+impl DatabaseEngine for Arc<Engine> {
+    fn open(config: &Config) -> Result<Self> {
         let path = Path::new(&config.database_path).join("conduit.db");
 
         // calculates cache-size per permanent connection
@@ -94,7 +94,7 @@ impl DatabaseEngine for Engine {
             / ((num_cpus::get().max(1) * 2) + 1) as f64)
             as u32;
 
-        let writer = Mutex::new(Self::prepare_conn(&path, cache_size_per_thread)?);
+        let writer = Mutex::new(Engine::prepare_conn(&path, cache_size_per_thread)?);
 
         let arc = Arc::new(Engine {
             writer,
@@ -107,7 +107,7 @@ impl DatabaseEngine for Engine {
         Ok(arc)
     }
 
-    fn open_tree(self: &Arc<Self>, name: &str) -> Result<Arc<dyn Tree>> {
+    fn open_tree(&self, name: &str) -> Result<Arc<dyn Tree>> {
         self.write_lock().execute(&format!("CREATE TABLE IF NOT EXISTS {} ( \"key\" BLOB PRIMARY KEY, \"value\" BLOB NOT NULL )", name), [])?;
 
         Ok(Arc::new(SqliteTable {
@@ -117,9 +117,13 @@ impl DatabaseEngine for Engine {
         }))
     }
 
-    fn flush(self: &Arc<Self>) -> Result<()> {
+    fn flush(&self) -> Result<()> {
         // we enabled PRAGMA synchronous=normal, so this should not be necessary
         Ok(())
+    }
+
+    fn cleanup(&self) -> Result<()> {
+        self.flush_wal()
     }
 }
 

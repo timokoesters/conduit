@@ -44,13 +44,15 @@ use self::proxy::ProxyConfig;
 #[derive(Clone, Debug, Deserialize)]
 pub struct Config {
     server_name: Box<ServerName>,
+    #[serde(default = "default_database_backend")]
+    database_backend: String,
     database_path: String,
     #[serde(default = "default_db_cache_capacity_mb")]
     db_cache_capacity_mb: f64,
     #[serde(default = "default_pdu_cache_capacity")]
     pdu_cache_capacity: u32,
-    #[serde(default = "default_sqlite_wal_clean_second_interval")]
-    sqlite_wal_clean_second_interval: u32,
+    #[serde(default = "default_cleanup_second_interval")]
+    cleanup_second_interval: u32,
     #[serde(default = "default_max_request_size")]
     max_request_size: u32,
     #[serde(default = "default_max_concurrent_requests")]
@@ -117,6 +119,10 @@ fn true_fn() -> bool {
     true
 }
 
+fn default_database_backend() -> String {
+    "sqlite".to_owned()
+}
+
 fn default_db_cache_capacity_mb() -> f64 {
     200.0
 }
@@ -125,7 +131,7 @@ fn default_pdu_cache_capacity() -> u32 {
     100_000
 }
 
-fn default_sqlite_wal_clean_second_interval() -> u32 {
+fn default_cleanup_second_interval() -> u32 {
     1 * 60 // every minute
 }
 
@@ -145,20 +151,8 @@ fn default_turn_ttl() -> u64 {
     60 * 60 * 24
 }
 
-#[cfg(feature = "sled")]
-pub type Engine = abstraction::sled::Engine;
-
-#[cfg(feature = "sqlite")]
-pub type Engine = abstraction::sqlite::Engine;
-
-#[cfg(feature = "heed")]
-pub type Engine = abstraction::heed::Engine;
-
-#[cfg(feature = "rocksdb")]
-pub type Engine = abstraction::rocksdb::Engine;
-
 pub struct Database {
-    _db: Arc<Engine>,
+    _db: Arc<dyn DatabaseEngine>,
     pub globals: globals::Globals,
     pub users: users::Users,
     pub uiaa: uiaa::Uiaa,
@@ -186,27 +180,53 @@ impl Database {
         Ok(())
     }
 
-    fn check_sled_or_sqlite_db(config: &Config) -> Result<()> {
-        #[cfg(feature = "backend_sqlite")]
-        {
-            let path = Path::new(&config.database_path);
+    fn check_db_setup(config: &Config) -> Result<()> {
+        let path = Path::new(&config.database_path);
 
-            let sled_exists = path.join("db").exists();
-            let sqlite_exists = path.join("conduit.db").exists();
-            if sled_exists {
-                if sqlite_exists {
-                    // most likely an in-place directory, only warn
-                    warn!("Both sled and sqlite databases are detected in database directory");
-                    warn!("Currently running from the sqlite database, but consider removing sled database files to free up space")
-                } else {
-                    error!(
-                        "Sled database detected, conduit now uses sqlite for database operations"
-                    );
-                    error!("This database must be converted to sqlite, go to https://github.com/ShadowJonathan/conduit_toolbox#conduit_sled_to_sqlite");
-                    return Err(Error::bad_config(
-                        "sled database detected, migrate to sqlite",
-                    ));
-                }
+        let sled_exists = path.join("db").exists();
+        let sqlite_exists = path.join("conduit.db").exists();
+        let rocksdb_exists = path.join("IDENTITY").exists();
+
+        let mut count = 0;
+
+        if sled_exists {
+            count += 1;
+        }
+
+        if sqlite_exists {
+            count += 1;
+        }
+
+        if rocksdb_exists {
+            count += 1;
+        }
+
+        if count > 1 {
+            warn!("Multiple databases at database_path detected");
+            return Ok(());
+        }
+
+        if sled_exists {
+            if config.database_backend != "sled" {
+                return Err(Error::bad_config(
+                    "Found sled at database_path, but is not specified in config.",
+                ));
+            }
+        }
+
+        if sqlite_exists {
+            if config.database_backend != "sqlite" {
+                return Err(Error::bad_config(
+                    "Found sqlite at database_path, but is not specified in config.",
+                ));
+            }
+        }
+
+        if rocksdb_exists {
+            if config.database_backend != "rocksdb" {
+                return Err(Error::bad_config(
+                    "Found rocksdb at database_path, but is not specified in config.",
+                ));
             }
         }
 
@@ -215,14 +235,30 @@ impl Database {
 
     /// Load an existing database or create a new one.
     pub async fn load_or_create(config: &Config) -> Result<Arc<TokioRwLock<Self>>> {
-        Self::check_sled_or_sqlite_db(config)?;
+        Self::check_db_setup(config)?;
 
         if !Path::new(&config.database_path).exists() {
             std::fs::create_dir_all(&config.database_path)
                 .map_err(|_| Error::BadConfig("Database folder doesn't exists and couldn't be created (e.g. due to missing permissions). Please create the database folder yourself."))?;
         }
 
-        let builder = Engine::open(config)?;
+        let builder: Arc<dyn DatabaseEngine> = match &*config.database_backend {
+            "sqlite" => {
+                #[cfg(not(feature = "sqlite"))]
+                return Err(Error::BadConfig("Database backend not found."));
+                #[cfg(feature = "sqlite")]
+                Arc::new(Arc::<abstraction::sqlite::Engine>::open(config)?)
+            }
+            "rocksdb" => {
+                #[cfg(not(feature = "rocksdb"))]
+                return Err(Error::BadConfig("Database backend not found."));
+                #[cfg(feature = "rocksdb")]
+                Arc::new(Arc::<abstraction::rocksdb::Engine>::open(config)?)
+            }
+            _ => {
+                return Err(Error::BadConfig("Database backend not found."));
+            }
+        };
 
         if config.max_request_size < 1024 {
             eprintln!("ERROR: Max request size is less than 1KB. Please increase it.");
@@ -776,10 +812,7 @@ impl Database {
 
         drop(guard);
 
-        #[cfg(feature = "sqlite")]
-        {
-            Self::start_wal_clean_task(Arc::clone(&db), config).await;
-        }
+        Self::start_cleanup_task(Arc::clone(&db), config).await;
 
         Ok(db)
     }
@@ -917,15 +950,8 @@ impl Database {
         res
     }
 
-    #[cfg(feature = "sqlite")]
-    #[tracing::instrument(skip(self))]
-    pub fn flush_wal(&self) -> Result<()> {
-        self._db.flush_wal()
-    }
-
-    #[cfg(feature = "sqlite")]
     #[tracing::instrument(skip(db, config))]
-    pub async fn start_wal_clean_task(db: Arc<TokioRwLock<Self>>, config: &Config) {
+    pub async fn start_cleanup_task(db: Arc<TokioRwLock<Self>>, config: &Config) {
         use tokio::time::interval;
 
         #[cfg(unix)]
@@ -934,7 +960,7 @@ impl Database {
 
         use std::time::{Duration, Instant};
 
-        let timer_interval = Duration::from_secs(config.sqlite_wal_clean_second_interval as u64);
+        let timer_interval = Duration::from_secs(config.cleanup_second_interval as u64);
 
         tokio::spawn(async move {
             let mut i = interval(timer_interval);
@@ -945,23 +971,23 @@ impl Database {
                 #[cfg(unix)]
                 tokio::select! {
                     _ = i.tick() => {
-                        info!("wal-trunc: Timer ticked");
+                        info!("cleanup: Timer ticked");
                     }
                     _ = s.recv() => {
-                        info!("wal-trunc: Received SIGHUP");
+                        info!("cleanup: Received SIGHUP");
                     }
                 };
                 #[cfg(not(unix))]
                 {
                     i.tick().await;
-                    info!("wal-trunc: Timer ticked")
+                    info!("cleanup: Timer ticked")
                 }
 
                 let start = Instant::now();
-                if let Err(e) = db.read().await.flush_wal() {
-                    error!("wal-trunc: Errored: {}", e);
+                if let Err(e) = db.read().await._db.cleanup() {
+                    error!("cleanup: Errored: {}", e);
                 } else {
-                    info!("wal-trunc: Flushed in {:?}", start.elapsed());
+                    info!("cleanup: Finished in {:?}", start.elapsed());
                 }
             }
         });
