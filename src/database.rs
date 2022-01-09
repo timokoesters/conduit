@@ -249,6 +249,7 @@ impl Database {
                 userid_masterkeyid: builder.open_tree("userid_masterkeyid")?,
                 userid_selfsigningkeyid: builder.open_tree("userid_selfsigningkeyid")?,
                 userid_usersigningkeyid: builder.open_tree("userid_usersigningkeyid")?,
+                userfilterid_filter: builder.open_tree("userfilterid_filter")?,
                 todeviceid_events: builder.open_tree("todeviceid_events")?,
             },
             uiaa: uiaa::Uiaa {
@@ -289,6 +290,8 @@ impl Database {
                 userroomid_leftstate: builder.open_tree("userroomid_leftstate")?,
                 roomuserid_leftcount: builder.open_tree("roomuserid_leftcount")?,
 
+                lazyloadedids: builder.open_tree("lazyloadedids")?,
+
                 userroomid_notificationcount: builder.open_tree("userroomid_notificationcount")?,
                 userroomid_highlightcount: builder.open_tree("userroomid_highlightcount")?,
 
@@ -324,6 +327,7 @@ impl Database {
                 statekeyshort_cache: Mutex::new(LruCache::new(1_000_000)),
                 our_real_users_cache: RwLock::new(HashMap::new()),
                 appservice_in_room_cache: RwLock::new(HashMap::new()),
+                lazy_load_waiting: Mutex::new(HashMap::new()),
                 stateinfo_cache: Mutex::new(LruCache::new(1000)),
             },
             account_data: account_data::AccountData {

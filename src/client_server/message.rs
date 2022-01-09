@@ -6,7 +6,11 @@ use ruma::{
     },
     events::EventType,
 };
-use std::{collections::BTreeMap, convert::TryInto, sync::Arc};
+use std::{
+    collections::{BTreeMap, HashSet},
+    convert::TryInto,
+    sync::Arc,
+};
 
 #[cfg(feature = "conduit_bin")]
 use rocket::{get, put};
@@ -117,6 +121,7 @@ pub async fn get_message_events_route(
     body: Ruma<get_message_events::Request<'_>>,
 ) -> ConduitResult<get_message_events::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
+    let sender_device = body.sender_device.as_ref().expect("user is authenticated");
 
     if !db.rooms.is_joined(sender_user, &body.room_id)? {
         return Err(Error::BadRequest(
@@ -133,8 +138,17 @@ pub async fn get_message_events_route(
 
     let to = body.to.as_ref().map(|t| t.parse());
 
+    db.rooms
+        .lazy_load_confirm_delivery(&sender_user, &sender_device, &body.room_id, from)?;
+
     // Use limit or else 10
     let limit = body.limit.try_into().map_or(10_usize, |l: u32| l as usize);
+
+    let next_token;
+
+    let mut resp = get_message_events::Response::new();
+
+    let mut lazy_loaded = HashSet::new();
 
     match body.dir {
         get_message_events::Direction::Forward => {
@@ -152,7 +166,18 @@ pub async fn get_message_events_route(
                 .take_while(|&(k, _)| Some(Ok(k)) != to) // Stop at `to`
                 .collect();
 
-            let end_token = events_after.last().map(|(count, _)| count.to_string());
+            for (_, event) in &events_after {
+                if !db.rooms.lazy_load_was_sent_before(
+                    &sender_user,
+                    &sender_device,
+                    &body.room_id,
+                    &event.sender,
+                )? {
+                    lazy_loaded.insert(event.sender.clone());
+                }
+            }
+
+            next_token = events_after.last().map(|(count, _)| count).copied();
 
             let events_after: Vec<_> = events_after
                 .into_iter()
@@ -161,11 +186,8 @@ pub async fn get_message_events_route(
 
             let mut resp = get_message_events::Response::new();
             resp.start = Some(body.from.to_owned());
-            resp.end = end_token;
+            resp.end = next_token.map(|count| count.to_string());
             resp.chunk = events_after;
-            resp.state = Vec::new();
-
-            Ok(resp.into())
         }
         get_message_events::Direction::Backward => {
             let events_before: Vec<_> = db
@@ -182,20 +204,49 @@ pub async fn get_message_events_route(
                 .take_while(|&(k, _)| Some(Ok(k)) != to) // Stop at `to`
                 .collect();
 
-            let start_token = events_before.last().map(|(count, _)| count.to_string());
+            for (_, event) in &events_before {
+                if !db.rooms.lazy_load_was_sent_before(
+                    &sender_user,
+                    &sender_device,
+                    &body.room_id,
+                    &event.sender,
+                )? {
+                    lazy_loaded.insert(event.sender.clone());
+                }
+            }
+
+            next_token = events_before.last().map(|(count, _)| count).copied();
 
             let events_before: Vec<_> = events_before
                 .into_iter()
                 .map(|(_, pdu)| pdu.to_room_event())
                 .collect();
 
-            let mut resp = get_message_events::Response::new();
             resp.start = Some(body.from.to_owned());
-            resp.end = start_token;
+            resp.end = next_token.map(|count| count.to_string());
             resp.chunk = events_before;
-            resp.state = Vec::new();
-
-            Ok(resp.into())
         }
     }
+
+    resp.state = Vec::new();
+    for ll_id in &lazy_loaded {
+        if let Some(member_event) =
+            db.rooms
+                .room_state_get(&body.room_id, &EventType::RoomMember, ll_id.as_str())?
+        {
+            resp.state.push(member_event.to_state_event());
+        }
+    }
+
+    if let Some(next_token) = next_token {
+        db.rooms.lazy_load_mark_sent(
+            &sender_user,
+            &sender_device,
+            &body.room_id,
+            lazy_loaded,
+            next_token,
+        );
+    }
+
+    Ok(resp.into())
 }

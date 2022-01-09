@@ -1,6 +1,9 @@
 use crate::{utils, Error, Result};
 use ruma::{
-    api::client::{error::ErrorKind, r0::device::Device},
+    api::client::{
+        error::ErrorKind,
+        r0::{device::Device, filter::IncomingFilterDefinition},
+    },
     encryption::{CrossSigningKey, DeviceKeys, OneTimeKey},
     events::{AnyToDeviceEvent, EventType},
     identifiers::MxcUri,
@@ -30,6 +33,8 @@ pub struct Users {
     pub(super) userid_masterkeyid: Arc<dyn Tree>,
     pub(super) userid_selfsigningkeyid: Arc<dyn Tree>,
     pub(super) userid_usersigningkeyid: Arc<dyn Tree>,
+
+    pub(super) userfilterid_filter: Arc<dyn Tree>, // UserFilterId = UserId + FilterId
 
     pub(super) todeviceid_events: Arc<dyn Tree>, // ToDeviceId = UserId + DeviceId + Count
 }
@@ -989,5 +994,46 @@ impl Users {
 
         // TODO: Unhook 3PID
         Ok(())
+    }
+
+    /// Creates a new sync filter. Returns the filter id.
+    #[tracing::instrument(skip(self))]
+    pub fn create_filter(
+        &self,
+        user_id: &UserId,
+        filter: &IncomingFilterDefinition,
+    ) -> Result<String> {
+        let filter_id = utils::random_string(4);
+
+        let mut key = user_id.as_bytes().to_vec();
+        key.push(0xff);
+        key.extend_from_slice(filter_id.as_bytes());
+
+        self.userfilterid_filter.insert(
+            &key,
+            &serde_json::to_vec(&filter).expect("filter is valid json"),
+        )?;
+
+        Ok(filter_id)
+    }
+
+    #[tracing::instrument(skip(self))]
+    pub fn get_filter(
+        &self,
+        user_id: &UserId,
+        filter_id: &str,
+    ) -> Result<Option<IncomingFilterDefinition>> {
+        let mut key = user_id.as_bytes().to_vec();
+        key.push(0xff);
+        key.extend_from_slice(filter_id.as_bytes());
+
+        let raw = self.userfilterid_filter.get(&key)?;
+
+        if let Some(raw) = raw {
+            serde_json::from_slice(&raw)
+                .map_err(|_| Error::bad_database("Invalid filter event in db."))
+        } else {
+            Ok(None)
+        }
     }
 }
