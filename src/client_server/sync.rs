@@ -40,13 +40,15 @@ use rocket::{get, tokio};
 /// Calling this endpoint with a `since` parameter from a previous `next_batch` returns:
 /// For joined rooms:
 /// - Some of the most recent events of each timeline that happened after since
-/// - If user joined the room after since: All state events and device list updates in that room
+/// - If user joined the room after since: All state events (unless lazy loading is activated) and
+/// all device list updates in that room
 /// - If the user was already in the room: A list of all events that are in the state now, but were
 /// not in the state at `since`
 /// - If the state we send contains a member event: Joined and invited member counts, heroes
 /// - Device list updates that happened after `since`
 /// - If there are events in the timeline we send or the user send updated his read mark: Notification counts
 /// - EDUs that are active now (read receipts, typing updates, presence)
+/// - TODO: Allow multiple sync streams to support Pantalaimon
 ///
 /// For invited rooms:
 /// - If the user was invited after `since`: A subset of the state of the room at the point of the invite
