@@ -88,6 +88,19 @@ impl DatabaseEngine for Arc<Engine> {
         // TODO?
         Ok(())
     }
+
+    fn memory_usage(&self) -> Result<String> {
+        let stats = rocksdb::perf::get_memory_usage_stats(Some(&[&self.rocks]), None)?;
+        Ok(format!("Approximate memory usage of all the mem-tables: {:.3} MB\n\
+                   Approximate memory usage of un-flushed mem-tables: {:.3} MB\n\
+                   Approximate memory usage of all the table readers: {:.3} MB\n\
+                   Approximate memory usage by cache: {:.3} MB",
+                   stats.mem_table_total as f64 / 1024.0 / 1024.0,
+                   stats.mem_table_unflushed as f64 / 1024.0 / 1024.0,
+                   stats.mem_table_readers_total as f64 / 1024.0 / 1024.0,
+                   stats.cache_total as f64 / 1024.0 / 1024.0
+        ))
+    }
 }
 
 impl RocksDbEngineTree<'_> {
