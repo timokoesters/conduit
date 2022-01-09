@@ -24,6 +24,9 @@ pub trait DatabaseEngine: Send + Sync {
     fn cleanup(self: &Self) -> Result<()> {
         Ok(())
     }
+    fn memory_usage(self: &Self) -> Result<String> {
+        Ok("Current database engine does not support memory usage reporting.".to_string())
+    }
 }
 
 pub trait Tree: Send + Sync {
