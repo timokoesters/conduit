@@ -1680,6 +1680,9 @@ impl Rooms {
                                         ));
                                     }
                                 }
+                                "database_memory_usage" => {
+                                    db.admin.send(AdminCommand::ShowMemoryUsage);
+                                }
                                 _ => {
                                     db.admin.send(AdminCommand::SendMessage(
                                         RoomMessageEventContent::text_plain(format!(
