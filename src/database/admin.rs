@@ -114,7 +114,7 @@ impl Admin {
                                 if let Ok(response) = guard._db.memory_usage() {
                                     send_message(RoomMessageEventContent::text_plain(response), guard, &state_lock);
                                 } else {
-                                    send_message(RoomMessageEventContent::text_plain("Failed to get database memory usage".to_string()), guard, &state_lock);
+                                    send_message(RoomMessageEventContent::text_plain("Failed to get database memory usage.".to_string()), guard, &state_lock);
                                 }
                             }
                             AdminCommand::SendMessage(message) => {

@@ -78,7 +78,7 @@ crossbeam = { version = "0.8.1", optional = true }
 num_cpus = "1.13.0"
 threadpool = "1.8.1"
 heed = { git = "https://github.com/timokoesters/heed.git", rev = "f6f825da7fb2c758867e05ad973ef800a6fe1d5d", optional = true }
-rocksdb = { version = "0.16.0", features = ["multi-threaded-cf"], optional = true }
+rocksdb = { version = "0.17.0", features = ["multi-threaded-cf"], optional = true }
 thread_local = "1.1.3"
 # used for TURN server authentication
 hmac = "0.11.0"
