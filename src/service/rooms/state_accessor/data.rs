@@ -1,7 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
-use ruma::{events::StateEventType, EventId, RoomId};
+use ruma::{events::StateEventType, EventId, RoomId, ServerName};
 
 use crate::{PduEvent, Result};
 
@@ -34,6 +34,9 @@ pub trait Data: Send + Sync {
 
     /// Returns the state hash for this pdu.
     fn pdu_shortstatehash(&self, event_id: &EventId) -> Result<Option<u64>>;
+
+    /// Returns true if a server has permission to see an event
+    fn server_can_see_event(&self, sever_name: &ServerName, event_id: &EventId) -> Result<bool>;
 
     /// Returns the full room state.
     async fn room_state_full(

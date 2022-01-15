@@ -2,7 +2,7 @@ mod data;
 use std::{collections::HashMap, sync::Arc};
 
 pub use data::Data;
-use ruma::{events::StateEventType, EventId, RoomId};
+use ruma::{events::StateEventType, EventId, RoomId, ServerName};
 
 use crate::{PduEvent, Result};
 
@@ -49,6 +49,16 @@ impl Service {
     /// Returns the state hash for this pdu.
     pub fn pdu_shortstatehash(&self, event_id: &EventId) -> Result<Option<u64>> {
         self.db.pdu_shortstatehash(event_id)
+    }
+
+    /// Returns true if a server has permission to see an event
+    #[tracing::instrument(skip(self))]
+    pub fn server_can_see_event<'a>(
+        &'a self,
+        sever_name: &ServerName,
+        event_id: &EventId,
+    ) -> Result<bool> {
+        self.db.server_can_see_event(sever_name, event_id)
     }
 
     /// Returns the full room state.
