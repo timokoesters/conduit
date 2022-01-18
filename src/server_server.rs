@@ -1330,7 +1330,7 @@ async fn upgrade_outlier_to_timeline_pdu(
         let state =
             prev_event_sstatehash.map(|shortstatehash| db.rooms.state_full_ids(shortstatehash));
 
-        if let Some(Ok(mut state)) = state {
+        if let Some(Ok(state)) = state {
             warn!("Using cached state");
             let prev_pdu =
                 db.rooms.get_pdu(prev_event).ok().flatten().ok_or_else(|| {
@@ -1343,11 +1343,13 @@ async fn upgrade_outlier_to_timeline_pdu(
                     .get_or_create_shortstatekey(&prev_pdu.kind, state_key, &db.globals)
                     .map_err(|_| "Failed to create shortstatekey.".to_owned())?;
 
+                let mut state = (*state).clone();
                 state.insert(shortstatekey, Arc::from(prev_event));
                 // Now it's the state after the pdu
+                state_at_incoming_event = Some(Arc::new(state));
+            } else {
+                state_at_incoming_event = Some(state);
             }
-
-            state_at_incoming_event = Some(state);
         }
     } else {
         warn!("Calculating state at event using state res");
@@ -1377,10 +1379,11 @@ async fn upgrade_outlier_to_timeline_pdu(
             let mut auth_chain_sets = Vec::with_capacity(extremity_sstatehashes.len());
 
             for (sstatehash, prev_event) in extremity_sstatehashes {
-                let mut leaf_state: BTreeMap<_, _> = db
+                let mut leaf_state: BTreeMap<_, _> = (*db
                     .rooms
                     .state_full_ids(sstatehash)
-                    .map_err(|_| "Failed to ask db for room state.".to_owned())?;
+                    .map_err(|_| "Failed to ask db for room state.".to_owned())?)
+                .clone();
 
                 if let Some(state_key) = &prev_event.state_key {
                     let shortstatekey = db
@@ -1424,7 +1427,7 @@ async fn upgrade_outlier_to_timeline_pdu(
                     res.ok().flatten()
                 },
             ) {
-                Ok(new_state) => Some(
+                Ok(new_state) => Some(Arc::new(
                     new_state
                         .into_iter()
                         .map(|((event_type, state_key), event_id)| {
@@ -1435,7 +1438,7 @@ async fn upgrade_outlier_to_timeline_pdu(
                             Ok((shortstatekey, event_id))
                         })
                         .collect::<Result<_, String>>()?,
-                ),
+                )),
                 Err(e) => {
                     warn!("State resolution on prev events failed, either an event could not be found or deserialization: {}", e);
                     None
@@ -1511,7 +1514,7 @@ async fn upgrade_outlier_to_timeline_pdu(
                     return Err("Incoming event refers to wrong create event.".to_owned());
                 }
 
-                state_at_incoming_event = Some(state);
+                state_at_incoming_event = Some(Arc::new(state));
             }
             Err(e) => {
                 warn!("Fetching state for event failed: {}", e);
@@ -1691,16 +1694,18 @@ async fn upgrade_outlier_to_timeline_pdu(
         fork_states.push(current_state_ids);
 
         // We also add state after incoming event to the fork states
-        let mut state_after = state_at_incoming_event.clone();
         if let Some(state_key) = &incoming_pdu.state_key {
+            let mut state_after = (*state_at_incoming_event).clone();
             let shortstatekey = db
                 .rooms
                 .get_or_create_shortstatekey(&incoming_pdu.kind, state_key, &db.globals)
                 .map_err(|_| "Failed to create shortstatekey.".to_owned())?;
 
             state_after.insert(shortstatekey, Arc::from(&*incoming_pdu.event_id));
+            fork_states.push(Arc::new(state_after));
+        } else {
+            fork_states.push(state_at_incoming_event);
         }
-        fork_states.push(state_after);
 
         let mut update_state = false;
         // 14. Use state resolution to find new room state
@@ -1737,11 +1742,11 @@ async fn upgrade_outlier_to_timeline_pdu(
             let fork_states: Vec<_> = fork_states
                 .into_iter()
                 .map(|map| {
-                    map.into_iter()
-                        .filter_map(|(k, id)| {
+                    map.iter()
+                        .filter_map(|(&k, id)| {
                             db.rooms
                                 .get_statekey_from_short(k)
-                                .map(|k| (k, id))
+                                .map(|k| (k, id.clone()))
                                 .map_err(|e| warn!("Failed to get_statekey_from_short: {}", e))
                                 .ok()
                         })
@@ -2546,10 +2551,10 @@ pub fn get_room_state_route(
     let pdus = db
         .rooms
         .state_full_ids(shortstatehash)?
-        .into_iter()
+        .iter()
         .map(|(_, id)| {
             PduEvent::convert_to_outgoing_federation_event(
-                db.rooms.get_pdu_json(&id).unwrap().unwrap(),
+                db.rooms.get_pdu_json(id).unwrap().unwrap(),
             )
         })
         .collect();
@@ -2611,8 +2616,8 @@ pub fn get_room_state_ids_route(
     let pdu_ids = db
         .rooms
         .state_full_ids(shortstatehash)?
-        .into_iter()
-        .map(|(_, id)| (*id).to_owned())
+        .iter()
+        .map(|(_, id)| (**id).to_owned())
         .collect();
 
     let auth_chain_ids = get_auth_chain(&body.room_id, vec![Arc::from(&*body.event_id)], &db)?;

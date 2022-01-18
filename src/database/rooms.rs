@@ -114,6 +114,7 @@ pub struct Rooms {
     pub(super) pdu_cache: Mutex<LruCache<Box<EventId>, Arc<PduEvent>>>,
     pub(super) shorteventid_cache: Mutex<LruCache<u64, Arc<EventId>>>,
     pub(super) auth_chain_cache: Mutex<LruCache<Vec<u64>, Arc<HashSet<u64>>>>,
+    pub(super) state_full_ids_cache: Mutex<LruCache<u64, Arc<BTreeMap<u64, Arc<EventId>>>>>,
     pub(super) eventidshort_cache: Mutex<LruCache<Box<EventId>, u64>>,
     pub(super) statekeyshort_cache: Mutex<LruCache<(EventType, String), u64>>,
     pub(super) shortstatekey_cache: Mutex<LruCache<u64, (EventType, String)>>,
@@ -138,16 +139,34 @@ impl Rooms {
     /// Builds a StateMap by iterating over all keys that start
     /// with state_hash, this gives the full state for the given state_hash.
     #[tracing::instrument(skip(self))]
-    pub fn state_full_ids(&self, shortstatehash: u64) -> Result<BTreeMap<u64, Arc<EventId>>> {
+    pub fn state_full_ids(&self, shortstatehash: u64) -> Result<Arc<BTreeMap<u64, Arc<EventId>>>> {
+        if let Some(r) = self
+            .state_full_ids_cache
+            .lock()
+            .unwrap()
+            .get_mut(&shortstatehash)
+        {
+            return Ok(r.clone());
+        }
+
         let full_state = self
             .load_shortstatehash_info(shortstatehash)?
             .pop()
             .expect("there is always one layer")
             .1;
-        full_state
-            .into_iter()
-            .map(|compressed| self.parse_compressed_state_event(compressed))
-            .collect()
+        let result = Arc::new(
+            full_state
+                .into_iter()
+                .map(|compressed| self.parse_compressed_state_event(compressed))
+                .collect::<Result<BTreeMap<_, _>>>()?,
+        );
+
+        self.state_full_ids_cache
+            .lock()
+            .unwrap()
+            .insert(shortstatehash, result.clone());
+
+        Ok(result)
     }
 
     #[tracing::instrument(skip(self))]

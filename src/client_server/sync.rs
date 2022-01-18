@@ -378,11 +378,11 @@ async fn sync_helper(
             let mut state_events = Vec::new();
             let mut lazy_loaded = HashSet::new();
 
-            for (shortstatekey, id) in current_state_ids {
+            for (&shortstatekey, id) in current_state_ids.iter() {
                 let (event_type, state_key) = db.rooms.get_statekey_from_short(shortstatekey)?;
 
                 if event_type != EventType::RoomMember {
-                    let pdu = match db.rooms.get_pdu(&id)? {
+                    let pdu = match db.rooms.get_pdu(id)? {
                         Some(pdu) => pdu,
                         None => {
                             error!("Pdu in state not found: {}", id);
@@ -394,7 +394,7 @@ async fn sync_helper(
                     || body.full_state
                     || timeline_users.contains(&state_key)
                 {
-                    let pdu = match db.rooms.get_pdu(&id)? {
+                    let pdu = match db.rooms.get_pdu(id)? {
                         Some(pdu) => pdu,
                         None => {
                             error!("Pdu in state not found: {}", id);
@@ -460,9 +460,9 @@ async fn sync_helper(
                 let current_state_ids = db.rooms.state_full_ids(current_shortstatehash)?;
                 let since_state_ids = db.rooms.state_full_ids(since_shortstatehash)?;
 
-                for (key, id) in current_state_ids {
-                    if body.full_state || since_state_ids.get(&key) != Some(&id) {
-                        let pdu = match db.rooms.get_pdu(&id)? {
+                for (&key, id) in current_state_ids.iter() {
+                    if body.full_state || since_state_ids.get(&key) != Some(id) {
+                        let pdu = match db.rooms.get_pdu(id)? {
                             Some(pdu) => pdu,
                             None => {
                                 error!("Pdu in state not found: {}", id);

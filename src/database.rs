@@ -362,6 +362,7 @@ impl Database {
                         .expect("pdu cache capacity fits into usize"),
                 )),
                 auth_chain_cache: Mutex::new(LruCache::new(1_000_000)),
+                state_full_ids_cache: Mutex::new(LruCache::new(30)),
                 shorteventid_cache: Mutex::new(LruCache::new(1_000_000)),
                 eventidshort_cache: Mutex::new(LruCache::new(1_000_000)),
                 shortstatekey_cache: Mutex::new(LruCache::new(1_000_000)),
