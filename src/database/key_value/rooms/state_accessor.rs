@@ -3,11 +3,8 @@ use std::{collections::HashMap, sync::Arc};
 use crate::{database::KeyValueDatabase, service, services, utils, Error, PduEvent, Result};
 use async_trait::async_trait;
 use ruma::{
-    events::{
-        room::history_visibility::{HistoryVisibility, RoomHistoryVisibilityEventContent},
-        StateEventType,
-    },
-    EventId, RoomId, ServerName,
+    events::{room::member::MembershipState, StateEventType},
+    EventId, RoomId, UserId,
 };
 
 #[async_trait]
@@ -126,6 +123,21 @@ impl service::rooms::state_accessor::Data for KeyValueDatabase {
             })
     }
 
+    fn state_get_content(
+        &self,
+        shortstatehash: u64,
+        event_type: &StateEventType,
+        state_key: &str,
+    ) -> Result<Option<serde_json::Value>> {
+        let content = self
+            .state_get(shortstatehash, event_type, state_key)?
+            .map(|event| serde_json::from_str(event.content.get()))
+            .transpose()
+            .map_err(|_| Error::bad_database("Invalid event in database"))?;
+
+        Ok(content)
+    }
+
     /// Returns the state hash for this pdu.
     fn pdu_shortstatehash(&self, event_id: &EventId) -> Result<Option<u64>> {
         self.eventid_shorteventid
@@ -144,33 +156,40 @@ impl service::rooms::state_accessor::Data for KeyValueDatabase {
             })
     }
 
-    /// Whether a server is allowed to see an event through federation, based on
-    /// the room's history_visibility at that event's state.
-    ///
-    /// Note: Joined/Invited history visibility not yet implemented.
-    #[tracing::instrument(skip(self))]
-    fn server_can_see_event(&self, _server_name: &ServerName, event_id: &EventId) -> Result<bool> {
-        let shortstatehash = match self.pdu_shortstatehash(event_id) {
-            Ok(Some(shortstatehash)) => shortstatehash,
-            _ => return Ok(false),
-        };
+    /// The user was a joined member at this state (potentially in the past)
+    fn user_was_joined(&self, shortstatehash: u64, user_id: &UserId) -> Result<bool> {
+        Ok(self
+            .state_get_content(
+                shortstatehash,
+                &StateEventType::RoomMember,
+                user_id.as_str(),
+            )?
+            .map(|content| match content.get("membership") {
+                Some(membership) => MembershipState::from(membership.as_str().unwrap_or("")),
+                None => MembershipState::Leave,
+            } == MembershipState::Join)
+            .unwrap_or(false))
+    }
 
-        let history_visibility = self
-            .state_get(shortstatehash, &StateEventType::RoomHistoryVisibility, "")?
-            .map(|event| serde_json::from_str(event.content.get()))
-            .transpose()
-            .map_err(|_| Error::bad_database("Invalid room history visibility event in database."))?
-            .map(|content: RoomHistoryVisibilityEventContent| content.history_visibility);
-
-        Ok(match history_visibility {
-            Some(HistoryVisibility::WorldReadable) => true,
-            Some(HistoryVisibility::Shared) => true,
-            // TODO: Check if any of the server's users were invited
-            // at this point in time.
-            Some(HistoryVisibility::Joined) => false,
-            Some(HistoryVisibility::Invited) => false,
-            _ => false,
-        })
+    /// The user was an invited or joined room member at this state (potentially
+    /// in the past)
+    fn user_was_invited(&self, shortstatehash: u64, user_id: &UserId) -> Result<bool> {
+        Ok(self
+            .state_get_content(
+                shortstatehash,
+                &StateEventType::RoomMember,
+                user_id.as_str(),
+            )?
+            .map(|content| {
+                let membership = match content.get("membership") {
+                    Some(membership) => MembershipState::from(membership.as_str().unwrap_or("")),
+                    None => MembershipState::Leave,
+                };
+                let joined = membership == MembershipState::Join;
+                let invited = membership == MembershipState::Invite;
+                invited || joined
+            })
+            .unwrap_or(false))
     }
 
     /// Returns the full room state.

@@ -1,7 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
-use ruma::{events::StateEventType, EventId, RoomId, ServerName};
+use ruma::{events::StateEventType, EventId, RoomId, UserId};
 
 use crate::{PduEvent, Result};
 
@@ -32,11 +32,22 @@ pub trait Data: Send + Sync {
         state_key: &str,
     ) -> Result<Option<Arc<PduEvent>>>;
 
+    fn state_get_content(
+        &self,
+        shortstatehash: u64,
+        event_type: &StateEventType,
+        state_key: &str,
+    ) -> Result<Option<serde_json::Value>>;
+
     /// Returns the state hash for this pdu.
     fn pdu_shortstatehash(&self, event_id: &EventId) -> Result<Option<u64>>;
 
-    /// Returns true if a server has permission to see an event
-    fn server_can_see_event(&self, sever_name: &ServerName, event_id: &EventId) -> Result<bool>;
+    /// The user was a joined member at this state (potentially in the past)
+    fn user_was_joined(&self, shortstatehash: u64, user_id: &UserId) -> Result<bool>;
+
+    /// The user was an invited or joined room member at this state (potentially
+    /// in the past)
+    fn user_was_invited(&self, shortstatehash: u64, user_id: &UserId) -> Result<bool>;
 
     /// Returns the full room state.
     async fn room_state_full(
