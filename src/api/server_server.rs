@@ -1050,12 +1050,12 @@ fn get_missing_events(
     sender_servername: &ServerName,
     room_id: &RoomId,
     earliest_events: &[OwnedEventId],
-    latest_events: &Vec<OwnedEventId>,
+    latest_events: &[OwnedEventId],
     limit: UInt,
 ) -> Result<Vec<Box<RawJsonValue>>> {
     let limit = u64::from(limit) as usize;
 
-    let mut queued_events = latest_events.clone();
+    let mut queued_events = latest_events.to_owned();
     let mut events = Vec::new();
 
     let mut stop_at_events = HashSet::with_capacity(limit);
@@ -1088,10 +1088,11 @@ fn get_missing_events(
                 ));
             }
 
-            let event_is_visible = services()
-                .rooms
-                .state_accessor
-                .server_can_see_event(sender_servername, &queued_events[i])?;
+            let event_is_visible = services().rooms.state_accessor.server_can_see_event(
+                sender_servername,
+                room_id,
+                &queued_events[i],
+            )?;
 
             if !event_is_visible {
                 i += 1;

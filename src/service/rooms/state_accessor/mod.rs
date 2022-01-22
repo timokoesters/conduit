@@ -1,16 +1,21 @@
 mod data;
 use std::{
     collections::{BTreeMap, HashMap},
-    sync::Arc,
+    sync::{Arc, Mutex},
 };
 
 pub use data::Data;
-use ruma::{events::StateEventType, EventId, RoomId, ServerName};
+use lru_cache::LruCache;
+use ruma::{
+    events::{room::history_visibility::HistoryVisibility, StateEventType},
+    EventId, OwnedServerName, OwnedUserId, RoomId, ServerName, UserId,
+};
 
-use crate::{PduEvent, Result};
+use crate::{services, PduEvent, Result};
 
 pub struct Service {
     pub db: &'static dyn Data,
+    pub server_visibility_cache: Mutex<LruCache<(OwnedServerName, u64), bool>>,
 }
 
 impl Service {
@@ -49,19 +54,107 @@ impl Service {
         self.db.state_get(shortstatehash, event_type, state_key)
     }
 
+    pub fn state_get_content(
+        &self,
+        shortstatehash: u64,
+        event_type: &StateEventType,
+        state_key: &str,
+    ) -> Result<Option<serde_json::Value>> {
+        self.db
+            .state_get_content(shortstatehash, event_type, state_key)
+    }
+
     /// Returns the state hash for this pdu.
     pub fn pdu_shortstatehash(&self, event_id: &EventId) -> Result<Option<u64>> {
         self.db.pdu_shortstatehash(event_id)
     }
 
-    /// Returns true if a server has permission to see an event
+    /// Whether a server is allowed to see an event through federation, based on
+    /// the room's history_visibility at that event's state.
     #[tracing::instrument(skip(self))]
-    pub fn server_can_see_event<'a>(
-        &'a self,
-        sever_name: &ServerName,
+    pub fn server_can_see_event(
+        &self,
+        server_name: &ServerName,
+        room_id: &RoomId,
         event_id: &EventId,
     ) -> Result<bool> {
-        self.db.server_can_see_event(sever_name, event_id)
+        let shortstatehash = match self.pdu_shortstatehash(event_id) {
+            Ok(Some(shortstatehash)) => shortstatehash,
+            _ => return Ok(false),
+        };
+
+        if let Some(visibility) = self
+            .server_visibility_cache
+            .lock()
+            .unwrap()
+            .get_mut(&(server_name.to_owned(), shortstatehash))
+        {
+            return Ok(*visibility);
+        }
+
+        let current_server_members: Vec<OwnedUserId> = services()
+            .rooms
+            .state_cache
+            .room_members(room_id)
+            .filter(|member| {
+                member
+                    .as_ref()
+                    .map(|member| member.server_name() == server_name)
+                    .unwrap_or(true)
+            })
+            .collect::<Result<_>>()?;
+
+        let history_visibility = self
+            .state_get_content(shortstatehash, &StateEventType::RoomHistoryVisibility, "")?
+            .map(|content| match content.get("history_visibility") {
+                Some(visibility) => HistoryVisibility::from(visibility.as_str().unwrap_or("")),
+                None => HistoryVisibility::Invited,
+            });
+
+        let visibility = match history_visibility {
+            Some(HistoryVisibility::Joined) => {
+                // Look at all members in the room from this server; one of them
+                // triggered a backfill. Was one of them a member in the past,
+                // at this event?
+                let mut visible = false;
+                for member in current_server_members {
+                    if self.user_was_joined(shortstatehash, &member)? {
+                        visible = true;
+                        break;
+                    }
+                }
+                visible
+            }
+            Some(HistoryVisibility::Invited) => {
+                let mut visible = false;
+                for member in current_server_members {
+                    if self.user_was_invited(shortstatehash, &member)? {
+                        visible = true;
+                        break;
+                    }
+                }
+                visible
+            }
+            _ => false,
+        };
+
+        self.server_visibility_cache
+            .lock()
+            .unwrap()
+            .insert((server_name.to_owned(), shortstatehash), visibility);
+
+        Ok(visibility)
+    }
+
+    /// The user was a joined member at this state (potentially in the past)
+    pub fn user_was_joined(&self, shortstatehash: u64, user_id: &UserId) -> Result<bool> {
+        self.db.user_was_joined(shortstatehash, user_id)
+    }
+
+    /// The user was an invited or joined room member at this state (potentially
+    /// in the past)
+    pub fn user_was_invited(&self, shortstatehash: u64, user_id: &UserId) -> Result<bool> {
+        self.db.user_was_invited(shortstatehash, user_id)
     }
 
     /// Returns the full room state.
