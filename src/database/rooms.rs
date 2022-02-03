@@ -295,6 +295,22 @@ impl Rooms {
                 sauthevents.remove(&shortstatekey).map(|k| (k, event_id))
             })
             .filter_map(|(k, event_id)| self.get_pdu(&event_id).ok().flatten().map(|pdu| (k, pdu)))
+            .filter(|(_, pdu)| {
+                if pdu.kind != EventType::RoomMember {
+                    return true;
+                }
+
+                #[derive(Deserialize)]
+                struct ExtractMembership {
+                    membership: MembershipState,
+                }
+
+                // Leave out auth events where the membership is leave
+                match serde_json::from_str::<ExtractMembership>(pdu.content.get()) {
+                    Ok(e) => e.membership != MembershipState::Leave,
+                    Err(_) => true,
+                }
+            })
             .collect())
     }
 
