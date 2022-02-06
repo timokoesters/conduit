@@ -1,23 +1,26 @@
-# Deploying Conduit
+## Installing Conduit with a binary
 
-> ## Getting help
->
-> If you run into any problems while setting up Conduit, write an email to `timo@koesters.xyz`, ask us
-> in `#conduit:fachschaften.org` or [open an issue on GitLab](https://gitlab.com/famedly/conduit/-/issues/new).
+{{#include ../_getting_help.md}}
 
-## Installing Conduit
+## Prerequisites
 
-Although you might be able to compile Conduit for Windows, we do recommend running it on a linux server. We therefore
-only offer Linux binaries.
+Although you might be able to compile Conduit for Windows, we do recommend running it on a Linux server.
 
-You may simply download the binary that fits your machine. Run `uname -m` to see what you need. Now copy the right url:
+This guide assumes you have root access to a Debian Linux server with at least 1 GB of available RAM and at least 10 GB of free disk space.
+The more chats you join and the bigger these chats are, the more RAM and storage you'll need.
 
-| CPU Architecture                            | Download stable version        | Download development version |
-| ------------------------------------------- | ------------------------------ | ---------------------------- |
-| x84_64 / amd64 (Most servers and computers) | [Download][x84_64-musl-master] | [Download][x84_64-musl-next] |
-| armv6                                       | [Download][armv6-musl-master]  | [Download][armv6-musl-next]  |
-| armv7 (e.g. Raspberry Pi by default)        | [Download][armv7-musl-master]  | [Download][armv7-musl-next]  |
-| armv8 / aarch64                             | [Download][armv8-musl-master]  | [Download][armv8-musl-next]  |
+As Matrix uses HTTPS for communication, you'll also need a domain, like `matrix.org`. Whenever you see `your.server.name` in this guide, replace it with your actual domain.
+
+## Download Conduit
+
+You may simply download the binary that fits your machine. Run `uname -m` to see what you need. Now copy the right URL:
+
+| CPU Architecture     | Download stable version        | Download development version |
+| -------------------- | ------------------------------ | ---------------------------- |
+| x84_64 / amd64       | [Download][x84_64-musl-master] | [Download][x84_64-musl-next] |
+| armv6                | [Download][armv6-musl-master]  | [Download][armv6-musl-next]  |
+| armv7 (Raspberry Pi) | [Download][armv7-musl-master]  | [Download][armv7-musl-next]  |
+| armv8 / aarch64      | [Download][armv8-musl-master]  | [Download][armv8-musl-next]  |
 
 [x84_64-musl-master]: https://gitlab.com/famedly/conduit/-/jobs/artifacts/master/raw/conduit-x86_64-unknown-linux-musl?job=build:release:cargo:x86_64-unknown-linux-musl
 [armv6-musl-master]: https://gitlab.com/famedly/conduit/-/jobs/artifacts/master/raw/conduit-arm-unknown-linux-musleabihf?job=build:release:cargo:arm-unknown-linux-musleabihf
@@ -29,30 +32,57 @@ You may simply download the binary that fits your machine. Run `uname -m` to see
 [armv8-musl-next]: https://gitlab.com/famedly/conduit/-/jobs/artifacts/next/raw/conduit-aarch64-unknown-linux-musl?job=build:release:cargo:aarch64-unknown-linux-musl
 
 ```bash
-$ sudo wget -O /usr/local/bin/matrix-conduit <url>
-$ sudo chmod +x /usr/local/bin/matrix-conduit
+sudo wget -O /usr/local/bin/matrix-conduit <url>
+sudo chmod +x /usr/local/bin/matrix-conduit
 ```
 
-Alternatively, you may compile the binary yourself
+## Or compile the binary yourself
+
+If you don't want to use our prebuilt binaries, you can also compile Conduit yourself.
+
+To do so, you'll need to install Rust and some dependencies:
 
 ```bash
-$ sudo apt install libclang-dev build-essential
+sudo apt install git curl libclang-dev build-essential
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 ```
+
+If that succeeded, clone Conduit and build it:
 
 ```bash
-$ cargo build --release
+git clone --depth 1 "https://gitlab.com/famedly/conduit.git" conduit && cd conduit
+cargo build --release
+sudo cp target/release/conduit /usr/local/bin/conduit
 ```
 
-Note that this currently requires Rust 1.50.
+Note that this currently requires Rust 1.56, which should automatically be used when you installed Rust via rustup.
 
-If you want to cross compile Conduit to another architecture, read the [Cross-Compile Guide](cross/README.md).
+<details>
+<summary>Cross-Compiling to different architectures</summary>
+
+In theory, Rust offers smooth cross-compilation. But since Conduit is not pure-Rust (due to its database choices), you can't just `cargo build --target armv7-unknown-linux-musleabihf`.
+
+But fear not, smart people (in this case, the wonderful [Maxim](@mdc:anter.io)) prepared some cross-images for you. So to cross-compile:
+
+1. [Install Docker](https://docs.docker.com/get-docker/)
+2. [Install cargo-cross](https://github.com/cross-rs/cross#installation)
+3. Choose a target and compile with `cross build --target="YOUR_TARGET_HERE" --locked --release`
+
+Currently supported targets are:
+
+- `aarch64-unknown-linux-musl`
+- `arm-unknown-linux-musleabihf`
+- `armv7-unknown-linux-musleabihf`
+- `x86_64-unknown-linux-musl`
+
+</details>
 
 ## Adding a Conduit user
 
-While Conduit can run as any user it is usually better to use dedicated users for different services. This also allows
+While Conduit can run as any user, it is usually better to use dedicated users for different services. This also allows
 you to make sure that the file permissions are correctly set up.
 
-In Debian you can use this command to create a Conduit user:
+In Debian, you can use this command to create a Conduit user:
 
 ```bash
 sudo adduser --system conduit --no-create-home
@@ -83,7 +113,7 @@ WantedBy=multi-user.target
 Finally, run
 
 ```bash
-$ sudo systemctl daemon-reload
+sudo systemctl daemon-reload
 ```
 
 ## Creating the Conduit configuration file
@@ -92,53 +122,12 @@ Now we need to create the Conduit's config file in `/etc/matrix-conduit/conduit.
 to read it. You need to change at least the server name.**
 
 ```toml
-[global]
-# The server_name is the pretty name of this server. It is used as a suffix for user
-# and room ids. Examples: matrix.org, conduit.rs
-
-# The Conduit server needs all /_matrix/ requests to be reachable at
-# https://your.server.name/ on port 443 (client-server) and 8448 (federation).
-
-# If that's not possible for you, you can create /.well-known files to redirect
-# requests. See
-# https://matrix.org/docs/spec/client_server/latest#get-well-known-matrix-client
-# and
-# https://matrix.org/docs/spec/server_server/r0.1.4#get-well-known-matrix-server
-# for more information
-
-# YOU NEED TO EDIT THIS
-#server_name = "your.server.name"
-
-# This is the only directory where Conduit will save its data
-database_path = "/var/lib/matrix-conduit/"
-database_backend = "rocksdb"
-
-# The port Conduit will be running on. You need to set up a reverse proxy in
-# your web server (e.g. apache or nginx), so all requests to /_matrix on port
-# 443 and 8448 will be forwarded to the Conduit instance running on this port
-# Docker users: Don't change this, you'll need to map an external port to this.
-port = 6167
-
-# Max size for uploads
-max_request_size = 20_000_000 # in bytes
-
-# Enables registration. If set to false, no users can register on this server.
-allow_registration = true
-
-allow_federation = true
-
-trusted_servers = ["matrix.org"]
-
-#max_concurrent_requests = 100 # How many requests Conduit sends to other servers at the same time
-#log = "info,state_res=warn,rocket=off,_=off,sled=off"
-
-address = "127.0.0.1" # This makes sure Conduit can only be reached using the reverse proxy
-#address = "0.0.0.0" # If Conduit is running in a container, make sure the reverse proxy (ie. Traefik) can reach it.
+{{#include ../../conduit-example.toml}}
 ```
 
 ## Setting the correct file permissions
 
-As we are using a Conduit specific user we need to allow it to read the config. To do that you can run this command on
+As we are using a Conduit specific user, we need to allow it to read the config. To do that, you can run this command on
 Debian:
 
 ```bash
@@ -146,7 +135,7 @@ sudo chown -R root:root /etc/matrix-conduit
 sudo chmod 755 /etc/matrix-conduit
 ```
 
-If you use the default database path you also need to run this:
+If you use the default database path, you also need to run this:
 
 ```bash
 sudo mkdir -p /var/lib/matrix-conduit/
@@ -179,12 +168,12 @@ ProxyPassReverse /_matrix/ http://127.0.0.1:6167/_matrix/
 **You need to make some edits again.** When you are done, run
 
 ```bash
-$ sudo systemctl reload apache2
+sudo systemctl reload apache2
 ```
 
 ### Nginx
 
-If you use Nginx and not Apache, add the following server section inside the http section of `/etc/nginx/nginx.conf`
+If you use Nginx and not Apache, add the following server section inside the `http` section of `/etc/nginx/nginx.conf`
 
 ```nginx
 server {
@@ -211,7 +200,7 @@ server {
 **You need to make some edits again.** When you are done, run
 
 ```bash
-$ sudo systemctl reload nginx
+sudo systemctl reload nginx
 ```
 
 ## SSL Certificate
@@ -219,7 +208,7 @@ $ sudo systemctl reload nginx
 The easiest way to get an SSL certificate, if you don't have one already, is to install `certbot` and run this:
 
 ```bash
-$ sudo certbot -d your.server.name
+sudo certbot -d your.server.name
 ```
 
 ## You're done!
@@ -227,13 +216,13 @@ $ sudo certbot -d your.server.name
 Now you can start Conduit with:
 
 ```bash
-$ sudo systemctl start conduit
+sudo systemctl start conduit
 ```
 
 Set it to start automatically when your system boots with:
 
 ```bash
-$ sudo systemctl enable conduit
+sudo systemctl enable conduit
 ```
 
 ## How do I know it works?
@@ -243,18 +232,9 @@ You can open <https://app.element.io>, enter your homeserver and try to register
 You can also use these commands as a quick health check.
 
 ```bash
-$ curl https://your.server.name/_matrix/client/versions
-$ curl https://your.server.name:8448/_matrix/client/versions
+curl https://your.server.name/_matrix/client/versions
+curl https://your.server.name:8448/_matrix/client/versions
 ```
 
 - To check if your server can talk with other homeservers, you can use the [Matrix Federation Tester](https://federationtester.matrix.org/)
-
-# What's next?
-
-## Audio/Video calls
-
-For Audio/Video call functionality see the [TURN Guide](TURN.md).
-
-## Appservices
-
-If you want to set up an appservice, take a look at the [Appservice Guide](APPSERVICES.md).
+- If you want to set up an Appservice, take a look at the [Appservice Guide](../appservices.md).

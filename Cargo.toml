@@ -114,7 +114,7 @@ path = "src/lib.rs"
 [package.metadata.deb]
 name = "matrix-conduit"
 maintainer = "Paul van Tilburg <paul@luon.net>"
-copyright = "2020, Timo Kösters <timo@koesters.xyz>"
+copyright = "2022, Timo Kösters <timo@koesters.xyz>"
 license-file = ["LICENSE", "3"]
 depends = "$auto, ca-certificates"
 extended-description = """\

@@ -1,8 +1,6 @@
 # Setting up Appservices
 
-## Getting help
-
-If you run into any problems while setting up an Appservice, write an email to `timo@koesters.xyz`, ask us in [#conduit:fachschaften.org](https://matrix.to/#/#conduit:fachschaften.org) or [open an issue on GitLab](https://gitlab.com/famedly/conduit/-/issues/new).
+{{#include _getting_help.md}}
 
 ## Set up the appservice - general instructions
 

@@ -59,6 +59,8 @@ $RECYCLE.BIN/
 # Conduit
 conduit.toml
 conduit.db
+public/
+index.html
 
 # Etc.
 **/*.rs.bk

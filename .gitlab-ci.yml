@@ -1,8 +1,8 @@
 stages:
   - build
-  - build docker image
+  - docker
   - test
-  - upload artifacts
+  - publish
 
 variables:
   GIT_SUBMODULE_STRATEGY: recursive
@@ -145,7 +145,7 @@ build:debug:cargo:x86_64-unknown-linux-musl:
 # --------------------------------------------------------------------- #
 
 .docker-shared-settings:
-  stage: "build docker image"
+  stage: "docker"
   image: jdrouet/docker-with-buildx:stable
   tags: ["docker"]
   services:
@@ -353,7 +353,7 @@ test:dockerlint:
 # --------------------------------------------------------------------- #
 
 publish:package:
-  stage: "upload artifacts"
+  stage: publish
   needs:
     - "build:release:cargo:x86_64-unknown-linux-musl"
     - "build:release:cargo:arm-unknown-linux-musleabihf"
@@ -374,6 +374,68 @@ publish:package:
     - 'curl --header "JOB-TOKEN: $CI_JOB_TOKEN" --upload-file conduit-arm-unknown-linux-musleabihf "${BASE_URL}/conduit-arm-unknown-linux-musleabihf"'
     - 'curl --header "JOB-TOKEN: $CI_JOB_TOKEN" --upload-file conduit-armv7-unknown-linux-musleabihf "${BASE_URL}/conduit-armv7-unknown-linux-musleabihf"'
     - 'curl --header "JOB-TOKEN: $CI_JOB_TOKEN" --upload-file conduit-aarch64-unknown-linux-musl "${BASE_URL}/conduit-aarch64-unknown-linux-musl"'
+
+# --------------------------------------------------------------------- #
+#  Docs testing and publishing                                          #
+# --------------------------------------------------------------------- #
+
+build:docs:
+  stage: build
+  needs: []
+  image: "registry.gitlab.com/jfowl/conduit-containers/rust-with-tools:latest"
+  tags: ["docker"]
+  interruptible: true
+  script:
+    - echo "$CI_MERGE_REQUEST_ID"
+    - mdbook build --dest-dir ./public
+  artifacts:
+    paths:
+      - public
+    expire_in: 2 weeks
+
+.publish-docs-shared-settings:
+  stage: publish
+  needs:
+    - "build:docs"
+  image: "registry.gitlab.com/jfowl/conduit-containers/surge-uploader:latest"
+  tags: ["docker"]
+  interruptible: true
+  variables:
+    GIT_STRATEGY: "none" # Don't need a clean copy of the code, we just operate on artifacts
+  script:
+    - npx surge $CI_PROJECT_DIR/public $CI_ENVIRONMENT_URL
+
+publish:docs:mrs:
+  extends: .publish-docs-shared-settings
+  environment:
+    name: docs/review/$CI_COMMIT_REF_SLUG
+    url: https://conduit-docs-$CI_COMMIT_REF_SLUG.surge.sh
+  rules:
+    - if: "$SURGE_TOKEN && $CI_MERGE_REQUEST_ID"
+
+publish:docs:next:
+  extends: .publish-docs-shared-settings
+  environment:
+    name: docs/next
+    url: https://conduit-docs-next.surge.sh
+  rules:
+    - if: '$SURGE_TOKEN && ($CI_COMMIT_BRANCH == "next")'
+
+publish:docs:master:
+  extends: .publish-docs-shared-settings
+  environment:
+    name: docs/master
+    url: https://conduit-docs.surge.sh
+  rules:
+    - if: '$SURGE_TOKEN && ($CI_COMMIT_BRANCH == "master")'
+
+publish:docs:tags:
+  extends: .publish-docs-shared-settings
+  environment:
+    name: docs/$CI_COMMIT_TAG
+    url: https://conduit-docs-$CI_COMMIT_REF_SLUG.surge.sh
+  rules:
+    - if: "$SURGE_TOKEN && $CI_COMMIT_TAG"
 
 # Avoid duplicate pipelines
 # See: https://docs.gitlab.com/ee/ci/yaml/workflow.html#switch-between-branch-pipelines-and-merge-request-pipelines

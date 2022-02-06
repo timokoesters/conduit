@@ -1,69 +1,98 @@
 # Deploy using Docker
 
+{{#include ../_getting_help.md}}
+
 > **Note:** To run and use Conduit you should probably use it with a Domain or Subdomain behind a reverse proxy (like Nginx, Traefik, Apache, ...) with a Lets Encrypt certificate.
 
-## Docker
+### Get the image
 
-### Build & Dockerfile
+[![Image Size][shield]][dh] [![Image pulls][pulls]][dh]
 
-The Dockerfile provided by Conduit has two stages, each of which creates an image.
+You can download the latest release version of Conduit as a pre-built multi-arch docker image from [Docker Hub][dh]:
 
-1. **Builder:** Builds the binary from local context or by cloning a git revision from the official repository.
-2. **Runner:** Copies the built binary from **Builder** and sets up the runtime environment, like creating a volume to persist the database and applying the correct permissions.
+```bash
+docker pull matrixconduit/matrix-conduit:latest
+```
 
-To build the image you can use the following command
+If you are feeling adventurous, you can also use the unstable, in-development version:
+
+```bash
+docker pull matrixconduit/matrix-conduit:next
+```
+
+[dh]: https://hub.docker.com/r/matrixconduit/matrix-conduit
+[shield]: https://img.shields.io/docker/image-size/matrixconduit/matrix-conduit/latest
+[pulls]: https://img.shields.io/docker/pulls/matrixconduit/matrix-conduit
+
+\
+
+<details>
+<summary>Want to build your own image?</summary>
+
+Clone the repo and enter it:
+
+```bash
+git clone --depth 1 https://gitlab.com/famedly/conduit.git
+cd conduit
+```
+
+Then, build the image:
 
 ```bash
 docker build --tag matrixconduit/matrix-conduit:latest .
 ```
 
-which also will tag the resulting image as `matrixconduit/matrix-conduit:latest`.
+> ⏳ This can take quite some time, as it does a full release build. Depending on your hardware, this may take between 15 and 60 minutes.
+
+If you want to change the userid:groupid under which Conduit will run in the container, you can customize them with build args:
+
+```bash
+docker build \
+  --build-arg USER_ID=1000 \
+  --build-arg GROUP_ID=1000 \
+  --tag matrixconduit/matrix-conduit:latest .
+```
+
+By default, `USER_ID` and `GROUP_ID` are both set to `1000`.
+
+</details>
 
 ### Run
 
-After building the image you can simply run it with
-
 ```bash
-docker run -d -p 8448:6167 \
+docker run -d -p 6167:6167 \
   -v db:/var/lib/matrix-conduit/ \
   -e CONDUIT_SERVER_NAME="your.server.name" \
   -e CONDUIT_DATABASE_BACKEND="rocksdb" \
-  -e CONDUIT_ALLOW_REGISTRATION=true \
-  -e CONDUIT_ALLOW_FEDERATION=true \
+  -e CONDUIT_ALLOW_REGISTRATION="true" \
+  -e CONDUIT_ALLOW_FEDERATION="true" \
   -e CONDUIT_MAX_REQUEST_SIZE="20_000_000" \
-  -e CONDUIT_TRUSTED_SERVERS="[\"matrix.org\"]" \
+  -e CONDUIT_TRUSTED_SERVERS='[\"matrix.org\"]' \
   -e CONDUIT_MAX_CONCURRENT_REQUESTS="100" \
   -e CONDUIT_LOG="info,rocket=off,_=off,sled=off" \
-  --name conduit matrixconduit/matrix-conduit:latest
+  --name "conduit" \
+  matrixconduit/matrix-conduit:latest
 ```
 
-or you can skip the build step and pull the image from one of the following registries:
+The `-d` flag lets the container run in detached mode.
 
-| Registry        | Image                                                           | Size                  |
-| --------------- | --------------------------------------------------------------- | --------------------- |
-| Docker Hub      | [matrixconduit/matrix-conduit:latest][dh]                       | ![Image Size][shield] |
-| GitLab Registry | [registry.gitlab.com/famedly/conduit/matrix-conduit:latest][gl] | ![Image Size][shield] |
+> ⚠️ When running Conduit with docker, you are expected to configure it only with environment variables, not via a config.toml.
+>
+> Where you would use `server_name` in the config.toml, use `CONDUIT_SERVER_NAME` as the env var.
 
-[dh]: https://hub.docker.com/r/matrixconduit/matrix-conduit
-[gl]: https://gitlab.com/famedly/conduit/container_registry/2497937
-[shield]: https://img.shields.io/docker/image-size/matrixconduit/matrix-conduit/latest
-
-The `-d` flag lets the container run in detached mode. You now need to supply a `conduit.toml` config file, an example can be found [here](../conduit-example.toml).
-You can pass in different env vars to change config values on the fly. You can even configure Conduit completely by using env vars, but for that you need
-to pass `-e CONDUIT_CONFIG=""` into your container. For an overview of possible values, please take a look at the `docker-compose.yml` file.
-
-If you just want to test Conduit for a short time, you can use the `--rm` flag, which will clean up everything related to your container after you stop it.
+If you just want to test Conduit for a short time, you can also supply the `--rm` flag, which will clean up everything related to your container after you stop it.
 
 ## Docker-compose
 
 If the `docker run` command is not for you or your setup, you can also use one of the provided `docker-compose` files.
 
 Depending on your proxy setup, you can use one of the following files;
+
 - If you already have a `traefik` instance set up, use [`docker-compose.for-traefik.yml`](docker-compose.for-traefik.yml)
 - If you don't have a `traefik` instance set up (or any other reverse proxy), use [`docker-compose.with-traefik.yml`](docker-compose.with-traefik.yml)
 - For any other reverse proxy, use [`docker-compose.yml`](docker-compose.yml)
 
-When picking the traefik-related compose file, rename it so it matches `docker-compose.yml`, and
+When picking the traefik-related compose file, rename it, so it matches `docker-compose.yml`, and
 rename the override file to `docker-compose.override.yml`. Edit the latter with the values you want
 for your server.
 
@@ -91,7 +120,7 @@ docker-compose up -d
 
 ### Use Traefik as Proxy
 
-As a container user, you probably know about Traefik. It is a easy to use reverse proxy for making
+As a container user, you probably know about Traefik. It is an easy to use reverse proxy for making
 containerized app and services available through the web. With the two provided files,
 [`docker-compose.for-traefik.yml`](docker-compose.for-traefik.yml) (or
 [`docker-compose.with-traefik.yml`](docker-compose.with-traefik.yml)) and
@@ -104,11 +133,11 @@ either expose ports `443` and `8448` or serve two endpoints `.well-known/matrix/
 
 With the service `well-known` we use a single `nginx` container that will serve those two files.
 
-So...step by step:
+So... step by step:
 
 1. Copy [`docker-compose.traefik.yml`](docker-compose.traefik.yml) and [`docker-compose.override.traefik.yml`](docker-compose.override.traefik.yml) from the repository and remove `.traefik` from the filenames.
 2. Open both files and modify/adjust them to your needs. Meaning, change the `CONDUIT_SERVER_NAME` and the volume host mappings according to your needs.
-3. Create the `conduit.toml` config file, an example can be found [here](../conduit-example.toml), or set `CONDUIT_CONFIG=""` and configure Conduit per env vars.
+3. Configure Conduit per env vars.
 4. Uncomment the `element-web` service if you want to host your own Element Web Client and create a `element_config.json`.
 5. Create the files needed by the `well-known` service.
 
