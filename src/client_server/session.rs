@@ -51,8 +51,8 @@ pub async fn login_route(
             identifier,
             password,
         }) => {
-            let username = if let IncomingUserIdentifier::MatrixId(matrix_id) = identifier {
-                matrix_id
+            let username = if let IncomingUserIdentifier::UserIdOrLocalpart(user_id) = identifier {
+                user_id
             } else {
                 return Err(Error::BadRequest(ErrorKind::Forbidden, "Bad login type."));
             };

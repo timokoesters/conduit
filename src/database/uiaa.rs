@@ -8,7 +8,7 @@ use ruma::{
     api::client::{
         error::ErrorKind,
         uiaa::{
-            AuthType, IncomingAuthData, IncomingPassword, IncomingUserIdentifier::MatrixId,
+            AuthType, IncomingAuthData, IncomingPassword, IncomingUserIdentifier::UserIdOrLocalpart,
             UiaaInfo,
         },
     },
@@ -74,7 +74,7 @@ impl Uiaa {
                 ..
             }) => {
                 let username = match identifier {
-                    MatrixId(username) => username,
+                    UserIdOrLocalpart(username) => username,
                     _ => {
                         return Err(Error::BadRequest(
                             ErrorKind::Unrecognized,
