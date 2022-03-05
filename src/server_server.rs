@@ -30,7 +30,7 @@ use ruma::{
             },
             query::{get_profile_information, get_room_information},
             transactions::{
-                edu::{DeviceListUpdateContent, DirectDeviceContent, Edu},
+                edu::{DeviceListUpdateContent, DirectDeviceContent, Edu, SigningKeyUpdateContent},
                 send_transaction_message,
             },
         },
@@ -839,6 +839,22 @@ pub async fn send_transaction_message_route(
                 // Save transaction id with empty data
                 db.transaction_ids
                     .add_txnid(&sender, None, &message_id, &[])?;
+            }
+            Edu::SigningKeyUpdate(SigningKeyUpdateContent {
+                user_id,
+                master_key,
+                self_signing_key,
+            }) => {
+                if let Some(master_key) = master_key {
+                    db.users.add_cross_signing_keys(
+                        &user_id,
+                        &master_key,
+                        &self_signing_key,
+                        &None,
+                        &db.rooms,
+                        &db.globals,
+                    )?;
+                }
             }
             Edu::_Custom(_) => {}
         }
@@ -2998,6 +3014,12 @@ pub async fn get_devices_route(
                 })
             })
             .collect(),
+        master_key: db
+            .users
+            .get_master_key(&body.user_id, |u| u == &body.user_id)?,
+        self_signing_key: db
+            .users
+            .get_self_signing_key(&body.user_id, |u| u == &body.user_id)?,
     })
 }
 

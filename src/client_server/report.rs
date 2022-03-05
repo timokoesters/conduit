@@ -25,14 +25,14 @@ pub async fn report_event_route(
         }
     };
 
-    if body.score > int!(0) || body.score < int!(-100) {
+    if let Some(true) = body.score.map(|s| s > int!(0) || s < int!(-100)) {
         return Err(Error::BadRequest(
             ErrorKind::InvalidParam,
             "Invalid score, must be within 0 to -100",
         ));
     };
 
-    if body.reason.chars().count() > 250 {
+    if let Some(true) = body.reason.clone().map(|s| s.chars().count() > 250) {
         return Err(Error::BadRequest(
             ErrorKind::InvalidParam,
             "Reason too long, should be 250 characters or fewer",
@@ -43,26 +43,26 @@ pub async fn report_event_route(
         .send_message(message::RoomMessageEventContent::text_html(
             format!(
                 "Report received from: {}\n\n\
-                Event ID: {}\n\
-                Room ID: {}\n\
-                Sent By: {}\n\n\
-                Report Score: {}\n\
-                Report Reason: {}",
+                Event ID: {:?}\n\
+                Room ID: {:?}\n\
+                Sent By: {:?}\n\n\
+                Report Score: {:?}\n\
+                Report Reason: {:?}",
                 sender_user, pdu.event_id, pdu.room_id, pdu.sender, body.score, body.reason
             ),
             format!(
-                "<details><summary>Report received from: <a href=\"https://matrix.to/#/{0}\">{0}\
-                </a></summary><ul><li>Event Info<ul><li>Event ID: <code>{1}</code>\
-                <a href=\"https://matrix.to/#/{2}/{1}\">🔗</a></li><li>Room ID: <code>{2}</code>\
-                </li><li>Sent By: <a href=\"https://matrix.to/#/{3}\">{3}</a></li></ul></li><li>\
-                Report Info<ul><li>Report Score: {4}</li><li>Report Reason: {5}</li></ul></li>\
+                "<details><summary>Report received from: <a href=\"https://matrix.to/#/{0:?}\">{0:?}\
+                </a></summary><ul><li>Event Info<ul><li>Event ID: <code>{1:?}</code>\
+                <a href=\"https://matrix.to/#/{2:?}/{1:?}\">🔗</a></li><li>Room ID: <code>{2:?}</code>\
+                </li><li>Sent By: <a href=\"https://matrix.to/#/{3:?}\">{3:?}</a></li></ul></li><li>\
+                Report Info<ul><li>Report Score: {4:?}</li><li>Report Reason: {5}</li></ul></li>\
                 </ul></details>",
                 sender_user,
                 pdu.event_id,
                 pdu.room_id,
                 pdu.sender,
                 body.score,
-                HtmlEscape(&body.reason)
+                HtmlEscape(&body.reason.clone().unwrap_or(String::new()))
             ),
         ));
 

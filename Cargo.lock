@@ -2080,12 +2080,11 @@ dependencies = [
 
 [[package]]
 name = "ruma"
-version = "0.4.0"
-source = "git+https://github.com/ruma/ruma?rev=95fdb303c82e257eee18f5064b87ed4e2ed01ac0#95fdb303c82e257eee18f5064b87ed4e2ed01ac0"
+version = "0.5.0"
+source = "git+https://github.com/ruma/ruma?rev=588fe9c006eb140264160e68f4a21ea1fb28af18#588fe9c006eb140264160e68f4a21ea1fb28af18"
 dependencies = [
  "assign",
  "js_int",
- "ruma-api",
  "ruma-appservice-api",
  "ruma-client-api",
  "ruma-common",
@@ -2100,39 +2099,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "ruma-api"
-version = "0.20.0"
-source = "git+https://github.com/ruma/ruma?rev=95fdb303c82e257eee18f5064b87ed4e2ed01ac0#95fdb303c82e257eee18f5064b87ed4e2ed01ac0"
-dependencies = [
- "bytes",
- "http",
- "percent-encoding",
- "ruma-api-macros",
- "ruma-identifiers",
- "ruma-serde",
- "serde",
- "serde_json",
- "thiserror",
- "tracing",
-]
-
-[[package]]
-name = "ruma-api-macros"
-version = "0.20.0"
-source = "git+https://github.com/ruma/ruma?rev=95fdb303c82e257eee18f5064b87ed4e2ed01ac0#95fdb303c82e257eee18f5064b87ed4e2ed01ac0"
-dependencies = [
- "proc-macro-crate",
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
 name = "ruma-appservice-api"
-version = "0.4.0"
-source = "git+https://github.com/ruma/ruma?rev=95fdb303c82e257eee18f5064b87ed4e2ed01ac0#95fdb303c82e257eee18f5064b87ed4e2ed01ac0"
+version = "0.5.0"
+source = "git+https://github.com/ruma/ruma?rev=588fe9c006eb140264160e68f4a21ea1fb28af18#588fe9c006eb140264160e68f4a21ea1fb28af18"
 dependencies = [
- "ruma-api",
  "ruma-common",
  "ruma-events",
  "ruma-identifiers",
@@ -2144,7 +2114,7 @@ dependencies = [
 [[package]]
 name = "ruma-client-api"
 version = "0.13.0"
-source = "git+https://github.com/ruma/ruma?rev=95fdb303c82e257eee18f5064b87ed4e2ed01ac0#95fdb303c82e257eee18f5064b87ed4e2ed01ac0"
+source = "git+https://github.com/ruma/ruma?rev=588fe9c006eb140264160e68f4a21ea1fb28af18#588fe9c006eb140264160e68f4a21ea1fb28af18"
 dependencies = [
  "assign",
  "bytes",
@@ -2152,7 +2122,6 @@ dependencies = [
  "js_int",
  "maplit",
  "percent-encoding",
- "ruma-api",
  "ruma-common",
  "ruma-events",
  "ruma-identifiers",
@@ -2164,14 +2133,19 @@ dependencies = [
 [[package]]
 name = "ruma-common"
 version = "0.8.0"
-source = "git+https://github.com/ruma/ruma?rev=95fdb303c82e257eee18f5064b87ed4e2ed01ac0#95fdb303c82e257eee18f5064b87ed4e2ed01ac0"
+source = "git+https://github.com/ruma/ruma?rev=588fe9c006eb140264160e68f4a21ea1fb28af18#588fe9c006eb140264160e68f4a21ea1fb28af18"
 dependencies = [
+ "bytes",
+ "http",
  "indexmap",
  "js_int",
+ "percent-encoding",
  "ruma-identifiers",
+ "ruma-macros",
  "ruma-serde",
  "serde",
  "serde_json",
+ "thiserror",
  "tracing",
  "wildmatch",
 ]
@@ -2179,13 +2153,13 @@ dependencies = [
 [[package]]
 name = "ruma-events"
 version = "0.26.0"
-source = "git+https://github.com/ruma/ruma?rev=95fdb303c82e257eee18f5064b87ed4e2ed01ac0#95fdb303c82e257eee18f5064b87ed4e2ed01ac0"
+source = "git+https://github.com/ruma/ruma?rev=588fe9c006eb140264160e68f4a21ea1fb28af18#588fe9c006eb140264160e68f4a21ea1fb28af18"
 dependencies = [
  "indoc",
  "js_int",
  "ruma-common",
- "ruma-events-macros",
  "ruma-identifiers",
+ "ruma-macros",
  "ruma-serde",
  "serde",
  "serde_json",
@@ -2194,23 +2168,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "ruma-events-macros"
-version = "0.26.0"
-source = "git+https://github.com/ruma/ruma?rev=95fdb303c82e257eee18f5064b87ed4e2ed01ac0#95fdb303c82e257eee18f5064b87ed4e2ed01ac0"
-dependencies = [
- "proc-macro-crate",
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
 name = "ruma-federation-api"
-version = "0.3.1"
-source = "git+https://github.com/ruma/ruma?rev=95fdb303c82e257eee18f5064b87ed4e2ed01ac0#95fdb303c82e257eee18f5064b87ed4e2ed01ac0"
+version = "0.4.0"
+source = "git+https://github.com/ruma/ruma?rev=588fe9c006eb140264160e68f4a21ea1fb28af18#588fe9c006eb140264160e68f4a21ea1fb28af18"
 dependencies = [
  "js_int",
- "ruma-api",
  "ruma-common",
  "ruma-events",
  "ruma-identifiers",
@@ -2222,33 +2184,22 @@ dependencies = [
 [[package]]
 name = "ruma-identifiers"
 version = "0.22.0"
-source = "git+https://github.com/ruma/ruma?rev=95fdb303c82e257eee18f5064b87ed4e2ed01ac0#95fdb303c82e257eee18f5064b87ed4e2ed01ac0"
+source = "git+https://github.com/ruma/ruma?rev=588fe9c006eb140264160e68f4a21ea1fb28af18#588fe9c006eb140264160e68f4a21ea1fb28af18"
 dependencies = [
  "percent-encoding",
  "rand 0.8.4",
- "ruma-identifiers-macros",
  "ruma-identifiers-validation",
+ "ruma-macros",
  "ruma-serde",
- "ruma-serde-macros",
  "serde",
  "url",
  "uuid",
 ]
 
 [[package]]
-name = "ruma-identifiers-macros"
-version = "0.22.0"
-source = "git+https://github.com/ruma/ruma?rev=95fdb303c82e257eee18f5064b87ed4e2ed01ac0#95fdb303c82e257eee18f5064b87ed4e2ed01ac0"
-dependencies = [
- "quote",
- "ruma-identifiers-validation",
- "syn",
-]
-
-[[package]]
 name = "ruma-identifiers-validation"
 version = "0.7.0"
-source = "git+https://github.com/ruma/ruma?rev=95fdb303c82e257eee18f5064b87ed4e2ed01ac0#95fdb303c82e257eee18f5064b87ed4e2ed01ac0"
+source = "git+https://github.com/ruma/ruma?rev=588fe9c006eb140264160e68f4a21ea1fb28af18#588fe9c006eb140264160e68f4a21ea1fb28af18"
 dependencies = [
  "thiserror",
  "url",
@@ -2256,11 +2207,10 @@ dependencies = [
 
 [[package]]
 name = "ruma-identity-service-api"
-version = "0.3.0"
-source = "git+https://github.com/ruma/ruma?rev=95fdb303c82e257eee18f5064b87ed4e2ed01ac0#95fdb303c82e257eee18f5064b87ed4e2ed01ac0"
+version = "0.4.0"
+source = "git+https://github.com/ruma/ruma?rev=588fe9c006eb140264160e68f4a21ea1fb28af18#588fe9c006eb140264160e68f4a21ea1fb28af18"
 dependencies = [
  "js_int",
- "ruma-api",
  "ruma-common",
  "ruma-identifiers",
  "ruma-serde",
@@ -2268,12 +2218,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "ruma-macros"
+version = "0.1.0"
+source = "git+https://github.com/ruma/ruma?rev=588fe9c006eb140264160e68f4a21ea1fb28af18#588fe9c006eb140264160e68f4a21ea1fb28af18"
+dependencies = [
+ "proc-macro-crate",
+ "proc-macro2",
+ "quote",
+ "ruma-identifiers-validation",
+ "syn",
+]
+
+[[package]]
 name = "ruma-push-gateway-api"
-version = "0.3.0"
-source = "git+https://github.com/ruma/ruma?rev=95fdb303c82e257eee18f5064b87ed4e2ed01ac0#95fdb303c82e257eee18f5064b87ed4e2ed01ac0"
+version = "0.4.0"
+source = "git+https://github.com/ruma/ruma?rev=588fe9c006eb140264160e68f4a21ea1fb28af18#588fe9c006eb140264160e68f4a21ea1fb28af18"
 dependencies = [
  "js_int",
- "ruma-api",
  "ruma-common",
  "ruma-events",
  "ruma-identifiers",
@@ -2285,33 +2246,22 @@ dependencies = [
 [[package]]
 name = "ruma-serde"
 version = "0.6.0"
-source = "git+https://github.com/ruma/ruma?rev=95fdb303c82e257eee18f5064b87ed4e2ed01ac0#95fdb303c82e257eee18f5064b87ed4e2ed01ac0"
+source = "git+https://github.com/ruma/ruma?rev=588fe9c006eb140264160e68f4a21ea1fb28af18#588fe9c006eb140264160e68f4a21ea1fb28af18"
 dependencies = [
  "base64 0.13.0",
  "bytes",
  "form_urlencoded",
  "itoa 1.0.1",
  "js_int",
- "ruma-serde-macros",
+ "ruma-macros",
  "serde",
  "serde_json",
 ]
 
 [[package]]
-name = "ruma-serde-macros"
-version = "0.6.0"
-source = "git+https://github.com/ruma/ruma?rev=95fdb303c82e257eee18f5064b87ed4e2ed01ac0#95fdb303c82e257eee18f5064b87ed4e2ed01ac0"
-dependencies = [
- "proc-macro-crate",
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
 name = "ruma-signatures"
 version = "0.10.0"
-source = "git+https://github.com/ruma/ruma?rev=95fdb303c82e257eee18f5064b87ed4e2ed01ac0#95fdb303c82e257eee18f5064b87ed4e2ed01ac0"
+source = "git+https://github.com/ruma/ruma?rev=588fe9c006eb140264160e68f4a21ea1fb28af18#588fe9c006eb140264160e68f4a21ea1fb28af18"
 dependencies = [
  "base64 0.13.0",
  "ed25519-dalek",
@@ -2327,8 +2277,8 @@ dependencies = [
 
 [[package]]
 name = "ruma-state-res"
-version = "0.5.0"
-source = "git+https://github.com/ruma/ruma?rev=95fdb303c82e257eee18f5064b87ed4e2ed01ac0#95fdb303c82e257eee18f5064b87ed4e2ed01ac0"
+version = "0.6.0"
+source = "git+https://github.com/ruma/ruma?rev=588fe9c006eb140264160e68f4a21ea1fb28af18#588fe9c006eb140264160e68f4a21ea1fb28af18"
 dependencies = [
  "itertools",
  "js_int",

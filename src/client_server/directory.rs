@@ -11,13 +11,17 @@ use ruma::{
         },
         federation,
     },
-    directory::{Filter, IncomingFilter, IncomingRoomNetwork, PublicRoomsChunk, RoomNetwork},
+    directory::{
+        Filter, IncomingFilter, IncomingRoomNetwork, PublicRoomJoinRule, PublicRoomsChunk,
+        RoomNetwork,
+    },
     events::{
         room::{
             avatar::RoomAvatarEventContent,
             canonical_alias::RoomCanonicalAliasEventContent,
             guest_access::{GuestAccess, RoomGuestAccessEventContent},
             history_visibility::{HistoryVisibility, RoomHistoryVisibilityEventContent},
+            join_rules::{JoinRule, RoomJoinRulesEventContent},
             name::RoomNameEventContent,
             topic::RoomTopicEventContent,
         },
@@ -265,6 +269,25 @@ pub(crate) async fn get_public_rooms_filtered_helper(
                     .transpose()?
                     // url is now an Option<String> so we must flatten
                     .flatten(),
+                join_rule: db
+                    .rooms
+                    .room_state_get(&room_id, &EventType::RoomJoinRules, "")?
+                    .map(|s| {
+                        serde_json::from_str(s.content.get())
+                            .map(|c: RoomJoinRulesEventContent| match c.join_rule {
+                                JoinRule::Public => Some(PublicRoomJoinRule::Public),
+                                JoinRule::Knock => Some(PublicRoomJoinRule::Knock),
+                                _ => None,
+                            })
+                            .map_err(|_| {
+                                Error::bad_database("Invalid room join rule event in database.")
+                            })
+                    })
+                    .transpose()?
+                    .flatten()
+                    .ok_or(Error::bad_database(
+                        "Invalid room join rule event in database.",
+                    ))?,
                 room_id,
             };
             Ok(chunk)

@@ -329,8 +329,12 @@ pub async fn change_password_route(
 /// Note: Also works for Application Services
 pub async fn whoami_route(body: Ruma<whoami::v3::Request>) -> Result<whoami::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
+    let device_id = body.sender_device.as_ref().cloned();
+    let is_guest = device_id.is_none();
     Ok(whoami::v3::Response {
         user_id: sender_user.clone(),
+        device_id,
+        is_guest,
     })
 }
 
