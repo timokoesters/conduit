@@ -2503,32 +2503,23 @@ impl Rooms {
     }
 
     #[tracing::instrument(skip(self, db))]
-    pub async fn leave_all_rooms(
-        &self,
-        user_id: &UserId,
-        db: &Database,
-    ) -> Result<()> {
+    pub async fn leave_all_rooms(&self, user_id: &UserId, db: &Database) -> Result<()> {
         // Leave all joined rooms and reject all invitations
         // TODO: work over federation invites
         let all_rooms = db
             .rooms
             .rooms_joined(user_id)
-            .chain(
-                db.rooms
-                    .rooms_invited(user_id)
-                    .map(|t| t.map(|(r, _)| r)),
-            )
+            .chain(db.rooms.rooms_invited(user_id).map(|t| t.map(|(r, _)| r)))
             .collect::<Vec<_>>();
 
         for room_id in all_rooms {
             let room_id = room_id?;
 
-            self.leave_room(user_id, &room_id, db).await;
+            self.leave_room(user_id, &room_id, db).await?;
         }
 
         Ok(())
     }
-
 
     #[tracing::instrument(skip(self, db))]
     pub async fn leave_room(

@@ -1,7 +1,11 @@
 use std::sync::Arc;
 
 use super::{DEVICE_ID_LENGTH, SESSION_ID_LENGTH, TOKEN_LENGTH};
-use crate::{database::{admin::make_user_admin, DatabaseGuard}, pdu::PduBuilder, utils, Error, Result, Ruma, Database};
+use crate::{
+    database::{admin::make_user_admin, DatabaseGuard},
+    pdu::PduBuilder,
+    utils, Database, Error, Result, Ruma,
+};
 use ruma::{
     api::client::{
         account::{
@@ -12,8 +16,10 @@ use ruma::{
         uiaa::{AuthFlow, AuthType, UiaaInfo},
     },
     events::{
-        room::member::{MembershipState, RoomMemberEventContent},
-        room::message::RoomMessageEventContent,
+        room::{
+            member::{MembershipState, RoomMemberEventContent},
+            message::RoomMessageEventContent,
+        },
         EventType,
     },
     push, UserId,
@@ -393,7 +399,7 @@ pub async fn deactivate_route(
     }
 
     // Make the user leave all rooms before deactivation
-    db.rooms.leave_all_rooms(&sender_user, &db).await;
+    db.rooms.leave_all_rooms(&sender_user, &db).await?;
 
     // Remove devices and mark account as deactivated
     db.users.deactivate_account(sender_user)?;

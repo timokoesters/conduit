@@ -234,9 +234,7 @@ enum AdminCommand {
     ListLocalUsers,
 
     /// Deactivate a user
-    DeactivateUser {
-        user_id: Box<UserId>,
-    },
+    DeactivateUser { user_id: Box<UserId> },
 
     /// Get the auth_chain of a PDU
     GetAuthChain {
@@ -443,21 +441,24 @@ async fn process_admin_command(
         AdminCommand::DeactivateUser { user_id } => {
             let user_id = Arc::<UserId>::from(user_id);
             if db.users.exists(&user_id)? {
-                RoomMessageEventContent::text_plain(
-                    format!("Making {} leave all rooms before deactivation...", user_id)
-                );
+                RoomMessageEventContent::text_plain(format!(
+                    "Making {} leave all rooms before deactivation...",
+                    user_id
+                ));
 
-                db.rooms.leave_all_rooms(&user_id, &db).await;
+                db.rooms.leave_all_rooms(&user_id, &db).await?;
 
                 db.users.deactivate_account(&user_id)?;
 
-                RoomMessageEventContent::text_plain(
-                    format!("User {} has been deactivated", user_id)
-                )
+                RoomMessageEventContent::text_plain(format!(
+                    "User {} has been deactivated",
+                    user_id
+                ))
             } else {
-                RoomMessageEventContent::text_plain(
-                    format!("User {} doesn't exist on this server", user_id)
-                )
+                RoomMessageEventContent::text_plain(format!(
+                    "User {} doesn't exist on this server",
+                    user_id
+                ))
             }
         }
     };
