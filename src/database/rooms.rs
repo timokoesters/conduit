@@ -2522,41 +2522,8 @@ impl Rooms {
 
         for room_id in all_rooms {
             let room_id = room_id?;
-            let event = RoomMemberEventContent {
-                membership: MembershipState::Leave,
-                displayname: None,
-                avatar_url: None,
-                is_direct: None,
-                third_party_invite: None,
-                blurhash: None,
-                reason: None,
-                join_authorized_via_users_server: None,
-            };
 
-            let mutex_state = Arc::clone(
-                db.globals
-                    .roomid_mutex_state
-                    .write()
-                    .unwrap()
-                    .entry(room_id.clone())
-                    .or_default(),
-            );
-
-            let state_lock = mutex_state.lock().await;
-
-            db.rooms.build_and_append_pdu(
-                PduBuilder {
-                    event_type: EventType::RoomMember,
-                    content: to_raw_value(&event).expect("event is valid, we just created it"),
-                    unsigned: None,
-                    state_key: Some(user_id.to_string()),
-                    redacts: None,
-                },
-                user_id,
-                &room_id,
-                &db,
-                &state_lock,
-            )?;
+            self.leave_room(user_id, &room_id, db).await;
         }
 
         Ok(())
