@@ -115,7 +115,7 @@ impl Admin {
                                 send_message(content, guard, &state_lock);
                             }
                             AdminRoomEvent::ProcessMessage(room_message) => {
-                                let reply_message = process_admin_message(&*guard, room_message);
+                                let reply_message = process_admin_message(&*guard, room_message).await;
 
                                 send_message(reply_message, guard, &state_lock);
                             }
@@ -142,7 +142,7 @@ impl Admin {
 }
 
 // Parse and process a message from the admin room
-fn process_admin_message(db: &Database, room_message: String) -> RoomMessageEventContent {
+async fn process_admin_message(db: &Database, room_message: String) -> RoomMessageEventContent {
     let mut lines = room_message.lines();
     let command_line = lines.next().expect("each string has at least one line");
     let body: Vec<_> = lines.collect();
@@ -160,7 +160,7 @@ fn process_admin_message(db: &Database, room_message: String) -> RoomMessageEven
         }
     };
 
-    match process_admin_command(db, admin_command, body) {
+    match process_admin_command(db, admin_command, body).await {
         Ok(reply_message) => reply_message,
         Err(error) => {
             let markdown_message = format!(
@@ -233,6 +233,11 @@ enum AdminCommand {
     /// List users in the database
     ListLocalUsers,
 
+    /// Deactivate a user
+    DeactivateUser {
+        user_id: Box<UserId>,
+    },
+
     /// Get the auth_chain of a PDU
     GetAuthChain {
         /// An event ID (the $ character followed by the base64 reference hash)
@@ -264,7 +269,7 @@ enum AdminCommand {
     ShowConfig,
 }
 
-fn process_admin_command(
+async fn process_admin_command(
     db: &Database,
     command: AdminCommand,
     body: Vec<&str>,
@@ -434,6 +439,26 @@ fn process_admin_command(
         AdminCommand::ShowConfig => {
             // Construct and send the response
             RoomMessageEventContent::text_plain(format!("{}", db.globals.config))
+        }
+        AdminCommand::DeactivateUser { user_id } => {
+            let user_id = Arc::<UserId>::from(user_id);
+            if db.users.exists(&user_id)? {
+                RoomMessageEventContent::text_plain(
+                    format!("Making {} leave all rooms before deactivation...", user_id)
+                );
+
+                db.rooms.leave_all_rooms(&user_id, &db).await;
+
+                db.users.deactivate_account(&user_id)?;
+
+                RoomMessageEventContent::text_plain(
+                    format!("User {} has been deactivated", user_id)
+                )
+            } else {
+                RoomMessageEventContent::text_plain(
+                    format!("User {} doesn't exist on this server", user_id)
+                )
+            }
         }
     };
 

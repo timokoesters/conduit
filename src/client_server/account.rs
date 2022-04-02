@@ -1,11 +1,7 @@
 use std::sync::Arc;
 
 use super::{DEVICE_ID_LENGTH, SESSION_ID_LENGTH, TOKEN_LENGTH};
-use crate::{
-    database::{admin::make_user_admin, DatabaseGuard},
-    pdu::PduBuilder,
-    utils, Error, Result, Ruma,
-};
+use crate::{database::{admin::make_user_admin, DatabaseGuard}, pdu::PduBuilder, utils, Error, Result, Ruma, Database};
 use ruma::{
     api::client::{
         account::{
@@ -396,55 +392,8 @@ pub async fn deactivate_route(
         return Err(Error::BadRequest(ErrorKind::NotJson, "Not json."));
     }
 
-    // Leave all joined rooms and reject all invitations
-    // TODO: work over federation invites
-    let all_rooms = db
-        .rooms
-        .rooms_joined(sender_user)
-        .chain(
-            db.rooms
-                .rooms_invited(sender_user)
-                .map(|t| t.map(|(r, _)| r)),
-        )
-        .collect::<Vec<_>>();
-
-    for room_id in all_rooms {
-        let room_id = room_id?;
-        let event = RoomMemberEventContent {
-            membership: MembershipState::Leave,
-            displayname: None,
-            avatar_url: None,
-            is_direct: None,
-            third_party_invite: None,
-            blurhash: None,
-            reason: None,
-            join_authorized_via_users_server: None,
-        };
-
-        let mutex_state = Arc::clone(
-            db.globals
-                .roomid_mutex_state
-                .write()
-                .unwrap()
-                .entry(room_id.clone())
-                .or_default(),
-        );
-        let state_lock = mutex_state.lock().await;
-
-        db.rooms.build_and_append_pdu(
-            PduBuilder {
-                event_type: EventType::RoomMember,
-                content: to_raw_value(&event).expect("event is valid, we just created it"),
-                unsigned: None,
-                state_key: Some(sender_user.to_string()),
-                redacts: None,
-            },
-            sender_user,
-            &room_id,
-            &db,
-            &state_lock,
-        )?;
-    }
+    // Make the user leave all rooms before deactivation
+    db.rooms.leave_all_rooms(&sender_user, &db).await;
 
     // Remove devices and mark account as deactivated
     db.users.deactivate_account(sender_user)?;

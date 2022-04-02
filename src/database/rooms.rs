@@ -2503,6 +2503,67 @@ impl Rooms {
     }
 
     #[tracing::instrument(skip(self, db))]
+    pub async fn leave_all_rooms(
+        &self,
+        user_id: &UserId,
+        db: &Database,
+    ) -> Result<()> {
+        // Leave all joined rooms and reject all invitations
+        // TODO: work over federation invites
+        let all_rooms = db
+            .rooms
+            .rooms_joined(user_id)
+            .chain(
+                db.rooms
+                    .rooms_invited(user_id)
+                    .map(|t| t.map(|(r, _)| r)),
+            )
+            .collect::<Vec<_>>();
+
+        for room_id in all_rooms {
+            let room_id = room_id?;
+            let event = RoomMemberEventContent {
+                membership: MembershipState::Leave,
+                displayname: None,
+                avatar_url: None,
+                is_direct: None,
+                third_party_invite: None,
+                blurhash: None,
+                reason: None,
+                join_authorized_via_users_server: None,
+            };
+
+            let mutex_state = Arc::clone(
+                db.globals
+                    .roomid_mutex_state
+                    .write()
+                    .unwrap()
+                    .entry(room_id.clone())
+                    .or_default(),
+            );
+
+            let state_lock = mutex_state.lock().await;
+
+            db.rooms.build_and_append_pdu(
+                PduBuilder {
+                    event_type: EventType::RoomMember,
+                    content: to_raw_value(&event).expect("event is valid, we just created it"),
+                    unsigned: None,
+                    state_key: Some(user_id.to_string()),
+                    redacts: None,
+                },
+                user_id,
+                &room_id,
+                &db,
+                &state_lock,
+            )?;
+        }
+
+        Ok(())
+    }
+
+
+    #[tracing::instrument(skip(self, db))]
     pub async fn leave_room(
         &self,
         user_id: &UserId,
