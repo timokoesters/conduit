@@ -27,6 +27,7 @@ ruma = { git = "https://github.com/ruma/ruma", rev = "fa2e3662a456bd8957b3e1293c
 
 # Async runtime and utilities
 tokio = { version = "1.11.0", features = ["fs", "macros", "signal", "sync"] }
+async-stream = "0.3.2"
 # Used for storing data permanently
 sled = { version = "0.34.6", features = ["compression", "no_metrics"], optional = true }
 #sled = { git = "https://github.com/spacejam/sled.git", rev = "e4640e0773595229f398438886f19bca6f7326a2", features = ["compression"] }
@@ -76,7 +77,7 @@ crossbeam = { version = "0.8.1", optional = true }
 num_cpus = "1.13.0"
 threadpool = "1.8.1"
 heed = { git = "https://github.com/timokoesters/heed.git", rev = "f6f825da7fb2c758867e05ad973ef800a6fe1d5d", optional = true }
-rocksdb = { version = "0.17.0", default-features = false, features = ["multi-threaded-cf", "zstd"], optional = true }
+rocksdb = { version = "0.17.0", default-features = true, features = ["multi-threaded-cf", "zstd"], optional = true }
 
 thread_local = "1.1.3"
 # used for TURN server authentication

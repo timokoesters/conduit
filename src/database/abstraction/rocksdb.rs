@@ -36,8 +36,8 @@ fn db_options(max_open_files: i32, rocksdb_cache: &rocksdb::Cache) -> rocksdb::O
     db_opts.set_level_compaction_dynamic_level_bytes(true);
     db_opts.set_target_file_size_base(256 * 1024 * 1024);
     //db_opts.set_compaction_readahead_size(2 * 1024 * 1024);
-    //db_opts.set_use_direct_reads(true);
-    //db_opts.set_use_direct_io_for_flush_and_compaction(true);
+    db_opts.set_use_direct_reads(true);
+    db_opts.set_use_direct_io_for_flush_and_compaction(true);
     db_opts.create_if_missing(true);
     db_opts.increase_parallelism(num_cpus::get() as i32);
     db_opts.set_max_open_files(max_open_files);

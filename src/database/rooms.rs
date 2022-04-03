@@ -1,6 +1,7 @@
 mod edus;
 
 pub use edus::RoomEdus;
+use futures_util::Stream;
 
 use crate::{
     pdu::{EventHash, PduBuilder},
@@ -39,6 +40,7 @@ use std::{
     sync::{Arc, Mutex, RwLock},
 };
 use tokio::sync::MutexGuard;
+use async_stream::try_stream;
 use tracing::{error, warn};
 
 use super::{abstraction::Tree, pusher};
@@ -1083,6 +1085,38 @@ impl Rooms {
             .transpose()
     }
 
+    pub async fn get_pdu_async(&self, event_id: &EventId) -> Result<Option<Arc<PduEvent>>> {
+        if let Some(p) = self.pdu_cache.lock().unwrap().get_mut(event_id) {
+            return Ok(Some(Arc::clone(p)));
+        }
+        let eventid_pduid = Arc::clone(&self.eventid_pduid);
+        let event_id_bytes = event_id.as_bytes().to_vec();
+        if let Some(pdu) = tokio::task::spawn_blocking(move || { eventid_pduid .get(&event_id_bytes)}).await.unwrap()?
+            .map_or_else(
+                || self.eventid_outlierpdu.get(event_id.as_bytes()),
+                |pduid| {
+                    Ok(Some(self.pduid_pdu.get(&pduid)?.ok_or_else(|| {
+                        Error::bad_database("Invalid pduid in eventid_pduid.")
+                    })?))
+                },
+            )?
+            .map(|pdu| {
+                serde_json::from_slice(&pdu)
+                    .map_err(|_| Error::bad_database("Invalid PDU in db."))
+                    .map(Arc::new)
+            })
+            .transpose()?
+        {
+            self.pdu_cache
+                .lock()
+                .unwrap()
+                .insert(event_id.to_owned(), Arc::clone(&pdu));
+            Ok(Some(pdu))
+        } else {
+            Ok(None)
+        }
+    }
+
     /// Returns the pdu.
     ///
     /// Checks the `eventid_outlierpdu` Tree if not found in the timeline.
@@ -2109,7 +2143,7 @@ impl Rooms {
         user_id: &UserId,
         room_id: &RoomId,
         from: u64,
-    ) -> Result<impl Iterator<Item = Result<(Vec<u8>, PduEvent)>> + 'a> {
+    ) -> Result<impl Stream<Item = Result<(Vec<u8>, PduEvent)>>> {
         // Create the first part of the full pdu id
         let prefix = self
             .get_shortroomid(room_id)?
@@ -2124,18 +2158,23 @@ impl Rooms {
 
         let user_id = user_id.to_owned();
 
-        Ok(self
+        let iter = self
             .pduid_pdu
-            .iter_from(current, false)
-            .take_while(move |(k, _)| k.starts_with(&prefix))
-            .map(move |(pdu_id, v)| {
+            .iter_from(current, false);
+
+        Ok(try_stream! {
+            while let Some((k, v)) = tokio::task::spawn_blocking(|| { iter.next() }).await.unwrap() {
+                if !k.starts_with(&prefix) {
+                    return;
+                }
                 let mut pdu = serde_json::from_slice::<PduEvent>(&v)
                     .map_err(|_| Error::bad_database("PDU in db is invalid."))?;
                 if pdu.sender != user_id {
                     pdu.remove_transaction_id()?;
                 }
-                Ok((pdu_id, pdu))
-            }))
+                yield (k, pdu)
+            }
+        })
     }
 
     /// Replace a PDU with the redacted form.
