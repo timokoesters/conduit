@@ -234,21 +234,30 @@ enum AdminCommand {
     ListLocalUsers,
 
     /// Deactivate a user
+    ///
+    /// User will be removed from all rooms by default.
+    /// This behaviour can be overridden with the --no-leave-rooms flag.
     DeactivateUser {
         #[clap(short, long)]
-        no_cleanup: bool,
+        no_leave_rooms: bool,
         user_id: Box<UserId>,
     },
 
     #[clap(verbatim_doc_comment)]
     /// Deactivate a list of users
+    ///
+    /// Users will not be removed from joined rooms by default.
+    /// Can be overridden with --leave-rooms flag.
+    /// Removing a mass amount of users from a room may cause a significant amount of leave events.
+    /// May also drastically increase required time to deactivate users.
+    ///
     /// [commandbody]
     /// # ```
     /// # User list here
     /// # ```
     DeactivateUsers {
         #[clap(short, long)]
-        no_cleanup: bool,
+        leave_rooms: bool,
     },
 
     /// Get the auth_chain of a PDU
@@ -454,7 +463,7 @@ async fn process_admin_command(
             RoomMessageEventContent::text_plain(format!("{}", db.globals.config))
         }
         AdminCommand::DeactivateUser {
-            no_cleanup,
+            no_leave_rooms,
             user_id,
         } => {
             let user_id = Arc::<UserId>::from(user_id);
@@ -464,7 +473,7 @@ async fn process_admin_command(
                     user_id
                 ));
 
-                deactivate_user(&user_id, &db, !no_cleanup).await?;
+                deactivate_user(&user_id, &db, !no_leave_rooms).await?;
 
                 RoomMessageEventContent::text_plain(format!(
                     "User {} has been deactivated",
@@ -477,7 +486,7 @@ async fn process_admin_command(
                 ))
             }
         }
-        AdminCommand::DeactivateUsers { no_cleanup } => {
+        AdminCommand::DeactivateUsers { leave_rooms } => {
             if body.len() > 2 && body[0].trim() == "```" && body.last().unwrap().trim() == "```" {
                 let usernames = body.clone().drain(1..body.len() - 1).collect::<Vec<_>>();
 
@@ -485,7 +494,7 @@ async fn process_admin_command(
 
                 for username in usernames {
                     match <&UserId>::try_from(username) {
-                        Ok(user_id) => match deactivate_user(&user_id, &db, !no_cleanup).await {
+                        Ok(user_id) => match deactivate_user(&user_id, &db, leave_rooms).await {
                             Ok(_) => {
                                 response += &*format!("\nSuccessfully deactivated {:?}", user_id)
                             }
