@@ -234,7 +234,22 @@ enum AdminCommand {
     ListLocalUsers,
 
     /// Deactivate a user
-    DeactivateUser { user_id: Box<UserId> },
+    DeactivateUser {
+        #[clap(short, long)]
+        no_cleanup: bool,
+        user_id: Box<UserId>,
+    },
+
+    #[clap(verbatim_doc_comment)]
+    /// Deactivate a list of users
+    /// [commandbody]
+    /// # ```
+    /// # User list here
+    /// # ```
+    DeactivateUsers {
+        #[clap(short, long)]
+        no_cleanup: bool,
+    },
 
     /// Get the auth_chain of a PDU
     GetAuthChain {
@@ -438,7 +453,10 @@ async fn process_admin_command(
             // Construct and send the response
             RoomMessageEventContent::text_plain(format!("{}", db.globals.config))
         }
-        AdminCommand::DeactivateUser { user_id } => {
+        AdminCommand::DeactivateUser {
+            no_cleanup,
+            user_id,
+        } => {
             let user_id = Arc::<UserId>::from(user_id);
             if db.users.exists(&user_id)? {
                 RoomMessageEventContent::text_plain(format!(
@@ -446,9 +464,7 @@ async fn process_admin_command(
                     user_id
                 ));
 
-                db.rooms.leave_all_rooms(&user_id, &db).await?;
-
-                db.users.deactivate_account(&user_id)?;
+                deactivate_user(&user_id, &db, !no_cleanup).await?;
 
                 RoomMessageEventContent::text_plain(format!(
                     "User {} has been deactivated",
@@ -461,9 +477,44 @@ async fn process_admin_command(
                 ))
             }
         }
+        AdminCommand::DeactivateUsers { no_cleanup } => {
+            if body.len() > 2 && body[0].trim() == "```" && body.last().unwrap().trim() == "```" {
+                let usernames = body.clone().drain(1..body.len() - 1).collect::<Vec<_>>();
+
+                let mut response = "User deactivation report:".to_string();
+
+                for username in usernames {
+                    match <&UserId>::try_from(username) {
+                        Ok(user_id) => match deactivate_user(&user_id, &db, !no_cleanup).await {
+                            Ok(_) => {
+                                response += &*format!("\nSuccessfully deactivated {:?}", user_id)
+                            }
+                            _ => response += &*format!("\nFailed to deactivate {:?}", user_id),
+                        },
+                        Err(e) => response += &*format!("\nNot a valid username {:?}", username),
+                    }
+                }
+
+                RoomMessageEventContent::text_plain(response)
+            } else {
+                RoomMessageEventContent::text_plain(
+                    "Expected code block in command body. Add --help for details.",
+                )
+            }
+        }
     };
 
     Ok(reply_message_content)
+}
+
+async fn deactivate_user(user_id: &UserId, db: &Database, cleanup: bool) -> Result<()> {
+    if cleanup {
+        db.rooms.leave_all_rooms(user_id, db).await?;
+    }
+
+    db.users.deactivate_account(user_id)?;
+
+    Ok(())
 }
 
 // Utility to turn clap's `--help` text to HTML.
