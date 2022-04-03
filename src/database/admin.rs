@@ -489,7 +489,7 @@ async fn process_admin_command(
                             Ok(_) => {
                                 response += &*format!("\nSuccessfully deactivated {:?}", user_id)
                             }
-                            _ => response += &*format!("\nFailed to deactivate {:?}", user_id),
+                            Err(e) => response += &*format!("\nFailed to deactivate {:?}: {}", user_id, e),
                         },
                         Err(e) => response += &*format!("\nNot a valid username {:?}", username),
                     }
