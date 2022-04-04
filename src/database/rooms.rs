@@ -2515,7 +2515,7 @@ impl Rooms {
         for room_id in all_rooms {
             let room_id = room_id?;
 
-            self.leave_room(user_id, &room_id, db).await?;
+            self.leave_room(user_id, &room_id, db).await;
         }
 
         Ok(())
