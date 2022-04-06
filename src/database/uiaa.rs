@@ -8,8 +8,8 @@ use ruma::{
     api::client::{
         error::ErrorKind,
         uiaa::{
-            AuthType, IncomingAuthData, IncomingPassword, IncomingUserIdentifier::UserIdOrLocalpart,
-            UiaaInfo,
+            AuthType, IncomingAuthData, IncomingPassword,
+            IncomingUserIdentifier::UserIdOrLocalpart, UiaaInfo,
         },
     },
     signatures::CanonicalJsonValue,

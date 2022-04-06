@@ -62,7 +62,7 @@ pub async fn report_event_route(
                 pdu.room_id,
                 pdu.sender,
                 body.score,
-                HtmlEscape(&body.reason.clone().unwrap_or(String::new()))
+                HtmlEscape(body.reason.as_deref().unwrap_or(""))
             ),
         ));
 

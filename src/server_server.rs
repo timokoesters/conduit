@@ -2991,6 +2991,11 @@ pub async fn get_devices_route(
         return Err(Error::bad_config("Federation is disabled."));
     }
 
+    let sender_servername = body
+        .sender_servername
+        .as_ref()
+        .expect("server is authenticated");
+
     Ok(get_devices::v1::Response {
         user_id: body.user_id.clone(),
         stream_id: db
@@ -3016,10 +3021,10 @@ pub async fn get_devices_route(
             .collect(),
         master_key: db
             .users
-            .get_master_key(&body.user_id, |u| u == &body.user_id)?,
+            .get_master_key(&body.user_id, |u| u.server_name() == sender_servername)?,
         self_signing_key: db
             .users
-            .get_self_signing_key(&body.user_id, |u| u == &body.user_id)?,
+            .get_self_signing_key(&body.user_id, |u| u.server_name() == sender_servername)?,
     })
 }
 
