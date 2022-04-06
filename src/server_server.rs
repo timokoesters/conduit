@@ -639,6 +639,11 @@ pub async fn send_transaction_message_route(
         return Err(Error::bad_config("Federation is disabled."));
     }
 
+    let sender_servername = body
+        .sender_servername
+        .as_ref()
+        .expect("server is authenticated");
+
     let mut resolved_map = BTreeMap::new();
 
     let pub_key_map = RwLock::new(BTreeMap::new());
@@ -674,7 +679,7 @@ pub async fn send_transaction_message_route(
             }
         };
 
-        acl_check(&body.origin, &room_id, &db)?;
+        acl_check(&sender_servername, &room_id, &db)?;
 
         let mutex = Arc::clone(
             db.globals
@@ -689,7 +694,7 @@ pub async fn send_transaction_message_route(
         resolved_map.insert(
             event_id.clone(),
             handle_incoming_pdu(
-                &body.origin,
+                &sender_servername,
                 &event_id,
                 &room_id,
                 value,
@@ -845,6 +850,9 @@ pub async fn send_transaction_message_route(
                 master_key,
                 self_signing_key,
             }) => {
+                if user_id.server_name() != sender_servername {
+                    continue;
+                }
                 if let Some(master_key) = master_key {
                     db.users.add_cross_signing_keys(
                         &user_id,
