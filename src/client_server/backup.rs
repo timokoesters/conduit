@@ -13,7 +13,7 @@ use ruma::api::client::{
 /// # `POST /_matrix/client/r0/room_keys/version`
 ///
 /// Creates a new backup.
-pub async fn create_backup_route(
+pub async fn create_backup_version_route(
     db: DatabaseGuard,
     body: Ruma<create_backup_version::v3::Request>,
 ) -> Result<create_backup_version::v3::Response> {
@@ -30,7 +30,7 @@ pub async fn create_backup_route(
 /// # `PUT /_matrix/client/r0/room_keys/version/{version}`
 ///
 /// Update information about an existing backup. Only `auth_data` can be modified.
-pub async fn update_backup_route(
+pub async fn update_backup_version_route(
     db: DatabaseGuard,
     body: Ruma<update_backup_version::v3::Request<'_>>,
 ) -> Result<update_backup_version::v3::Response> {
@@ -46,7 +46,7 @@ pub async fn update_backup_route(
 /// # `GET /_matrix/client/r0/room_keys/version`
 ///
 /// Get information about the latest backup version.
-pub async fn get_latest_backup_route(
+pub async fn get_latest_backup_info_route(
     db: DatabaseGuard,
     body: Ruma<get_latest_backup_info::v3::Request>,
 ) -> Result<get_latest_backup_info::v3::Response> {
@@ -71,7 +71,7 @@ pub async fn get_latest_backup_route(
 /// # `GET /_matrix/client/r0/room_keys/version`
 ///
 /// Get information about an existing backup.
-pub async fn get_backup_route(
+pub async fn get_backup_info_route(
     db: DatabaseGuard,
     body: Ruma<get_backup_info::v3::Request<'_>>,
 ) -> Result<get_backup_info::v3::Response> {
@@ -97,7 +97,7 @@ pub async fn get_backup_route(
 /// Delete an existing key backup.
 ///
 /// - Deletes both information about the backup, as well as all key data related to the backup
-pub async fn delete_backup_route(
+pub async fn delete_backup_version_route(
     db: DatabaseGuard,
     body: Ruma<delete_backup_version::v3::Request<'_>>,
 ) -> Result<delete_backup_version::v3::Response> {
@@ -163,7 +163,7 @@ pub async fn add_backup_keys_route(
 /// - Only manipulating the most recently created version of the backup is allowed
 /// - Adds the keys to the backup
 /// - Returns the new number of keys in this backup and the etag
-pub async fn add_backup_key_sessions_route(
+pub async fn add_backup_keys_for_room_route(
     db: DatabaseGuard,
     body: Ruma<add_backup_keys_for_room::v3::Request<'_>>,
 ) -> Result<add_backup_keys_for_room::v3::Response> {
@@ -207,7 +207,7 @@ pub async fn add_backup_key_sessions_route(
 /// - Only manipulating the most recently created version of the backup is allowed
 /// - Adds the keys to the backup
 /// - Returns the new number of keys in this backup and the etag
-pub async fn add_backup_key_session_route(
+pub async fn add_backup_keys_for_session_route(
     db: DatabaseGuard,
     body: Ruma<add_backup_keys_for_session::v3::Request<'_>>,
 ) -> Result<add_backup_keys_for_session::v3::Response> {
@@ -259,7 +259,7 @@ pub async fn get_backup_keys_route(
 /// # `GET /_matrix/client/r0/room_keys/keys/{roomId}`
 ///
 /// Retrieves all keys from the backup for a given room.
-pub async fn get_backup_key_sessions_route(
+pub async fn get_backup_keys_for_room_route(
     db: DatabaseGuard,
     body: Ruma<get_backup_keys_for_room::v3::Request<'_>>,
 ) -> Result<get_backup_keys_for_room::v3::Response> {
@@ -275,7 +275,7 @@ pub async fn get_backup_key_sessions_route(
 /// # `GET /_matrix/client/r0/room_keys/keys/{roomId}/{sessionId}`
 ///
 /// Retrieves a key from the backup.
-pub async fn get_backup_key_session_route(
+pub async fn get_backup_keys_for_session_route(
     db: DatabaseGuard,
     body: Ruma<get_backup_keys_for_session::v3::Request<'_>>,
 ) -> Result<get_backup_keys_for_session::v3::Response> {
@@ -314,7 +314,7 @@ pub async fn delete_backup_keys_route(
 /// # `DELETE /_matrix/client/r0/room_keys/keys/{roomId}`
 ///
 /// Delete the keys from the backup for a given room.
-pub async fn delete_backup_key_sessions_route(
+pub async fn delete_backup_keys_for_room_route(
     db: DatabaseGuard,
     body: Ruma<delete_backup_keys_for_room::v3::Request<'_>>,
 ) -> Result<delete_backup_keys_for_room::v3::Response> {
@@ -334,7 +334,7 @@ pub async fn delete_backup_key_sessions_route(
 /// # `DELETE /_matrix/client/r0/room_keys/keys/{roomId}/{sessionId}`
 ///
 /// Delete a key from the backup.
-pub async fn delete_backup_key_session_route(
+pub async fn delete_backup_keys_for_session_route(
     db: DatabaseGuard,
     body: Ruma<delete_backup_keys_for_session::v3::Request<'_>>,
 ) -> Result<delete_backup_keys_for_session::v3::Response> {
