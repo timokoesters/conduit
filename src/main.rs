@@ -318,6 +318,7 @@ fn routes() -> Router {
         .ruma_route(client_server::send_state_event_for_key_route)
         .ruma_route(client_server::get_state_events_route)
         .ruma_route(client_server::get_state_events_for_key_route)
+        .ruma_route(client_server::get_hierarchy_route)
         // Ruma doesn't have support for multiple paths for a single endpoint yet, and these routes
         // share one Ruma request / response type pair with {get,send}_state_event_for_key_route
         .route(
