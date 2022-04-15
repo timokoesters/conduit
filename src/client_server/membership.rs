@@ -507,7 +507,7 @@ async fn join_room_by_id_helper(
         let (make_join_response, remote_server) = make_join_response_and_server?;
 
         let room_version = match make_join_response.room_version {
-            Some(room_version) if db.rooms.is_supported_version(&db, &room_version) => room_version,
+            Some(room_version) if db.rooms.is_supported_version(db, &room_version) => room_version,
             _ => return Err(Error::BadServerResponse("Room version is not supported")),
         };
 
@@ -975,8 +975,7 @@ pub(crate) async fn invite_helper<'a>(
         let pub_key_map = RwLock::new(BTreeMap::new());
 
         // We do not add the event_id field to the pdu here because of signature and hashes checks
-        let (event_id, value) = match crate::pdu::gen_event_id_canonical_json(&response.event, &db)
-        {
+        let (event_id, value) = match crate::pdu::gen_event_id_canonical_json(&response.event, db) {
             Ok(t) => t,
             Err(_) => {
                 // Event could not be converted to canonical json

@@ -279,7 +279,7 @@ impl Rooms {
         let mut sauthevents = auth_events
             .into_iter()
             .filter_map(|(event_type, state_key)| {
-                self.get_shortstatekey(&event_type.to_string().into(), &state_key)
+                self.get_shortstatekey(&event_type, &state_key)
                     .ok()
                     .flatten()
                     .map(|s| (s, (event_type, state_key)))
@@ -1529,7 +1529,7 @@ impl Rooms {
         {
             hash_map::Entry::Vacant(v) => {
                 if let Some(last_count) = self
-                    .pdus_until(&sender_user, &room_id, u64::MAX)?
+                    .pdus_until(sender_user, room_id, u64::MAX)?
                     .filter_map(|r| {
                         // Filter out buggy events
                         if r.is_err() {
@@ -2694,7 +2694,7 @@ impl Rooms {
         let (make_leave_response, remote_server) = make_leave_response_and_server?;
 
         let room_version_id = match make_leave_response.room_version {
-            Some(version) if self.is_supported_version(&db, &version) => version,
+            Some(version) if self.is_supported_version(db, &version) => version,
             _ => return Err(Error::BadServerResponse("Room version is not supported")),
         };
 
@@ -3467,7 +3467,7 @@ impl Rooms {
             .transpose()?;
         let room_version = create_event_content
             .map(|create_event| create_event.room_version)
-            .ok_or_else(|| Error::BadDatabase("Invalid room version"))?;
+            .ok_or(Error::BadDatabase("Invalid room version"))?;
         Ok(room_version)
     }
 }

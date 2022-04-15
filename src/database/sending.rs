@@ -535,7 +535,7 @@ impl Sending {
                 let response = appservice_server::send_request(
                     &db.globals,
                     db.appservice
-                        .get_registration(&id)
+                        .get_registration(id)
                         .map_err(|e| (kind.clone(), e))?
                         .ok_or_else(|| {
                             (

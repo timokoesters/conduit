@@ -4,7 +4,7 @@ use ruma::{
         error::ErrorKind,
         message::{get_message_events, send_message_event},
     },
-    events::{RoomEventType, StateEventType},
+    events::{MessageLikeEventType, StateEventType},
 };
 use std::{
     collections::{BTreeMap, HashSet},
@@ -36,9 +36,7 @@ pub async fn send_message_event_route(
     let state_lock = mutex_state.lock().await;
 
     // Forbid m.room.encrypted if encryption is disabled
-    if RoomEventType::RoomEncrypted == body.event_type.to_string().into()
-        && !db.globals.allow_encryption()
-    {
+    if body.event_type == MessageLikeEventType::RoomEncrypted && !db.globals.allow_encryption() {
         return Err(Error::BadRequest(
             ErrorKind::Forbidden,
             "Encryption has been disabled",

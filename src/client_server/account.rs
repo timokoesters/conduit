@@ -16,8 +16,10 @@ use ruma::{
         uiaa::{AuthFlow, AuthType, UiaaInfo},
     },
     events::{
-        room::member::{MembershipState, RoomMemberEventContent},
-        room::message::RoomMessageEventContent,
+        room::{
+            member::{MembershipState, RoomMemberEventContent},
+            message::RoomMessageEventContent,
+        },
         GlobalAccountDataEventType, RoomEventType,
     },
     push, UserId,
@@ -350,7 +352,7 @@ pub async fn whoami_route(
     Ok(whoami::v3::Response {
         user_id: sender_user.clone(),
         device_id,
-        is_guest: db.users.is_deactivated(&sender_user)?,
+        is_guest: db.users.is_deactivated(sender_user)?,
     })
 }
 

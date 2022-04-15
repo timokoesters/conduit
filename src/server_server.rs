@@ -684,7 +684,7 @@ pub async fn send_transaction_message_route(
             }
         };
 
-        acl_check(&sender_servername, &room_id, &db)?;
+        acl_check(sender_servername, &room_id, &db)?;
 
         let mutex = Arc::clone(
             db.globals
@@ -699,7 +699,7 @@ pub async fn send_transaction_message_route(
         resolved_map.insert(
             event_id.clone(),
             handle_incoming_pdu(
-                &sender_servername,
+                sender_servername,
                 &event_id,
                 &room_id,
                 value,
@@ -1214,7 +1214,7 @@ fn handle_outlier_pdu<'a>(
             &room_version,
             &incoming_pdu,
             None::<PduEvent>, // TODO: third party invite
-            |k, s| auth_events.get(&(k.to_string().into(), s.to_owned())),
+            |k, s| auth_events.get(&(k.to_owned(), s.to_owned())),
         )
         .map_err(|_e| "Auth check failed".to_owned())?
         {
@@ -1357,9 +1357,7 @@ async fn upgrade_outlier_to_timeline_pdu(
 
                 for (k, id) in leaf_state {
                     if let Ok((ty, st_key)) = db.rooms.get_statekey_from_short(k) {
-                        // FIXME: Undo .to_string().into() when StateMap
-                        //        is updated to use StateEventType
-                        state.insert((ty.to_string().into(), st_key), id.clone());
+                        state.insert((ty, st_key), id.clone());
                     } else {
                         warn!("Failed to get_statekey_from_short.");
                     }
@@ -1501,7 +1499,7 @@ async fn upgrade_outlier_to_timeline_pdu(
         None::<PduEvent>, // TODO: third party invite
         |k, s| {
             db.rooms
-                .get_shortstatekey(&k.to_string().into(), s)
+                .get_shortstatekey(k, s)
                 .ok()
                 .flatten()
                 .and_then(|shortstatekey| state_at_incoming_event.get(&shortstatekey))
@@ -1705,9 +1703,7 @@ async fn upgrade_outlier_to_timeline_pdu(
                         .filter_map(|(k, id)| {
                             db.rooms
                                 .get_statekey_from_short(k)
-                                // FIXME: Undo .to_string().into() when StateMap
-                                //        is updated to use StateEventType
-                                .map(|(ty, st_key)| ((ty.to_string().into(), st_key), id))
+                                .map(|(ty, st_key)| ((ty, st_key), id))
                                 .map_err(|e| warn!("Failed to get_statekey_from_short: {}", e))
                                 .ok()
                         })
@@ -1867,7 +1863,7 @@ pub(crate) fn fetch_and_handle_outliers<'a>(
                     Ok(res) => {
                         warn!("Got {} over federation", next_id);
                         let (calculated_event_id, value) =
-                            match crate::pdu::gen_event_id_canonical_json(&res.pdu, &db) {
+                            match crate::pdu::gen_event_id_canonical_json(&res.pdu, db) {
                                 Ok(t) => t,
                                 Err(_) => {
                                     back_off((*next_id).to_owned());
@@ -2828,7 +2824,7 @@ async fn create_join_event(
     // let mut auth_cache = EventMap::new();
 
     // We do not add the event_id field to the pdu here because of signature and hashes checks
-    let (event_id, value) = match crate::pdu::gen_event_id_canonical_json(pdu, &db) {
+    let (event_id, value) = match crate::pdu::gen_event_id_canonical_json(pdu, db) {
         Ok(t) => t,
         Err(_) => {
             // Event could not be converted to canonical json

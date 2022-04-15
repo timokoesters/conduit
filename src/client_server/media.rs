@@ -83,7 +83,7 @@ pub async fn get_remote_content(
 
     db.media
         .create(
-            mxc.to_string(),
+            mxc.to_owned(),
             &db.globals,
             &content_response.content_disposition.as_deref(),
             &content_response.content_type.as_deref(),

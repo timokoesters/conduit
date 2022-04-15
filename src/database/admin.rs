@@ -147,13 +147,11 @@ fn process_admin_message(db: &Database, room_message: String) -> RoomMessageEven
     let command_line = lines.next().expect("each string has at least one line");
     let body: Vec<_> = lines.collect();
 
-    let admin_command = match parse_admin_command(&command_line) {
+    let admin_command = match parse_admin_command(command_line) {
         Ok(command) => command,
         Err(error) => {
             let server_name = db.globals.server_name();
-            let message = error
-                .to_string()
-                .replace("server.name", server_name.as_str());
+            let message = error.replace("server.name", server_name.as_str());
             let html_message = usage_to_html(&message, server_name);
 
             return RoomMessageEventContent::text_html(message, html_message);
@@ -193,8 +191,8 @@ fn parse_admin_command(command_line: &str) -> std::result::Result<AdminCommand, 
 
     // Backwards compatibility with `register_appservice`-style commands
     let command_with_dashes;
-    if argv.len() > 1 && argv[1].contains("_") {
-        command_with_dashes = argv[1].replace("_", "-");
+    if argv.len() > 1 && argv[1].contains('_') {
+        command_with_dashes = argv[1].replace('_', "-");
         argv[1] = &command_with_dashes;
     }
 
@@ -498,7 +496,7 @@ fn usage_to_html(text: &str, server_name: &ServerName) -> String {
     let text = text.replace("subcommand", "command");
 
     // Escape option names (e.g. `<element-id>`) since they look like HTML tags
-    let text = text.replace("<", "&lt;").replace(">", "&gt;");
+    let text = text.replace('<', "&lt;").replace('>', "&gt;");
 
     // Italicize the first line (command name and version text)
     let re = Regex::new("^(.*?)\n").expect("Regex compilation should not fail");
@@ -526,7 +524,7 @@ fn usage_to_html(text: &str, server_name: &ServerName) -> String {
 
         while text_lines
             .get(line_index)
-            .map(|line| line.starts_with("#"))
+            .map(|line| line.starts_with('#'))
             .unwrap_or(false)
         {
             command_body += if text_lines[line_index].starts_with("# ") {
@@ -557,12 +555,10 @@ fn usage_to_html(text: &str, server_name: &ServerName) -> String {
     };
 
     // Add HTML line-breaks
-    let text = text
-        .replace("\n\n\n", "\n\n")
-        .replace("\n", "<br>\n")
-        .replace("[nobr]<br>", "");
 
-    text
+    text.replace("\n\n\n", "\n\n")
+        .replace('\n', "<br>\n")
+        .replace("[nobr]<br>", "")
 }
 
 /// Create the admin room.
@@ -606,7 +602,7 @@ pub(crate) async fn create_admin_room(db: &Database) -> Result<()> {
         },
         &conduit_user,
         &room_id,
-        &db,
+        db,
         &state_lock,
     )?;
 
@@ -631,7 +627,7 @@ pub(crate) async fn create_admin_room(db: &Database) -> Result<()> {
         },
         &conduit_user,
         &room_id,
-        &db,
+        db,
         &state_lock,
     )?;
 
@@ -653,7 +649,7 @@ pub(crate) async fn create_admin_room(db: &Database) -> Result<()> {
         },
         &conduit_user,
         &room_id,
-        &db,
+        db,
         &state_lock,
     )?;
 
@@ -669,7 +665,7 @@ pub(crate) async fn create_admin_room(db: &Database) -> Result<()> {
         },
         &conduit_user,
         &room_id,
-        &db,
+        db,
         &state_lock,
     )?;
 
@@ -687,7 +683,7 @@ pub(crate) async fn create_admin_room(db: &Database) -> Result<()> {
         },
         &conduit_user,
         &room_id,
-        &db,
+        db,
         &state_lock,
     )?;
 
@@ -703,7 +699,7 @@ pub(crate) async fn create_admin_room(db: &Database) -> Result<()> {
         },
         &conduit_user,
         &room_id,
-        &db,
+        db,
         &state_lock,
     )?;
 
@@ -721,7 +717,7 @@ pub(crate) async fn create_admin_room(db: &Database) -> Result<()> {
         },
         &conduit_user,
         &room_id,
-        &db,
+        db,
         &state_lock,
     )?;
 
@@ -738,7 +734,7 @@ pub(crate) async fn create_admin_room(db: &Database) -> Result<()> {
         },
         &conduit_user,
         &room_id,
-        &db,
+        db,
         &state_lock,
     )?;
 
@@ -761,7 +757,7 @@ pub(crate) async fn create_admin_room(db: &Database) -> Result<()> {
         },
         &conduit_user,
         &room_id,
-        &db,
+        db,
         &state_lock,
     )?;
 
@@ -821,7 +817,7 @@ pub(crate) async fn make_user_admin(
         },
         &conduit_user,
         &room_id,
-        &db,
+        db,
         &state_lock,
     )?;
     db.rooms.build_and_append_pdu(
@@ -842,9 +838,9 @@ pub(crate) async fn make_user_admin(
             state_key: Some(user_id.to_string()),
             redacts: None,
         },
-        &user_id,
+        user_id,
         &room_id,
-        &db,
+        db,
         &state_lock,
     )?;
 
@@ -867,7 +863,7 @@ pub(crate) async fn make_user_admin(
         },
         &conduit_user,
         &room_id,
-        &db,
+        db,
         &state_lock,
     )?;
 
@@ -876,8 +872,8 @@ pub(crate) async fn make_user_admin(
         PduBuilder {
             event_type: RoomEventType::RoomMessage,
             content: to_raw_value(&RoomMessageEventContent::text_html(
-                    format!("## Thank you for trying out Conduit!\n\nConduit is currently in Beta. This means you can join and participate in most Matrix rooms, but not all features are supported and you might run into bugs from time to time.\n\nHelpful links:\n> Website: https://conduit.rs\n> Git and Documentation: https://gitlab.com/famedly/conduit\n> Report issues: https://gitlab.com/famedly/conduit/-/issues\n\nFor a list of available commands, send the following message in this room: `@conduit:{}: --help`\n\nHere are some rooms you can join (by typing the command):\n\nConduit room (Ask questions and get notified on updates):\n`/join #conduit:fachschaften.org`\n\nConduit lounge (Off-topic, only Conduit users are allowed to join)\n`/join #conduit-lounge:conduit.rs`", db.globals.server_name()).to_owned(),
-                    format!("<h2>Thank you for trying out Conduit!</h2>\n<p>Conduit is currently in Beta. This means you can join and participate in most Matrix rooms, but not all features are supported and you might run into bugs from time to time.</p>\n<p>Helpful links:</p>\n<blockquote>\n<p>Website: https://conduit.rs<br>Git and Documentation: https://gitlab.com/famedly/conduit<br>Report issues: https://gitlab.com/famedly/conduit/-/issues</p>\n</blockquote>\n<p>For a list of available commands, send the following message in this room: <code>@conduit:{}: --help</code></p>\n<p>Here are some rooms you can join (by typing the command):</p>\n<p>Conduit room (Ask questions and get notified on updates):<br><code>/join #conduit:fachschaften.org</code></p>\n<p>Conduit lounge (Off-topic, only Conduit users are allowed to join)<br><code>/join #conduit-lounge:conduit.rs</code></p>\n", db.globals.server_name()).to_owned(),
+                format!("## Thank you for trying out Conduit!\n\nConduit is currently in Beta. This means you can join and participate in most Matrix rooms, but not all features are supported and you might run into bugs from time to time.\n\nHelpful links:\n> Website: https://conduit.rs\n> Git and Documentation: https://gitlab.com/famedly/conduit\n> Report issues: https://gitlab.com/famedly/conduit/-/issues\n\nFor a list of available commands, send the following message in this room: `@conduit:{}: --help`\n\nHere are some rooms you can join (by typing the command):\n\nConduit room (Ask questions and get notified on updates):\n`/join #conduit:fachschaften.org`\n\nConduit lounge (Off-topic, only Conduit users are allowed to join)\n`/join #conduit-lounge:conduit.rs`", db.globals.server_name()),
+                format!("<h2>Thank you for trying out Conduit!</h2>\n<p>Conduit is currently in Beta. This means you can join and participate in most Matrix rooms, but not all features are supported and you might run into bugs from time to time.</p>\n<p>Helpful links:</p>\n<blockquote>\n<p>Website: https://conduit.rs<br>Git and Documentation: https://gitlab.com/famedly/conduit<br>Report issues: https://gitlab.com/famedly/conduit/-/issues</p>\n</blockquote>\n<p>For a list of available commands, send the following message in this room: <code>@conduit:{}: --help</code></p>\n<p>Here are some rooms you can join (by typing the command):</p>\n<p>Conduit room (Ask questions and get notified on updates):<br><code>/join #conduit:fachschaften.org</code></p>\n<p>Conduit lounge (Off-topic, only Conduit users are allowed to join)<br><code>/join #conduit-lounge:conduit.rs</code></p>\n", db.globals.server_name()),
             ))
             .expect("event is valid, we just created it"),
             unsigned: None,
@@ -886,7 +882,7 @@ pub(crate) async fn make_user_admin(
         },
         &conduit_user,
         &room_id,
-        &db,
+        db,
         &state_lock,
     )?;
 

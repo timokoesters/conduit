@@ -61,7 +61,7 @@ pub async fn send_event_to_device_route(
                 DeviceIdOrAllDevices::DeviceId(target_device_id) => db.users.add_to_device_event(
                     sender_user,
                     target_user_id,
-                    &target_device_id,
+                    target_device_id,
                     &body.event_type,
                     event.deserialize_as().map_err(|_| {
                         Error::BadRequest(ErrorKind::InvalidParam, "Event is invalid")

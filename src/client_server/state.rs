@@ -73,7 +73,7 @@ pub async fn send_state_event_for_empty_key_route(
         &db,
         sender_user,
         &body.room_id,
-        &body.event_type.to_string().into(),
+        &body.event_type,
         &body.body.body,
         body.state_key.to_owned(),
     )

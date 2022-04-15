@@ -285,9 +285,9 @@ pub(crate) async fn get_public_rooms_filtered_helper(
                     })
                     .transpose()?
                     .flatten()
-                    .ok_or(Error::bad_database(
-                        "Invalid room join rule event in database.",
-                    ))?,
+                    .ok_or_else(|| {
+                        Error::bad_database("Invalid room join rule event in database.")
+                    })?,
                 room_id,
             };
             Ok(chunk)

@@ -56,11 +56,10 @@ pub async fn login_route(
             } else {
                 return Err(Error::BadRequest(ErrorKind::Forbidden, "Bad login type."));
             };
-            let user_id =
-                UserId::parse_with_server_name(username.to_owned(), db.globals.server_name())
-                    .map_err(|_| {
-                        Error::BadRequest(ErrorKind::InvalidUsername, "Username is invalid.")
-                    })?;
+            let user_id = UserId::parse_with_server_name(username, db.globals.server_name())
+                .map_err(|_| {
+                    Error::BadRequest(ErrorKind::InvalidUsername, "Username is invalid.")
+                })?;
             let hash = db.users.password_hash(&user_id)?.ok_or(Error::BadRequest(
                 ErrorKind::Forbidden,
                 "Wrong username or password.",
