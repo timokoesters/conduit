@@ -416,7 +416,7 @@ pub async fn get_member_events_route(
             .room_state_full(&body.room_id)?
             .iter()
             .filter(|(key, _)| key.0 == StateEventType::RoomMember)
-            .map(|(_, pdu)| pdu.to_member_event().into())
+            .map(|(_, pdu)| pdu.to_member_event().cast())
             .collect(),
     })
 }

@@ -21,7 +21,7 @@ tower-http = { version = "0.2.1", features = ["add-extension", "cors", "compress
 
 # Used for matrix spec type definitions and helpers
 #ruma = { version = "0.4.0", features = ["compat", "rand", "appservice-api-c", "client-api", "federation-api", "push-gateway-api-c", "state-res", "unstable-pre-spec", "unstable-exhaustive-types"] }
-ruma = { git = "https://github.com/ruma/ruma", rev = "d614ad1422d6c4b3437ebc318ca8514ae338fd6d", features = ["compat", "rand", "appservice-api-c", "client-api", "federation-api", "push-gateway-api-c", "state-res", "unstable-msc2448", "unstable-pre-spec", "unstable-exhaustive-types"] }
+ruma = { git = "https://github.com/ruma/ruma", rev = "3ec82181581b6411d2fa96c196bc96052236d3a5", features = ["compat", "rand", "appservice-api-c", "client-api", "federation-api", "push-gateway-api-c", "state-res", "unstable-msc2448", "unstable-pre-spec", "unstable-exhaustive-types"] }
 #ruma = { git = "https://github.com/timokoesters/ruma", rev = "50c1db7e0a3a21fc794b0cce3b64285a4c750c71", features = ["compat", "rand", "appservice-api-c", "client-api", "federation-api", "push-gateway-api-c", "state-res", "unstable-pre-spec", "unstable-exhaustive-types"] }
 #ruma = { path = "../ruma/crates/ruma", features = ["compat", "rand", "appservice-api-c", "client-api", "federation-api", "push-gateway-api-c", "state-res", "unstable-pre-spec", "unstable-exhaustive-types"] }
 

@@ -274,10 +274,7 @@ async fn send_notice(
     };
 
     let mut device = Device::new(pusher.app_id.clone(), pusher.pushkey.clone());
-    let mut data_minus_url = pusher.data.clone();
-    // The url must be stripped off according to spec
-    data_minus_url.url = None;
-    device.data = data_minus_url;
+    device.data = pusher.data.clone().into();
 
     // Tweaks are only added if the format is NOT event_id_only
     if !event_id_only {
