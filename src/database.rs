@@ -213,6 +213,8 @@ impl Database {
                 userroomid_leftstate: builder.open_tree("userroomid_leftstate")?,
                 roomuserid_leftcount: builder.open_tree("roomuserid_leftcount")?,
 
+                disabledroomids: builder.open_tree("disabledroomids")?,
+
                 lazyloadedids: builder.open_tree("lazyloadedids")?,
 
                 userroomid_notificationcount: builder.open_tree("userroomid_notificationcount")?,

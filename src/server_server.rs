@@ -764,7 +764,7 @@ pub async fn send_transaction_message_route(
                             )?;
                         } else {
                             // TODO fetch missing events
-                            debug!("No known event ids in read receipt: {:?}", user_updates);
+                            info!("No known event ids in read receipt: {:?}", user_updates);
                         }
                     }
                 }
@@ -922,6 +922,13 @@ pub(crate) async fn handle_incoming_pdu<'a>(
         }
     }
 
+    match db.rooms.is_disabled(room_id) {
+        Ok(false) => {}
+        _ => {
+            return Err("Federation of this room is currently disabled on this server.".to_owned());
+        }
+    }
+
     // 1. Skip the PDU if we already have it as a timeline event
     if let Ok(Some(pdu_id)) = db.rooms.get_pdu_id(event_id) {
         return Ok(Some(pdu_id.to_vec()));
@@ -1034,6 +1041,15 @@ pub(crate) async fn handle_incoming_pdu<'a>(
 
     let mut errors = 0;
     for prev_id in dbg!(sorted) {
+        match db.rooms.is_disabled(room_id) {
+            Ok(false) => {}
+            _ => {
+                return Err(
+                    "Federation of this room is currently disabled on this server.".to_owned(),
+                );
+            }
+        }
+
         if errors >= 5 {
             break;
         }
@@ -1043,6 +1059,11 @@ pub(crate) async fn handle_incoming_pdu<'a>(
             }
 
             let start_time = Instant::now();
+            db.globals
+                .roomid_federationhandletime
+                .write()
+                .unwrap()
+                .insert(room_id.to_owned(), ((*prev_id).to_owned(), start_time));
             let event_id = pdu.event_id.clone();
             if let Err(e) = upgrade_outlier_to_timeline_pdu(
                 pdu,
@@ -1059,6 +1080,11 @@ pub(crate) async fn handle_incoming_pdu<'a>(
                 warn!("Prev event {} failed: {}", event_id, e);
             }
             let elapsed = start_time.elapsed();
+            db.globals
+                .roomid_federationhandletime
+                .write()
+                .unwrap()
+                .remove(&room_id.to_owned());
             warn!(
                 "Handling prev event {} took {}m{}s",
                 event_id,
@@ -1068,7 +1094,13 @@ pub(crate) async fn handle_incoming_pdu<'a>(
         }
     }
 
-    upgrade_outlier_to_timeline_pdu(
+    let start_time = Instant::now();
+    db.globals
+        .roomid_federationhandletime
+        .write()
+        .unwrap()
+        .insert(room_id.to_owned(), (event_id.to_owned(), start_time));
+    let r = upgrade_outlier_to_timeline_pdu(
         incoming_pdu,
         val,
         &create_event,
@@ -1077,10 +1109,17 @@ pub(crate) async fn handle_incoming_pdu<'a>(
         room_id,
         pub_key_map,
     )
-    .await
+    .await;
+    db.globals
+        .roomid_federationhandletime
+        .write()
+        .unwrap()
+        .remove(&room_id.to_owned());
+
+    r
 }
 
-#[tracing::instrument(skip_all)]
+#[tracing::instrument(skip(create_event, value, db, pub_key_map))]
 fn handle_outlier_pdu<'a>(
     origin: &'a ServerName,
     create_event: &'a PduEvent,
@@ -1162,7 +1201,7 @@ fn handle_outlier_pdu<'a>(
         .await;
 
         // 6. Reject "due to auth events" if the event doesn't pass auth based on the auth events
-        debug!(
+        info!(
             "Auth check for {} based on auth events",
             incoming_pdu.event_id
         );
@@ -1217,19 +1256,19 @@ fn handle_outlier_pdu<'a>(
             return Err("Event has failed auth check with auth events.".to_owned());
         }
 
-        debug!("Validation successful.");
+        info!("Validation successful.");
 
         // 7. Persist the event as an outlier.
         db.rooms
             .add_pdu_outlier(&incoming_pdu.event_id, &val)
             .map_err(|_| "Failed to add pdu as outlier.".to_owned())?;
-        debug!("Added pdu as outlier.");
+        info!("Added pdu as outlier.");
 
         Ok((Arc::new(incoming_pdu), val))
     })
 }
 
-#[tracing::instrument(skip_all)]
+#[tracing::instrument(skip(incoming_pdu, val, create_event, db, pub_key_map))]
 async fn upgrade_outlier_to_timeline_pdu(
     incoming_pdu: Arc<PduEvent>,
     val: BTreeMap<String, CanonicalJsonValue>,
@@ -1251,6 +1290,8 @@ async fn upgrade_outlier_to_timeline_pdu(
         return Err("Event has been soft failed".into());
     }
 
+    info!("Upgrading {} to timeline pdu", incoming_pdu.event_id);
+
     let create_event_content: RoomCreateEventContent =
         serde_json::from_str(create_event.content.get()).map_err(|e| {
             warn!("Invalid create event: {}", e);
@@ -1266,7 +1307,7 @@ async fn upgrade_outlier_to_timeline_pdu(
     // TODO: if we know the prev_events of the incoming event we can avoid the request and build
     // the state from a known point and resolve if > 1 prev_event
 
-    debug!("Requesting state at event.");
+    info!("Requesting state at event");
     let mut state_at_incoming_event = None;
 
     if incoming_pdu.prev_events.len() == 1 {
@@ -1280,7 +1321,7 @@ async fn upgrade_outlier_to_timeline_pdu(
             prev_event_sstatehash.map(|shortstatehash| db.rooms.state_full_ids(shortstatehash));
 
         if let Some(Ok(mut state)) = state {
-            warn!("Using cached state");
+            info!("Using cached state");
             let prev_pdu =
                 db.rooms.get_pdu(prev_event).ok().flatten().ok_or_else(|| {
                     "Could not find prev event, but we know the state.".to_owned()
@@ -1303,7 +1344,7 @@ async fn upgrade_outlier_to_timeline_pdu(
             state_at_incoming_event = Some(state);
         }
     } else {
-        warn!("Calculating state at event using state res");
+        info!("Calculating state at event using state res");
         let mut extremity_sstatehashes = HashMap::new();
 
         let mut okay = true;
@@ -1371,7 +1412,9 @@ async fn upgrade_outlier_to_timeline_pdu(
                 fork_states.push(state);
             }
 
-            state_at_incoming_event = match state_res::resolve(
+            let lock = db.globals.stateres_mutex.lock();
+
+            let result = state_res::resolve(
                 room_version_id,
                 &fork_states,
                 auth_chain_sets,
@@ -1382,7 +1425,10 @@ async fn upgrade_outlier_to_timeline_pdu(
                     }
                     res.ok().flatten()
                 },
-            ) {
+            );
+            drop(lock);
+
+            state_at_incoming_event = match result {
                 Ok(new_state) => Some(
                     new_state
                         .into_iter()
@@ -1403,12 +1449,12 @@ async fn upgrade_outlier_to_timeline_pdu(
                     warn!("State resolution on prev events failed, either an event could not be found or deserialization: {}", e);
                     None
                 }
-            };
+            }
         }
     }
 
     if state_at_incoming_event.is_none() {
-        warn!("Calling /state_ids");
+        info!("Calling /state_ids");
         // Call /state_ids to find out what the state at this pdu is. We trust the server's
         // response to some extend, but we still do a lot of checks on the events
         match db
@@ -1424,7 +1470,7 @@ async fn upgrade_outlier_to_timeline_pdu(
             .await
         {
             Ok(res) => {
-                warn!("Fetching state events at event.");
+                info!("Fetching state events at event.");
                 let state_vec = fetch_and_handle_outliers(
                     db,
                     origin,
@@ -1509,7 +1555,7 @@ async fn upgrade_outlier_to_timeline_pdu(
     if !check_result {
         return Err("Event has failed auth check with state at the event.".into());
     }
-    debug!("Auth check succeeded.");
+    info!("Auth check succeeded.");
 
     // We start looking at current room state now, so lets lock the room
 
@@ -1572,7 +1618,7 @@ async fn upgrade_outlier_to_timeline_pdu(
         .collect::<Result<_, _>>()?;
 
     // 13. Check if the event passes auth based on the "current state" of the room, if not "soft fail" it
-    debug!("starting soft fail auth check");
+    info!("Starting soft fail auth check");
 
     let soft_fail = !state_res::event_auth::auth_check(
         &room_version,
@@ -1606,8 +1652,10 @@ async fn upgrade_outlier_to_timeline_pdu(
     }
 
     if incoming_pdu.state_key.is_some() {
+        info!("Preparing for stateres to derive new room state");
         let mut extremity_sstatehashes = HashMap::new();
 
+        info!("Loading extremities");
         for id in dbg!(&extremities) {
             match db
                 .rooms
@@ -1667,6 +1715,7 @@ async fn upgrade_outlier_to_timeline_pdu(
         let new_room_state = if fork_states.is_empty() {
             return Err("State is empty.".to_owned());
         } else if fork_states.iter().skip(1).all(|f| &fork_states[0] == f) {
+            info!("State resolution trivial");
             // There was only one state, so it has to be the room's current state (because that is
             // always included)
             fork_states[0]
@@ -1678,6 +1727,7 @@ async fn upgrade_outlier_to_timeline_pdu(
                 })
                 .collect::<Result<_, _>>()?
         } else {
+            info!("Loading auth chains");
             // We do need to force an update to this room's state
             update_state = true;
 
@@ -1693,6 +1743,8 @@ async fn upgrade_outlier_to_timeline_pdu(
                     .collect(),
                 );
             }
+
+            info!("Loading fork states");
 
             let fork_states: Vec<_> = fork_states
                 .into_iter()
@@ -1711,6 +1763,9 @@ async fn upgrade_outlier_to_timeline_pdu(
                 })
                 .collect();
 
+            info!("Resolving state");
+
+            let lock = db.globals.stateres_mutex.lock();
             let state = match state_res::resolve(
                 room_version_id,
                 &fork_states,
@@ -1728,6 +1783,10 @@ async fn upgrade_outlier_to_timeline_pdu(
                     return Err("State resolution failed, either an event could not be found or deserialization".into());
                 }
             };
+
+            drop(lock);
+
+            info!("State resolution done. Compressing state");
 
             state
                 .into_iter()
@@ -1749,13 +1808,14 @@ async fn upgrade_outlier_to_timeline_pdu(
 
         // Set the new room state to the resolved state
         if update_state {
+            info!("Forcing new room state");
             db.rooms
                 .force_state(room_id, new_room_state, db)
                 .map_err(|_| "Failed to set new room state.".to_owned())?;
         }
-        debug!("Updated resolved state");
     }
 
+    info!("Appending pdu to timeline");
     extremities.insert(incoming_pdu.event_id.clone());
 
     // Now that the event has passed all auth it is added into the timeline.
@@ -1776,7 +1836,7 @@ async fn upgrade_outlier_to_timeline_pdu(
         "Failed to add pdu to db.".to_owned()
     })?;
 
-    debug!("Appended incoming pdu.");
+    info!("Appended incoming pdu");
 
     // Event has passed all auth/stateres checks
     drop(state_lock);
@@ -1850,7 +1910,7 @@ pub(crate) fn fetch_and_handle_outliers<'a>(
                     continue;
                 }
 
-                warn!("Fetching {} over federation.", next_id);
+                info!("Fetching {} over federation.", next_id);
                 match db
                     .sending
                     .send_federation_request(
@@ -1861,7 +1921,7 @@ pub(crate) fn fetch_and_handle_outliers<'a>(
                     .await
                 {
                     Ok(res) => {
-                        warn!("Got {} over federation", next_id);
+                        info!("Got {} over federation", next_id);
                         let (calculated_event_id, value) =
                             match crate::pdu::gen_event_id_canonical_json(&res.pdu, &db) {
                                 Ok(t) => t,

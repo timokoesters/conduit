@@ -52,6 +52,8 @@ pub struct Globals {
     pub roomid_mutex_insert: RwLock<HashMap<Box<RoomId>, Arc<Mutex<()>>>>,
     pub roomid_mutex_state: RwLock<HashMap<Box<RoomId>, Arc<TokioMutex<()>>>>,
     pub roomid_mutex_federation: RwLock<HashMap<Box<RoomId>, Arc<TokioMutex<()>>>>, // this lock will be held longer
+    pub roomid_federationhandletime: RwLock<HashMap<Box<RoomId>, (Box<EventId>, Instant)>>,
+    pub stateres_mutex: Arc<Mutex<()>>,
     pub rotate: RotationHandler,
 }
 
@@ -183,6 +185,8 @@ impl Globals {
             roomid_mutex_state: RwLock::new(HashMap::new()),
             roomid_mutex_insert: RwLock::new(HashMap::new()),
             roomid_mutex_federation: RwLock::new(HashMap::new()),
+            roomid_federationhandletime: RwLock::new(HashMap::new()),
+            stateres_mutex: Arc::new(Mutex::new(())),
             sync_receivers: RwLock::new(HashMap::new()),
             rotate: RotationHandler::new(),
         };

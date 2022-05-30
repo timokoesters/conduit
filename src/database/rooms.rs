@@ -76,6 +76,8 @@ pub struct Rooms {
     pub(super) userroomid_leftstate: Arc<dyn Tree>,
     pub(super) roomuserid_leftcount: Arc<dyn Tree>,
 
+    pub(super) disabledroomids: Arc<dyn Tree>, // Rooms where incoming federation handling is disabled
+
     pub(super) lazyloadedids: Arc<dyn Tree>, // LazyLoadedIds = UserId + DeviceId + RoomId + LazyLoadedUserId
 
     pub(super) userroomid_notificationcount: Arc<dyn Tree>, // NotifyCount = u64
@@ -2846,6 +2848,18 @@ impl Rooms {
     }
 
     #[tracing::instrument(skip(self))]
+    pub fn iter_ids(&self) -> impl Iterator<Item = Result<Box<RoomId>>> + '_ {
+        self.roomid_shortroomid.iter().map(|(bytes, _)| {
+            RoomId::parse(
+                utils::string_from_bytes(&bytes).map_err(|_| {
+                    Error::bad_database("Room ID in publicroomids is invalid unicode.")
+                })?,
+            )
+            .map_err(|_| Error::bad_database("Room ID in roomid_shortroomid is invalid."))
+        })
+    }
+
+    #[tracing::instrument(skip(self))]
     pub fn public_rooms(&self) -> impl Iterator<Item = Result<Box<RoomId>>> + '_ {
         self.publicroomids.iter().map(|(bytes, _)| {
             RoomId::parse(
@@ -3125,6 +3139,10 @@ impl Rooms {
                     .map_err(|_| Error::bad_database("Invalid leftcount in db."))
             })
             .transpose()
+    }
+
+    pub fn is_disabled(&self, room_id: &RoomId) -> Result<bool> {
+        Ok(self.disabledroomids.get(room_id.as_bytes())?.is_some())
     }
 
     /// Returns an iterator over all rooms this user joined.

@@ -338,7 +338,7 @@ impl Credentials for XMatrix {
                 "origin" => origin = Some(value.try_into().ok()?),
                 "key" => key = Some(value.to_owned()),
                 "sig" => sig = Some(value.to_owned()),
-                _ => warn!(
+                _ => debug!(
                     "Unexpected field `{}` in X-Matrix Authorization header",
                     name
                 ),
