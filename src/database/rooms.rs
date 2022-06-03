@@ -27,7 +27,8 @@ use ruma::{
     push::{Action, Ruleset, Tweak},
     serde::{CanonicalJsonObject, CanonicalJsonValue, Raw},
     state_res::{self, RoomVersion, StateMap},
-    uint, DeviceId, EventId, RoomAliasId, RoomId, RoomVersionId, ServerName, UserId,
+    uint, DeviceId, EventId, OwnedDeviceId, OwnedEventId, OwnedRoomAliasId, OwnedRoomId,
+    OwnedServerName, OwnedUserId, RoomAliasId, RoomId, RoomVersionId, ServerName, UserId,
 };
 use serde::Deserialize;
 use serde_json::value::to_raw_value;
@@ -108,16 +109,16 @@ pub struct Rooms {
     /// RoomId + EventId -> Parent PDU EventId.
     pub(super) referencedevents: Arc<dyn Tree>,
 
-    pub(super) pdu_cache: Mutex<LruCache<Box<EventId>, Arc<PduEvent>>>,
+    pub(super) pdu_cache: Mutex<LruCache<OwnedEventId, Arc<PduEvent>>>,
     pub(super) shorteventid_cache: Mutex<LruCache<u64, Arc<EventId>>>,
     pub(super) auth_chain_cache: Mutex<LruCache<Vec<u64>, Arc<HashSet<u64>>>>,
-    pub(super) eventidshort_cache: Mutex<LruCache<Box<EventId>, u64>>,
+    pub(super) eventidshort_cache: Mutex<LruCache<OwnedEventId, u64>>,
     pub(super) statekeyshort_cache: Mutex<LruCache<(StateEventType, String), u64>>,
     pub(super) shortstatekey_cache: Mutex<LruCache<u64, (StateEventType, String)>>,
-    pub(super) our_real_users_cache: RwLock<HashMap<Box<RoomId>, Arc<HashSet<Box<UserId>>>>>,
-    pub(super) appservice_in_room_cache: RwLock<HashMap<Box<RoomId>, HashMap<String, bool>>>,
+    pub(super) our_real_users_cache: RwLock<HashMap<OwnedRoomId, Arc<HashSet<OwnedUserId>>>>,
+    pub(super) appservice_in_room_cache: RwLock<HashMap<OwnedRoomId, HashMap<String, bool>>>,
     pub(super) lazy_load_waiting:
-        Mutex<HashMap<(Box<UserId>, Box<DeviceId>, Box<RoomId>, u64), HashSet<Box<UserId>>>>,
+        Mutex<HashMap<(OwnedUserId, OwnedDeviceId, OwnedRoomId, u64), HashSet<OwnedUserId>>>,
     pub(super) stateinfo_cache: Mutex<
         LruCache<
             u64,
@@ -129,7 +130,7 @@ pub struct Rooms {
             )>,
         >,
     >,
-    pub(super) lasttimelinecount_cache: Mutex<HashMap<Box<RoomId>, u64>>,
+    pub(super) lasttimelinecount_cache: Mutex<HashMap<OwnedRoomId, u64>>,
 }
 
 impl Rooms {
@@ -1992,7 +1993,7 @@ impl Rooms {
         // where events in the current room state do not exist
         self.set_room_state(room_id, statehashid)?;
 
-        let mut servers: HashSet<Box<ServerName>> =
+        let mut servers: HashSet<OwnedServerName> =
             self.room_servers(room_id).filter_map(|r| r.ok()).collect();
 
         // In case we are kicking or banning a user, we need to inform their server of the change
@@ -2002,7 +2003,7 @@ impl Rooms {
                 .as_ref()
                 .and_then(|state_key| UserId::parse(state_key.as_str()).ok())
             {
-                servers.insert(Box::from(state_key_uid.server_name()));
+                servers.insert(state_key_uid.server_name().to_owned());
             }
         }
 
@@ -2498,7 +2499,7 @@ impl Rooms {
         &self,
         room_id: &RoomId,
         db: &Database,
-    ) -> Result<Arc<HashSet<Box<UserId>>>> {
+    ) -> Result<Arc<HashSet<OwnedUserId>>> {
         let maybe = self
             .our_real_users_cache
             .read()
@@ -2814,7 +2815,7 @@ impl Rooms {
     }
 
     #[tracing::instrument(skip(self))]
-    pub fn id_from_alias(&self, alias: &RoomAliasId) -> Result<Option<Box<RoomId>>> {
+    pub fn id_from_alias(&self, alias: &RoomAliasId) -> Result<Option<OwnedRoomId>> {
         self.alias_roomid
             .get(alias.alias().as_bytes())?
             .map(|bytes| {
@@ -2830,7 +2831,7 @@ impl Rooms {
     pub fn room_aliases<'a>(
         &'a self,
         room_id: &RoomId,
-    ) -> impl Iterator<Item = Result<Box<RoomAliasId>>> + 'a {
+    ) -> impl Iterator<Item = Result<OwnedRoomAliasId>> + 'a {
         let mut prefix = room_id.as_bytes().to_vec();
         prefix.push(0xff);
 
@@ -2859,7 +2860,7 @@ impl Rooms {
     }
 
     #[tracing::instrument(skip(self))]
-    pub fn public_rooms(&self) -> impl Iterator<Item = Result<Box<RoomId>>> + '_ {
+    pub fn public_rooms(&self) -> impl Iterator<Item = Result<OwnedRoomId>> + '_ {
         self.publicroomids.iter().map(|(bytes, _)| {
             RoomId::parse(
                 utils::string_from_bytes(&bytes).map_err(|_| {
@@ -2922,8 +2923,8 @@ impl Rooms {
     #[tracing::instrument(skip(self))]
     pub fn get_shared_rooms<'a>(
         &'a self,
-        users: Vec<Box<UserId>>,
-    ) -> Result<impl Iterator<Item = Result<Box<RoomId>>> + 'a> {
+        users: Vec<OwnedUserId>,
+    ) -> Result<impl Iterator<Item = Result<OwnedRoomId>> + 'a> {
         let iterators = users.into_iter().map(move |user_id| {
             let mut prefix = user_id.as_bytes().to_vec();
             prefix.push(0xff);
@@ -2962,7 +2963,7 @@ impl Rooms {
     pub fn room_servers<'a>(
         &'a self,
         room_id: &RoomId,
-    ) -> impl Iterator<Item = Result<Box<ServerName>>> + 'a {
+    ) -> impl Iterator<Item = Result<OwnedServerName>> + 'a {
         let mut prefix = room_id.as_bytes().to_vec();
         prefix.push(0xff);
 
@@ -2995,7 +2996,7 @@ impl Rooms {
     pub fn server_rooms<'a>(
         &'a self,
         server: &ServerName,
-    ) -> impl Iterator<Item = Result<Box<RoomId>>> + 'a {
+    ) -> impl Iterator<Item = Result<OwnedRoomId>> + 'a {
         let mut prefix = server.as_bytes().to_vec();
         prefix.push(0xff);
 
@@ -3017,7 +3018,7 @@ impl Rooms {
     pub fn room_members<'a>(
         &'a self,
         room_id: &RoomId,
-    ) -> impl Iterator<Item = Result<Box<UserId>>> + 'a {
+    ) -> impl Iterator<Item = Result<OwnedUserId>> + 'a {
         let mut prefix = room_id.as_bytes().to_vec();
         prefix.push(0xff);
 
@@ -3063,7 +3064,7 @@ impl Rooms {
     pub fn room_useroncejoined<'a>(
         &'a self,
         room_id: &RoomId,
-    ) -> impl Iterator<Item = Result<Box<UserId>>> + 'a {
+    ) -> impl Iterator<Item = Result<OwnedUserId>> + 'a {
         let mut prefix = room_id.as_bytes().to_vec();
         prefix.push(0xff);
 
@@ -3089,7 +3090,7 @@ impl Rooms {
     pub fn room_members_invited<'a>(
         &'a self,
         room_id: &RoomId,
-    ) -> impl Iterator<Item = Result<Box<UserId>>> + 'a {
+    ) -> impl Iterator<Item = Result<OwnedUserId>> + 'a {
         let mut prefix = room_id.as_bytes().to_vec();
         prefix.push(0xff);
 
@@ -3145,7 +3146,7 @@ impl Rooms {
     pub fn rooms_joined<'a>(
         &'a self,
         user_id: &UserId,
-    ) -> impl Iterator<Item = Result<Box<RoomId>>> + 'a {
+    ) -> impl Iterator<Item = Result<OwnedRoomId>> + 'a {
         self.userroomid_joined
             .scan_prefix(user_id.as_bytes().to_vec())
             .map(|(key, _)| {
@@ -3168,7 +3169,7 @@ impl Rooms {
     pub fn rooms_invited<'a>(
         &'a self,
         user_id: &UserId,
-    ) -> impl Iterator<Item = Result<(Box<RoomId>, Vec<Raw<AnyStrippedStateEvent>>)>> + 'a {
+    ) -> impl Iterator<Item = Result<(OwnedRoomId, Vec<Raw<AnyStrippedStateEvent>>)>> + 'a {
         let mut prefix = user_id.as_bytes().to_vec();
         prefix.push(0xff);
 
@@ -3241,7 +3242,7 @@ impl Rooms {
     pub fn rooms_left<'a>(
         &'a self,
         user_id: &UserId,
-    ) -> impl Iterator<Item = Result<(Box<RoomId>, Vec<Raw<AnySyncStateEvent>>)>> + 'a {
+    ) -> impl Iterator<Item = Result<(OwnedRoomId, Vec<Raw<AnySyncStateEvent>>)>> + 'a {
         let mut prefix = user_id.as_bytes().to_vec();
         prefix.push(0xff);
 
@@ -3385,7 +3386,7 @@ impl Rooms {
         user_id: &UserId,
         device_id: &DeviceId,
         room_id: &RoomId,
-        lazy_load: HashSet<Box<UserId>>,
+        lazy_load: HashSet<OwnedUserId>,
         count: u64,
     ) {
         self.lazy_load_waiting.lock().unwrap().insert(

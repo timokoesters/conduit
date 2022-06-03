@@ -26,7 +26,7 @@ use ruma::{
     events::{push_rules::PushRulesEvent, AnySyncEphemeralRoomEvent, GlobalAccountDataEventType},
     push,
     receipt::ReceiptType,
-    uint, MilliSecondsSinceUnixEpoch, ServerName, UInt, UserId,
+    uint, MilliSecondsSinceUnixEpoch, OwnedServerName, ServerName, UInt, UserId,
 };
 use tokio::{
     select,
@@ -40,7 +40,7 @@ use super::abstraction::Tree;
 pub enum OutgoingKind {
     Appservice(String),
     Push(Vec<u8>, Vec<u8>), // user and pushkey
-    Normal(Box<ServerName>),
+    Normal(OwnedServerName),
 }
 
 impl OutgoingKind {
@@ -323,7 +323,7 @@ impl Sending {
             // Look for device list updates in this room
             device_list_changes.extend(
                 db.users
-                    .keys_changed(&room_id.to_string(), since, None)
+                    .keys_changed(room_id.as_str(), since, None)
                     .filter_map(|r| r.ok())
                     .filter(|user_id| user_id.server_name() == db.globals.server_name()),
             );
@@ -420,7 +420,7 @@ impl Sending {
     }
 
     #[tracing::instrument(skip(self, servers, pdu_id))]
-    pub fn send_pdu<I: Iterator<Item = Box<ServerName>>>(
+    pub fn send_pdu<I: Iterator<Item = OwnedServerName>>(
         &self,
         servers: I,
         pdu_id: &[u8],

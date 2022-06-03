@@ -25,7 +25,7 @@ use ruma::{
         GlobalAccountDataEvent, GlobalAccountDataEventType,
     },
     push::Ruleset,
-    DeviceId, EventId, RoomId, UserId,
+    DeviceId, EventId, OwnedRoomId, RoomId, UserId,
 };
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
@@ -453,7 +453,7 @@ impl Database {
 
             if db.globals.database_version()? < 7 {
                 // Upgrade state store
-                let mut last_roomstates: HashMap<Box<RoomId>, u64> = HashMap::new();
+                let mut last_roomstates: HashMap<OwnedRoomId, u64> = HashMap::new();
                 let mut current_sstatehash: Option<u64> = None;
                 let mut current_room = None;
                 let mut current_state = HashSet::new();

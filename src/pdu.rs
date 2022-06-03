@@ -5,7 +5,8 @@ use ruma::{
         AnyStrippedStateEvent, AnySyncRoomEvent, AnySyncStateEvent, RoomEventType, StateEvent,
     },
     serde::{CanonicalJsonObject, CanonicalJsonValue, Raw},
-    state_res, EventId, MilliSecondsSinceUnixEpoch, RoomId, UInt, UserId,
+    state_res, EventId, MilliSecondsSinceUnixEpoch, OwnedEventId, OwnedRoomId, OwnedUserId, RoomId,
+    UInt, UserId,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{
@@ -25,8 +26,8 @@ pub struct EventHash {
 #[derive(Clone, Deserialize, Serialize, Debug)]
 pub struct PduEvent {
     pub event_id: Arc<EventId>,
-    pub room_id: Box<RoomId>,
-    pub sender: Box<UserId>,
+    pub room_id: OwnedRoomId,
+    pub sender: OwnedUserId,
     pub origin_server_ts: UInt,
     #[serde(rename = "type")]
     pub kind: RoomEventType,
@@ -42,7 +43,7 @@ pub struct PduEvent {
     pub unsigned: Option<Box<RawJsonValue>>,
     pub hashes: EventHash,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub signatures: Option<Box<RawJsonValue>>, // BTreeMap<Box<ServerName>, BTreeMap<ServerSigningKeyId, String>>
+    pub signatures: Option<Box<RawJsonValue>>, // BTreeMap<OwnedServerName, BTreeMap<ServerSigningKeyId, String>>
 }
 
 impl PduEvent {
@@ -333,7 +334,7 @@ impl Ord for PduEvent {
 pub(crate) fn gen_event_id_canonical_json(
     pdu: &RawJsonValue,
     db: &Database,
-) -> crate::Result<(Box<EventId>, CanonicalJsonObject)> {
+) -> crate::Result<(OwnedEventId, CanonicalJsonObject)> {
     let value: CanonicalJsonObject = serde_json::from_str(pdu.get()).map_err(|e| {
         warn!("Error parsing incoming event {:?}: {:?}", pdu, e);
         Error::BadServerResponse("Invalid PDU in server response")

@@ -6,7 +6,7 @@ use ruma::{
         error::{Error as RumaError, ErrorKind},
         uiaa::{UiaaInfo, UiaaResponse},
     },
-    ServerName,
+    OwnedServerName,
 };
 use thiserror::Error;
 use tracing::{error, warn};
@@ -55,7 +55,7 @@ pub enum Error {
         source: reqwest::Error,
     },
     #[error("{0}")]
-    FederationError(Box<ServerName>, RumaError),
+    FederationError(OwnedServerName, RumaError),
     #[error("Could not do this io: {source}")]
     IoError {
         #[from]

@@ -4,7 +4,7 @@ use std::{
     net::{IpAddr, Ipv4Addr},
 };
 
-use ruma::{RoomVersionId, ServerName};
+use ruma::{OwnedServerName, RoomVersionId};
 use serde::{de::IgnoredAny, Deserialize};
 use tracing::warn;
 
@@ -20,7 +20,7 @@ pub struct Config {
     pub port: u16,
     pub tls: Option<TlsConfig>,
 
-    pub server_name: Box<ServerName>,
+    pub server_name: OwnedServerName,
     #[serde(default = "default_database_backend")]
     pub database_backend: String,
     pub database_path: String,
@@ -58,7 +58,7 @@ pub struct Config {
     pub proxy: ProxyConfig,
     pub jwt_secret: Option<String>,
     #[serde(default = "Vec::new")]
-    pub trusted_servers: Vec<Box<ServerName>>,
+    pub trusted_servers: Vec<OwnedServerName>,
     #[serde(default = "default_log")]
     pub log: String,
     #[serde(default)]

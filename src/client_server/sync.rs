@@ -10,7 +10,7 @@ use ruma::{
         RoomEventType, StateEventType,
     },
     serde::Raw,
-    DeviceId, RoomId, UserId,
+    OwnedDeviceId, OwnedUserId, RoomId, UserId,
 };
 use std::{
     collections::{hash_map::Entry, BTreeMap, HashMap, HashSet},
@@ -128,8 +128,8 @@ pub async fn sync_events_route(
 
 async fn sync_helper_wrapper(
     db: Arc<DatabaseGuard>,
-    sender_user: Box<UserId>,
-    sender_device: Box<DeviceId>,
+    sender_user: OwnedUserId,
+    sender_device: OwnedDeviceId,
     body: sync_events::v3::IncomingRequest,
     tx: Sender<Option<Result<sync_events::v3::Response>>>,
 ) {
@@ -170,8 +170,8 @@ async fn sync_helper_wrapper(
 
 async fn sync_helper(
     db: Arc<DatabaseGuard>,
-    sender_user: Box<UserId>,
-    sender_device: Box<DeviceId>,
+    sender_user: OwnedUserId,
+    sender_device: OwnedDeviceId,
     body: sync_events::v3::IncomingRequest,
     // bool = caching allowed
 ) -> Result<(sync_events::v3::Response, bool), Error> {
@@ -222,7 +222,7 @@ async fn sync_helper(
     // Look for device list updates of this account
     device_list_updates.extend(
         db.users
-            .keys_changed(&sender_user.to_string(), since, None)
+            .keys_changed(sender_user.as_str(), since, None)
             .filter_map(|r| r.ok()),
     );
 
@@ -407,7 +407,7 @@ async fn sync_helper(
                     };
 
                     // This check is in case a bad user ID made it into the database
-                    if let Ok(uid) = UserId::parse(state_key.as_ref()) {
+                    if let Ok(uid) = UserId::parse(state_key) {
                         lazy_loaded.insert(uid);
                     }
                     state_events.push(pdu);
@@ -614,7 +614,7 @@ async fn sync_helper(
         // Look for device list updates in this room
         device_list_updates.extend(
             db.users
-                .keys_changed(&room_id.to_string(), since, None)
+                .keys_changed(room_id.as_str(), since, None)
                 .filter_map(|r| r.ok()),
         );
 

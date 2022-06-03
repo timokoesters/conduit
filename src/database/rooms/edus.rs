@@ -8,7 +8,7 @@ use ruma::{
     presence::PresenceState,
     serde::Raw,
     signatures::CanonicalJsonObject,
-    RoomId, UInt, UserId,
+    OwnedUserId, RoomId, UInt, UserId,
 };
 use std::{
     collections::{HashMap, HashSet},
@@ -78,7 +78,7 @@ impl RoomEdus {
         since: u64,
     ) -> impl Iterator<
         Item = Result<(
-            Box<UserId>,
+            OwnedUserId,
             u64,
             Raw<ruma::events::AnySyncEphemeralRoomEvent>,
         )>,
@@ -450,7 +450,7 @@ impl RoomEdus {
         {
             // Send new presence events to set the user offline
             let count = globals.next_count()?.to_be_bytes();
-            let user_id: Box<_> = utils::string_from_bytes(&user_id_bytes)
+            let user_id: OwnedUserId = utils::string_from_bytes(&user_id_bytes)
                 .map_err(|_| {
                     Error::bad_database("Invalid UserId bytes in userid_lastpresenceupdate.")
                 })?
@@ -499,7 +499,7 @@ impl RoomEdus {
         since: u64,
         _rooms: &super::Rooms,
         _globals: &super::super::globals::Globals,
-    ) -> Result<HashMap<Box<UserId>, PresenceEvent>> {
+    ) -> Result<HashMap<OwnedUserId, PresenceEvent>> {
         //self.presence_maintain(rooms, globals)?;
 
         let mut prefix = room_id.as_bytes().to_vec();

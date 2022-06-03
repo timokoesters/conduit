@@ -1,6 +1,7 @@
 use crate::Error;
 use ruma::{
-    api::client::uiaa::UiaaResponse, signatures::CanonicalJsonValue, DeviceId, ServerName, UserId,
+    api::client::uiaa::UiaaResponse, signatures::CanonicalJsonValue, OwnedDeviceId,
+    OwnedServerName, OwnedUserId,
 };
 use std::ops::Deref;
 
@@ -10,9 +11,9 @@ mod axum;
 /// Extractor for Ruma request structs
 pub struct Ruma<T> {
     pub body: T,
-    pub sender_user: Option<Box<UserId>>,
-    pub sender_device: Option<Box<DeviceId>>,
-    pub sender_servername: Option<Box<ServerName>>,
+    pub sender_user: Option<OwnedUserId>,
+    pub sender_device: Option<OwnedDeviceId>,
+    pub sender_servername: Option<OwnedServerName>,
     // This is None when body is not a valid string
     pub json_body: Option<CanonicalJsonValue>,
     pub from_appservice: bool,

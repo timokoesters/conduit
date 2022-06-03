@@ -234,6 +234,7 @@ pub fn get_actions<'a>(
     db: &Database,
 ) -> Result<&'a [Action]> {
     let ctx = PushConditionRoomCtx {
+        user_id: user.to_owned(),
         room_id: room_id.to_owned(),
         member_count: 10_u32.into(), // TODO: get member count efficiently
         user_display_name: db

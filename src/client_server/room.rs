@@ -23,7 +23,7 @@ use ruma::{
     },
     int,
     serde::{CanonicalJsonObject, JsonObject},
-    RoomAliasId, RoomId,
+    OwnedRoomAliasId, RoomAliasId, RoomId,
 };
 use serde_json::{json, value::to_raw_value};
 use std::{cmp::max, collections::BTreeMap, sync::Arc};
@@ -77,7 +77,7 @@ pub async fn create_room_route(
         ));
     }
 
-    let alias: Option<Box<RoomAliasId>> =
+    let alias: Option<OwnedRoomAliasId> =
         body.room_alias_name
             .as_ref()
             .map_or(Ok(None), |localpart| {

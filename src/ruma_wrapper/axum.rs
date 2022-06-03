@@ -18,7 +18,7 @@ use http::StatusCode;
 use ruma::{
     api::{client::error::ErrorKind, AuthScheme, IncomingRequest, OutgoingResponse},
     signatures::CanonicalJsonValue,
-    DeviceId, ServerName, UserId,
+    OwnedDeviceId, OwnedServerName, UserId,
 };
 use serde::Deserialize;
 use tracing::{debug, error, warn};
@@ -133,7 +133,7 @@ where
                             }
                             Some((user_id, device_id)) => (
                                 Some(user_id),
-                                Some(Box::<DeviceId>::from(device_id)),
+                                Some(OwnedDeviceId::from(device_id)),
                                 None,
                                 false,
                             ),
@@ -300,7 +300,7 @@ where
 }
 
 struct XMatrix {
-    origin: Box<ServerName>,
+    origin: OwnedServerName,
     key: String, // KeyName?
     sig: String,
 }

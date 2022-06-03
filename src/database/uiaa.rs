@@ -13,7 +13,7 @@ use ruma::{
         },
     },
     signatures::CanonicalJsonValue,
-    DeviceId, UserId,
+    DeviceId, OwnedDeviceId, OwnedUserId, UserId,
 };
 use tracing::error;
 
@@ -22,7 +22,7 @@ use super::abstraction::Tree;
 pub struct Uiaa {
     pub(super) userdevicesessionid_uiaainfo: Arc<dyn Tree>, // User-interactive authentication
     pub(super) userdevicesessionid_uiaarequest:
-        RwLock<BTreeMap<(Box<UserId>, Box<DeviceId>, String), CanonicalJsonValue>>,
+        RwLock<BTreeMap<(OwnedUserId, OwnedDeviceId, String), CanonicalJsonValue>>,
 }
 
 impl Uiaa {

@@ -30,7 +30,7 @@ use ruma::{
         },
         RoomEventType,
     },
-    EventId, RoomAliasId, RoomId, RoomName, RoomVersionId, ServerName, UserId,
+    EventId, OwnedEventId, OwnedRoomAliasId, RoomId, RoomVersionId, ServerName, UserId,
 };
 use serde_json::value::to_raw_value;
 use tokio::sync::{mpsc, MutexGuard, RwLock, RwLockReadGuard};
@@ -234,7 +234,7 @@ enum AdminCommand {
     /// Get the auth_chain of a PDU
     GetAuthChain {
         /// An event ID (the $ character followed by the base64 reference hash)
-        event_id: Box<EventId>,
+        event_id: OwnedEventId,
     },
 
     #[clap(verbatim_doc_comment)]
@@ -252,7 +252,7 @@ enum AdminCommand {
     /// Retrieve and print a PDU by ID from the Conduit database
     GetPdu {
         /// An event ID (a $ followed by the base64 reference hash)
-        event_id: Box<EventId>,
+        event_id: OwnedEventId,
     },
 
     /// Print database memory usage statistics
@@ -335,7 +335,7 @@ fn process_admin_command(
             Err(e) => RoomMessageEventContent::text_plain(e.to_string()),
         },
         AdminCommand::GetAuthChain { event_id } => {
-            let event_id = Arc::<EventId>::from(event_id);
+            let event_id = Arc::from(&*event_id);
             if let Some(event) = db.rooms.get_pdu_json(&event_id)? {
                 let room_id_str = event
                     .get("room_id")
@@ -704,8 +704,7 @@ pub(crate) async fn create_admin_room(db: &Database) -> Result<()> {
     )?;
 
     // 5. Events implied by name and topic
-    let room_name = RoomName::parse(format!("{} Admin Room", db.globals.server_name()))
-        .expect("Room name is valid");
+    let room_name = format!("{} Admin Room", db.globals.server_name());
     db.rooms.build_and_append_pdu(
         PduBuilder {
             event_type: RoomEventType::RoomName,
@@ -739,7 +738,7 @@ pub(crate) async fn create_admin_room(db: &Database) -> Result<()> {
     )?;
 
     // 6. Room alias
-    let alias: Box<RoomAliasId> = format!("#admins:{}", db.globals.server_name())
+    let alias: OwnedRoomAliasId = format!("#admins:{}", db.globals.server_name())
         .try_into()
         .expect("#admins:server_name is a valid alias name");
 
@@ -774,7 +773,7 @@ pub(crate) async fn make_user_admin(
     user_id: &UserId,
     displayname: String,
 ) -> Result<()> {
-    let admin_room_alias: Box<RoomAliasId> = format!("#admins:{}", db.globals.server_name())
+    let admin_room_alias: OwnedRoomAliasId = format!("#admins:{}", db.globals.server_name())
         .try_into()
         .expect("#admins:server_name is a valid alias name");
     let room_id = db

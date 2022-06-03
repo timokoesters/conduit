@@ -54,8 +54,8 @@ use ruma::{
     signatures::{CanonicalJsonObject, CanonicalJsonValue},
     state_res::{self, RoomVersion, StateMap},
     to_device::DeviceIdOrAllDevices,
-    uint, EventId, MilliSecondsSinceUnixEpoch, RoomId, RoomVersionId, ServerName,
-    ServerSigningKeyId,
+    uint, EventId, MilliSecondsSinceUnixEpoch, OwnedEventId, OwnedServerName,
+    OwnedServerSigningKeyId, OwnedUserId, RoomId, RoomVersionId, ServerName,
 };
 use serde_json::value::{to_raw_value, RawValue as RawJsonValue};
 use std::{
@@ -282,7 +282,7 @@ where
                 let response = T::IncomingResponse::try_from_http_response(http_response);
                 if response.is_ok() && write_destination_to_cache {
                     globals.actual_destination_cache.write().unwrap().insert(
-                        Box::<ServerName>::from(destination),
+                        OwnedServerName::from(destination),
                         (actual_destination, host),
                     );
                 }
@@ -526,7 +526,7 @@ pub async fn get_server_keys_route(db: DatabaseGuard) -> Result<impl IntoRespons
         return Err(Error::bad_config("Federation is disabled."));
     }
 
-    let mut verify_keys: BTreeMap<Box<ServerSigningKeyId>, VerifyKey> = BTreeMap::new();
+    let mut verify_keys: BTreeMap<OwnedServerSigningKeyId, VerifyKey> = BTreeMap::new();
     verify_keys.insert(
         format!("ed25519:{}", db.globals.keypair().version())
             .try_into()
@@ -691,7 +691,7 @@ pub async fn send_transaction_message_route(
                 .roomid_mutex_federation
                 .write()
                 .unwrap()
-                .entry(room_id.clone())
+                .entry(room_id.to_owned())
                 .or_default(),
         );
         let mutex_lock = mutex.lock().await;
@@ -2397,7 +2397,7 @@ pub async fn get_missing_events_route(
                 continue;
             }
             queued_events.extend_from_slice(
-                &serde_json::from_value::<Vec<Box<EventId>>>(
+                &serde_json::from_value::<Vec<OwnedEventId>>(
                     serde_json::to_value(pdu.get("prev_events").cloned().ok_or_else(|| {
                         Error::bad_database("Event in db has no prev_events field.")
                     })?)
@@ -2835,7 +2835,7 @@ async fn create_join_event(
         }
     };
 
-    let origin: Box<ServerName> = serde_json::from_value(
+    let origin: OwnedServerName = serde_json::from_value(
         serde_json::to_value(value.get("origin").ok_or(Error::BadRequest(
             ErrorKind::InvalidParam,
             "Event needs an origin field.",
@@ -2981,10 +2981,10 @@ pub async fn create_invite_route(
     // Add event_id back
     signed_event.insert(
         "event_id".to_owned(),
-        CanonicalJsonValue::String(event_id.into()),
+        CanonicalJsonValue::String(event_id.to_string()),
     );
 
-    let sender: Box<_> = serde_json::from_value(
+    let sender: OwnedUserId = serde_json::from_value(
         signed_event
             .get("sender")
             .ok_or(Error::BadRequest(
@@ -2996,7 +2996,7 @@ pub async fn create_invite_route(
     )
     .map_err(|_| Error::BadRequest(ErrorKind::InvalidParam, "sender is not a user id."))?;
 
-    let invited_user: Box<_> = serde_json::from_value(
+    let invited_user: OwnedUserId = serde_json::from_value(
         signed_event
             .get("state_key")
             .ok_or(Error::BadRequest(
@@ -3255,7 +3255,7 @@ pub(crate) async fn fetch_required_signing_keys(
 // the PDUs and either cache the key or add it to the list that needs to be retrieved.
 fn get_server_keys_from_cache(
     pdu: &RawJsonValue,
-    servers: &mut BTreeMap<Box<ServerName>, BTreeMap<Box<ServerSigningKeyId>, QueryCriteria>>,
+    servers: &mut BTreeMap<OwnedServerName, BTreeMap<OwnedServerSigningKeyId, QueryCriteria>>,
     room_version: &RoomVersionId,
     pub_key_map: &mut RwLockWriteGuard<'_, BTreeMap<String, BTreeMap<String, Base64>>>,
     db: &Database,
@@ -3346,7 +3346,7 @@ pub(crate) async fn fetch_join_signing_keys(
     pub_key_map: &RwLock<BTreeMap<String, BTreeMap<String, Base64>>>,
     db: &Database,
 ) -> Result<()> {
-    let mut servers: BTreeMap<Box<ServerName>, BTreeMap<Box<ServerSigningKeyId>, QueryCriteria>> =
+    let mut servers: BTreeMap<OwnedServerName, BTreeMap<OwnedServerSigningKeyId, QueryCriteria>> =
         BTreeMap::new();
 
     {

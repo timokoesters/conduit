@@ -14,7 +14,7 @@ use ruma::{
         federation,
     },
     serde::Raw,
-    DeviceId, DeviceKeyAlgorithm, UserId,
+    DeviceKeyAlgorithm, OwnedDeviceId, OwnedUserId, UserId,
 };
 use serde_json::json;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -257,7 +257,7 @@ pub async fn get_key_changes_route(
         device_list_updates.extend(
             db.users
                 .keys_changed(
-                    &room_id.to_string(),
+                    room_id.as_str(),
                     body.from.parse().map_err(|_| {
                         Error::BadRequest(ErrorKind::InvalidParam, "Invalid `from`.")
                     })?,
@@ -276,7 +276,7 @@ pub async fn get_key_changes_route(
 
 pub(crate) async fn get_keys_helper<F: Fn(&UserId) -> bool>(
     sender_user: Option<&UserId>,
-    device_keys_input: &BTreeMap<Box<UserId>, Vec<Box<DeviceId>>>,
+    device_keys_input: &BTreeMap<OwnedUserId, Vec<OwnedDeviceId>>,
     allowed_signatures: F,
     db: &Database,
 ) -> Result<get_keys::v3::Response> {
@@ -416,7 +416,7 @@ fn add_unsigned_device_display_name(
 }
 
 pub(crate) async fn claim_keys_helper(
-    one_time_keys_input: &BTreeMap<Box<UserId>, BTreeMap<Box<DeviceId>, DeviceKeyAlgorithm>>,
+    one_time_keys_input: &BTreeMap<OwnedUserId, BTreeMap<OwnedDeviceId, DeviceKeyAlgorithm>>,
     db: &Database,
 ) -> Result<claim_keys::v3::Response> {
     let mut one_time_keys = BTreeMap::new();

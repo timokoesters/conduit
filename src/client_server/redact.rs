@@ -39,7 +39,7 @@ pub async fn redact_event_route(
             .expect("event is valid, we just created it"),
             unsigned: None,
             state_key: None,
-            redacts: Some(body.event_id.into()),
+            redacts: Some((&*body.event_id).into()),
         },
         sender_user,
         &body.room_id,

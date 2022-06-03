@@ -4,8 +4,8 @@ use ruma::{
         client::sync::sync_events,
         federation::discovery::{ServerSigningKeys, VerifyKey},
     },
-    DeviceId, EventId, MilliSecondsSinceUnixEpoch, RoomId, RoomVersionId, ServerName,
-    ServerSigningKeyId, UserId,
+    MilliSecondsSinceUnixEpoch, OwnedDeviceId, OwnedEventId, OwnedRoomId, OwnedServerName,
+    OwnedServerSigningKeyId, OwnedUserId, RoomVersionId, ServerName,
 };
 use std::{
     collections::{BTreeMap, HashMap},
@@ -24,7 +24,7 @@ use super::abstraction::Tree;
 
 pub const COUNTER: &[u8] = b"c";
 
-type WellKnownMap = HashMap<Box<ServerName>, (FedDest, String)>;
+type WellKnownMap = HashMap<OwnedServerName, (FedDest, String)>;
 type TlsNameMap = HashMap<String, (Vec<IpAddr>, u16)>;
 type RateLimitState = (Instant, u32); // Time if last failed try, number of failed tries
 type SyncHandle = (
@@ -45,13 +45,13 @@ pub struct Globals {
     pub stable_room_versions: Vec<RoomVersionId>,
     pub unstable_room_versions: Vec<RoomVersionId>,
     pub(super) server_signingkeys: Arc<dyn Tree>,
-    pub bad_event_ratelimiter: Arc<RwLock<HashMap<Box<EventId>, RateLimitState>>>,
+    pub bad_event_ratelimiter: Arc<RwLock<HashMap<OwnedEventId, RateLimitState>>>,
     pub bad_signature_ratelimiter: Arc<RwLock<HashMap<Vec<String>, RateLimitState>>>,
-    pub servername_ratelimiter: Arc<RwLock<HashMap<Box<ServerName>, Arc<Semaphore>>>>,
-    pub sync_receivers: RwLock<HashMap<(Box<UserId>, Box<DeviceId>), SyncHandle>>,
-    pub roomid_mutex_insert: RwLock<HashMap<Box<RoomId>, Arc<Mutex<()>>>>,
-    pub roomid_mutex_state: RwLock<HashMap<Box<RoomId>, Arc<TokioMutex<()>>>>,
-    pub roomid_mutex_federation: RwLock<HashMap<Box<RoomId>, Arc<TokioMutex<()>>>>, // this lock will be held longer
+    pub servername_ratelimiter: Arc<RwLock<HashMap<OwnedServerName, Arc<Semaphore>>>>,
+    pub sync_receivers: RwLock<HashMap<(OwnedUserId, OwnedDeviceId), SyncHandle>>,
+    pub roomid_mutex_insert: RwLock<HashMap<OwnedRoomId, Arc<Mutex<()>>>>,
+    pub roomid_mutex_state: RwLock<HashMap<OwnedRoomId, Arc<TokioMutex<()>>>>,
+    pub roomid_mutex_federation: RwLock<HashMap<OwnedRoomId, Arc<TokioMutex<()>>>>, // this lock will be held longer
     pub rotate: RotationHandler,
 }
 
@@ -263,7 +263,7 @@ impl Globals {
         self.config.default_room_version.clone()
     }
 
-    pub fn trusted_servers(&self) -> &[Box<ServerName>] {
+    pub fn trusted_servers(&self) -> &[OwnedServerName] {
         &self.config.trusted_servers
     }
 
@@ -316,7 +316,7 @@ impl Globals {
         &self,
         origin: &ServerName,
         new_keys: ServerSigningKeys,
-    ) -> Result<BTreeMap<Box<ServerSigningKeyId>, VerifyKey>> {
+    ) -> Result<BTreeMap<OwnedServerSigningKeyId, VerifyKey>> {
         // Not atomic, but this is not critical
         let signingkeys = self.server_signingkeys.get(origin.as_bytes())?;
 
@@ -355,7 +355,7 @@ impl Globals {
     pub fn signing_keys_for(
         &self,
         origin: &ServerName,
-    ) -> Result<BTreeMap<Box<ServerSigningKeyId>, VerifyKey>> {
+    ) -> Result<BTreeMap<OwnedServerSigningKeyId, VerifyKey>> {
         let signingkeys = self
             .server_signingkeys
             .get(origin.as_bytes())?

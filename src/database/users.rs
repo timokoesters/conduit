@@ -4,8 +4,8 @@ use ruma::{
     encryption::{CrossSigningKey, DeviceKeys, OneTimeKey},
     events::{AnyToDeviceEvent, StateEventType},
     serde::Raw,
-    DeviceId, DeviceKeyAlgorithm, DeviceKeyId, MilliSecondsSinceUnixEpoch, MxcUri, RoomAliasId,
-    UInt, UserId,
+    DeviceId, DeviceKeyAlgorithm, DeviceKeyId, MilliSecondsSinceUnixEpoch, OwnedDeviceId,
+    OwnedDeviceKeyId, OwnedMxcUri, OwnedUserId, RoomAliasId, UInt, UserId,
 };
 use std::{collections::BTreeMap, mem, sync::Arc};
 use tracing::warn;
@@ -85,7 +85,7 @@ impl Users {
 
     /// Find out which user an access token belongs to.
     #[tracing::instrument(skip(self, token))]
-    pub fn find_from_token(&self, token: &str) -> Result<Option<(Box<UserId>, String)>> {
+    pub fn find_from_token(&self, token: &str) -> Result<Option<(OwnedUserId, String)>> {
         self.token_userdeviceid
             .get(token.as_bytes())?
             .map_or(Ok(None), |bytes| {
@@ -113,7 +113,7 @@ impl Users {
 
     /// Returns an iterator over all users on this homeserver.
     #[tracing::instrument(skip(self))]
-    pub fn iter(&self) -> impl Iterator<Item = Result<Box<UserId>>> + '_ {
+    pub fn iter(&self) -> impl Iterator<Item = Result<OwnedUserId>> + '_ {
         self.userid_password.iter().map(|(bytes, _)| {
             UserId::parse(utils::string_from_bytes(&bytes).map_err(|_| {
                 Error::bad_database("User ID in userid_password is invalid unicode.")
@@ -217,7 +217,7 @@ impl Users {
 
     /// Get the avatar_url of a user.
     #[tracing::instrument(skip(self, user_id))]
-    pub fn avatar_url(&self, user_id: &UserId) -> Result<Option<Box<MxcUri>>> {
+    pub fn avatar_url(&self, user_id: &UserId) -> Result<Option<OwnedMxcUri>> {
         self.userid_avatarurl
             .get(user_id.as_bytes())?
             .map(|bytes| {
@@ -231,7 +231,7 @@ impl Users {
 
     /// Sets a new avatar_url or removes it if avatar_url is None.
     #[tracing::instrument(skip(self, user_id, avatar_url))]
-    pub fn set_avatar_url(&self, user_id: &UserId, avatar_url: Option<Box<MxcUri>>) -> Result<()> {
+    pub fn set_avatar_url(&self, user_id: &UserId, avatar_url: Option<OwnedMxcUri>) -> Result<()> {
         if let Some(avatar_url) = avatar_url {
             self.userid_avatarurl
                 .insert(user_id.as_bytes(), avatar_url.to_string().as_bytes())?;
@@ -340,7 +340,7 @@ impl Users {
     pub fn all_device_ids<'a>(
         &'a self,
         user_id: &UserId,
-    ) -> impl Iterator<Item = Result<Box<DeviceId>>> + 'a {
+    ) -> impl Iterator<Item = Result<OwnedDeviceId>> + 'a {
         let mut prefix = user_id.as_bytes().to_vec();
         prefix.push(0xff);
         // All devices have metadata
@@ -446,7 +446,7 @@ impl Users {
         device_id: &DeviceId,
         key_algorithm: &DeviceKeyAlgorithm,
         globals: &super::globals::Globals,
-    ) -> Result<Option<(Box<DeviceKeyId>, Raw<OneTimeKey>)>> {
+    ) -> Result<Option<(OwnedDeviceKeyId, Raw<OneTimeKey>)>> {
         let mut prefix = user_id.as_bytes().to_vec();
         prefix.push(0xff);
         prefix.extend_from_slice(device_id.as_bytes());
@@ -496,7 +496,7 @@ impl Users {
                 .scan_prefix(userdeviceid)
                 .map(|(bytes, _)| {
                     Ok::<_, Error>(
-                        serde_json::from_slice::<Box<DeviceKeyId>>(
+                        serde_json::from_slice::<OwnedDeviceKeyId>(
                             &*bytes.rsplit(|&b| b == 0xff).next().ok_or_else(|| {
                                 Error::bad_database("OneTimeKey ID in db is invalid.")
                             })?,
@@ -684,7 +684,7 @@ impl Users {
             .ok_or_else(|| Error::bad_database("key in keyid_key has no signatures field."))?
             .as_object_mut()
             .ok_or_else(|| Error::bad_database("key in keyid_key has invalid signatures field."))?
-            .entry(sender_id.to_owned())
+            .entry(sender_id.to_string())
             .or_insert_with(|| serde_json::Map::new().into());
 
         signatures
@@ -709,7 +709,7 @@ impl Users {
         user_or_room_id: &str,
         from: u64,
         to: Option<u64>,
-    ) -> impl Iterator<Item = Result<Box<UserId>>> + 'a {
+    ) -> impl Iterator<Item = Result<OwnedUserId>> + 'a {
         let mut prefix = user_or_room_id.as_bytes().to_vec();
         prefix.push(0xff);
 
