@@ -144,20 +144,28 @@ impl Rooms {
     /// Builds a StateMap by iterating over all keys that start
     /// with state_hash, this gives the full state for the given state_hash.
     #[tracing::instrument(skip(self))]
-    pub fn state_full_ids(&self, shortstatehash: u64) -> Result<BTreeMap<u64, Arc<EventId>>> {
+    pub async fn state_full_ids(&self, shortstatehash: u64) -> Result<BTreeMap<u64, Arc<EventId>>> {
         let full_state = self
             .load_shortstatehash_info(shortstatehash)?
             .pop()
             .expect("there is always one layer")
             .1;
-        full_state
-            .into_iter()
-            .map(|compressed| self.parse_compressed_state_event(compressed))
-            .collect()
+        let mut result = BTreeMap::new();
+        let mut i = 0;
+        for compressed in full_state.into_iter() {
+            let parsed = self.parse_compressed_state_event(compressed)?;
+            result.insert(parsed.0, parsed.1);
+
+            i += 1;
+            if i % 100 == 0 {
+                tokio::task::yield_now().await;
+            }
+        }
+        Ok(result)
     }
 
     #[tracing::instrument(skip(self))]
-    pub fn state_full(
+    pub async fn state_full(
         &self,
         shortstatehash: u64,
     ) -> Result<HashMap<(StateEventType, String), Arc<PduEvent>>> {
@@ -166,14 +174,13 @@ impl Rooms {
             .pop()
             .expect("there is always one layer")
             .1;
-        Ok(full_state
-            .into_iter()
-            .map(|compressed| self.parse_compressed_state_event(compressed))
-            .filter_map(|r| r.ok())
-            .map(|(_, eventid)| self.get_pdu(&eventid))
-            .filter_map(|r| r.ok().flatten())
-            .map(|pdu| {
-                Ok::<_, Error>((
+
+        let mut result = HashMap::new();
+        let mut i = 0;
+        for compressed in full_state {
+            let (_, eventid) = self.parse_compressed_state_event(compressed)?;
+            if let Some(pdu) = self.get_pdu(&eventid)? {
+                result.insert(
                     (
                         pdu.kind.to_string().into(),
                         pdu.state_key
@@ -182,10 +189,16 @@ impl Rooms {
                             .clone(),
                     ),
                     pdu,
-                ))
-            })
-            .filter_map(|r| r.ok())
-            .collect())
+                );
+            }
+
+            i += 1;
+            if i % 100 == 0 {
+                tokio::task::yield_now().await;
+            }
+        }
+
+        Ok(result)
     }
 
     /// Returns a single PDU from `room_id` with key (`event_type`, `state_key`).
@@ -228,7 +241,6 @@ impl Rooms {
     }
 
     /// Returns the state hash for this pdu.
-    #[tracing::instrument(skip(self))]
     pub fn pdu_shortstatehash(&self, event_id: &EventId) -> Result<Option<u64>> {
         self.eventid_shorteventid
             .get(event_id.as_bytes())?
@@ -531,7 +543,6 @@ impl Rooms {
         }
     }
 
-    #[tracing::instrument(skip(self, globals))]
     pub fn compress_state_event(
         &self,
         shortstatekey: u64,
@@ -548,7 +559,6 @@ impl Rooms {
     }
 
     /// Returns shortstatekey, event id
-    #[tracing::instrument(skip(self, compressed_event))]
     pub fn parse_compressed_state_event(
         &self,
         compressed_event: CompressedStateEvent,
@@ -707,7 +717,6 @@ impl Rooms {
     }
 
     /// Returns (shortstatehash, already_existed)
-    #[tracing::instrument(skip(self, globals))]
     fn get_or_create_shortstatehash(
         &self,
         state_hash: &StateHashId,
@@ -728,7 +737,6 @@ impl Rooms {
         })
     }
 
-    #[tracing::instrument(skip(self, globals))]
     pub fn get_or_create_shorteventid(
         &self,
         event_id: &EventId,
@@ -759,7 +767,6 @@ impl Rooms {
         Ok(short)
     }
 
-    #[tracing::instrument(skip(self))]
     pub fn get_shortroomid(&self, room_id: &RoomId) -> Result<Option<u64>> {
         self.roomid_shortroomid
             .get(room_id.as_bytes())?
@@ -770,7 +777,6 @@ impl Rooms {
             .transpose()
     }
 
-    #[tracing::instrument(skip(self))]
     pub fn get_shortstatekey(
         &self,
         event_type: &StateEventType,
@@ -808,7 +814,6 @@ impl Rooms {
         Ok(short)
     }
 
-    #[tracing::instrument(skip(self, globals))]
     pub fn get_or_create_shortroomid(
         &self,
         room_id: &RoomId,
@@ -826,7 +831,6 @@ impl Rooms {
         })
     }
 
-    #[tracing::instrument(skip(self, globals))]
     pub fn get_or_create_shortstatekey(
         &self,
         event_type: &StateEventType,
@@ -867,7 +871,6 @@ impl Rooms {
         Ok(short)
     }
 
-    #[tracing::instrument(skip(self))]
     pub fn get_eventid_from_short(&self, shorteventid: u64) -> Result<Arc<EventId>> {
         if let Some(id) = self
             .shorteventid_cache
@@ -896,7 +899,6 @@ impl Rooms {
         Ok(event_id)
     }
 
-    #[tracing::instrument(skip(self))]
     pub fn get_statekey_from_short(&self, shortstatekey: u64) -> Result<(StateEventType, String)> {
         if let Some(id) = self
             .shortstatekey_cache
@@ -940,12 +942,12 @@ impl Rooms {
 
     /// Returns the full room state.
     #[tracing::instrument(skip(self))]
-    pub fn room_state_full(
+    pub async fn room_state_full(
         &self,
         room_id: &RoomId,
     ) -> Result<HashMap<(StateEventType, String), Arc<PduEvent>>> {
         if let Some(current_shortstatehash) = self.current_shortstatehash(room_id)? {
-            self.state_full(current_shortstatehash)
+            self.state_full(current_shortstatehash).await
         } else {
             Ok(HashMap::new())
         }
@@ -982,14 +984,12 @@ impl Rooms {
     }
 
     /// Returns the `count` of this pdu's id.
-    #[tracing::instrument(skip(self))]
     pub fn pdu_count(&self, pdu_id: &[u8]) -> Result<u64> {
         utils::u64_from_bytes(&pdu_id[pdu_id.len() - size_of::<u64>()..])
             .map_err(|_| Error::bad_database("PDU has invalid count bytes."))
     }
 
     /// Returns the `count` of this pdu's id.
-    #[tracing::instrument(skip(self))]
     pub fn get_pdu_count(&self, event_id: &EventId) -> Result<Option<u64>> {
         self.eventid_pduid
             .get(event_id.as_bytes())?
@@ -1018,7 +1018,6 @@ impl Rooms {
     }
 
     /// Returns the json of a pdu.
-    #[tracing::instrument(skip(self))]
     pub fn get_pdu_json(&self, event_id: &EventId) -> Result<Option<CanonicalJsonObject>> {
         self.eventid_pduid
             .get(event_id.as_bytes())?
@@ -1037,7 +1036,6 @@ impl Rooms {
     }
 
     /// Returns the json of a pdu.
-    #[tracing::instrument(skip(self))]
     pub fn get_outlier_pdu_json(&self, event_id: &EventId) -> Result<Option<CanonicalJsonObject>> {
         self.eventid_outlierpdu
             .get(event_id.as_bytes())?
@@ -1048,7 +1046,6 @@ impl Rooms {
     }
 
     /// Returns the json of a pdu.
-    #[tracing::instrument(skip(self))]
     pub fn get_non_outlier_pdu_json(
         &self,
         event_id: &EventId,
@@ -1068,7 +1065,6 @@ impl Rooms {
     }
 
     /// Returns the pdu's id.
-    #[tracing::instrument(skip(self))]
     pub fn get_pdu_id(&self, event_id: &EventId) -> Result<Option<Vec<u8>>> {
         self.eventid_pduid.get(event_id.as_bytes())
     }
@@ -1076,7 +1072,6 @@ impl Rooms {
     /// Returns the pdu.
     ///
     /// Checks the `eventid_outlierpdu` Tree if not found in the timeline.
-    #[tracing::instrument(skip(self))]
     pub fn get_non_outlier_pdu(&self, event_id: &EventId) -> Result<Option<PduEvent>> {
         self.eventid_pduid
             .get(event_id.as_bytes())?
@@ -1095,7 +1090,6 @@ impl Rooms {
     /// Returns the pdu.
     ///
     /// Checks the `eventid_outlierpdu` Tree if not found in the timeline.
-    #[tracing::instrument(skip(self))]
     pub fn get_pdu(&self, event_id: &EventId) -> Result<Option<Arc<PduEvent>>> {
         if let Some(p) = self.pdu_cache.lock().unwrap().get_mut(event_id) {
             return Ok(Some(Arc::clone(p)));
@@ -1132,7 +1126,6 @@ impl Rooms {
     /// Returns the pdu.
     ///
     /// This does __NOT__ check the outliers `Tree`.
-    #[tracing::instrument(skip(self))]
     pub fn get_pdu_from_id(&self, pdu_id: &[u8]) -> Result<Option<PduEvent>> {
         self.pduid_pdu.get(pdu_id)?.map_or(Ok(None), |pdu| {
             Ok(Some(
@@ -1143,7 +1136,6 @@ impl Rooms {
     }
 
     /// Returns the pdu as a `BTreeMap<String, CanonicalJsonValue>`.
-    #[tracing::instrument(skip(self))]
     pub fn get_pdu_json_from_id(&self, pdu_id: &[u8]) -> Result<Option<CanonicalJsonObject>> {
         self.pduid_pdu.get(pdu_id)?.map_or(Ok(None), |pdu| {
             Ok(Some(
@@ -1232,7 +1224,6 @@ impl Rooms {
     }
 
     /// Returns the pdu from the outlier tree.
-    #[tracing::instrument(skip(self))]
     pub fn get_pdu_outlier(&self, event_id: &EventId) -> Result<Option<PduEvent>> {
         self.eventid_outlierpdu
             .get(event_id.as_bytes())?

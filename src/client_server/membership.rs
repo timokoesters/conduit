@@ -29,7 +29,7 @@ use ruma::{
 };
 use serde_json::value::{to_raw_value, RawValue as RawJsonValue};
 use std::{
-    collections::{hash_map::Entry, BTreeMap, HashMap, HashSet},
+    collections::{hash_map::Entry, BTreeMap, HashMap},
     iter,
     sync::{Arc, RwLock},
     time::{Duration, Instant},
@@ -48,19 +48,20 @@ pub async fn join_room_by_id_route(
 ) -> Result<join_room_by_id::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
-    let mut servers: HashSet<_> = db
-        .rooms
-        .invite_state(sender_user, &body.room_id)?
-        .unwrap_or_default()
-        .iter()
-        .filter_map(|event| serde_json::from_str(event.json().get()).ok())
-        .filter_map(|event: serde_json::Value| event.get("sender").cloned())
-        .filter_map(|sender| sender.as_str().map(|s| s.to_owned()))
-        .filter_map(|sender| UserId::parse(sender).ok())
-        .map(|user| user.server_name().to_owned())
-        .collect();
+    let mut servers = Vec::new(); // There is no body.server_name for /roomId/join
+    servers.extend(
+        db.rooms
+            .invite_state(sender_user, &body.room_id)?
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|event| serde_json::from_str(event.json().get()).ok())
+            .filter_map(|event: serde_json::Value| event.get("sender").cloned())
+            .filter_map(|sender| sender.as_str().map(|s| s.to_owned()))
+            .filter_map(|sender| UserId::parse(sender).ok())
+            .map(|user| user.server_name().to_owned()),
+    );
 
-    servers.insert(body.room_id.server_name().to_owned());
+    servers.push(body.room_id.server_name().to_owned());
 
     let ret = join_room_by_id_helper(
         &db,
@@ -91,19 +92,20 @@ pub async fn join_room_by_id_or_alias_route(
 
     let (servers, room_id) = match Box::<RoomId>::try_from(body.room_id_or_alias) {
         Ok(room_id) => {
-            let mut servers: HashSet<_> = db
-                .rooms
-                .invite_state(sender_user, &room_id)?
-                .unwrap_or_default()
-                .iter()
-                .filter_map(|event| serde_json::from_str(event.json().get()).ok())
-                .filter_map(|event: serde_json::Value| event.get("sender").cloned())
-                .filter_map(|sender| sender.as_str().map(|s| s.to_owned()))
-                .filter_map(|sender| UserId::parse(sender).ok())
-                .map(|user| user.server_name().to_owned())
-                .collect();
+            let mut servers = body.server_name.clone();
+            servers.extend(
+                db.rooms
+                    .invite_state(sender_user, &room_id)?
+                    .unwrap_or_default()
+                    .iter()
+                    .filter_map(|event| serde_json::from_str(event.json().get()).ok())
+                    .filter_map(|event: serde_json::Value| event.get("sender").cloned())
+                    .filter_map(|sender| sender.as_str().map(|s| s.to_owned()))
+                    .filter_map(|sender| UserId::parse(sender).ok())
+                    .map(|user| user.server_name().to_owned()),
+            );
 
-            servers.insert(room_id.server_name().to_owned());
+            servers.push(room_id.server_name().to_owned());
             (servers, room_id)
         }
         Err(room_alias) => {
@@ -413,7 +415,7 @@ pub async fn get_member_events_route(
     Ok(get_member_events::v3::Response {
         chunk: db
             .rooms
-            .room_state_full(&body.room_id)?
+            .room_state_full(&body.room_id).await?
             .iter()
             .filter(|(key, _)| key.0 == StateEventType::RoomMember)
             .map(|(_, pdu)| pdu.to_member_event().into())
@@ -462,7 +464,7 @@ async fn join_room_by_id_helper(
     db: &Database,
     sender_user: Option<&UserId>,
     room_id: &RoomId,
-    servers: &HashSet<Box<ServerName>>,
+    servers: &[Box<ServerName>],
     _third_party_signed: Option<&IncomingThirdPartySigned>,
 ) -> Result<join_room_by_id::v3::Response> {
     let sender_user = sender_user.expect("user is authenticated");
@@ -478,7 +480,7 @@ async fn join_room_by_id_helper(
     let state_lock = mutex_state.lock().await;
 
     // Ask a remote server if we don't have this room
-    if !db.rooms.exists(room_id)? && room_id.server_name() != db.globals.server_name() {
+    if !db.rooms.exists(room_id)? {
         let mut make_join_response_and_server = Err(Error::BadServerResponse(
             "No server available to assist in joining.",
         ));
@@ -1030,6 +1032,13 @@ pub(crate) async fn invite_helper<'a>(
         db.sending.send_pdu(servers, &pdu_id)?;
 
         return Ok(());
+    }
+
+    if !db.rooms.is_joined(sender_user, &room_id)? {
+        return Err(Error::BadRequest(
+            ErrorKind::Forbidden,
+            "You don't have permission to view this room.",
+        ));
     }
 
     let mutex_state = Arc::clone(

@@ -230,18 +230,20 @@ async fn sync_helper(
     for room_id in all_joined_rooms {
         let room_id = room_id?;
 
-        // Get and drop the lock to wait for remaining operations to finish
-        // This will make sure the we have all events until next_batch
-        let mutex_insert = Arc::clone(
-            db.globals
-                .roomid_mutex_insert
-                .write()
-                .unwrap()
-                .entry(room_id.clone())
-                .or_default(),
-        );
-        let insert_lock = mutex_insert.lock().unwrap();
-        drop(insert_lock);
+        {
+            // Get and drop the lock to wait for remaining operations to finish
+            // This will make sure the we have all events until next_batch
+            let mutex_insert = Arc::clone(
+                db.globals
+                    .roomid_mutex_insert
+                    .write()
+                    .unwrap()
+                    .entry(room_id.clone())
+                    .or_default(),
+            );
+            let insert_lock = mutex_insert.lock().unwrap();
+            drop(insert_lock);
+        }
 
         let timeline_pdus;
         let limited;
@@ -296,10 +298,12 @@ async fn sync_helper(
 
         // Database queries:
 
-        let current_shortstatehash = db
-            .rooms
-            .current_shortstatehash(&room_id)?
-            .expect("All rooms have state");
+        let current_shortstatehash = if let Some(s) = db.rooms.current_shortstatehash(&room_id)? {
+            s
+        } else {
+            error!("Room {} has no state", room_id);
+            continue;
+        };
 
         let since_shortstatehash = db.rooms.get_token_shortstatehash(&room_id, since)?;
 
@@ -377,11 +381,12 @@ async fn sync_helper(
 
             let (joined_member_count, invited_member_count, heroes) = calculate_counts()?;
 
-            let current_state_ids = db.rooms.state_full_ids(current_shortstatehash)?;
+            let current_state_ids = db.rooms.state_full_ids(current_shortstatehash).await?;
 
             let mut state_events = Vec::new();
             let mut lazy_loaded = HashSet::new();
 
+            let mut i = 0;
             for (shortstatekey, id) in current_state_ids {
                 let (event_type, state_key) = db.rooms.get_statekey_from_short(shortstatekey)?;
 
@@ -394,6 +399,11 @@ async fn sync_helper(
                         }
                     };
                     state_events.push(pdu);
+
+                    i += 1;
+                    if i % 100 == 0 {
+                        tokio::task::yield_now().await;
+                    }
                 } else if !lazy_load_enabled
                     || body.full_state
                     || timeline_users.contains(&state_key)
@@ -411,6 +421,11 @@ async fn sync_helper(
                         lazy_loaded.insert(uid);
                     }
                     state_events.push(pdu);
+
+                    i += 1;
+                    if i % 100 == 0 {
+                        tokio::task::yield_now().await;
+                    }
                 }
             }
 
@@ -462,8 +477,8 @@ async fn sync_helper(
             let mut lazy_loaded = HashSet::new();
 
             if since_shortstatehash != current_shortstatehash {
-                let current_state_ids = db.rooms.state_full_ids(current_shortstatehash)?;
-                let since_state_ids = db.rooms.state_full_ids(since_shortstatehash)?;
+                let current_state_ids = db.rooms.state_full_ids(current_shortstatehash).await?;
+                let since_state_ids = db.rooms.state_full_ids(since_shortstatehash).await?;
 
                 for (key, id) in current_state_ids {
                     if body.full_state || since_state_ids.get(&key) != Some(&id) {
@@ -490,6 +505,7 @@ async fn sync_helper(
                         }
 
                         state_events.push(pdu);
+                        tokio::task::yield_now().await;
                     }
                 }
             }
@@ -753,17 +769,19 @@ async fn sync_helper(
     for result in all_left_rooms {
         let (room_id, left_state_events) = result?;
 
-        // Get and drop the lock to wait for remaining operations to finish
-        let mutex_insert = Arc::clone(
-            db.globals
-                .roomid_mutex_insert
-                .write()
-                .unwrap()
-                .entry(room_id.clone())
-                .or_default(),
-        );
-        let insert_lock = mutex_insert.lock().unwrap();
-        drop(insert_lock);
+        {
+            // Get and drop the lock to wait for remaining operations to finish
+            let mutex_insert = Arc::clone(
+                db.globals
+                    .roomid_mutex_insert
+                    .write()
+                    .unwrap()
+                    .entry(room_id.clone())
+                    .or_default(),
+            );
+            let insert_lock = mutex_insert.lock().unwrap();
+            drop(insert_lock);
+        }
 
         let left_count = db.rooms.get_left_count(&room_id, &sender_user)?;
 
@@ -793,17 +811,19 @@ async fn sync_helper(
     for result in all_invited_rooms {
         let (room_id, invite_state_events) = result?;
 
-        // Get and drop the lock to wait for remaining operations to finish
-        let mutex_insert = Arc::clone(
-            db.globals
-                .roomid_mutex_insert
-                .write()
-                .unwrap()
-                .entry(room_id.clone())
-                .or_default(),
-        );
-        let insert_lock = mutex_insert.lock().unwrap();
-        drop(insert_lock);
+        {
+            // Get and drop the lock to wait for remaining operations to finish
+            let mutex_insert = Arc::clone(
+                db.globals
+                    .roomid_mutex_insert
+                    .write()
+                    .unwrap()
+                    .entry(room_id.clone())
+                    .or_default(),
+            );
+            let insert_lock = mutex_insert.lock().unwrap();
+            drop(insert_lock);
+        }
 
         let invite_count = db.rooms.get_invite_count(&room_id, &sender_user)?;
 

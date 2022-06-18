@@ -124,7 +124,7 @@ pub async fn get_state_events_route(
     Ok(get_state_events::v3::Response {
         room_state: db
             .rooms
-            .room_state_full(&body.room_id)?
+            .room_state_full(&body.room_id).await?
             .values()
             .map(|pdu| pdu.to_state_event())
             .collect(),

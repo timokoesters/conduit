@@ -115,7 +115,7 @@ impl Admin {
                                 send_message(content, guard, &state_lock);
                             }
                             AdminRoomEvent::ProcessMessage(room_message) => {
-                                let reply_message = process_admin_message(&*guard, room_message);
+                                let reply_message = process_admin_message(&*guard, room_message).await;
 
                                 send_message(reply_message, guard, &state_lock);
                             }
@@ -142,7 +142,7 @@ impl Admin {
 }
 
 // Parse and process a message from the admin room
-fn process_admin_message(db: &Database, room_message: String) -> RoomMessageEventContent {
+async fn process_admin_message(db: &Database, room_message: String) -> RoomMessageEventContent {
     let mut lines = room_message.lines();
     let command_line = lines.next().expect("each string has at least one line");
     let body: Vec<_> = lines.collect();
@@ -160,7 +160,7 @@ fn process_admin_message(db: &Database, room_message: String) -> RoomMessageEven
         }
     };
 
-    match process_admin_command(db, admin_command, body) {
+    match process_admin_command(db, admin_command, body).await {
         Ok(reply_message) => reply_message,
         Err(error) => {
             let markdown_message = format!(
@@ -281,7 +281,7 @@ enum AdminCommand {
     EnableRoom { room_id: Box<RoomId> },
 }
 
-fn process_admin_command(
+async fn process_admin_command(
     db: &Database,
     command: AdminCommand,
     body: Vec<&str>,
@@ -395,7 +395,7 @@ fn process_admin_command(
                     Error::bad_database("Invalid room id field in event in database")
                 })?;
                 let start = Instant::now();
-                let count = server_server::get_auth_chain(room_id, vec![event_id], db)?.count();
+                let count = server_server::get_auth_chain(room_id, vec![event_id], db).await?.count();
                 let elapsed = start.elapsed();
                 RoomMessageEventContent::text_plain(format!(
                     "Loaded auth chain with length {} in {:?}",

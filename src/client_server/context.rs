@@ -137,7 +137,7 @@ pub async fn get_context_route(
             .expect("All rooms have state"),
     };
 
-    let state_ids = db.rooms.state_full_ids(shortstatehash)?;
+    let state_ids = db.rooms.state_full_ids(shortstatehash).await?;
 
     let end_token = events_after
         .last()
