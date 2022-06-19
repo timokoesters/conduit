@@ -1080,3 +1080,209 @@ pub(crate) async fn invite_helper<'a>(
 
     Ok(())
 }
+
+    // Make a user leave all their joined rooms
+    #[tracing::instrument(skip(self, db))]
+    pub async fn leave_all_rooms(&self, user_id: &UserId, db: &Database) -> Result<()> {
+        let all_rooms = db
+            .rooms
+            .rooms_joined(user_id)
+            .chain(db.rooms.rooms_invited(user_id).map(|t| t.map(|(r, _)| r)))
+            .collect::<Vec<_>>();
+
+        for room_id in all_rooms {
+            let room_id = match room_id {
+                Ok(room_id) => room_id,
+                Err(_) => continue,
+            };
+
+            let _ = self.leave_room(user_id, &room_id, db).await;
+        }
+
+        Ok(())
+    }
+
+    #[tracing::instrument(skip(self, db))]
+    pub async fn leave_room(
+        &self,
+        user_id: &UserId,
+        room_id: &RoomId,
+        db: &Database,
+    ) -> Result<()> {
+        // Ask a remote server if we don't have this room
+        if !self.exists(room_id)? && room_id.server_name() != db.globals.server_name() {
+            if let Err(e) = self.remote_leave_room(user_id, room_id, db).await {
+                warn!("Failed to leave room {} remotely: {}", user_id, e);
+                // Don't tell the client about this error
+            }
+
+            let last_state = self
+                .invite_state(user_id, room_id)?
+                .map_or_else(|| self.left_state(user_id, room_id), |s| Ok(Some(s)))?;
+
+            // We always drop the invite, we can't rely on other servers
+            self.update_membership(
+                room_id,
+                user_id,
+                MembershipState::Leave,
+                user_id,
+                last_state,
+                db,
+                true,
+            )?;
+        } else {
+            let mutex_state = Arc::clone(
+                db.globals
+                    .roomid_mutex_state
+                    .write()
+                    .unwrap()
+                    .entry(room_id.to_owned())
+                    .or_default(),
+            );
+            let state_lock = mutex_state.lock().await;
+
+            let mut event: RoomMemberEventContent = serde_json::from_str(
+                self.room_state_get(room_id, &StateEventType::RoomMember, user_id.as_str())?
+                    .ok_or(Error::BadRequest(
+                        ErrorKind::BadState,
+                        "Cannot leave a room you are not a member of.",
+                    ))?
+                    .content
+                    .get(),
+            )
+            .map_err(|_| Error::bad_database("Invalid member event in database."))?;
+
+            event.membership = MembershipState::Leave;
+
+            self.build_and_append_pdu(
+                PduBuilder {
+                    event_type: RoomEventType::RoomMember,
+                    content: to_raw_value(&event).expect("event is valid, we just created it"),
+                    unsigned: None,
+                    state_key: Some(user_id.to_string()),
+                    redacts: None,
+                },
+                user_id,
+                room_id,
+                db,
+                &state_lock,
+            )?;
+        }
+
+        Ok(())
+    }
+
+    #[tracing::instrument(skip(self, db))]
+    async fn remote_leave_room(
+        &self,
+        user_id: &UserId,
+        room_id: &RoomId,
+        db: &Database,
+    ) -> Result<()> {
+        let mut make_leave_response_and_server = Err(Error::BadServerResponse(
+            "No server available to assist in leaving.",
+        ));
+
+        let invite_state = db
+            .rooms
+            .invite_state(user_id, room_id)?
+            .ok_or(Error::BadRequest(
+                ErrorKind::BadState,
+                "User is not invited.",
+            ))?;
+
+        let servers: HashSet<_> = invite_state
+            .iter()
+            .filter_map(|event| serde_json::from_str(event.json().get()).ok())
+            .filter_map(|event: serde_json::Value| event.get("sender").cloned())
+            .filter_map(|sender| sender.as_str().map(|s| s.to_owned()))
+            .filter_map(|sender| UserId::parse(sender).ok())
+            .map(|user| user.server_name().to_owned())
+            .collect();
+
+        for remote_server in servers {
+            let make_leave_response = db
+                .sending
+                .send_federation_request(
+                    &db.globals,
+                    &remote_server,
+                    federation::membership::prepare_leave_event::v1::Request { room_id, user_id },
+                )
+                .await;
+
+            make_leave_response_and_server = make_leave_response.map(|r| (r, remote_server));
+
+            if make_leave_response_and_server.is_ok() {
+                break;
+            }
+        }
+
+        let (make_leave_response, remote_server) = make_leave_response_and_server?;
+
+        let room_version_id = match make_leave_response.room_version {
+            Some(version) if self.is_supported_version(&db, &version) => version,
+            _ => return Err(Error::BadServerResponse("Room version is not supported")),
+        };
+
+        let mut leave_event_stub =
+            serde_json::from_str::<CanonicalJsonObject>(make_leave_response.event.get()).map_err(
+                |_| Error::BadServerResponse("Invalid make_leave event json received from server."),
+            )?;
+
+        // TODO: Is origin needed?
+        leave_event_stub.insert(
+            "origin".to_owned(),
+            CanonicalJsonValue::String(db.globals.server_name().as_str().to_owned()),
+        );
+        leave_event_stub.insert(
+            "origin_server_ts".to_owned(),
+            CanonicalJsonValue::Integer(
+                utils::millis_since_unix_epoch()
+                    .try_into()
+                    .expect("Timestamp is valid js_int value"),
+            ),
+        );
+        // We don't leave the event id in the pdu because that's only allowed in v1 or v2 rooms
+        leave_event_stub.remove("event_id");
+
+        // In order to create a compatible ref hash (EventID) the `hashes` field needs to be present
+        ruma::signatures::hash_and_sign_event(
+            db.globals.server_name().as_str(),
+            db.globals.keypair(),
+            &mut leave_event_stub,
+            &room_version_id,
+        )
+        .expect("event is valid, we just created it");
+
+        // Generate event id
+        let event_id = EventId::parse(format!(
+            "${}",
+            ruma::signatures::reference_hash(&leave_event_stub, &room_version_id)
+                .expect("ruma can calculate reference hashes")
+        ))
+        .expect("ruma's reference hashes are valid event ids");
+
+        // Add event_id back
+        leave_event_stub.insert(
+            "event_id".to_owned(),
+            CanonicalJsonValue::String(event_id.as_str().to_owned()),
+        );
+
+        // It has enough fields to be called a proper event now
+        let leave_event = leave_event_stub;
+
+        db.sending
+            .send_federation_request(
+                &db.globals,
+                &remote_server,
+                federation::membership::create_leave_event::v2::Request {
+                    room_id,
+                    event_id: &event_id,
+                    pdu: &PduEvent::convert_to_outgoing_federation_event(leave_event.clone()),
+                },
+            )
+            .await?;
+
+        Ok(())
+    }
+

@@ -707,3 +707,24 @@ pub async fn upgrade_room_route(
     // Return the replacement room id
     Ok(upgrade_room::v3::Response { replacement_room })
 }
+
+    /// Returns the room's version.
+    #[tracing::instrument(skip(self))]
+    pub fn get_room_version(&self, room_id: &RoomId) -> Result<RoomVersionId> {
+        let create_event = self.room_state_get(room_id, &StateEventType::RoomCreate, "")?;
+
+        let create_event_content: Option<RoomCreateEventContent> = create_event
+            .as_ref()
+            .map(|create_event| {
+                serde_json::from_str(create_event.content.get()).map_err(|e| {
+                    warn!("Invalid create event: {}", e);
+                    Error::bad_database("Invalid create event in db.")
+                })
+            })
+            .transpose()?;
+        let room_version = create_event_content
+            .map(|create_event| create_event.room_version)
+            .ok_or_else(|| Error::BadDatabase("Invalid room version"))?;
+        Ok(room_version)
+    }
+
