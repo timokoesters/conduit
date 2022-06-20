@@ -241,6 +241,64 @@
         Ok(())
     }
 
+    /// Returns the new shortstatehash
+    pub fn save_state(
+        room_id: &RoomId,
+        new_state_ids_compressed: HashSet<CompressedStateEvent>,
+    ) -> Result<(u64, 
+            HashSet<CompressedStateEvent>, // added
+            HashSet<CompressedStateEvent>)> // removed
+    {
+        let previous_shortstatehash = self.d.current_shortstatehash(room_id)?;
+
+        let state_hash = self.calculate_hash(
+            &new_state_ids_compressed
+                .iter()
+                .map(|bytes| &bytes[..])
+                .collect::<Vec<_>>(),
+        );
+
+        let (new_shortstatehash, already_existed) =
+            self.get_or_create_shortstatehash(&state_hash, &db.globals)?;
+
+        if Some(new_shortstatehash) == previous_shortstatehash {
+            return Ok(());
+        }
+
+        let states_parents = previous_shortstatehash
+            .map_or_else(|| Ok(Vec::new()), |p| self.load_shortstatehash_info(p))?;
+
+        let (statediffnew, statediffremoved) = if let Some(parent_stateinfo) = states_parents.last()
+        {
+            let statediffnew: HashSet<_> = new_state_ids_compressed
+                .difference(&parent_stateinfo.1)
+                .copied()
+                .collect();
+
+            let statediffremoved: HashSet<_> = parent_stateinfo
+                .1
+                .difference(&new_state_ids_compressed)
+                .copied()
+                .collect();
+
+            (statediffnew, statediffremoved)
+        } else {
+            (new_state_ids_compressed, HashSet::new())
+        };
+
+        if !already_existed {
+            self.save_state_from_diff(
+                new_shortstatehash,
+                statediffnew.clone(),
+                statediffremoved,
+                2, // every state change is 2 event changes on average
+                states_parents,
+            )?;
+        };
+
+        Ok((new_shortstatehash, statediffnew, statediffremoved))
+    }
+
     #[tracing::instrument(skip(self))]
     pub fn get_auth_chain_from_cache<'a>(
         &'a self,
@@ -298,4 +356,3 @@
 
         Ok(())
     }
-

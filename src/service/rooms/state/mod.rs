@@ -3,62 +3,16 @@ pub struct Service<D: Data> {
 }
 
 impl Service {
-    /// Force the creation of a new StateHash and insert it into the db.
-    ///
-    /// Whatever `state` is supplied to `force_state` becomes the new current room state snapshot.
+    /// Set the room to the given statehash and update caches.
     #[tracing::instrument(skip(self, new_state_ids_compressed, db))]
     pub fn force_state(
         &self,
         room_id: &RoomId,
-        new_state_ids_compressed: HashSet<CompressedStateEvent>,
+        shortstatehash: u64,
+        statediffnew :HashSet<CompressedStateEvent>,
+        statediffremoved :HashSet<CompressedStateEvent>,
         db: &Database,
     ) -> Result<()> {
-        let previous_shortstatehash = self.d.current_shortstatehash(room_id)?;
-
-        let state_hash = self.calculate_hash(
-            &new_state_ids_compressed
-                .iter()
-                .map(|bytes| &bytes[..])
-                .collect::<Vec<_>>(),
-        );
-
-        let (new_shortstatehash, already_existed) =
-            self.get_or_create_shortstatehash(&state_hash, &db.globals)?;
-
-        if Some(new_shortstatehash) == previous_shortstatehash {
-            return Ok(());
-        }
-
-        let states_parents = previous_shortstatehash
-            .map_or_else(|| Ok(Vec::new()), |p| self.load_shortstatehash_info(p))?;
-
-        let (statediffnew, statediffremoved) = if let Some(parent_stateinfo) = states_parents.last()
-        {
-            let statediffnew: HashSet<_> = new_state_ids_compressed
-                .difference(&parent_stateinfo.1)
-                .copied()
-                .collect();
-
-            let statediffremoved: HashSet<_> = parent_stateinfo
-                .1
-                .difference(&new_state_ids_compressed)
-                .copied()
-                .collect();
-
-            (statediffnew, statediffremoved)
-        } else {
-            (new_state_ids_compressed, HashSet::new())
-        };
-
-        if !already_existed {
-            self.save_state_from_diff(
-                new_shortstatehash,
-                statediffnew.clone(),
-                statediffremoved,
-                2, // every state change is 2 event changes on average
-                states_parents,
-            )?;
-        };
 
         for event_id in statediffnew.into_iter().filter_map(|new| {
             self.parse_compressed_state_event(new)
