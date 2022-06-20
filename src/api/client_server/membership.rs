@@ -806,36 +806,6 @@ pub(crate) async fn invite_helper<'a>(
             );
             let state_lock = mutex_state.lock().await;
 
-            let prev_events: Vec<_> = db
-                .rooms
-                .get_pdu_leaves(room_id)?
-                .into_iter()
-                .take(20)
-                .collect();
-
-            let create_event = db
-                .rooms
-                .room_state_get(room_id, &StateEventType::RoomCreate, "")?;
-
-            let create_event_content: Option<RoomCreateEventContent> = create_event
-                .as_ref()
-                .map(|create_event| {
-                    serde_json::from_str(create_event.content.get()).map_err(|e| {
-                        warn!("Invalid create event: {}", e);
-                        Error::bad_database("Invalid create event in db.")
-                    })
-                })
-                .transpose()?;
-
-            // If there was no create event yet, assume we are creating a room with the default
-            // version right now
-            let room_version_id = create_event_content
-                .map_or(db.globals.default_room_version(), |create_event| {
-                    create_event.room_version
-                });
-            let room_version =
-                RoomVersion::new(&room_version_id).expect("room version is supported");
-
             let content = to_raw_value(&RoomMemberEventContent {
                 avatar_url: None,
                 displayname: None,
@@ -851,98 +821,7 @@ pub(crate) async fn invite_helper<'a>(
             let state_key = user_id.to_string();
             let kind = StateEventType::RoomMember;
 
-            let auth_events = db.rooms.get_auth_events(
-                room_id,
-                &kind.to_string().into(),
-                sender_user,
-                Some(&state_key),
-                &content,
-            )?;
-
-            // Our depth is the maximum depth of prev_events + 1
-            let depth = prev_events
-                .iter()
-                .filter_map(|event_id| Some(db.rooms.get_pdu(event_id).ok()??.depth))
-                .max()
-                .unwrap_or_else(|| uint!(0))
-                + uint!(1);
-
-            let mut unsigned = BTreeMap::new();
-
-            if let Some(prev_pdu) = db.rooms.room_state_get(room_id, &kind, &state_key)? {
-                unsigned.insert("prev_content".to_owned(), prev_pdu.content.clone());
-                unsigned.insert(
-                    "prev_sender".to_owned(),
-                    to_raw_value(&prev_pdu.sender).expect("UserId is valid"),
-                );
-            }
-
-            let pdu = PduEvent {
-                event_id: ruma::event_id!("$thiswillbefilledinlater").into(),
-                room_id: room_id.to_owned(),
-                sender: sender_user.to_owned(),
-                origin_server_ts: utils::millis_since_unix_epoch()
-                    .try_into()
-                    .expect("time is valid"),
-                kind: kind.to_string().into(),
-                content,
-                state_key: Some(state_key),
-                prev_events,
-                depth,
-                auth_events: auth_events
-                    .iter()
-                    .map(|(_, pdu)| pdu.event_id.clone())
-                    .collect(),
-                redacts: None,
-                unsigned: if unsigned.is_empty() {
-                    None
-                } else {
-                    Some(to_raw_value(&unsigned).expect("to_raw_value always works"))
-                },
-                hashes: EventHash {
-                    sha256: "aaa".to_owned(),
-                },
-                signatures: None,
-            };
-
-            let auth_check = state_res::auth_check(
-                &room_version,
-                &pdu,
-                None::<PduEvent>, // TODO: third_party_invite
-                |k, s| auth_events.get(&(k.clone(), s.to_owned())),
-            )
-            .map_err(|e| {
-                error!("{:?}", e);
-                Error::bad_database("Auth check failed.")
-            })?;
-
-            if !auth_check {
-                return Err(Error::BadRequest(
-                    ErrorKind::Forbidden,
-                    "Event is not authorized.",
-                ));
-            }
-
-            // Hash and sign
-            let mut pdu_json =
-                utils::to_canonical_object(&pdu).expect("event is valid, we just created it");
-
-            pdu_json.remove("event_id");
-
-            // Add origin because synapse likes that (and it's required in the spec)
-            pdu_json.insert(
-                "origin".to_owned(),
-                to_canonical_value(db.globals.server_name())
-                    .expect("server name is a valid CanonicalJsonValue"),
-            );
-
-            ruma::signatures::hash_and_sign_event(
-                db.globals.server_name().as_str(),
-                db.globals.keypair(),
-                &mut pdu_json,
-                &room_version_id,
-            )
-            .expect("event is valid, we just created it");
+            let (pdu, pdu_json) = create_hash_and_sign_event();
 
             let invite_room_state = db.rooms.calculate_invite_state(&pdu)?;
 

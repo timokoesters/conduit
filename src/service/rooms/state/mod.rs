@@ -1,133 +1,8 @@
+pub struct Service<D: Data> {
+    db: D,
+}
 
-    /// Builds a StateMap by iterating over all keys that start
-    /// with state_hash, this gives the full state for the given state_hash.
-    #[tracing::instrument(skip(self))]
-    pub async fn state_full_ids(&self, shortstatehash: u64) -> Result<BTreeMap<u64, Arc<EventId>>> {
-        let full_state = self
-            .load_shortstatehash_info(shortstatehash)?
-            .pop()
-            .expect("there is always one layer")
-            .1;
-        let mut result = BTreeMap::new();
-        let mut i = 0;
-        for compressed in full_state.into_iter() {
-            let parsed = self.parse_compressed_state_event(compressed)?;
-            result.insert(parsed.0, parsed.1);
-
-            i += 1;
-            if i % 100 == 0 {
-                tokio::task::yield_now().await;
-            }
-        }
-        Ok(result)
-    }
-
-    #[tracing::instrument(skip(self))]
-    pub async fn state_full(
-        &self,
-        shortstatehash: u64,
-    ) -> Result<HashMap<(StateEventType, String), Arc<PduEvent>>> {
-        let full_state = self
-            .load_shortstatehash_info(shortstatehash)?
-            .pop()
-            .expect("there is always one layer")
-            .1;
-
-        let mut result = HashMap::new();
-        let mut i = 0;
-        for compressed in full_state {
-            let (_, eventid) = self.parse_compressed_state_event(compressed)?;
-            if let Some(pdu) = self.get_pdu(&eventid)? {
-                result.insert(
-                    (
-                        pdu.kind.to_string().into(),
-                        pdu.state_key
-                            .as_ref()
-                            .ok_or_else(|| Error::bad_database("State event has no state key."))?
-                            .clone(),
-                    ),
-                    pdu,
-                );
-            }
-
-            i += 1;
-            if i % 100 == 0 {
-                tokio::task::yield_now().await;
-            }
-        }
-
-        Ok(result)
-    }
-
-    /// Returns a single PDU from `room_id` with key (`event_type`, `state_key`).
-    #[tracing::instrument(skip(self))]
-    pub fn state_get_id(
-        &self,
-        shortstatehash: u64,
-        event_type: &StateEventType,
-        state_key: &str,
-    ) -> Result<Option<Arc<EventId>>> {
-        let shortstatekey = match self.get_shortstatekey(event_type, state_key)? {
-            Some(s) => s,
-            None => return Ok(None),
-        };
-        let full_state = self
-            .load_shortstatehash_info(shortstatehash)?
-            .pop()
-            .expect("there is always one layer")
-            .1;
-        Ok(full_state
-            .into_iter()
-            .find(|bytes| bytes.starts_with(&shortstatekey.to_be_bytes()))
-            .and_then(|compressed| {
-                self.parse_compressed_state_event(compressed)
-                    .ok()
-                    .map(|(_, id)| id)
-            }))
-    }
-
-    /// Returns a single PDU from `room_id` with key (`event_type`, `state_key`).
-    #[tracing::instrument(skip(self))]
-    pub fn state_get(
-        &self,
-        shortstatehash: u64,
-        event_type: &StateEventType,
-        state_key: &str,
-    ) -> Result<Option<Arc<PduEvent>>> {
-        self.state_get_id(shortstatehash, event_type, state_key)?
-            .map_or(Ok(None), |event_id| self.get_pdu(&event_id))
-    }
-
-    /// Returns the state hash for this pdu.
-    pub fn pdu_shortstatehash(&self, event_id: &EventId) -> Result<Option<u64>> {
-        self.eventid_shorteventid
-            .get(event_id.as_bytes())?
-            .map_or(Ok(None), |shorteventid| {
-                self.shorteventid_shortstatehash
-                    .get(&shorteventid)?
-                    .map(|bytes| {
-                        utils::u64_from_bytes(&bytes).map_err(|_| {
-                            Error::bad_database(
-                                "Invalid shortstatehash bytes in shorteventid_shortstatehash",
-                            )
-                        })
-                    })
-                    .transpose()
-            })
-    }
-
-    /// Returns the last state hash key added to the db for the given room.
-    #[tracing::instrument(skip(self))]
-    pub fn current_shortstatehash(&self, room_id: &RoomId) -> Result<Option<u64>> {
-        self.roomid_shortstatehash
-            .get(room_id.as_bytes())?
-            .map_or(Ok(None), |bytes| {
-                Ok(Some(utils::u64_from_bytes(&bytes).map_err(|_| {
-                    Error::bad_database("Invalid shortstatehash in roomid_shortstatehash")
-                })?))
-            })
-    }
-
+impl Service {
     /// Force the creation of a new StateHash and insert it into the db.
     ///
     /// Whatever `state` is supplied to `force_state` becomes the new current room state snapshot.
@@ -138,7 +13,7 @@
         new_state_ids_compressed: HashSet<CompressedStateEvent>,
         db: &Database,
     ) -> Result<()> {
-        let previous_shortstatehash = self.current_shortstatehash(room_id)?;
+        let previous_shortstatehash = self.d.current_shortstatehash(room_id)?;
 
         let state_hash = self.calculate_hash(
             &new_state_ids_compressed
@@ -235,49 +110,6 @@
             .insert(room_id.as_bytes(), &new_shortstatehash.to_be_bytes())?;
 
         Ok(())
-    }
-
-    /// Returns the full room state.
-    #[tracing::instrument(skip(self))]
-    pub async fn room_state_full(
-        &self,
-        room_id: &RoomId,
-    ) -> Result<HashMap<(StateEventType, String), Arc<PduEvent>>> {
-        if let Some(current_shortstatehash) = self.current_shortstatehash(room_id)? {
-            self.state_full(current_shortstatehash).await
-        } else {
-            Ok(HashMap::new())
-        }
-    }
-
-    /// Returns a single PDU from `room_id` with key (`event_type`, `state_key`).
-    #[tracing::instrument(skip(self))]
-    pub fn room_state_get_id(
-        &self,
-        room_id: &RoomId,
-        event_type: &StateEventType,
-        state_key: &str,
-    ) -> Result<Option<Arc<EventId>>> {
-        if let Some(current_shortstatehash) = self.current_shortstatehash(room_id)? {
-            self.state_get_id(current_shortstatehash, event_type, state_key)
-        } else {
-            Ok(None)
-        }
-    }
-
-    /// Returns a single PDU from `room_id` with key (`event_type`, `state_key`).
-    #[tracing::instrument(skip(self))]
-    pub fn room_state_get(
-        &self,
-        room_id: &RoomId,
-        event_type: &StateEventType,
-        state_key: &str,
-    ) -> Result<Option<Arc<PduEvent>>> {
-        if let Some(current_shortstatehash) = self.current_shortstatehash(room_id)? {
-            self.state_get(current_shortstatehash, event_type, state_key)
-        } else {
-            Ok(None)
-        }
     }
 
     /// Returns the leaf pdus of a room.
@@ -507,3 +339,4 @@
 
         Ok(())
     }
+}
