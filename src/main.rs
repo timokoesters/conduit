@@ -46,27 +46,26 @@ use tikv_jemallocator::Jemalloc;
 #[global_allocator]
 static GLOBAL: Jemalloc = Jemalloc;
 
-#[tokio::main]
-async fn main() {
-    let raw_config =
-        Figment::new()
-            .merge(
-                Toml::file(Env::var("CONDUIT_CONFIG").expect(
-                    "The CONDUIT_CONFIG env var needs to be set. Example: /etc/conduit.toml",
-                ))
-                .nested(),
-            )
-            .merge(Env::prefixed("CONDUIT_").global());
+lazy_static! {
+    static ref DB: Database = {
+        let raw_config =
+            Figment::new()
+                .merge(
+                    Toml::file(Env::var("CONDUIT_CONFIG").expect(
+                        "The CONDUIT_CONFIG env var needs to be set. Example: /etc/conduit.toml",
+                    ))
+                    .nested(),
+                )
+                .merge(Env::prefixed("CONDUIT_").global());
 
-    let config = match raw_config.extract::<Config>() {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("It looks like your config is invalid. The following error occured while parsing it: {}", e);
-            std::process::exit(1);
-        }
-    };
+        let config = match raw_config.extract::<Config>() {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("It looks like your config is invalid. The following error occured while parsing it: {}", e);
+                std::process::exit(1);
+            }
+        };
 
-    let start = async {
         config.warn_deprecated();
 
         let db = match Database::load_or_create(&config).await {
@@ -79,8 +78,15 @@ async fn main() {
                 std::process::exit(1);
             }
         };
+    };
+}
 
-        run_server(&config, db).await.unwrap();
+#[tokio::main]
+async fn main() {
+    lazy_static::initialize(&DB);
+
+    let start = async {
+        run_server(&config).await.unwrap();
     };
 
     if config.allow_jaeger {
@@ -120,7 +126,8 @@ async fn main() {
     }
 }
 
-async fn run_server(config: &Config, db: Arc<RwLock<Database>>) -> io::Result<()> {
+async fn run_server() -> io::Result<()> {
+    let config = DB.globals.config;
     let addr = SocketAddr::from((config.address, config.port));
 
     let x_requested_with = HeaderName::from_static("x-requested-with");

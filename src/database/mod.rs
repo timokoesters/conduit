@@ -15,7 +15,7 @@ pub mod users;
 
 use self::admin::create_admin_room;
 use crate::{utils, Config, Error, Result};
-use abstraction::DatabaseEngine;
+use abstraction::KeyValueDatabaseEngine;
 use directories::ProjectDirs;
 use futures_util::{stream::FuturesUnordered, StreamExt};
 use lru_cache::LruCache;
@@ -39,8 +39,8 @@ use std::{
 use tokio::sync::{mpsc, OwnedRwLockReadGuard, RwLock as TokioRwLock, Semaphore};
 use tracing::{debug, error, info, warn};
 
-pub struct Database {
-    _db: Arc<dyn DatabaseEngine>,
+pub struct KeyValueDatabase {
+    _db: Arc<dyn KeyValueDatabaseEngine>,
     pub globals: globals::Globals,
     pub users: users::Users,
     pub uiaa: uiaa::Uiaa,
@@ -55,7 +55,7 @@ pub struct Database {
     pub pusher: pusher::PushData,
 }
 
-impl Database {
+impl KeyValueDatabase {
     /// Tries to remove the old database but ignores all errors.
     pub fn try_remove(server_name: &str) -> Result<()> {
         let mut path = ProjectDirs::from("xyz", "koesters", "conduit")
@@ -124,7 +124,7 @@ impl Database {
                 .map_err(|_| Error::BadConfig("Database folder doesn't exists and couldn't be created (e.g. due to missing permissions). Please create the database folder yourself."))?;
         }
 
-        let builder: Arc<dyn DatabaseEngine> = match &*config.database_backend {
+        let builder: Arc<dyn KeyValueDatabaseEngine> = match &*config.database_backend {
             "sqlite" => {
                 #[cfg(not(feature = "sqlite"))]
                 return Err(Error::BadConfig("Database backend not found."));
@@ -955,7 +955,7 @@ impl Database {
 }
 
 /// Sets the emergency password and push rules for the @conduit account in case emergency password is set
-fn set_emergency_access(db: &Database) -> Result<bool> {
+fn set_emergency_access(db: &KeyValueDatabase) -> Result<bool> {
     let conduit_user = UserId::parse_with_server_name("conduit", db.globals.server_name())
         .expect("@conduit:server_name is a valid UserId");
 
@@ -978,40 +978,4 @@ fn set_emergency_access(db: &Database) -> Result<bool> {
     )?;
 
     res
-}
-
-pub struct DatabaseGuard(OwnedRwLockReadGuard<Database>);
-
-impl Deref for DatabaseGuard {
-    type Target = OwnedRwLockReadGuard<Database>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-#[cfg(feature = "conduit_bin")]
-#[axum::async_trait]
-impl<B> axum::extract::FromRequest<B> for DatabaseGuard
-where
-    B: Send,
-{
-    type Rejection = axum::extract::rejection::ExtensionRejection;
-
-    async fn from_request(
-        req: &mut axum::extract::RequestParts<B>,
-    ) -> Result<Self, Self::Rejection> {
-        use axum::extract::Extension;
-
-        let Extension(db): Extension<Arc<TokioRwLock<Database>>> =
-            Extension::from_request(req).await?;
-
-        Ok(DatabaseGuard(db.read_owned().await))
-    }
-}
-
-impl From<OwnedRwLockReadGuard<Database>> for DatabaseGuard {
-    fn from(val: OwnedRwLockReadGuard<Database>) -> Self {
-        Self(val)
-    }
 }

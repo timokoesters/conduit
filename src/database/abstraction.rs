@@ -26,7 +26,7 @@ pub mod persy;
 ))]
 pub mod watchers;
 
-pub trait DatabaseEngine: Send + Sync {
+pub trait KeyValueDatabaseEngine: Send + Sync {
     fn open(config: &Config) -> Result<Self>
     where
         Self: Sized;
@@ -40,7 +40,7 @@ pub trait DatabaseEngine: Send + Sync {
     }
 }
 
-pub trait Tree: Send + Sync {
+pub trait KeyValueTree: Send + Sync {
     fn get(&self, key: &[u8]) -> Result<Option<Vec<u8>>>;
 
     fn insert(&self, key: &[u8], value: &[u8]) -> Result<()>;
