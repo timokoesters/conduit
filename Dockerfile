@@ -36,9 +36,11 @@ FROM docker.io/debian:bullseye-slim AS runner
 # You still need to map the port when using the docker command or docker-compose.
 EXPOSE 6167
 
+ARG DEFAULT_DB_PATH=/var/lib/matrix-conduit
+
 ENV CONDUIT_PORT=6167 \
     CONDUIT_ADDRESS="0.0.0.0" \
-    CONDUIT_DATABASE_PATH=/var/lib/matrix-conduit \
+    CONDUIT_DATABASE_PATH=${DEFAULT_DB_PATH} \
     CONDUIT_CONFIG=''
 #    └─> Set no config file to do all configuration with env vars
 
@@ -50,9 +52,6 @@ RUN apt-get update && apt-get -y --no-install-recommends install \
     iproute2 \
     wget \
     && rm -rf /var/lib/apt/lists/*
-
-# Created directory for the database and media files
-RUN mkdir -p /srv/conduit/.local/share/conduit
 
 # Test if Conduit is still alive, uses the same endpoint as Element
 COPY ./docker/healthcheck.sh /srv/conduit/healthcheck.sh
@@ -69,10 +68,12 @@ RUN set -x ; \
     groupadd -r -g ${GROUP_ID} conduit ; \
     useradd -l -r -M -d /srv/conduit -o -u ${USER_ID} -g conduit conduit && exit 0 ; exit 1
 
-# Change ownership of Conduit files to conduit user and group and make the healthcheck executable:
+# Create database directory, change ownership of Conduit files to conduit user and group and make the healthcheck executable:
 RUN chown -cR conduit:conduit /srv/conduit && \
-    chmod +x /srv/conduit/healthcheck.sh
-
+    chmod +x /srv/conduit/healthcheck.sh && \
+    mkdir -p ${DEFAULT_DB_PATH} && \
+    chown -cR conduit:conduit ${DEFAULT_DB_PATH}
+    
 # Change user to conduit, no root permissions afterwards:
 USER conduit
 # Set container home directory
