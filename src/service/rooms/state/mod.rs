@@ -14,8 +14,8 @@ impl Service<_> {
         &self,
         room_id: &RoomId,
         shortstatehash: u64,
-        statediffnew :HashSet<CompressedStateEvent>,
-        statediffremoved :HashSet<CompressedStateEvent>,
+        statediffnew: HashSet<CompressedStateEvent>,
+        statediffremoved: HashSet<CompressedStateEvent>,
         db: &Database,
     ) -> Result<()> {
 

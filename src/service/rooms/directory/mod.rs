@@ -1,29 +1,30 @@
+mod data;
+pub use data::Data;
+
+use crate::service::*;
+
+pub struct Service<D: Data> {
+    db: D,
+}
+
+impl Service<_> {
+    #[tracing::instrument(skip(self))]
+    pub fn set_public(&self, room_id: &RoomId) -> Result<()> {
+        self.db.set_public(&self, room_id)
+    }
 
     #[tracing::instrument(skip(self))]
-    pub fn set_public(&self, room_id: &RoomId, public: bool) -> Result<()> {
-        if public {
-            self.publicroomids.insert(room_id.as_bytes(), &[])?;
-        } else {
-            self.publicroomids.remove(room_id.as_bytes())?;
-        }
-
-        Ok(())
+    pub fn set_not_public(&self, room_id: &RoomId) -> Result<()> {
+        self.db.set_not_public(&self, room_id)
     }
 
     #[tracing::instrument(skip(self))]
     pub fn is_public_room(&self, room_id: &RoomId) -> Result<bool> {
-        Ok(self.publicroomids.get(room_id.as_bytes())?.is_some())
+        self.db.is_public_room(&self, room_id)
     }
 
     #[tracing::instrument(skip(self))]
     pub fn public_rooms(&self) -> impl Iterator<Item = Result<Box<RoomId>>> + '_ {
-        self.publicroomids.iter().map(|(bytes, _)| {
-            RoomId::parse(
-                utils::string_from_bytes(&bytes).map_err(|_| {
-                    Error::bad_database("Room ID in publicroomids is invalid unicode.")
-                })?,
-            )
-            .map_err(|_| Error::bad_database("Room ID in publicroomids is invalid."))
-        })
+        self.db.public_rooms(&self, room_id)
     }
-
+}
