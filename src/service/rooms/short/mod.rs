@@ -196,3 +196,30 @@
         })
     }
 
+    pub fn get_shortroomid(&self, room_id: &RoomId) -> Result<Option<u64>> {
+        self.roomid_shortroomid
+            .get(room_id.as_bytes())?
+            .map(|bytes| {
+                utils::u64_from_bytes(&bytes)
+                    .map_err(|_| Error::bad_database("Invalid shortroomid in db."))
+            })
+            .transpose()
+    }
+
+    pub fn get_or_create_shortroomid(
+        &self,
+        room_id: &RoomId,
+        globals: &super::globals::Globals,
+    ) -> Result<u64> {
+        Ok(match self.roomid_shortroomid.get(room_id.as_bytes())? {
+            Some(short) => utils::u64_from_bytes(&short)
+                .map_err(|_| Error::bad_database("Invalid shortroomid in db."))?,
+            None => {
+                let short = globals.next_count()?;
+                self.roomid_shortroomid
+                    .insert(room_id.as_bytes(), &short.to_be_bytes())?;
+                short
+            }
+        })
+    }
+

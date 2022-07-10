@@ -1,4 +1,13 @@
+mod data;
+pub use data::Data;
 
+use crate::service::*;
+
+pub struct Service<D: Data> {
+    db: D,
+}
+
+impl Service<_> {
     #[tracing::instrument(skip(self))]
     pub fn lazy_load_was_sent_before(
         &self,
@@ -7,14 +16,7 @@
         room_id: &RoomId,
         ll_user: &UserId,
     ) -> Result<bool> {
-        let mut key = user_id.as_bytes().to_vec();
-        key.push(0xff);
-        key.extend_from_slice(device_id.as_bytes());
-        key.push(0xff);
-        key.extend_from_slice(room_id.as_bytes());
-        key.push(0xff);
-        key.extend_from_slice(ll_user.as_bytes());
-        Ok(self.lazyloadedids.get(&key)?.is_some())
+        self.db.lazy_load_was_sent_before(user_id, device_id, room_id, ll_user)
     }
 
     #[tracing::instrument(skip(self))]
@@ -45,27 +47,7 @@
         room_id: &RoomId,
         since: u64,
     ) -> Result<()> {
-        if let Some(user_ids) = self.lazy_load_waiting.lock().unwrap().remove(&(
-            user_id.to_owned(),
-            device_id.to_owned(),
-            room_id.to_owned(),
-            since,
-        )) {
-            let mut prefix = user_id.as_bytes().to_vec();
-            prefix.push(0xff);
-            prefix.extend_from_slice(device_id.as_bytes());
-            prefix.push(0xff);
-            prefix.extend_from_slice(room_id.as_bytes());
-            prefix.push(0xff);
-
-            for ll_id in user_ids {
-                let mut key = prefix.clone();
-                key.extend_from_slice(ll_id.as_bytes());
-                self.lazyloadedids.insert(&key, &[])?;
-            }
-        }
-
-        Ok(())
+        self.db.lazy_load_confirm_delivery(user_d, device_id, room_id, since)
     }
 
     #[tracing::instrument(skip(self))]
@@ -75,17 +57,6 @@
         device_id: &DeviceId,
         room_id: &RoomId,
     ) -> Result<()> {
-        let mut prefix = user_id.as_bytes().to_vec();
-        prefix.push(0xff);
-        prefix.extend_from_slice(device_id.as_bytes());
-        prefix.push(0xff);
-        prefix.extend_from_slice(room_id.as_bytes());
-        prefix.push(0xff);
-
-        for (key, _) in self.lazyloadedids.scan_prefix(prefix) {
-            self.lazyloadedids.remove(&key)?;
-        }
-
-        Ok(())
+        self.db.lazy_load_reset(user_id, device_id, room_id);
     }
-
+}

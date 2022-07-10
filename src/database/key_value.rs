@@ -509,3 +509,142 @@ fn parse_presence_event(bytes: &[u8]) -> Result<PresenceEvent> {
             .map(|timestamp| current_timestamp - timestamp);
     }
 }
+
+impl service::room::lazy_load::Data for KeyValueDatabase {
+    fn lazy_load_was_sent_before(
+        &self,
+        user_id: &UserId,
+        device_id: &DeviceId,
+        room_id: &RoomId,
+        ll_user: &UserId,
+    ) -> Result<bool> {
+        let mut key = user_id.as_bytes().to_vec();
+        key.push(0xff);
+        key.extend_from_slice(device_id.as_bytes());
+        key.push(0xff);
+        key.extend_from_slice(room_id.as_bytes());
+        key.push(0xff);
+        key.extend_from_slice(ll_user.as_bytes());
+        Ok(self.lazyloadedids.get(&key)?.is_some())
+    }
+
+    fn lazy_load_confirm_delivery(
+        &self,
+        user_id: &UserId,
+        device_id: &DeviceId,
+        room_id: &RoomId,
+        since: u64,
+    ) -> Result<()> {
+        if let Some(user_ids) = self.lazy_load_waiting.lock().unwrap().remove(&(
+            user_id.to_owned(),
+            device_id.to_owned(),
+            room_id.to_owned(),
+            since,
+        )) {
+            let mut prefix = user_id.as_bytes().to_vec();
+            prefix.push(0xff);
+            prefix.extend_from_slice(device_id.as_bytes());
+            prefix.push(0xff);
+            prefix.extend_from_slice(room_id.as_bytes());
+            prefix.push(0xff);
+
+            for ll_id in user_ids {
+                let mut key = prefix.clone();
+                key.extend_from_slice(ll_id.as_bytes());
+                self.lazyloadedids.insert(&key, &[])?;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn lazy_load_reset(
+        &self,
+        user_id: &UserId,
+        device_id: &DeviceId,
+        room_id: &RoomId,
+    ) -> Result<()> {
+        let mut prefix = user_id.as_bytes().to_vec();
+        prefix.push(0xff);
+        prefix.extend_from_slice(device_id.as_bytes());
+        prefix.push(0xff);
+        prefix.extend_from_slice(room_id.as_bytes());
+        prefix.push(0xff);
+
+        for (key, _) in self.lazyloadedids.scan_prefix(prefix) {
+            self.lazyloadedids.remove(&key)?;
+        }
+
+        Ok(())
+    }
+}
+
+impl service::room::metadata::Data for KeyValueDatabase {
+    fn exists(&self, room_id: &RoomId) -> Result<bool> {
+        let prefix = match self.get_shortroomid(room_id)? {
+            Some(b) => b.to_be_bytes().to_vec(),
+            None => return Ok(false),
+        };
+
+        // Look for PDUs in that room.
+        Ok(self
+            .pduid_pdu
+            .iter_from(&prefix, false)
+            .next()
+            .filter(|(k, _)| k.starts_with(&prefix))
+            .is_some())
+    }
+}
+
+impl service::room::outlier::Data for KeyValueDatabase {
+    fn get_outlier_pdu_json(&self, event_id: &EventId) -> Result<Option<CanonicalJsonObject>> {
+        self.eventid_outlierpdu
+            .get(event_id.as_bytes())?
+            .map_or(Ok(None), |pdu| {
+                serde_json::from_slice(&pdu).map_err(|_| Error::bad_database("Invalid PDU in db."))
+            })
+    }
+
+    fn get_outlier_pdu(&self, event_id: &EventId) -> Result<Option<PduEvent>> {
+        self.eventid_outlierpdu
+            .get(event_id.as_bytes())?
+            .map_or(Ok(None), |pdu| {
+                serde_json::from_slice(&pdu).map_err(|_| Error::bad_database("Invalid PDU in db."))
+            })
+    }
+
+    fn add_pdu_outlier(&self, event_id: &EventId, pdu: &CanonicalJsonObject) -> Result<()> {
+        self.eventid_outlierpdu.insert(
+            event_id.as_bytes(),
+            &serde_json::to_vec(&pdu).expect("CanonicalJsonObject is valid"),
+        )
+    }
+}
+
+impl service::room::pdu_metadata::Data for KeyValueDatabase {
+    fn mark_as_referenced(&self, room_id: &RoomId, event_ids: &[Arc<EventId>]) -> Result<()> {
+        for prev in event_ids {
+            let mut key = room_id.as_bytes().to_vec();
+            key.extend_from_slice(prev.as_bytes());
+            self.referencedevents.insert(&key, &[])?;
+        }
+
+        Ok(())
+    }
+
+    fn is_event_referenced(&self, room_id: &RoomId, event_id: &EventId) -> Result<bool> {
+        let mut key = room_id.as_bytes().to_vec();
+        key.extend_from_slice(event_id.as_bytes());
+        Ok(self.referencedevents.get(&key)?.is_some())
+    }
+
+    fn mark_event_soft_failed(&self, event_id: &EventId) -> Result<()> {
+        self.softfailedeventids.insert(event_id.as_bytes(), &[])
+    }
+
+    fn is_event_soft_failed(&self, event_id: &EventId) -> Result<bool> {
+        self.softfailedeventids
+            .get(event_id.as_bytes())
+            .map(|o| o.is_some())
+    }
+}
