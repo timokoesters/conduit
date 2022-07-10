@@ -156,7 +156,7 @@ impl service::room::directory::Data for KeyValueDatabase {
     }
 }
 
-impl service::room::edus::Data for KeyValueDatabase {
+impl service::room::edus::read_receipt::Data for KeyValueDatabase {
     fn readreceipt_update(
         &self,
         user_id: &UserId,
@@ -203,7 +203,7 @@ impl service::room::edus::Data for KeyValueDatabase {
         room_id: &RoomId,
         since: u64,
     ) -> impl Iterator<
-        Item = Result<(
+        Item=Result<(
             Box<UserId>,
             u64,
             Raw<ruma::events::AnySyncEphemeralRoomEvent>,
@@ -229,7 +229,7 @@ impl service::room::edus::Data for KeyValueDatabase {
                             Error::bad_database("Invalid readreceiptid userid bytes in db.")
                         })?,
                 )
-                .map_err(|_| Error::bad_database("Invalid readreceiptid userid in db."))?;
+                    .map_err(|_| Error::bad_database("Invalid readreceiptid userid in db."))?;
 
                 let mut json = serde_json::from_slice::<CanonicalJsonObject>(&v).map_err(|_| {
                     Error::bad_database("Read receipt in roomlatestid_roomlatest is invalid json.")
@@ -293,7 +293,9 @@ impl service::room::edus::Data for KeyValueDatabase {
             .transpose()?
             .unwrap_or(0))
     }
+}
 
+impl service::room::edus::typing::Data for KeyValueDatabase {
     fn typing_add(
         &self,
         user_id: &UserId,
@@ -379,14 +381,16 @@ impl service::room::edus::Data for KeyValueDatabase {
             let user_id = UserId::parse(utils::string_from_bytes(&user_id).map_err(|_| {
                 Error::bad_database("User ID in typingid_userid is invalid unicode.")
             })?)
-            .map_err(|_| Error::bad_database("User ID in typingid_userid is invalid."))?;
+                .map_err(|_| Error::bad_database("User ID in typingid_userid is invalid."))?;
 
             user_ids.insert(user_id);
         }
 
         Ok(user_ids)
     }
+}
 
+impl service::room::edus::presence::Data for KeyValueDatabase {
     fn update_presence(
         &self,
         user_id: &UserId,
@@ -416,7 +420,7 @@ impl service::room::edus::Data for KeyValueDatabase {
         Ok(())
     }
 
-    pub fn ping_presence(&self, user_id: &UserId) -> Result<()> {
+    fn ping_presence(&self, user_id: &UserId) -> Result<()> {
         self.userid_lastpresenceupdate.insert(
             user_id.as_bytes(),
             &utils::millis_since_unix_epoch().to_be_bytes(),
