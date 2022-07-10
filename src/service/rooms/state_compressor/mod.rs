@@ -1,4 +1,13 @@
+mod data;
+pub use data::Data;
 
+use crate::service::*;
+
+pub struct Service<D: Data> {
+    db: D,
+}
+
+impl Service<_> {
     /// Returns a stack with info on shortstatehash, full state, added diff and removed diff for the selected shortstatehash and each parent layer.
     #[tracing::instrument(skip(self))]
     pub fn load_shortstatehash_info(
@@ -21,31 +30,7 @@
             return Ok(r.clone());
         }
 
-        let value = self
-            .shortstatehash_statediff
-            .get(&shortstatehash.to_be_bytes())?
-            .ok_or_else(|| Error::bad_database("State hash does not exist"))?;
-        let parent =
-            utils::u64_from_bytes(&value[0..size_of::<u64>()]).expect("bytes have right length");
-
-        let mut add_mode = true;
-        let mut added = HashSet::new();
-        let mut removed = HashSet::new();
-
-        let mut i = size_of::<u64>();
-        while let Some(v) = value.get(i..i + 2 * size_of::<u64>()) {
-            if add_mode && v.starts_with(&0_u64.to_be_bytes()) {
-                add_mode = false;
-                i += size_of::<u64>();
-                continue;
-            }
-            if add_mode {
-                added.insert(v.try_into().expect("we checked the size above"));
-            } else {
-                removed.insert(v.try_into().expect("we checked the size above"));
-            }
-            i += 2 * size_of::<u64>();
-        }
+        self.db.get_statediff(shortstatehash)?;
 
         if parent != 0_u64 {
             let mut response = self.load_shortstatehash_info(parent)?;
@@ -170,17 +155,7 @@
 
         if parent_states.is_empty() {
             // There is no parent layer, create a new state
-            let mut value = 0_u64.to_be_bytes().to_vec(); // 0 means no parent
-            for new in &statediffnew {
-                value.extend_from_slice(&new[..]);
-            }
-
-            if !statediffremoved.is_empty() {
-                warn!("Tried to create new state with removals");
-            }
-
-            self.shortstatehash_statediff
-                .insert(&shortstatehash.to_be_bytes(), &value)?;
+            self.db.save_statediff(shortstatehash, StateDiff { parent: 0, new: statediffnew, removed: statediffremoved })?;
 
             return Ok(());
         };
@@ -222,20 +197,7 @@
             )?;
         } else {
             // Diff small enough, we add diff as layer on top of parent
-            let mut value = parent.0.to_be_bytes().to_vec();
-            for new in &statediffnew {
-                value.extend_from_slice(&new[..]);
-            }
-
-            if !statediffremoved.is_empty() {
-                value.extend_from_slice(&0_u64.to_be_bytes());
-                for removed in &statediffremoved {
-                    value.extend_from_slice(&removed[..]);
-                }
-            }
-
-            self.shortstatehash_statediff
-                .insert(&shortstatehash.to_be_bytes(), &value)?;
+            self.db.save_statediff(shortstatehash, StateDiff { parent: parent.0, new: statediffnew, removed: statediffremoved })?;
         }
 
         Ok(())
@@ -298,61 +260,4 @@
 
         Ok((new_shortstatehash, statediffnew, statediffremoved))
     }
-
-    #[tracing::instrument(skip(self))]
-    pub fn get_auth_chain_from_cache<'a>(
-        &'a self,
-        key: &[u64],
-    ) -> Result<Option<Arc<HashSet<u64>>>> {
-        // Check RAM cache
-        if let Some(result) = self.auth_chain_cache.lock().unwrap().get_mut(key) {
-            return Ok(Some(Arc::clone(result)));
-        }
-
-        // Check DB cache
-        if key.len() == 1 {
-            if let Some(chain) =
-                self.shorteventid_authchain
-                    .get(&key[0].to_be_bytes())?
-                    .map(|chain| {
-                        chain
-                            .chunks_exact(size_of::<u64>())
-                            .map(|chunk| {
-                                utils::u64_from_bytes(chunk).expect("byte length is correct")
-                            })
-                            .collect()
-                    })
-            {
-                let chain = Arc::new(chain);
-
-                // Cache in RAM
-                self.auth_chain_cache
-                    .lock()
-                    .unwrap()
-                    .insert(vec![key[0]], Arc::clone(&chain));
-
-                return Ok(Some(chain));
-            }
-        }
-
-        Ok(None)
-    }
-
-    #[tracing::instrument(skip(self))]
-    pub fn cache_auth_chain(&self, key: Vec<u64>, chain: Arc<HashSet<u64>>) -> Result<()> {
-        // Persist in db
-        if key.len() == 1 {
-            self.shorteventid_authchain.insert(
-                &key[0].to_be_bytes(),
-                &chain
-                    .iter()
-                    .flat_map(|s| s.to_be_bytes().to_vec())
-                    .collect::<Vec<u8>>(),
-            )?;
-        }
-
-        // Cache in RAM
-        self.auth_chain_cache.lock().unwrap().insert(key, chain);
-
-        Ok(())
-    }
+}
