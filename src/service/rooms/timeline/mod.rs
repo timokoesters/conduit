@@ -439,20 +439,7 @@
                     .map_err(|_| Error::bad_database("Invalid content in pdu."))?;
 
                 if let Some(body) = content.body {
-                    let mut batch = body
-                        .split_terminator(|c: char| !c.is_alphanumeric())
-                        .filter(|s| !s.is_empty())
-                        .filter(|word| word.len() <= 50)
-                        .map(str::to_lowercase)
-                        .map(|word| {
-                            let mut key = shortroomid.to_be_bytes().to_vec();
-                            key.extend_from_slice(word.as_bytes());
-                            key.push(0xff);
-                            key.extend_from_slice(&pdu_id);
-                            (key, Vec::new())
-                        });
-
-                    self.tokenids.insert_batch(&mut batch)?;
+                    DB.rooms.search.index_pdu(room_id, pdu_id, body)?;
 
                     let admin_room = self.id_from_alias(
                         <&RoomAliasId>::try_from(

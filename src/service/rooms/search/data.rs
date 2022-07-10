@@ -1,0 +1,9 @@
+pub trait Data {
+    pub fn index_pdu<'a>(&self, room_id: &RoomId, pdu_id: u64, message_body: String) -> Result<()>;
+
+    pub fn search_pdus<'a>(
+        &'a self,
+        room_id: &RoomId,
+        search_string: &str,
+    ) -> Result<Option<(impl Iterator<Item = Vec<u8>> + 'a, Vec<String>)>>;
+}
