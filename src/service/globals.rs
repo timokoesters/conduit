@@ -1,3 +1,8 @@
+mod data;
+pub use data::Data;
+
+use crate::service::*;
+
 use crate::{database::Config, server_server::FedDest, utils, Error, Result};
 use ruma::{
     api::{
@@ -32,10 +37,11 @@ type SyncHandle = (
     Receiver<Option<Result<sync_events::v3::Response>>>, // rx
 );
 
-pub struct Globals {
+pub struct Service<D: Data> {
+    db: D,
+
     pub actual_destination_cache: Arc<RwLock<WellKnownMap>>, // actual_destination, host
     pub tls_name_override: Arc<RwLock<TlsNameMap>>,
-    pub(super) globals: Arc<dyn Tree>,
     pub config: Config,
     keypair: Arc<ruma::signatures::Ed25519KeyPair>,
     dns_resolver: TokioAsyncResolver,
@@ -44,7 +50,6 @@ pub struct Globals {
     default_client: reqwest::Client,
     pub stable_room_versions: Vec<RoomVersionId>,
     pub unstable_room_versions: Vec<RoomVersionId>,
-    pub(super) server_signingkeys: Arc<dyn Tree>,
     pub bad_event_ratelimiter: Arc<RwLock<HashMap<Box<EventId>, RateLimitState>>>,
     pub bad_signature_ratelimiter: Arc<RwLock<HashMap<Vec<String>, RateLimitState>>>,
     pub servername_ratelimiter: Arc<RwLock<HashMap<Box<ServerName>, Arc<Semaphore>>>>,
@@ -87,7 +92,8 @@ impl Default for RotationHandler {
     }
 }
 
-impl Globals {
+
+impl Service<_> {
     pub fn load(
         globals: Arc<dyn Tree>,
         server_signingkeys: Arc<dyn Tree>,

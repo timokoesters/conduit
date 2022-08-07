@@ -1,15 +1,4 @@
-use std::sync::Arc;
-
-use crate::Result;
-use ruma::{DeviceId, TransactionId, UserId};
-
-use super::abstraction::Tree;
-
-pub struct TransactionIds {
-    pub(super) userdevicetxnid_response: Arc<dyn Tree>, // Response can be empty (/sendToDevice) or the event id (/send)
-}
-
-impl TransactionIds {
+impl service::pusher::Data for KeyValueDatabase {
     pub fn add_txnid(
         &self,
         user_id: &UserId,

@@ -1,4 +1,13 @@
+mod data;
+pub use data::Data;
 
+use crate::service::*;
+
+pub struct Service<D: Data> {
+    db: D,
+}
+
+impl Service<_> {
     pub fn get_or_create_shorteventid(
         &self,
         event_id: &EventId,
@@ -222,4 +231,4 @@
             }
         })
     }
-
+}
