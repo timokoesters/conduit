@@ -100,6 +100,23 @@ impl service::room::edus::presence::Data for KeyValueDatabase {
 
         Ok(hashmap)
     }
+
+    fn presence_maintain(&self, db: Arc<TokioRwLock<Database>>) {
+        // TODO @M0dEx: move this to a timed tasks module
+        tokio::spawn(async move {
+            loop {
+                select! {
+                    Some(user_id) = self.presence_timers.next() {
+                        // TODO @M0dEx: would it be better to acquire the lock outside the loop?
+                        let guard = db.read().await;
+
+                        // TODO @M0dEx: add self.presence_timers
+                        // TODO @M0dEx: maintain presence
+                    }
+                }
+            }
+        });
+    }
 }
 
 fn parse_presence_event(bytes: &[u8]) -> Result<PresenceEvent> {
@@ -121,4 +138,3 @@ fn parse_presence_event(bytes: &[u8]) -> Result<PresenceEvent> {
             .map(|timestamp| current_timestamp - timestamp);
     }
 }
-
