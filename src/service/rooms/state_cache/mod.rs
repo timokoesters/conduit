@@ -1,4 +1,13 @@
+mod data;
+pub use data::Data;
 
+use crate::service::*;
+
+pub struct Service<D: Data> {
+    db: D,
+}
+
+impl Service<_> {
     /// Update current membership data.
     #[tracing::instrument(skip(self, last_state, db))]
     pub fn update_membership(
@@ -25,10 +34,6 @@
         serverroom_id.push(0xff);
         serverroom_id.extend_from_slice(room_id.as_bytes());
 
-        let mut userroom_id = user_id.as_bytes().to_vec();
-        userroom_id.push(0xff);
-        userroom_id.extend_from_slice(room_id.as_bytes());
-
         let mut roomuser_id = room_id.as_bytes().to_vec();
         roomuser_id.push(0xff);
         roomuser_id.extend_from_slice(user_id.as_bytes());
@@ -38,7 +43,7 @@
                 // Check if the user never joined this room
                 if !self.once_joined(user_id, room_id)? {
                     // Add the user ID to the join list then
-                    self.roomuseroncejoinedids.insert(&userroom_id, &[])?;
+                    self.db.mark_as_once_joined(user_id, room_id)?;
 
                     // Check if the room has a predecessor
                     if let Some(predecessor) = self
@@ -116,10 +121,6 @@
                     }
                 }
 
-                if update_joined_count {
-                    self.roomserverids.insert(&roomserver_id, &[])?;
-                    self.serverroomids.insert(&serverroom_id, &[])?;
-                }
                 self.userroomid_joined.insert(&userroom_id, &[])?;
                 self.roomuserid_joined.insert(&roomuser_id, &[])?;
                 self.userroomid_invitestate.remove(&userroom_id)?;
@@ -150,10 +151,6 @@
                     return Ok(());
                 }
 
-                if update_joined_count {
-                    self.roomserverids.insert(&roomserver_id, &[])?;
-                    self.serverroomids.insert(&serverroom_id, &[])?;
-                }
                 self.userroomid_invitestate.insert(
                     &userroom_id,
                     &serde_json::to_vec(&last_state.unwrap_or_default())
@@ -167,16 +164,6 @@
                 self.roomuserid_leftcount.remove(&roomuser_id)?;
             }
             MembershipState::Leave | MembershipState::Ban => {
-                if update_joined_count
-                    && self
-                        .room_members(room_id)
-                        .chain(self.room_members_invited(room_id))
-                        .filter_map(|r| r.ok())
-                        .all(|u| u.server_name() != user_id.server_name())
-                {
-                    self.roomserverids.remove(&roomserver_id)?;
-                    self.serverroomids.remove(&serverroom_id)?;
-                }
                 self.userroomid_leftstate.insert(
                     &userroom_id,
                     &serde_json::to_vec(&Vec::<Raw<AnySyncStateEvent>>::new()).unwrap(),
@@ -230,36 +217,6 @@
             .write()
             .unwrap()
             .insert(room_id.to_owned(), Arc::new(real_users));
-
-        for old_joined_server in self.room_servers(room_id).filter_map(|r| r.ok()) {
-            if !joined_servers.remove(&old_joined_server) {
-                // Server not in room anymore
-                let mut roomserver_id = room_id.as_bytes().to_vec();
-                roomserver_id.push(0xff);
-                roomserver_id.extend_from_slice(old_joined_server.as_bytes());
-
-                let mut serverroom_id = old_joined_server.as_bytes().to_vec();
-                serverroom_id.push(0xff);
-                serverroom_id.extend_from_slice(room_id.as_bytes());
-
-                self.roomserverids.remove(&roomserver_id)?;
-                self.serverroomids.remove(&serverroom_id)?;
-            }
-        }
-
-        // Now only new servers are in joined_servers anymore
-        for server in joined_servers {
-            let mut roomserver_id = room_id.as_bytes().to_vec();
-            roomserver_id.push(0xff);
-            roomserver_id.extend_from_slice(server.as_bytes());
-
-            let mut serverroom_id = server.as_bytes().to_vec();
-            serverroom_id.push(0xff);
-            serverroom_id.extend_from_slice(room_id.as_bytes());
-
-            self.roomserverids.insert(&roomserver_id, &[])?;
-            self.serverroomids.insert(&serverroom_id, &[])?;
-        }
 
         self.appservice_in_room_cache
             .write()
@@ -714,4 +671,4 @@
 
         Ok(self.userroomid_leftstate.get(&userroom_id)?.is_some())
     }
-
+}

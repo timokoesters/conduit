@@ -1,31 +1,13 @@
-use std::{
-    collections::BTreeMap,
-    sync::{Arc, RwLock},
-};
+mod data;
+pub use data::Data;
 
-use crate::{client_server::SESSION_ID_LENGTH, utils, Error, Result};
-use ruma::{
-    api::client::{
-        error::ErrorKind,
-        uiaa::{
-            AuthType, IncomingAuthData, IncomingPassword,
-            IncomingUserIdentifier::UserIdOrLocalpart, UiaaInfo,
-        },
-    },
-    signatures::CanonicalJsonValue,
-    DeviceId, UserId,
-};
-use tracing::error;
+use crate::service::*;
 
-use super::abstraction::Tree;
-
-pub struct Uiaa {
-    pub(super) userdevicesessionid_uiaainfo: Arc<dyn Tree>, // User-interactive authentication
-    pub(super) userdevicesessionid_uiaarequest:
-        RwLock<BTreeMap<(Box<UserId>, Box<DeviceId>, String), CanonicalJsonValue>>,
+pub struct Service<D: Data> {
+    db: D,
 }
 
-impl Uiaa {
+impl Service<_> {
     /// Creates a new Uiaa session. Make sure the session token is unique.
     pub fn create(
         &self,
@@ -144,35 +126,13 @@ impl Uiaa {
         Ok((true, uiaainfo))
     }
 
-    fn set_uiaa_request(
-        &self,
-        user_id: &UserId,
-        device_id: &DeviceId,
-        session: &str,
-        request: &CanonicalJsonValue,
-    ) -> Result<()> {
-        self.userdevicesessionid_uiaarequest
-            .write()
-            .unwrap()
-            .insert(
-                (user_id.to_owned(), device_id.to_owned(), session.to_owned()),
-                request.to_owned(),
-            );
-
-        Ok(())
-    }
-
     pub fn get_uiaa_request(
         &self,
         user_id: &UserId,
         device_id: &DeviceId,
         session: &str,
     ) -> Option<CanonicalJsonValue> {
-        self.userdevicesessionid_uiaarequest
-            .read()
-            .unwrap()
-            .get(&(user_id.to_owned(), device_id.to_owned(), session.to_owned()))
-            .map(|j| j.to_owned())
+        self.db.get_uiaa_request(user_id, device_id, session)
     }
 
     fn update_uiaa_session(
@@ -182,46 +142,6 @@ impl Uiaa {
         session: &str,
         uiaainfo: Option<&UiaaInfo>,
     ) -> Result<()> {
-        let mut userdevicesessionid = user_id.as_bytes().to_vec();
-        userdevicesessionid.push(0xff);
-        userdevicesessionid.extend_from_slice(device_id.as_bytes());
-        userdevicesessionid.push(0xff);
-        userdevicesessionid.extend_from_slice(session.as_bytes());
-
-        if let Some(uiaainfo) = uiaainfo {
-            self.userdevicesessionid_uiaainfo.insert(
-                &userdevicesessionid,
-                &serde_json::to_vec(&uiaainfo).expect("UiaaInfo::to_vec always works"),
-            )?;
-        } else {
-            self.userdevicesessionid_uiaainfo
-                .remove(&userdevicesessionid)?;
-        }
-
-        Ok(())
-    }
-
-    fn get_uiaa_session(
-        &self,
-        user_id: &UserId,
-        device_id: &DeviceId,
-        session: &str,
-    ) -> Result<UiaaInfo> {
-        let mut userdevicesessionid = user_id.as_bytes().to_vec();
-        userdevicesessionid.push(0xff);
-        userdevicesessionid.extend_from_slice(device_id.as_bytes());
-        userdevicesessionid.push(0xff);
-        userdevicesessionid.extend_from_slice(session.as_bytes());
-
-        serde_json::from_slice(
-            &self
-                .userdevicesessionid_uiaainfo
-                .get(&userdevicesessionid)?
-                .ok_or(Error::BadRequest(
-                    ErrorKind::Forbidden,
-                    "UIAA session does not exist.",
-                ))?,
-        )
-        .map_err(|_| Error::bad_database("UiaaInfo in userdeviceid_uiaainfo is invalid."))
+        self.db.update_uiaa_session(user_id, device_id, session, uiaainfo)
     }
 }
