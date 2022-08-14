@@ -170,11 +170,24 @@ pub async fn upload_signatures_route(
 ) -> Result<upload_signatures::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
-    for (user_id, signed_keys) in &body.signed_keys {
-        for (key_id, signed_key) in signed_keys {
-            let signed_key = serde_json::to_value(signed_key).unwrap();
+    for (user_id, keys) in &body.signed_keys {
+        for (key_id, key) in keys {
+            let key = serde_json::to_value(key)
+                .map_err(|_| Error::BadRequest(ErrorKind::InvalidParam, "Invalid key JSON"))?;
 
-            for signature in signed_key
+            let is_signed_key = match key.get("usage") {
+                Some(usage) => usage
+                    .as_array()
+                    .map(|usage| !usage.contains(&json!("master")))
+                    .unwrap_or(false),
+                None => true,
+            };
+
+            if !is_signed_key {
+                continue;
+            }
+
+            for signature in key
                 .get("signatures")
                 .ok_or(Error::BadRequest(
                     ErrorKind::InvalidParam,
