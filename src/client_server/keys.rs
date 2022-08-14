@@ -175,7 +175,7 @@ pub async fn upload_signatures_route(
             let key = serde_json::to_value(key)
                 .map_err(|_| Error::BadRequest(ErrorKind::InvalidParam, "Invalid key JSON"))?;
 
-            let is_signature_key = match key.get("usage") {
+            let is_signed_key = match key.get("usage") {
                 Some(usage) => usage
                     .as_array()
                     .map(|usage| !usage.contains(&json!("master")))
@@ -183,7 +183,7 @@ pub async fn upload_signatures_route(
                 None => true,
             };
 
-            if !is_signature_key {
+            if !is_signed_key {
                 continue;
             }
 
