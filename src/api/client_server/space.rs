@@ -35,6 +35,37 @@ use tracing::warn;
 pub async fn get_hierarchy_route(
     body: Ruma<get_hierarchy::v1::IncomingRequest>,
 ) -> Result<get_hierarchy::v1::Response> {
+    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
+
+    // Check if room is world readable
+    let is_world_readable = services()
+        .rooms
+        .state_accessor
+        .room_state_get(&body.room_id, &StateEventType::RoomHistoryVisibility, "")?
+        .map_or(Ok(false), |s| {
+            serde_json::from_str(s.content.get())
+                .map(|c: RoomHistoryVisibilityEventContent| {
+                    c.history_visibility == HistoryVisibility::WorldReadable
+                })
+                .map_err(|_| {
+                    Error::bad_database("Invalid room history visibility event in database.")
+                })
+        })
+        .unwrap_or(false);
+
+    // Reject if user not in room and not world readable
+    if !services()
+        .rooms
+        .state_cache
+        .is_joined(sender_user, &body.room_id)?
+        && !is_world_readable
+    {
+        return Err(Error::BadRequest(
+            ErrorKind::Forbidden,
+            "You don't have permission to view this room.",
+        ));
+    }
+
     // from format is '{suggested_only}|{max_depth}|{skip}'
     let (suggested_only, max_depth, start) = body
         .from
@@ -200,11 +231,11 @@ async fn get_room_chunk(
                     .map(|c: RoomJoinRulesEventContent| match c.join_rule {
                         JoinRule::Invite => SpaceRoomJoinRule::Invite,
                         JoinRule::Knock => SpaceRoomJoinRule::Knock,
+                        JoinRule::KnockRestricted(_) => SpaceRoomJoinRule::KnockRestricted,
                         JoinRule::Private => SpaceRoomJoinRule::Private,
                         JoinRule::Public => SpaceRoomJoinRule::Public,
                         JoinRule::Restricted(_) => SpaceRoomJoinRule::Restricted,
-                        // Can't convert two type.
-                        JoinRule::_Custom(_) => SpaceRoomJoinRule::Private,
+                        JoinRule::_Custom(_) => SpaceRoomJoinRule::from(c.join_rule.as_str()),
                     })
                     .map_err(|_| Error::bad_database("Invalid room join rules event in database."))
             })
