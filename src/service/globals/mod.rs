@@ -250,6 +250,10 @@ impl Service {
         self.config.enable_lightning_bolt
     }
 
+    pub fn hierarchy_max_depth(&self) -> u64 {
+        self.config.hierarchy_max_depth
+    }
+
     pub fn trusted_servers(&self) -> &[OwnedServerName] {
         &self.config.trusted_servers
     }

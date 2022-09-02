@@ -52,6 +52,8 @@ pub struct Config {
     pub allow_unstable_room_versions: bool,
     #[serde(default = "default_default_room_version")]
     pub default_room_version: RoomVersionId,
+    #[serde(default = "default_hierarchy_max_depth")]
+    pub hierarchy_max_depth: u64,
     #[serde(default = "false_fn")]
     pub allow_jaeger: bool,
     #[serde(default = "false_fn")]
@@ -260,4 +262,8 @@ fn default_turn_ttl() -> u64 {
 // I know, it's a great name
 pub fn default_default_room_version() -> RoomVersionId {
     RoomVersionId::V9
+}
+
+fn default_hierarchy_max_depth() -> u64 {
+    6
 }
