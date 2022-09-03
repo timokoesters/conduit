@@ -982,6 +982,11 @@ pub async fn get_backfill_route(
         ));
     }
 
+    services()
+        .rooms
+        .event_handler
+        .acl_check(sender_servername, &body.room_id)?;
+
     let origin = services().globals.server_name().to_owned();
     let earliest_events = &[];
 
