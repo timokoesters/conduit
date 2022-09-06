@@ -1,7 +1,6 @@
 mod data;
 pub use data::Data;
-
-use crate::service::*;
+use ruma::{RoomId, UserId, events::receipt::ReceiptEvent, serde::Raw};
 
 pub struct Service<D: Data> {
     db: D,
@@ -15,7 +14,7 @@ impl Service<_> {
         room_id: &RoomId,
         event: ReceiptEvent,
     ) -> Result<()> {
-        self.db.readreceipt_update(user_id, room_id, event);
+        self.db.readreceipt_update(user_id, room_id, event)
     }
 
     /// Returns an iterator over the most recent read_receipts in a room that happened after the event with id `since`.
@@ -35,7 +34,7 @@ impl Service<_> {
     }
 
     /// Sets a private read marker at `count`.
-    #[tracing::instrument(skip(self, globals))]
+    #[tracing::instrument(skip(self))]
     pub fn private_read_set(&self, room_id: &RoomId, user_id: &UserId, count: u64) -> Result<()> {
         self.db.private_read_set(room_id, user_id, count)
     }

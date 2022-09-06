@@ -1,4 +1,4 @@
-use crate::{database::DatabaseGuard, Database, Error, Result, Ruma};
+use crate::{Error, Result, Ruma, services};
 use ruma::{
     api::{
         client::{
@@ -37,11 +37,9 @@ use tracing::{info, warn};
 ///
 /// - Rooms are ordered by the number of joined members
 pub async fn get_public_rooms_filtered_route(
-    db: DatabaseGuard,
     body: Ruma<get_public_rooms_filtered::v3::IncomingRequest>,
 ) -> Result<get_public_rooms_filtered::v3::Response> {
     get_public_rooms_filtered_helper(
-        &db,
         body.server.as_deref(),
         body.limit,
         body.since.as_deref(),
@@ -57,11 +55,9 @@ pub async fn get_public_rooms_filtered_route(
 ///
 /// - Rooms are ordered by the number of joined members
 pub async fn get_public_rooms_route(
-    db: DatabaseGuard,
     body: Ruma<get_public_rooms::v3::IncomingRequest>,
 ) -> Result<get_public_rooms::v3::Response> {
     let response = get_public_rooms_filtered_helper(
-        &db,
         body.server.as_deref(),
         body.limit,
         body.since.as_deref(),
@@ -84,17 +80,16 @@ pub async fn get_public_rooms_route(
 ///
 /// - TODO: Access control checks
 pub async fn set_room_visibility_route(
-    db: DatabaseGuard,
     body: Ruma<set_room_visibility::v3::IncomingRequest>,
 ) -> Result<set_room_visibility::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
     match &body.visibility {
         room::Visibility::Public => {
-            db.rooms.set_public(&body.room_id, true)?;
+            services().rooms.set_public(&body.room_id, true)?;
             info!("{} made {} public", sender_user, body.room_id);
         }
-        room::Visibility::Private => db.rooms.set_public(&body.room_id, false)?,
+        room::Visibility::Private => services().rooms.set_public(&body.room_id, false)?,
         _ => {
             return Err(Error::BadRequest(
                 ErrorKind::InvalidParam,
@@ -103,8 +98,6 @@ pub async fn set_room_visibility_route(
         }
     }
 
-    db.flush()?;
-
     Ok(set_room_visibility::v3::Response {})
 }
 
@@ -112,11 +105,10 @@ pub async fn set_room_visibility_route(
 ///
 /// Gets the visibility of a given room in the room directory.
 pub async fn get_room_visibility_route(
-    db: DatabaseGuard,
     body: Ruma<get_room_visibility::v3::IncomingRequest>,
 ) -> Result<get_room_visibility::v3::Response> {
     Ok(get_room_visibility::v3::Response {
-        visibility: if db.rooms.is_public_room(&body.room_id)? {
+        visibility: if services().rooms.is_public_room(&body.room_id)? {
             room::Visibility::Public
         } else {
             room::Visibility::Private
@@ -125,19 +117,17 @@ pub async fn get_room_visibility_route(
 }
 
 pub(crate) async fn get_public_rooms_filtered_helper(
-    db: &Database,
     server: Option<&ServerName>,
     limit: Option<UInt>,
     since: Option<&str>,
     filter: &IncomingFilter,
     _network: &IncomingRoomNetwork,
 ) -> Result<get_public_rooms_filtered::v3::Response> {
-    if let Some(other_server) = server.filter(|server| *server != db.globals.server_name().as_str())
+    if let Some(other_server) = server.filter(|server| *server != services().globals.server_name().as_str())
     {
-        let response = db
+        let response = services()
             .sending
             .send_federation_request(
-                &db.globals,
                 other_server,
                 federation::directory::get_public_rooms_filtered::v1::Request {
                     limit,
@@ -184,14 +174,14 @@ pub(crate) async fn get_public_rooms_filtered_helper(
         }
     }
 
-    let mut all_rooms: Vec<_> = db
+    let mut all_rooms: Vec<_> = services()
         .rooms
         .public_rooms()
         .map(|room_id| {
             let room_id = room_id?;
 
             let chunk = PublicRoomsChunk {
-                canonical_alias: db
+                canonical_alias: services()
                     .rooms
                     .room_state_get(&room_id, &StateEventType::RoomCanonicalAlias, "")?
                     .map_or(Ok(None), |s| {
@@ -201,7 +191,7 @@ pub(crate) async fn get_public_rooms_filtered_helper(
                                 Error::bad_database("Invalid canonical alias event in database.")
                             })
                     })?,
-                name: db
+                name: services()
                     .rooms
                     .room_state_get(&room_id, &StateEventType::RoomName, "")?
                     .map_or(Ok(None), |s| {
@@ -211,7 +201,7 @@ pub(crate) async fn get_public_rooms_filtered_helper(
                                 Error::bad_database("Invalid room name event in database.")
                             })
                     })?,
-                num_joined_members: db
+                num_joined_members: services()
                     .rooms
                     .room_joined_count(&room_id)?
                     .unwrap_or_else(|| {
@@ -220,7 +210,7 @@ pub(crate) async fn get_public_rooms_filtered_helper(
                     })
                     .try_into()
                     .expect("user count should not be that big"),
-                topic: db
+                topic: services()
                     .rooms
                     .room_state_get(&room_id, &StateEventType::RoomTopic, "")?
                     .map_or(Ok(None), |s| {
@@ -230,7 +220,7 @@ pub(crate) async fn get_public_rooms_filtered_helper(
                                 Error::bad_database("Invalid room topic event in database.")
                             })
                     })?,
-                world_readable: db
+                world_readable: services()
                     .rooms
                     .room_state_get(&room_id, &StateEventType::RoomHistoryVisibility, "")?
                     .map_or(Ok(false), |s| {
@@ -244,7 +234,7 @@ pub(crate) async fn get_public_rooms_filtered_helper(
                                 )
                             })
                     })?,
-                guest_can_join: db
+                guest_can_join: services()
                     .rooms
                     .room_state_get(&room_id, &StateEventType::RoomGuestAccess, "")?
                     .map_or(Ok(false), |s| {
@@ -256,7 +246,7 @@ pub(crate) async fn get_public_rooms_filtered_helper(
                                 Error::bad_database("Invalid room guest access event in database.")
                             })
                     })?,
-                avatar_url: db
+                avatar_url: services()
                     .rooms
                     .room_state_get(&room_id, &StateEventType::RoomAvatar, "")?
                     .map(|s| {
@@ -269,7 +259,7 @@ pub(crate) async fn get_public_rooms_filtered_helper(
                     .transpose()?
                     // url is now an Option<String> so we must flatten
                     .flatten(),
-                join_rule: db
+                join_rule: services()
                     .rooms
                     .room_state_get(&room_id, &StateEventType::RoomJoinRules, "")?
                     .map(|s| {

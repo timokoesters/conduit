@@ -1,4 +1,8 @@
-impl service::room::alias::Data for KeyValueDatabase {
+use ruma::{RoomId, RoomAliasId, api::client::error::ErrorKind};
+
+use crate::{service, database::KeyValueDatabase, utils, Error, services};
+
+impl service::rooms::alias::Data for KeyValueDatabase {
     fn set_alias(
         &self,
         alias: &RoomAliasId,
@@ -8,7 +12,7 @@ impl service::room::alias::Data for KeyValueDatabase {
             .insert(alias.alias().as_bytes(), room_id.as_bytes())?;
         let mut aliasid = room_id.as_bytes().to_vec();
         aliasid.push(0xff);
-        aliasid.extend_from_slice(&globals.next_count()?.to_be_bytes());
+        aliasid.extend_from_slice(&services().globals.next_count()?.to_be_bytes());
         self.aliasid_alias.insert(&aliasid, &*alias.as_bytes())?;
         Ok(())
     }

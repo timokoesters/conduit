@@ -1,5 +1,9 @@
-impl service::pusher::Data for KeyValueDatabase {
-    pub fn add_txnid(
+use ruma::{UserId, DeviceId, TransactionId};
+
+use crate::{service, database::KeyValueDatabase};
+
+impl service::transaction_ids::Data for KeyValueDatabase {
+    fn add_txnid(
         &self,
         user_id: &UserId,
         device_id: Option<&DeviceId>,
@@ -17,7 +21,7 @@ impl service::pusher::Data for KeyValueDatabase {
         Ok(())
     }
 
-    pub fn existing_txnid(
+    fn existing_txnid(
         &self,
         user_id: &UserId,
         device_id: Option<&DeviceId>,

@@ -1,15 +1,20 @@
-impl service::room::edus::typing::Data for KeyValueDatabase {
+use std::collections::HashSet;
+
+use ruma::{UserId, RoomId};
+
+use crate::{database::KeyValueDatabase, service, utils, Error, services};
+
+impl service::rooms::edus::typing::Data for KeyValueDatabase {
     fn typing_add(
         &self,
         user_id: &UserId,
         room_id: &RoomId,
         timeout: u64,
-        globals: &super::super::globals::Globals,
     ) -> Result<()> {
         let mut prefix = room_id.as_bytes().to_vec();
         prefix.push(0xff);
 
-        let count = globals.next_count()?.to_be_bytes();
+        let count = services().globals.next_count()?.to_be_bytes();
 
         let mut room_typing_id = prefix;
         room_typing_id.extend_from_slice(&timeout.to_be_bytes());
@@ -49,7 +54,7 @@ impl service::room::edus::typing::Data for KeyValueDatabase {
 
         if found_outdated {
             self.roomid_lasttypingupdate
-                .insert(room_id.as_bytes(), &globals.next_count()?.to_be_bytes())?;
+                .insert(room_id.as_bytes(), &services().globals.next_count()?.to_be_bytes())?;
         }
 
         Ok(())

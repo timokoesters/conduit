@@ -1,4 +1,4 @@
-use crate::{database::DatabaseGuard, pdu::PduBuilder, utils, Error, Result, Ruma};
+use crate::{utils, Error, Result, Ruma, services, service::pdu::PduBuilder};
 use ruma::{
     api::client::{
         error::ErrorKind,
@@ -19,14 +19,13 @@ use std::{
 /// - The only requirement for the content is that it has to be valid json
 /// - Tries to send the event into the room, auth rules will determine if it is allowed
 pub async fn send_message_event_route(
-    db: DatabaseGuard,
     body: Ruma<send_message_event::v3::IncomingRequest>,
 ) -> Result<send_message_event::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
     let sender_device = body.sender_device.as_deref();
 
     let mutex_state = Arc::clone(
-        db.globals
+        services().globals
             .roomid_mutex_state
             .write()
             .unwrap()
@@ -37,7 +36,7 @@ pub async fn send_message_event_route(
 
     // Forbid m.room.encrypted if encryption is disabled
     if RoomEventType::RoomEncrypted == body.event_type.to_string().into()
-        && !db.globals.allow_encryption()
+        && !services().globals.allow_encryption()
     {
         return Err(Error::BadRequest(
             ErrorKind::Forbidden,
@@ -47,7 +46,7 @@ pub async fn send_message_event_route(
 
     // Check if this is a new transaction id
     if let Some(response) =
-        db.transaction_ids
+        services().transaction_ids
             .existing_txnid(sender_user, sender_device, &body.txn_id)?
     {
         // The client might have sent a txnid of the /sendToDevice endpoint
@@ -69,7 +68,7 @@ pub async fn send_message_event_route(
     let mut unsigned = BTreeMap::new();
     unsigned.insert("transaction_id".to_owned(), body.txn_id.to_string().into());
 
-    let event_id = db.rooms.build_and_append_pdu(
+    let event_id = services().rooms.build_and_append_pdu(
         PduBuilder {
             event_type: body.event_type.to_string().into(),
             content: serde_json::from_str(body.body.body.json().get())
@@ -80,11 +79,10 @@ pub async fn send_message_event_route(
         },
         sender_user,
         &body.room_id,
-        &db,
         &state_lock,
     )?;
 
-    db.transaction_ids.add_txnid(
+    services().transaction_ids.add_txnid(
         sender_user,
         sender_device,
         &body.txn_id,
@@ -92,8 +90,6 @@ pub async fn send_message_event_route(
     )?;
 
     drop(state_lock);
-
-    db.flush()?;
 
     Ok(send_message_event::v3::Response::new(
         (*event_id).to_owned(),
@@ -107,13 +103,12 @@ pub async fn send_message_event_route(
 /// - Only works if the user is joined (TODO: always allow, but only show events where the user was
 /// joined, depending on history_visibility)
 pub async fn get_message_events_route(
-    db: DatabaseGuard,
     body: Ruma<get_message_events::v3::IncomingRequest>,
 ) -> Result<get_message_events::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
     let sender_device = body.sender_device.as_ref().expect("user is authenticated");
 
-    if !db.rooms.is_joined(sender_user, &body.room_id)? {
+    if !services().rooms.is_joined(sender_user, &body.room_id)? {
         return Err(Error::BadRequest(
             ErrorKind::Forbidden,
             "You don't have permission to view this room.",
@@ -133,7 +128,7 @@ pub async fn get_message_events_route(
 
     let to = body.to.as_ref().map(|t| t.parse());
 
-    db.rooms
+    services().rooms
         .lazy_load_confirm_delivery(sender_user, sender_device, &body.room_id, from)?;
 
     // Use limit or else 10
@@ -147,13 +142,13 @@ pub async fn get_message_events_route(
 
     match body.dir {
         get_message_events::v3::Direction::Forward => {
-            let events_after: Vec<_> = db
+            let events_after: Vec<_> = services()
                 .rooms
                 .pdus_after(sender_user, &body.room_id, from)?
                 .take(limit)
                 .filter_map(|r| r.ok()) // Filter out buggy events
                 .filter_map(|(pdu_id, pdu)| {
-                    db.rooms
+                    services().rooms
                         .pdu_count(&pdu_id)
                         .map(|pdu_count| (pdu_count, pdu))
                         .ok()
@@ -162,7 +157,7 @@ pub async fn get_message_events_route(
                 .collect();
 
             for (_, event) in &events_after {
-                if !db.rooms.lazy_load_was_sent_before(
+                if !services().rooms.lazy_load_was_sent_before(
                     sender_user,
                     sender_device,
                     &body.room_id,
@@ -184,13 +179,13 @@ pub async fn get_message_events_route(
             resp.chunk = events_after;
         }
         get_message_events::v3::Direction::Backward => {
-            let events_before: Vec<_> = db
+            let events_before: Vec<_> = services()
                 .rooms
                 .pdus_until(sender_user, &body.room_id, from)?
                 .take(limit)
                 .filter_map(|r| r.ok()) // Filter out buggy events
                 .filter_map(|(pdu_id, pdu)| {
-                    db.rooms
+                    services().rooms
                         .pdu_count(&pdu_id)
                         .map(|pdu_count| (pdu_count, pdu))
                         .ok()
@@ -199,7 +194,7 @@ pub async fn get_message_events_route(
                 .collect();
 
             for (_, event) in &events_before {
-                if !db.rooms.lazy_load_was_sent_before(
+                if !services().rooms.lazy_load_was_sent_before(
                     sender_user,
                     sender_device,
                     &body.room_id,
@@ -225,7 +220,7 @@ pub async fn get_message_events_route(
     resp.state = Vec::new();
     for ll_id in &lazy_loaded {
         if let Some(member_event) =
-            db.rooms
+            services().rooms
                 .room_state_get(&body.room_id, &StateEventType::RoomMember, ll_id.as_str())?
         {
             resp.state.push(member_event.to_state_event());
@@ -233,7 +228,7 @@ pub async fn get_message_events_route(
     }
 
     if let Some(next_token) = next_token {
-        db.rooms.lazy_load_mark_sent(
+        services().rooms.lazy_load_mark_sent(
             sender_user,
             sender_device,
             &body.room_id,

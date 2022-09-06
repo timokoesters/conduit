@@ -1,5 +1,5 @@
 use super::{DEVICE_ID_LENGTH, TOKEN_LENGTH};
-use crate::{database::DatabaseGuard, utils, Error, Result, Ruma};
+use crate::{utils, Error, Result, Ruma, services};
 use ruma::{
     api::client::{
         error::ErrorKind,
@@ -41,7 +41,6 @@ pub async fn get_login_types_route(
 /// Note: You can use [`GET /_matrix/client/r0/login`](fn.get_supported_versions_route.html) to see
 /// supported login types.
 pub async fn login_route(
-    db: DatabaseGuard,
     body: Ruma<login::v3::IncomingRequest>,
 ) -> Result<login::v3::Response> {
     // Validate login method
@@ -57,11 +56,11 @@ pub async fn login_route(
                 return Err(Error::BadRequest(ErrorKind::Forbidden, "Bad login type."));
             };
             let user_id =
-                UserId::parse_with_server_name(username.to_owned(), db.globals.server_name())
+                UserId::parse_with_server_name(username.to_owned(), services().globals.server_name())
                     .map_err(|_| {
                         Error::BadRequest(ErrorKind::InvalidUsername, "Username is invalid.")
                     })?;
-            let hash = db.users.password_hash(&user_id)?.ok_or(Error::BadRequest(
+            let hash = services().users.password_hash(&user_id)?.ok_or(Error::BadRequest(
                 ErrorKind::Forbidden,
                 "Wrong username or password.",
             ))?;
@@ -85,7 +84,7 @@ pub async fn login_route(
             user_id
         }
         login::v3::IncomingLoginInfo::Token(login::v3::IncomingToken { token }) => {
-            if let Some(jwt_decoding_key) = db.globals.jwt_decoding_key() {
+            if let Some(jwt_decoding_key) = services().globals.jwt_decoding_key() {
                 let token = jsonwebtoken::decode::<Claims>(
                     token,
                     jwt_decoding_key,
@@ -93,7 +92,7 @@ pub async fn login_route(
                 )
                 .map_err(|_| Error::BadRequest(ErrorKind::InvalidUsername, "Token is invalid."))?;
                 let username = token.claims.sub;
-                UserId::parse_with_server_name(username, db.globals.server_name()).map_err(
+                UserId::parse_with_server_name(username, services().globals.server_name()).map_err(
                     |_| Error::BadRequest(ErrorKind::InvalidUsername, "Username is invalid."),
                 )?
             } else {
@@ -122,15 +121,15 @@ pub async fn login_route(
 
     // Determine if device_id was provided and exists in the db for this user
     let device_exists = body.device_id.as_ref().map_or(false, |device_id| {
-        db.users
+        services().users
             .all_device_ids(&user_id)
             .any(|x| x.as_ref().map_or(false, |v| v == device_id))
     });
 
     if device_exists {
-        db.users.set_token(&user_id, &device_id, &token)?;
+        services().users.set_token(&user_id, &device_id, &token)?;
     } else {
-        db.users.create_device(
+        services().users.create_device(
             &user_id,
             &device_id,
             &token,
@@ -140,12 +139,10 @@ pub async fn login_route(
 
     info!("{} logged in", user_id);
 
-    db.flush()?;
-
     Ok(login::v3::Response {
         user_id,
         access_token: token,
-        home_server: Some(db.globals.server_name().to_owned()),
+        home_server: Some(services().globals.server_name().to_owned()),
         device_id,
         well_known: None,
     })
@@ -160,15 +157,12 @@ pub async fn login_route(
 /// - Forgets to-device events
 /// - Triggers device list updates
 pub async fn logout_route(
-    db: DatabaseGuard,
     body: Ruma<logout::v3::Request>,
 ) -> Result<logout::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
     let sender_device = body.sender_device.as_ref().expect("user is authenticated");
 
-    db.users.remove_device(sender_user, sender_device)?;
-
-    db.flush()?;
+    services().users.remove_device(sender_user, sender_device)?;
 
     Ok(logout::v3::Response::new())
 }
@@ -185,16 +179,13 @@ pub async fn logout_route(
 /// Note: This is equivalent to calling [`GET /_matrix/client/r0/logout`](fn.logout_route.html)
 /// from each device of this user.
 pub async fn logout_all_route(
-    db: DatabaseGuard,
     body: Ruma<logout_all::v3::Request>,
 ) -> Result<logout_all::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
-    for device_id in db.users.all_device_ids(sender_user).flatten() {
-        db.users.remove_device(sender_user, &device_id)?;
+    for device_id in services().users.all_device_ids(sender_user).flatten() {
+        services().users.remove_device(sender_user, &device_id)?;
     }
-
-    db.flush()?;
 
     Ok(logout_all::v3::Response::new())
 }

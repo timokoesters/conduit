@@ -1,7 +1,17 @@
 mod data;
-pub use data::Data;
+use std::{sync::MutexGuard, iter, collections::HashSet};
+use std::fmt::Debug;
 
-use crate::service::*;
+pub use data::Data;
+use regex::Regex;
+use ruma::signatures::CanonicalJsonValue;
+use ruma::{EventId, signatures::CanonicalJsonObject, push::{Action, Tweak}, events::{push_rules::PushRulesEvent, GlobalAccountDataEventType, RoomEventType, room::{member::MembershipState, create::RoomCreateEventContent}, StateEventType}, UserId, RoomAliasId, RoomId, uint, state_res, api::client::error::ErrorKind, serde::to_canonical_value, ServerName};
+use serde::Deserialize;
+use serde_json::value::to_raw_value;
+use tracing::{warn, error};
+
+use crate::SERVICE;
+use crate::{service::{*, pdu::{PduBuilder, EventHash}}, Error, PduEvent, utils};
 
 pub struct Service<D: Data> {
     db: D,
@@ -126,13 +136,12 @@ impl Service<_> {
     /// in `append_pdu`.
     ///
     /// Returns pdu id
-    #[tracing::instrument(skip(self, pdu, pdu_json, leaves, db))]
+    #[tracing::instrument(skip(self, pdu, pdu_json, leaves))]
     pub fn append_pdu<'a>(
         &self,
         pdu: &PduEvent,
         mut pdu_json: CanonicalJsonObject,
         leaves: impl IntoIterator<Item = &'a EventId> + Debug,
-        db: &Database,
     ) -> Result<Vec<u8>> {
         let shortroomid = self.get_shortroomid(&pdu.room_id)?.expect("room exists");
 
@@ -249,7 +258,6 @@ impl Service<_> {
                 &power_levels,
                 &sync_pdu,
                 &pdu.room_id,
-                db,
             )? {
                 match action {
                     Action::DontNotify => notify = false,
@@ -446,9 +454,8 @@ impl Service<_> {
             pdu_builder: PduBuilder,
             sender: &UserId,
             room_id: &RoomId,
-            db: &Database,
             _mutex_lock: &MutexGuard<'_, ()>, // Take mutex guard to make sure users get the room state mutex
-    ) -> (PduEvent, CanonicalJsonObj) {
+    ) -> (PduEvent, CanonicalJsonObject) {
         let PduBuilder {
             event_type,
             content,
@@ -457,14 +464,14 @@ impl Service<_> {
             redacts,
         } = pdu_builder;
 
-        let prev_events: Vec<_> = db
+        let prev_events: Vec<_> = SERVICE
             .rooms
             .get_pdu_leaves(room_id)?
             .into_iter()
             .take(20)
             .collect();
 
-        let create_event = db
+        let create_event = SERVICE
             .rooms
             .room_state_get(room_id, &StateEventType::RoomCreate, "")?;
 
@@ -481,7 +488,7 @@ impl Service<_> {
         // If there was no create event yet, assume we are creating a room with the default
         // version right now
         let room_version_id = create_event_content
-            .map_or(db.globals.default_room_version(), |create_event| {
+            .map_or(SERVICE.globals.default_room_version(), |create_event| {
                 create_event.room_version
             });
         let room_version =
@@ -575,8 +582,8 @@ impl Service<_> {
         );
 
         match ruma::signatures::hash_and_sign_event(
-            db.globals.server_name().as_str(),
-            db.globals.keypair(),
+            SERVICE.globals.server_name().as_str(),
+            SERVICE.globals.keypair(),
             &mut pdu_json,
             &room_version_id,
         ) {
@@ -614,22 +621,21 @@ impl Service<_> {
 
     /// Creates a new persisted data unit and adds it to a room. This function takes a
     /// roomid_mutex_state, meaning that only this function is able to mutate the room state.
-    #[tracing::instrument(skip(self, db, _mutex_lock))]
+    #[tracing::instrument(skip(self, _mutex_lock))]
     pub fn build_and_append_pdu(
         &self,
         pdu_builder: PduBuilder,
         sender: &UserId,
         room_id: &RoomId,
-        db: &Database,
         _mutex_lock: &MutexGuard<'_, ()>, // Take mutex guard to make sure users get the room state mutex
     ) -> Result<Arc<EventId>> {
 
-        let (pdu, pdu_json) = create_hash_and_sign_event()?;
+        let (pdu, pdu_json) = self.create_hash_and_sign_event()?;
 
 
         // We append to state before appending the pdu, so we don't have a moment in time with the
         // pdu without it's state. This is okay because append_pdu can't fail.
-        let statehashid = self.append_to_state(&pdu, &db.globals)?;
+        let statehashid = self.append_to_state(&pdu)?;
 
         let pdu_id = self.append_pdu(
             &pdu,
@@ -637,7 +643,6 @@ impl Service<_> {
             // Since this PDU references all pdu_leaves we can update the leaves
             // of the room
             iter::once(&*pdu.event_id),
-            db,
         )?;
 
         // We set the room state after inserting the pdu, so that we never have a moment in time
@@ -659,9 +664,9 @@ impl Service<_> {
         }
 
         // Remove our server from the server list since it will be added to it by room_servers() and/or the if statement above
-        servers.remove(db.globals.server_name());
+        servers.remove(SERVICE.globals.server_name());
 
-        db.sending.send_pdu(servers.into_iter(), &pdu_id)?;
+        SERVICE.sending.send_pdu(servers.into_iter(), &pdu_id)?;
 
         Ok(pdu.event_id)
     }
@@ -670,7 +675,6 @@ impl Service<_> {
     /// server that sent the event.
     #[tracing::instrument(skip_all)]
     fn append_incoming_pdu<'a>(
-        db: &Database,
         pdu: &PduEvent,
         pdu_json: CanonicalJsonObject,
         new_room_leaves: impl IntoIterator<Item = &'a EventId> + Clone + Debug,
@@ -680,21 +684,20 @@ impl Service<_> {
     ) -> Result<Option<Vec<u8>>> {
         // We append to state before appending the pdu, so we don't have a moment in time with the
         // pdu without it's state. This is okay because append_pdu can't fail.
-        db.rooms.set_event_state(
+        SERVICE.rooms.set_event_state(
             &pdu.event_id,
             &pdu.room_id,
             state_ids_compressed,
-            &db.globals,
         )?;
 
         if soft_fail {
-            db.rooms
+            SERVICE.rooms
                 .mark_as_referenced(&pdu.room_id, &pdu.prev_events)?;
-            db.rooms.replace_pdu_leaves(&pdu.room_id, new_room_leaves)?;
+            SERVICE.rooms.replace_pdu_leaves(&pdu.room_id, new_room_leaves)?;
             return Ok(None);
         }
 
-        let pdu_id = db.rooms.append_pdu(pdu, pdu_json, new_room_leaves, db)?;
+        let pdu_id = SERVICE.rooms.append_pdu(pdu, pdu_json, new_room_leaves)?;
 
         Ok(Some(pdu_id))
     }
@@ -756,4 +759,4 @@ impl Service<_> {
         // If event does not exist, just noop
         Ok(())
     }
-
+}

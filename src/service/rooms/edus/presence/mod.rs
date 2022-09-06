@@ -1,5 +1,8 @@
 mod data;
+use std::collections::HashMap;
+
 pub use data::Data;
+use ruma::{RoomId, UserId, events::presence::PresenceEvent};
 
 use crate::service::*;
 
@@ -108,7 +111,7 @@ impl Service<_> {
     }*/
 
     /// Returns the most recent presence updates that happened after the event with id `since`.
-    #[tracing::instrument(skip(self, since, _rooms, _globals))]
+    #[tracing::instrument(skip(self, since, room_id))]
     pub fn presence_since(
         &self,
         room_id: &RoomId,

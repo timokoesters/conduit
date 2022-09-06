@@ -1,4 +1,4 @@
-use crate::{database::DatabaseGuard, Database, Error, Result, Ruma};
+use crate::{Error, Result, Ruma, services};
 use regex::Regex;
 use ruma::{
     api::{
@@ -16,24 +16,21 @@ use ruma::{
 ///
 /// Creates a new room alias on this server.
 pub async fn create_alias_route(
-    db: DatabaseGuard,
     body: Ruma<create_alias::v3::IncomingRequest>,
 ) -> Result<create_alias::v3::Response> {
-    if body.room_alias.server_name() != db.globals.server_name() {
+    if body.room_alias.server_name() != services().globals.server_name() {
         return Err(Error::BadRequest(
             ErrorKind::InvalidParam,
             "Alias is from another server.",
         ));
     }
 
-    if db.rooms.id_from_alias(&body.room_alias)?.is_some() {
+    if services().rooms.id_from_alias(&body.room_alias)?.is_some() {
         return Err(Error::Conflict("Alias already exists."));
     }
 
-    db.rooms
-        .set_alias(&body.room_alias, Some(&body.room_id), &db.globals)?;
-
-    db.flush()?;
+    services().rooms
+        .set_alias(&body.room_alias, Some(&body.room_id))?;
 
     Ok(create_alias::v3::Response::new())
 }
@@ -45,21 +42,18 @@ pub async fn create_alias_route(
 /// - TODO: additional access control checks
 /// - TODO: Update canonical alias event
 pub async fn delete_alias_route(
-    db: DatabaseGuard,
     body: Ruma<delete_alias::v3::IncomingRequest>,
 ) -> Result<delete_alias::v3::Response> {
-    if body.room_alias.server_name() != db.globals.server_name() {
+    if body.room_alias.server_name() != services().globals.server_name() {
         return Err(Error::BadRequest(
             ErrorKind::InvalidParam,
             "Alias is from another server.",
         ));
     }
 
-    db.rooms.set_alias(&body.room_alias, None, &db.globals)?;
+    services().rooms.set_alias(&body.room_alias, None)?;
 
     // TODO: update alt_aliases?
-
-    db.flush()?;
 
     Ok(delete_alias::v3::Response::new())
 }
@@ -70,21 +64,18 @@ pub async fn delete_alias_route(
 ///
 /// - TODO: Suggest more servers to join via
 pub async fn get_alias_route(
-    db: DatabaseGuard,
     body: Ruma<get_alias::v3::IncomingRequest>,
 ) -> Result<get_alias::v3::Response> {
-    get_alias_helper(&db, &body.room_alias).await
+    get_alias_helper(&body.room_alias).await
 }
 
 pub(crate) async fn get_alias_helper(
-    db: &Database,
     room_alias: &RoomAliasId,
 ) -> Result<get_alias::v3::Response> {
-    if room_alias.server_name() != db.globals.server_name() {
-        let response = db
+    if room_alias.server_name() != services().globals.server_name() {
+        let response = services()
             .sending
             .send_federation_request(
-                &db.globals,
                 room_alias.server_name(),
                 federation::query::get_room_information::v1::Request { room_alias },
             )
@@ -97,10 +88,10 @@ pub(crate) async fn get_alias_helper(
     }
 
     let mut room_id = None;
-    match db.rooms.id_from_alias(room_alias)? {
+    match services().rooms.id_from_alias(room_alias)? {
         Some(r) => room_id = Some(r),
         None => {
-            for (_id, registration) in db.appservice.all()? {
+            for (_id, registration) in services().appservice.all()? {
                 let aliases = registration
                     .get("namespaces")
                     .and_then(|ns| ns.get("aliases"))
@@ -115,17 +106,16 @@ pub(crate) async fn get_alias_helper(
                 if aliases
                     .iter()
                     .any(|aliases| aliases.is_match(room_alias.as_str()))
-                    && db
+                    && services()
                         .sending
                         .send_appservice_request(
-                            &db.globals,
                             registration,
                             appservice::query::query_room_alias::v1::Request { room_alias },
                         )
                         .await
                         .is_ok()
                 {
-                    room_id = Some(db.rooms.id_from_alias(room_alias)?.ok_or_else(|| {
+                    room_id = Some(services().rooms.id_from_alias(room_alias)?.ok_or_else(|| {
                         Error::bad_config("Appservice lied to us. Room does not exist.")
                     })?);
                     break;
@@ -146,6 +136,6 @@ pub(crate) async fn get_alias_helper(
 
     Ok(get_alias::v3::Response::new(
         room_id,
-        vec![db.globals.server_name().to_owned()],
+        vec![services().globals.server_name().to_owned()],
     ))
 }

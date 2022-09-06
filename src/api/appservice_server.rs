@@ -1,12 +1,11 @@
-use crate::{utils, Error, Result};
+use crate::{utils, Error, Result, services};
 use bytes::BytesMut;
 use ruma::api::{IncomingResponse, MatrixVersion, OutgoingRequest, SendAccessToken};
 use std::{fmt::Debug, mem, time::Duration};
 use tracing::warn;
 
-#[tracing::instrument(skip(globals, request))]
+#[tracing::instrument(skip(request))]
 pub(crate) async fn send_request<T: OutgoingRequest>(
-    globals: &crate::database::globals::Globals,
     registration: serde_yaml::Value,
     request: T,
 ) -> Result<T::IncomingResponse>
@@ -46,7 +45,7 @@ where
     *reqwest_request.timeout_mut() = Some(Duration::from_secs(30));
 
     let url = reqwest_request.url().clone();
-    let mut response = globals.default_client().execute(reqwest_request).await?;
+    let mut response = services().globals.default_client().execute(reqwest_request).await?;
 
     // reqwest::Response -> http::Response conversion
     let status = response.status();

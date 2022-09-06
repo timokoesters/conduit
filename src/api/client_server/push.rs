@@ -1,4 +1,4 @@
-use crate::{database::DatabaseGuard, Error, Result, Ruma};
+use crate::{Error, Result, Ruma, services};
 use ruma::{
     api::client::{
         error::ErrorKind,
@@ -16,12 +16,11 @@ use ruma::{
 ///
 /// Retrieves the push rules event for this user.
 pub async fn get_pushrules_all_route(
-    db: DatabaseGuard,
     body: Ruma<get_pushrules_all::v3::Request>,
 ) -> Result<get_pushrules_all::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
-    let event: PushRulesEvent = db
+    let event: PushRulesEvent = services()
         .account_data
         .get(
             None,
@@ -42,12 +41,11 @@ pub async fn get_pushrules_all_route(
 ///
 /// Retrieves a single specified push rule for this user.
 pub async fn get_pushrule_route(
-    db: DatabaseGuard,
     body: Ruma<get_pushrule::v3::IncomingRequest>,
 ) -> Result<get_pushrule::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
-    let event: PushRulesEvent = db
+    let event: PushRulesEvent = services()
         .account_data
         .get(
             None,
@@ -98,7 +96,6 @@ pub async fn get_pushrule_route(
 ///
 /// Creates a single specified push rule for this user.
 pub async fn set_pushrule_route(
-    db: DatabaseGuard,
     body: Ruma<set_pushrule::v3::IncomingRequest>,
 ) -> Result<set_pushrule::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -111,7 +108,7 @@ pub async fn set_pushrule_route(
         ));
     }
 
-    let mut event: PushRulesEvent = db
+    let mut event: PushRulesEvent = services()
         .account_data
         .get(
             None,
@@ -186,15 +183,12 @@ pub async fn set_pushrule_route(
         _ => {}
     }
 
-    db.account_data.update(
+    services().account_data.update(
         None,
         sender_user,
         GlobalAccountDataEventType::PushRules.to_string().into(),
         &event,
-        &db.globals,
     )?;
-
-    db.flush()?;
 
     Ok(set_pushrule::v3::Response {})
 }
@@ -203,7 +197,6 @@ pub async fn set_pushrule_route(
 ///
 /// Gets the actions of a single specified push rule for this user.
 pub async fn get_pushrule_actions_route(
-    db: DatabaseGuard,
     body: Ruma<get_pushrule_actions::v3::IncomingRequest>,
 ) -> Result<get_pushrule_actions::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -215,7 +208,7 @@ pub async fn get_pushrule_actions_route(
         ));
     }
 
-    let mut event: PushRulesEvent = db
+    let mut event: PushRulesEvent = services()
         .account_data
         .get(
             None,
@@ -252,8 +245,6 @@ pub async fn get_pushrule_actions_route(
         _ => None,
     };
 
-    db.flush()?;
-
     Ok(get_pushrule_actions::v3::Response {
         actions: actions.unwrap_or_default(),
     })
@@ -263,7 +254,6 @@ pub async fn get_pushrule_actions_route(
 ///
 /// Sets the actions of a single specified push rule for this user.
 pub async fn set_pushrule_actions_route(
-    db: DatabaseGuard,
     body: Ruma<set_pushrule_actions::v3::IncomingRequest>,
 ) -> Result<set_pushrule_actions::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -275,7 +265,7 @@ pub async fn set_pushrule_actions_route(
         ));
     }
 
-    let mut event: PushRulesEvent = db
+    let mut event: PushRulesEvent = services()
         .account_data
         .get(
             None,
@@ -322,15 +312,12 @@ pub async fn set_pushrule_actions_route(
         _ => {}
     };
 
-    db.account_data.update(
+    services().account_data.update(
         None,
         sender_user,
         GlobalAccountDataEventType::PushRules.to_string().into(),
         &event,
-        &db.globals,
     )?;
-
-    db.flush()?;
 
     Ok(set_pushrule_actions::v3::Response {})
 }
@@ -339,7 +326,6 @@ pub async fn set_pushrule_actions_route(
 ///
 /// Gets the enabled status of a single specified push rule for this user.
 pub async fn get_pushrule_enabled_route(
-    db: DatabaseGuard,
     body: Ruma<get_pushrule_enabled::v3::IncomingRequest>,
 ) -> Result<get_pushrule_enabled::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -351,7 +337,7 @@ pub async fn get_pushrule_enabled_route(
         ));
     }
 
-    let mut event: PushRulesEvent = db
+    let mut event: PushRulesEvent = services()
         .account_data
         .get(
             None,
@@ -393,8 +379,6 @@ pub async fn get_pushrule_enabled_route(
         _ => false,
     };
 
-    db.flush()?;
-
     Ok(get_pushrule_enabled::v3::Response { enabled })
 }
 
@@ -402,7 +386,6 @@ pub async fn get_pushrule_enabled_route(
 ///
 /// Sets the enabled status of a single specified push rule for this user.
 pub async fn set_pushrule_enabled_route(
-    db: DatabaseGuard,
     body: Ruma<set_pushrule_enabled::v3::IncomingRequest>,
 ) -> Result<set_pushrule_enabled::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -414,7 +397,7 @@ pub async fn set_pushrule_enabled_route(
         ));
     }
 
-    let mut event: PushRulesEvent = db
+    let mut event: PushRulesEvent = services()
         .account_data
         .get(
             None,
@@ -466,15 +449,12 @@ pub async fn set_pushrule_enabled_route(
         _ => {}
     }
 
-    db.account_data.update(
+    services().account_data.update(
         None,
         sender_user,
         GlobalAccountDataEventType::PushRules.to_string().into(),
         &event,
-        &db.globals,
     )?;
-
-    db.flush()?;
 
     Ok(set_pushrule_enabled::v3::Response {})
 }
@@ -483,7 +463,6 @@ pub async fn set_pushrule_enabled_route(
 ///
 /// Deletes a single specified push rule for this user.
 pub async fn delete_pushrule_route(
-    db: DatabaseGuard,
     body: Ruma<delete_pushrule::v3::IncomingRequest>,
 ) -> Result<delete_pushrule::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -495,7 +474,7 @@ pub async fn delete_pushrule_route(
         ));
     }
 
-    let mut event: PushRulesEvent = db
+    let mut event: PushRulesEvent = services()
         .account_data
         .get(
             None,
@@ -537,15 +516,12 @@ pub async fn delete_pushrule_route(
         _ => {}
     }
 
-    db.account_data.update(
+    services().account_data.update(
         None,
         sender_user,
         GlobalAccountDataEventType::PushRules.to_string().into(),
         &event,
-        &db.globals,
     )?;
-
-    db.flush()?;
 
     Ok(delete_pushrule::v3::Response {})
 }
@@ -554,13 +530,12 @@ pub async fn delete_pushrule_route(
 ///
 /// Gets all currently active pushers for the sender user.
 pub async fn get_pushers_route(
-    db: DatabaseGuard,
     body: Ruma<get_pushers::v3::Request>,
 ) -> Result<get_pushers::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
     Ok(get_pushers::v3::Response {
-        pushers: db.pusher.get_pushers(sender_user)?,
+        pushers: services().pusher.get_pushers(sender_user)?,
     })
 }
 
@@ -570,15 +545,12 @@ pub async fn get_pushers_route(
 ///
 /// - TODO: Handle `append`
 pub async fn set_pushers_route(
-    db: DatabaseGuard,
     body: Ruma<set_pusher::v3::Request>,
 ) -> Result<set_pusher::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
     let pusher = body.pusher.clone();
 
-    db.pusher.set_pusher(sender_user, pusher)?;
-
-    db.flush()?;
+    services().pusher.set_pusher(sender_user, pusher)?;
 
     Ok(set_pusher::v3::Response::default())
 }

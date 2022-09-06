@@ -1,4 +1,4 @@
-use super::{watchers::Watchers, DatabaseEngine, Tree};
+use super::{watchers::Watchers, KeyValueDatabaseEngine, KvTree};
 use crate::{database::Config, Result};
 use parking_lot::{Mutex, MutexGuard};
 use rusqlite::{Connection, DatabaseName::Main, OptionalExtension};
@@ -80,7 +80,7 @@ impl Engine {
     }
 }
 
-impl DatabaseEngine for Arc<Engine> {
+impl KeyValueDatabaseEngine for Arc<Engine> {
     fn open(config: &Config) -> Result<Self> {
         let path = Path::new(&config.database_path).join("conduit.db");
 
@@ -105,7 +105,7 @@ impl DatabaseEngine for Arc<Engine> {
         Ok(arc)
     }
 
-    fn open_tree(&self, name: &str) -> Result<Arc<dyn Tree>> {
+    fn open_tree(&self, name: &str) -> Result<Arc<dyn KvTree>> {
         self.write_lock().execute(&format!("CREATE TABLE IF NOT EXISTS {} ( \"key\" BLOB PRIMARY KEY, \"value\" BLOB NOT NULL )", name), [])?;
 
         Ok(Arc::new(SqliteTable {
@@ -189,7 +189,7 @@ impl SqliteTable {
     }
 }
 
-impl Tree for SqliteTable {
+impl KvTree for SqliteTable {
     fn get(&self, key: &[u8]) -> Result<Option<Vec<u8>>> {
         self.get_with_guard(self.engine.read_lock(), key)
     }

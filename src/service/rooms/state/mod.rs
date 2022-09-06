@@ -1,7 +1,12 @@
 mod data;
-pub use data::Data;
+use std::collections::HashSet;
 
-use crate::service::*;
+pub use data::Data;
+use ruma::{RoomId, events::{room::{member::MembershipState, create::RoomCreateEventContent}, AnyStrippedStateEvent, StateEventType}, UserId, EventId, serde::Raw, RoomVersionId};
+use serde::Deserialize;
+use tracing::warn;
+
+use crate::{service::*, SERVICE, PduEvent, Error, utils::calculate_hash};
 
 pub struct Service<D: Data> {
     db: D,
@@ -9,22 +14,20 @@ pub struct Service<D: Data> {
 
 impl Service<_> {
     /// Set the room to the given statehash and update caches.
-    #[tracing::instrument(skip(self, new_state_ids_compressed, db))]
     pub fn force_state(
         &self,
         room_id: &RoomId,
         shortstatehash: u64,
         statediffnew: HashSet<CompressedStateEvent>,
         statediffremoved: HashSet<CompressedStateEvent>,
-        db: &Database,
     ) -> Result<()> {
 
         for event_id in statediffnew.into_iter().filter_map(|new| {
-            state_compressor::parse_compressed_state_event(new)
+            SERVICE.rooms.state_compressor.parse_compressed_state_event(new)
                 .ok()
                 .map(|(_, id)| id)
         }) {
-            let pdu = match timeline::get_pdu_json(&event_id)? {
+            let pdu = match SERVICE.rooms.timeline.get_pdu_json(&event_id)? {
                 Some(pdu) => pdu,
                 None => continue,
             };
@@ -60,12 +63,12 @@ impl Service<_> {
                 Err(_) => continue,
             };
 
-            room::state_cache::update_membership(room_id, &user_id, membership, &pdu.sender, None, db, false)?;
+            SERVICE.room.state_cache.update_membership(room_id, &user_id, membership, &pdu.sender, None, false)?;
         }
 
-        room::state_cache::update_joined_count(room_id, db)?;
+        SERVICE.room.state_cache.update_joined_count(room_id)?;
 
-        db.set_room_state(room_id, new_shortstatehash);
+        self.db.set_room_state(room_id, shortstatehash);
 
         Ok(())
     }
@@ -74,19 +77,18 @@ impl Service<_> {
     ///
     /// This adds all current state events (not including the incoming event)
     /// to `stateid_pduid` and adds the incoming event to `eventid_statehash`.
-    #[tracing::instrument(skip(self, state_ids_compressed, globals))]
+    #[tracing::instrument(skip(self, state_ids_compressed))]
     pub fn set_event_state(
         &self,
         event_id: &EventId,
         room_id: &RoomId,
         state_ids_compressed: HashSet<CompressedStateEvent>,
-        globals: &super::globals::Globals,
     ) -> Result<()> {
-        let shorteventid = short::get_or_create_shorteventid(event_id, globals)?;
+        let shorteventid = SERVICE.short.get_or_create_shorteventid(event_id)?;
 
-        let previous_shortstatehash = db.get_room_shortstatehash(room_id)?;
+        let previous_shortstatehash = self.db.get_room_shortstatehash(room_id)?;
 
-        let state_hash = super::calculate_hash(
+        let state_hash = calculate_hash(
             &state_ids_compressed
                 .iter()
                 .map(|s| &s[..])
@@ -94,11 +96,11 @@ impl Service<_> {
         );
 
         let (shortstatehash, already_existed) =
-            short::get_or_create_shortstatehash(&state_hash, globals)?;
+            SERVICE.short.get_or_create_shortstatehash(&state_hash)?;
 
         if !already_existed {
             let states_parents = previous_shortstatehash
-                .map_or_else(|| Ok(Vec::new()), |p| room::state_compressor.load_shortstatehash_info(p))?;
+                .map_or_else(|| Ok(Vec::new()), |p| SERVICE.room.state_compressor.load_shortstatehash_info(p))?;
 
             let (statediffnew, statediffremoved) =
                 if let Some(parent_stateinfo) = states_parents.last() {
@@ -117,7 +119,7 @@ impl Service<_> {
                 } else {
                     (state_ids_compressed, HashSet::new())
                 };
-            state_compressor::save_state_from_diff(
+            SERVICE.room.state_compressor.save_state_from_diff(
                 shortstatehash,
                 statediffnew,
                 statediffremoved,
@@ -126,7 +128,7 @@ impl Service<_> {
             )?;
         }
 
-        db.set_event_state(&shorteventid.to_be_bytes(), &shortstatehash.to_be_bytes())?;
+        self.db.set_event_state(&shorteventid.to_be_bytes(), &shortstatehash.to_be_bytes())?;
 
         Ok(())
     }
@@ -135,13 +137,12 @@ impl Service<_> {
     ///
     /// This adds all current state events (not including the incoming event)
     /// to `stateid_pduid` and adds the incoming event to `eventid_statehash`.
-    #[tracing::instrument(skip(self, new_pdu, globals))]
+    #[tracing::instrument(skip(self, new_pdu))]
     pub fn append_to_state(
         &self,
         new_pdu: &PduEvent,
-        globals: &super::globals::Globals,
     ) -> Result<u64> {
-        let shorteventid = self.get_or_create_shorteventid(&new_pdu.event_id, globals)?;
+        let shorteventid = self.get_or_create_shorteventid(&new_pdu.event_id)?;
 
         let previous_shortstatehash = self.get_room_shortstatehash(&new_pdu.room_id)?;
 
@@ -157,10 +158,9 @@ impl Service<_> {
             let shortstatekey = self.get_or_create_shortstatekey(
                 &new_pdu.kind.to_string().into(),
                 state_key,
-                globals,
             )?;
 
-            let new = self.compress_state_event(shortstatekey, &new_pdu.event_id, globals)?;
+            let new = self.compress_state_event(shortstatekey, &new_pdu.event_id)?;
 
             let replaces = states_parents
                 .last()
@@ -176,7 +176,7 @@ impl Service<_> {
             }
 
             // TODO: statehash with deterministic inputs
-            let shortstatehash = globals.next_count()?;
+            let shortstatehash = SERVICE.globals.next_count()?;
 
             let mut statediffnew = HashSet::new();
             statediffnew.insert(new);
@@ -254,7 +254,23 @@ impl Service<_> {
         Ok(())
     }
 
-    pub fn db(&self) -> D {
-        &self.db
+    /// Returns the room's version.
+    #[tracing::instrument(skip(self))]
+    pub fn get_room_version(&self, room_id: &RoomId) -> Result<RoomVersionId> {
+        let create_event = self.room_state_get(room_id, &StateEventType::RoomCreate, "")?;
+
+        let create_event_content: Option<RoomCreateEventContent> = create_event
+            .as_ref()
+            .map(|create_event| {
+                serde_json::from_str(create_event.content.get()).map_err(|e| {
+                    warn!("Invalid create event: {}", e);
+                    Error::bad_database("Invalid create event in db.")
+                })
+            })
+            .transpose()?;
+        let room_version = create_event_content
+            .map(|create_event| create_event.room_version)
+            .ok_or_else(|| Error::BadDatabase("Invalid room version"))?;
+        Ok(room_version)
     }
 }

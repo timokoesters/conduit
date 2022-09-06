@@ -1,5 +1,6 @@
 mod data;
 pub use data::Data;
+use ruma::{UserId, RoomId};
 
 use crate::service::*;
 
@@ -66,7 +67,6 @@ impl Service<_> {
     */
 
     /// Returns the count of the last typing update in this room.
-    #[tracing::instrument(skip(self, globals))]
     pub fn last_typing_update(&self, room_id: &RoomId) -> Result<u64> {
         self.db.last_typing_update(room_id)
     }

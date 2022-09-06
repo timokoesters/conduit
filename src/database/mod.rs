@@ -1,20 +1,7 @@
 pub mod abstraction;
+pub mod key_value;
 
-pub mod account_data;
-pub mod admin;
-pub mod appservice;
-pub mod globals;
-pub mod key_backups;
-pub mod media;
-pub mod pusher;
-pub mod rooms;
-pub mod sending;
-pub mod transaction_ids;
-pub mod uiaa;
-pub mod users;
-
-use self::admin::create_admin_room;
-use crate::{utils, Config, Error, Result};
+use crate::{utils, Config, Error, Result, service::{users, globals, uiaa, rooms, account_data, media, key_backups, transaction_ids, sending, admin::{self, create_admin_room}, appservice, pusher}};
 use abstraction::KeyValueDatabaseEngine;
 use directories::ProjectDirs;
 use futures_util::{stream::FuturesUnordered, StreamExt};
@@ -25,7 +12,7 @@ use ruma::{
         GlobalAccountDataEvent, GlobalAccountDataEventType,
     },
     push::Ruleset,
-    DeviceId, EventId, RoomId, UserId,
+    DeviceId, EventId, RoomId, UserId, signatures::CanonicalJsonValue,
 };
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
@@ -38,21 +25,132 @@ use std::{
 };
 use tokio::sync::{mpsc, OwnedRwLockReadGuard, RwLock as TokioRwLock, Semaphore};
 use tracing::{debug, error, info, warn};
+use abstraction::KvTree;
 
 pub struct KeyValueDatabase {
     _db: Arc<dyn KeyValueDatabaseEngine>,
-    pub globals: globals::Globals,
-    pub users: users::Users,
-    pub uiaa: uiaa::Uiaa,
-    pub rooms: rooms::Rooms,
-    pub account_data: account_data::AccountData,
-    pub media: media::Media,
-    pub key_backups: key_backups::KeyBackups,
-    pub transaction_ids: transaction_ids::TransactionIds,
-    pub sending: sending::Sending,
-    pub admin: admin::Admin,
-    pub appservice: appservice::Appservice,
-    pub pusher: pusher::PushData,
+
+    //pub globals: globals::Globals,
+    pub(super) global: Arc<dyn KvTree>,
+    pub(super) server_signingkeys: Arc<dyn KvTree>,
+
+    //pub users: users::Users,
+    pub(super) userid_password: Arc<dyn KvTree>,
+    pub(super) userid_displayname: Arc<dyn KvTree>,
+    pub(super) userid_avatarurl: Arc<dyn KvTree>,
+    pub(super) userid_blurhash: Arc<dyn KvTree>,
+    pub(super) userdeviceid_token: Arc<dyn KvTree>,
+    pub(super) userdeviceid_metadata: Arc<dyn KvTree>, // This is also used to check if a device exists
+    pub(super) userid_devicelistversion: Arc<dyn KvTree>, // DevicelistVersion = u64
+    pub(super) token_userdeviceid: Arc<dyn KvTree>,
+
+    pub(super) onetimekeyid_onetimekeys: Arc<dyn KvTree>, // OneTimeKeyId = UserId + DeviceKeyId
+    pub(super) userid_lastonetimekeyupdate: Arc<dyn KvTree>, // LastOneTimeKeyUpdate = Count
+    pub(super) keychangeid_userid: Arc<dyn KvTree>,       // KeyChangeId = UserId/RoomId + Count
+    pub(super) keyid_key: Arc<dyn KvTree>, // KeyId = UserId + KeyId (depends on key type)
+    pub(super) userid_masterkeyid: Arc<dyn KvTree>,
+    pub(super) userid_selfsigningkeyid: Arc<dyn KvTree>,
+    pub(super) userid_usersigningkeyid: Arc<dyn KvTree>,
+
+    pub(super) userfilterid_filter: Arc<dyn KvTree>, // UserFilterId = UserId + FilterId
+
+    pub(super) todeviceid_events: Arc<dyn KvTree>, // ToDeviceId = UserId + DeviceId + Count
+
+    //pub uiaa: uiaa::Uiaa,
+    pub(super) userdevicesessionid_uiaainfo: Arc<dyn KvTree>, // User-interactive authentication
+    pub(super) userdevicesessionid_uiaarequest:
+        RwLock<BTreeMap<(Box<UserId>, Box<DeviceId>, String), CanonicalJsonValue>>,
+
+    //pub edus: RoomEdus,
+    pub(super) readreceiptid_readreceipt: Arc<dyn KvTree>, // ReadReceiptId = RoomId + Count + UserId
+    pub(super) roomuserid_privateread: Arc<dyn KvTree>, // RoomUserId = Room + User, PrivateRead = Count
+    pub(super) roomuserid_lastprivatereadupdate: Arc<dyn KvTree>, // LastPrivateReadUpdate = Count
+    pub(super) typingid_userid: Arc<dyn KvTree>, // TypingId = RoomId + TimeoutTime + Count
+    pub(super) roomid_lasttypingupdate: Arc<dyn KvTree>, // LastRoomTypingUpdate = Count
+    pub(super) presenceid_presence: Arc<dyn KvTree>, // PresenceId = RoomId + Count + UserId
+    pub(super) userid_lastpresenceupdate: Arc<dyn KvTree>, // LastPresenceUpdate = Count
+
+    //pub rooms: rooms::Rooms,
+    pub(super) pduid_pdu: Arc<dyn KvTree>, // PduId = ShortRoomId + Count
+    pub(super) eventid_pduid: Arc<dyn KvTree>,
+    pub(super) roomid_pduleaves: Arc<dyn KvTree>,
+    pub(super) alias_roomid: Arc<dyn KvTree>,
+    pub(super) aliasid_alias: Arc<dyn KvTree>, // AliasId = RoomId + Count
+    pub(super) publicroomids: Arc<dyn KvTree>,
+
+    pub(super) tokenids: Arc<dyn KvTree>, // TokenId = ShortRoomId + Token + PduIdCount
+
+    /// Participating servers in a room.
+    pub(super) roomserverids: Arc<dyn KvTree>, // RoomServerId = RoomId + ServerName
+    pub(super) serverroomids: Arc<dyn KvTree>, // ServerRoomId = ServerName + RoomId
+
+    pub(super) userroomid_joined: Arc<dyn KvTree>,
+    pub(super) roomuserid_joined: Arc<dyn KvTree>,
+    pub(super) roomid_joinedcount: Arc<dyn KvTree>,
+    pub(super) roomid_invitedcount: Arc<dyn KvTree>,
+    pub(super) roomuseroncejoinedids: Arc<dyn KvTree>,
+    pub(super) userroomid_invitestate: Arc<dyn KvTree>, // InviteState = Vec<Raw<Pdu>>
+    pub(super) roomuserid_invitecount: Arc<dyn KvTree>, // InviteCount = Count
+    pub(super) userroomid_leftstate: Arc<dyn KvTree>,
+    pub(super) roomuserid_leftcount: Arc<dyn KvTree>,
+
+    pub(super) disabledroomids: Arc<dyn KvTree>, // Rooms where incoming federation handling is disabled
+
+    pub(super) lazyloadedids: Arc<dyn KvTree>, // LazyLoadedIds = UserId + DeviceId + RoomId + LazyLoadedUserId
+
+    pub(super) userroomid_notificationcount: Arc<dyn KvTree>, // NotifyCount = u64
+    pub(super) userroomid_highlightcount: Arc<dyn KvTree>,    // HightlightCount = u64
+
+    /// Remember the current state hash of a room.
+    pub(super) roomid_shortstatehash: Arc<dyn KvTree>,
+    pub(super) roomsynctoken_shortstatehash: Arc<dyn KvTree>,
+    /// Remember the state hash at events in the past.
+    pub(super) shorteventid_shortstatehash: Arc<dyn KvTree>,
+    /// StateKey = EventType + StateKey, ShortStateKey = Count
+    pub(super) statekey_shortstatekey: Arc<dyn KvTree>,
+    pub(super) shortstatekey_statekey: Arc<dyn KvTree>,
+
+    pub(super) roomid_shortroomid: Arc<dyn KvTree>,
+
+    pub(super) shorteventid_eventid: Arc<dyn KvTree>,
+    pub(super) eventid_shorteventid: Arc<dyn KvTree>,
+
+    pub(super) statehash_shortstatehash: Arc<dyn KvTree>,
+    pub(super) shortstatehash_statediff: Arc<dyn KvTree>, // StateDiff = parent (or 0) + (shortstatekey+shorteventid++) + 0_u64 + (shortstatekey+shorteventid--)
+
+    pub(super) shorteventid_authchain: Arc<dyn KvTree>,
+
+    /// RoomId + EventId -> outlier PDU.
+    /// Any pdu that has passed the steps 1-8 in the incoming event /federation/send/txn.
+    pub(super) eventid_outlierpdu: Arc<dyn KvTree>,
+    pub(super) softfailedeventids: Arc<dyn KvTree>,
+
+    /// RoomId + EventId -> Parent PDU EventId.
+    pub(super) referencedevents: Arc<dyn KvTree>,
+
+    //pub account_data: account_data::AccountData,
+    pub(super) roomuserdataid_accountdata: Arc<dyn KvTree>, // RoomUserDataId = Room + User + Count + Type
+    pub(super) roomusertype_roomuserdataid: Arc<dyn KvTree>, // RoomUserType = Room + User + Type
+
+    //pub media: media::Media,
+    pub(super) mediaid_file: Arc<dyn KvTree>, // MediaId = MXC + WidthHeight + ContentDisposition + ContentType
+    //pub key_backups: key_backups::KeyBackups,
+    pub(super) backupid_algorithm: Arc<dyn KvTree>, // BackupId = UserId + Version(Count)
+    pub(super) backupid_etag: Arc<dyn KvTree>,      // BackupId = UserId + Version(Count)
+    pub(super) backupkeyid_backup: Arc<dyn KvTree>, // BackupKeyId = UserId + Version + RoomId + SessionId
+
+    //pub transaction_ids: transaction_ids::TransactionIds,
+    pub(super) userdevicetxnid_response: Arc<dyn KvTree>, // Response can be empty (/sendToDevice) or the event id (/send)
+    //pub sending: sending::Sending,
+    pub(super) servername_educount: Arc<dyn KvTree>, // EduCount: Count of last EDU sync
+    pub(super) servernameevent_data: Arc<dyn KvTree>, // ServernameEvent = (+ / $)SenderKey / ServerName / UserId + PduId / Id (for edus), Data = EDU content
+    pub(super) servercurrentevent_data: Arc<dyn KvTree>, // ServerCurrentEvents = (+ / $)ServerName / UserId + PduId / Id (for edus), Data = EDU content
+
+    //pub appservice: appservice::Appservice,
+    pub(super) id_appserviceregistrations: Arc<dyn KvTree>,
+
+    //pub pusher: pusher::PushData,
+    pub(super) senderkey_pusher: Arc<dyn KvTree>,
 }
 
 impl KeyValueDatabase {
@@ -157,7 +255,6 @@ impl KeyValueDatabase {
 
         let db = Arc::new(TokioRwLock::from(Self {
             _db: builder.clone(),
-            users: users::Users {
                 userid_password: builder.open_tree("userid_password")?,
                 userid_displayname: builder.open_tree("userid_displayname")?,
                 userid_avatarurl: builder.open_tree("userid_avatarurl")?,
@@ -175,13 +272,9 @@ impl KeyValueDatabase {
                 userid_usersigningkeyid: builder.open_tree("userid_usersigningkeyid")?,
                 userfilterid_filter: builder.open_tree("userfilterid_filter")?,
                 todeviceid_events: builder.open_tree("todeviceid_events")?,
-            },
-            uiaa: uiaa::Uiaa {
+
                 userdevicesessionid_uiaainfo: builder.open_tree("userdevicesessionid_uiaainfo")?,
                 userdevicesessionid_uiaarequest: RwLock::new(BTreeMap::new()),
-            },
-            rooms: rooms::Rooms {
-                edus: rooms::RoomEdus {
                     readreceiptid_readreceipt: builder.open_tree("readreceiptid_readreceipt")?,
                     roomuserid_privateread: builder.open_tree("roomuserid_privateread")?, // "Private" read receipt
                     roomuserid_lastprivatereadupdate: builder
@@ -190,7 +283,6 @@ impl KeyValueDatabase {
                     roomid_lasttypingupdate: builder.open_tree("roomid_lasttypingupdate")?,
                     presenceid_presence: builder.open_tree("presenceid_presence")?,
                     userid_lastpresenceupdate: builder.open_tree("userid_lastpresenceupdate")?,
-                },
                 pduid_pdu: builder.open_tree("pduid_pdu")?,
                 eventid_pduid: builder.open_tree("eventid_pduid")?,
                 roomid_pduleaves: builder.open_tree("roomid_pduleaves")?,
@@ -239,74 +331,23 @@ impl KeyValueDatabase {
                 softfailedeventids: builder.open_tree("softfailedeventids")?,
 
                 referencedevents: builder.open_tree("referencedevents")?,
-                pdu_cache: Mutex::new(LruCache::new(
-                    config
-                        .pdu_cache_capacity
-                        .try_into()
-                        .expect("pdu cache capacity fits into usize"),
-                )),
-                auth_chain_cache: Mutex::new(LruCache::new(
-                    (100_000.0 * config.conduit_cache_capacity_modifier) as usize,
-                )),
-                shorteventid_cache: Mutex::new(LruCache::new(
-                    (100_000.0 * config.conduit_cache_capacity_modifier) as usize,
-                )),
-                eventidshort_cache: Mutex::new(LruCache::new(
-                    (100_000.0 * config.conduit_cache_capacity_modifier) as usize,
-                )),
-                shortstatekey_cache: Mutex::new(LruCache::new(
-                    (100_000.0 * config.conduit_cache_capacity_modifier) as usize,
-                )),
-                statekeyshort_cache: Mutex::new(LruCache::new(
-                    (100_000.0 * config.conduit_cache_capacity_modifier) as usize,
-                )),
-                our_real_users_cache: RwLock::new(HashMap::new()),
-                appservice_in_room_cache: RwLock::new(HashMap::new()),
-                lazy_load_waiting: Mutex::new(HashMap::new()),
-                stateinfo_cache: Mutex::new(LruCache::new(
-                    (100.0 * config.conduit_cache_capacity_modifier) as usize,
-                )),
-                lasttimelinecount_cache: Mutex::new(HashMap::new()),
-            },
-            account_data: account_data::AccountData {
                 roomuserdataid_accountdata: builder.open_tree("roomuserdataid_accountdata")?,
                 roomusertype_roomuserdataid: builder.open_tree("roomusertype_roomuserdataid")?,
-            },
-            media: media::Media {
                 mediaid_file: builder.open_tree("mediaid_file")?,
-            },
-            key_backups: key_backups::KeyBackups {
                 backupid_algorithm: builder.open_tree("backupid_algorithm")?,
                 backupid_etag: builder.open_tree("backupid_etag")?,
                 backupkeyid_backup: builder.open_tree("backupkeyid_backup")?,
-            },
-            transaction_ids: transaction_ids::TransactionIds {
                 userdevicetxnid_response: builder.open_tree("userdevicetxnid_response")?,
-            },
-            sending: sending::Sending {
                 servername_educount: builder.open_tree("servername_educount")?,
                 servernameevent_data: builder.open_tree("servernameevent_data")?,
                 servercurrentevent_data: builder.open_tree("servercurrentevent_data")?,
-                maximum_requests: Arc::new(Semaphore::new(config.max_concurrent_requests as usize)),
-                sender: sending_sender,
-            },
-            admin: admin::Admin {
-                sender: admin_sender,
-            },
-            appservice: appservice::Appservice {
-                cached_registrations: Arc::new(RwLock::new(HashMap::new())),
                 id_appserviceregistrations: builder.open_tree("id_appserviceregistrations")?,
-            },
-            pusher: pusher::PushData {
                 senderkey_pusher: builder.open_tree("senderkey_pusher")?,
-            },
-            globals: globals::Globals::load(
-                builder.open_tree("global")?,
-                builder.open_tree("server_signingkeys")?,
-                config.clone(),
-            )?,
+                global: builder.open_tree("global")?,
+                server_signingkeys: builder.open_tree("server_signingkeys")?,
         }));
 
+        // TODO: do this after constructing the db
         let guard = db.read().await;
 
         // Matrix resource ownership is based on the server name; changing it
@@ -744,7 +785,7 @@ impl KeyValueDatabase {
                 .bump_database_version(latest_database_version)?;
 
             // Create the admin room and server user on first run
-            create_admin_room(&guard).await?;
+            create_admin_room().await?;
 
             warn!(
                 "Created new {} database with version {}",

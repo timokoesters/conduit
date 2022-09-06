@@ -1,7 +1,10 @@
 mod data;
-pub use data::Data;
+use std::{sync::Arc, collections::{HashMap, BTreeMap}};
 
-use crate::service::*;
+pub use data::Data;
+use ruma::{events::StateEventType, RoomId, EventId};
+
+use crate::{service::*, PduEvent};
 
 pub struct Service<D: Data> {
     db: D,
@@ -42,7 +45,7 @@ impl Service<_> {
         event_type: &StateEventType,
         state_key: &str,
     ) -> Result<Option<Arc<PduEvent>>> {
-        self.db.pdu_state_get(event_id)
+        self.db.pdu_state_get(shortstatehash, event_type, state_key)
     }
 
     /// Returns the state hash for this pdu.

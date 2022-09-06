@@ -1,3 +1,5 @@
+use ruma::RoomId;
+
 pub trait Data {
     /// Adds the room to the public room directory
     fn set_public(room_id: &RoomId) -> Result<()>;

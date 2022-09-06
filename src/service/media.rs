@@ -1,4 +1,3 @@
-use crate::database::globals::Globals;
 use image::{imageops::FilterType, GenericImageView};
 
 use super::abstraction::Tree;

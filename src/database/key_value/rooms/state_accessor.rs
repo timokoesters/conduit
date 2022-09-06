@@ -1,4 +1,11 @@
-impl service::room::state_accessor::Data for KeyValueDatabase {
+use std::{collections::{BTreeMap, HashMap}, sync::Arc};
+
+use crate::{database::KeyValueDatabase, service, PduEvent, Error, utils};
+use async_trait::async_trait;
+use ruma::{EventId, events::StateEventType, RoomId};
+
+#[async_trait]
+impl service::rooms::state_accessor::Data for KeyValueDatabase {
     async fn state_full_ids(&self, shortstatehash: u64) -> Result<BTreeMap<u64, Arc<EventId>>> {
         let full_state = self
             .load_shortstatehash_info(shortstatehash)?
@@ -149,3 +156,4 @@ impl service::room::state_accessor::Data for KeyValueDatabase {
             Ok(None)
         }
     }
+}

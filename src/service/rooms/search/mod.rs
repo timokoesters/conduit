@@ -1,7 +1,6 @@
 mod data;
 pub use data::Data;
-
-use crate::service::*;
+use ruma::RoomId;
 
 pub struct Service<D: Data> {
     db: D,

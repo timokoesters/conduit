@@ -1,4 +1,4 @@
-use crate::{Database, Error};
+use crate::{Database, Error, services};
 use ruma::{
     events::{
         room::member::RoomMemberEventContent, AnyEphemeralRoomEvent, AnyRoomEvent, AnyStateEvent,
@@ -332,7 +332,6 @@ impl Ord for PduEvent {
 /// Returns a tuple of the new `EventId` and the PDU as a `BTreeMap<String, CanonicalJsonValue>`.
 pub(crate) fn gen_event_id_canonical_json(
     pdu: &RawJsonValue,
-    db: &Database,
 ) -> crate::Result<(Box<EventId>, CanonicalJsonObject)> {
     let value: CanonicalJsonObject = serde_json::from_str(pdu.get()).map_err(|e| {
         warn!("Error parsing incoming event {:?}: {:?}", pdu, e);
@@ -344,7 +343,7 @@ pub(crate) fn gen_event_id_canonical_json(
         .and_then(|id| RoomId::parse(id.as_str()?).ok())
         .ok_or_else(|| Error::bad_database("PDU in db has invalid room_id."))?;
 
-    let room_version_id = db.rooms.get_room_version(&room_id);
+    let room_version_id = services().rooms.get_room_version(&room_id);
 
     let event_id = format!(
         "${}",

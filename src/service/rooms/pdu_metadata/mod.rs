@@ -1,5 +1,8 @@
 mod data;
+use std::sync::Arc;
+
 pub use data::Data;
+use ruma::{RoomId, EventId};
 
 use crate::service::*;
 

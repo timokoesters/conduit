@@ -1,7 +1,8 @@
 mod data;
 pub use data::Data;
+use ruma::{EventId, signatures::CanonicalJsonObject};
 
-use crate::service::*;
+use crate::{service::*, PduEvent};
 
 pub struct Service<D: Data> {
     db: D,

@@ -1,4 +1,10 @@
-impl service::room::edus::read_receipt::Data for KeyValueDatabase {
+use std::mem;
+
+use ruma::{UserId, RoomId, events::receipt::ReceiptEvent, serde::Raw, signatures::CanonicalJsonObject};
+
+use crate::{database::KeyValueDatabase, service, utils, Error, services};
+
+impl service::rooms::edus::read_receipt::Data for KeyValueDatabase {
     fn readreceipt_update(
         &self,
         user_id: &UserId,
@@ -28,7 +34,7 @@ impl service::room::edus::read_receipt::Data for KeyValueDatabase {
         }
 
         let mut room_latest_id = prefix;
-        room_latest_id.extend_from_slice(&globals.next_count()?.to_be_bytes());
+        room_latest_id.extend_from_slice(&services().globals.next_count()?.to_be_bytes());
         room_latest_id.push(0xff);
         room_latest_id.extend_from_slice(user_id.as_bytes());
 
@@ -40,7 +46,7 @@ impl service::room::edus::read_receipt::Data for KeyValueDatabase {
         Ok(())
     }
 
-    pub fn readreceipts_since<'a>(
+    fn readreceipts_since<'a>(
         &'a self,
         room_id: &RoomId,
         since: u64,
@@ -102,7 +108,7 @@ impl service::room::edus::read_receipt::Data for KeyValueDatabase {
             .insert(&key, &count.to_be_bytes())?;
 
         self.roomuserid_lastprivatereadupdate
-            .insert(&key, &globals.next_count()?.to_be_bytes())?;
+            .insert(&key, &services().globals.next_count()?.to_be_bytes())
     }
 
     fn private_read_get(&self, room_id: &RoomId, user_id: &UserId) -> Result<Option<u64>> {

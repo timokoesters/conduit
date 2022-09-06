@@ -1,4 +1,4 @@
-use crate::{database::DatabaseGuard, utils, Error, Result, Ruma};
+use crate::{utils, Error, Result, Ruma, services};
 use ruma::api::client::{
     device::{self, delete_device, delete_devices, get_device, get_devices, update_device},
     error::ErrorKind,
@@ -11,12 +11,11 @@ use super::SESSION_ID_LENGTH;
 ///
 /// Get metadata on all devices of the sender user.
 pub async fn get_devices_route(
-    db: DatabaseGuard,
     body: Ruma<get_devices::v3::Request>,
 ) -> Result<get_devices::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
-    let devices: Vec<device::Device> = db
+    let devices: Vec<device::Device> = services()
         .users
         .all_devices_metadata(sender_user)
         .filter_map(|r| r.ok()) // Filter out buggy devices
@@ -29,12 +28,11 @@ pub async fn get_devices_route(
 ///
 /// Get metadata on a single device of the sender user.
 pub async fn get_device_route(
-    db: DatabaseGuard,
     body: Ruma<get_device::v3::IncomingRequest>,
 ) -> Result<get_device::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
-    let device = db
+    let device = services()
         .users
         .get_device_metadata(sender_user, &body.body.device_id)?
         .ok_or(Error::BadRequest(ErrorKind::NotFound, "Device not found."))?;
@@ -46,22 +44,19 @@ pub async fn get_device_route(
 ///
 /// Updates the metadata on a given device of the sender user.
 pub async fn update_device_route(
-    db: DatabaseGuard,
     body: Ruma<update_device::v3::IncomingRequest>,
 ) -> Result<update_device::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
-    let mut device = db
+    let mut device = services()
         .users
         .get_device_metadata(sender_user, &body.device_id)?
         .ok_or(Error::BadRequest(ErrorKind::NotFound, "Device not found."))?;
 
     device.display_name = body.display_name.clone();
 
-    db.users
+    services().users
         .update_device_metadata(sender_user, &body.device_id, &device)?;
-
-    db.flush()?;
 
     Ok(update_device::v3::Response {})
 }
@@ -76,7 +71,6 @@ pub async fn update_device_route(
 /// - Forgets to-device events
 /// - Triggers device list updates
 pub async fn delete_device_route(
-    db: DatabaseGuard,
     body: Ruma<delete_device::v3::IncomingRequest>,
 ) -> Result<delete_device::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -94,13 +88,11 @@ pub async fn delete_device_route(
     };
 
     if let Some(auth) = &body.auth {
-        let (worked, uiaainfo) = db.uiaa.try_auth(
+        let (worked, uiaainfo) = services().uiaa.try_auth(
             sender_user,
             sender_device,
             auth,
             &uiaainfo,
-            &db.users,
-            &db.globals,
         )?;
         if !worked {
             return Err(Error::Uiaa(uiaainfo));
@@ -108,16 +100,14 @@ pub async fn delete_device_route(
     // Success!
     } else if let Some(json) = body.json_body {
         uiaainfo.session = Some(utils::random_string(SESSION_ID_LENGTH));
-        db.uiaa
+        services().uiaa
             .create(sender_user, sender_device, &uiaainfo, &json)?;
         return Err(Error::Uiaa(uiaainfo));
     } else {
         return Err(Error::BadRequest(ErrorKind::NotJson, "Not json."));
     }
 
-    db.users.remove_device(sender_user, &body.device_id)?;
-
-    db.flush()?;
+    services().users.remove_device(sender_user, &body.device_id)?;
 
     Ok(delete_device::v3::Response {})
 }
@@ -134,7 +124,6 @@ pub async fn delete_device_route(
 /// - Forgets to-device events
 /// - Triggers device list updates
 pub async fn delete_devices_route(
-    db: DatabaseGuard,
     body: Ruma<delete_devices::v3::IncomingRequest>,
 ) -> Result<delete_devices::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -152,13 +141,11 @@ pub async fn delete_devices_route(
     };
 
     if let Some(auth) = &body.auth {
-        let (worked, uiaainfo) = db.uiaa.try_auth(
+        let (worked, uiaainfo) = services().uiaa.try_auth(
             sender_user,
             sender_device,
             auth,
             &uiaainfo,
-            &db.users,
-            &db.globals,
         )?;
         if !worked {
             return Err(Error::Uiaa(uiaainfo));
@@ -166,7 +153,7 @@ pub async fn delete_devices_route(
     // Success!
     } else if let Some(json) = body.json_body {
         uiaainfo.session = Some(utils::random_string(SESSION_ID_LENGTH));
-        db.uiaa
+        services().uiaa
             .create(sender_user, sender_device, &uiaainfo, &json)?;
         return Err(Error::Uiaa(uiaainfo));
     } else {
@@ -174,10 +161,8 @@ pub async fn delete_devices_route(
     }
 
     for device_id in &body.devices {
-        db.users.remove_device(sender_user, device_id)?
+        services().users.remove_device(sender_user, device_id)?
     }
-
-    db.flush()?;
 
     Ok(delete_devices::v3::Response {})
 }

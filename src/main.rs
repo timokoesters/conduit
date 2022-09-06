@@ -46,47 +46,44 @@ use tikv_jemallocator::Jemalloc;
 #[global_allocator]
 static GLOBAL: Jemalloc = Jemalloc;
 
-lazy_static! {
-    static ref DB: Database = {
-        let raw_config =
-            Figment::new()
-                .merge(
-                    Toml::file(Env::var("CONDUIT_CONFIG").expect(
-                        "The CONDUIT_CONFIG env var needs to be set. Example: /etc/conduit.toml",
-                    ))
-                    .nested(),
-                )
-                .merge(Env::prefixed("CONDUIT_").global());
-
-        let config = match raw_config.extract::<Config>() {
-            Ok(s) => s,
-            Err(e) => {
-                eprintln!("It looks like your config is invalid. The following error occured while parsing it: {}", e);
-                std::process::exit(1);
-            }
-        };
-
-        config.warn_deprecated();
-
-        let db = match Database::load_or_create(&config).await {
-            Ok(db) => db,
-            Err(e) => {
-                eprintln!(
-                    "The database couldn't be loaded or created. The following error occured: {}",
-                    e
-                );
-                std::process::exit(1);
-            }
-        };
-    };
-}
-
 #[tokio::main]
 async fn main() {
-    lazy_static::initialize(&DB);
+    // Initialize DB
+    let raw_config =
+        Figment::new()
+            .merge(
+                Toml::file(Env::var("CONDUIT_CONFIG").expect(
+                    "The CONDUIT_CONFIG env var needs to be set. Example: /etc/conduit.toml",
+                ))
+                .nested(),
+            )
+            .merge(Env::prefixed("CONDUIT_").global());
+
+    let config = match raw_config.extract::<Config>() {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("It looks like your config is invalid. The following error occured while parsing it: {}", e);
+            std::process::exit(1);
+        }
+    };
+
+    config.warn_deprecated();
+
+    let db = match KeyValueDatabase::load_or_create(&config).await {
+        Ok(db) => db,
+        Err(e) => {
+            eprintln!(
+                "The database couldn't be loaded or created. The following error occured: {}",
+                e
+            );
+            std::process::exit(1);
+        }
+    };
+
+    SERVICES.set(db).expect("this is the first and only time we initialize the SERVICE static");
 
     let start = async {
-        run_server(&config).await.unwrap();
+        run_server().await.unwrap();
     };
 
     if config.allow_jaeger {

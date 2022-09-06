@@ -1,4 +1,4 @@
-use crate::{database::DatabaseGuard, Error, Result, Ruma};
+use crate::{Error, Result, Ruma, services};
 use ruma::api::client::{
     backup::{
         add_backup_keys, add_backup_keys_for_room, add_backup_keys_for_session,
@@ -14,15 +14,12 @@ use ruma::api::client::{
 ///
 /// Creates a new backup.
 pub async fn create_backup_version_route(
-    db: DatabaseGuard,
     body: Ruma<create_backup_version::v3::Request>,
 ) -> Result<create_backup_version::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
-    let version = db
+    let version = services()
         .key_backups
-        .create_backup(sender_user, &body.algorithm, &db.globals)?;
-
-    db.flush()?;
+        .create_backup(sender_user, &body.algorithm)?;
 
     Ok(create_backup_version::v3::Response { version })
 }
@@ -31,14 +28,11 @@ pub async fn create_backup_version_route(
 ///
 /// Update information about an existing backup. Only `auth_data` can be modified.
 pub async fn update_backup_version_route(
-    db: DatabaseGuard,
     body: Ruma<update_backup_version::v3::IncomingRequest>,
 ) -> Result<update_backup_version::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
-    db.key_backups
-        .update_backup(sender_user, &body.version, &body.algorithm, &db.globals)?;
-
-    db.flush()?;
+    services().key_backups
+        .update_backup(sender_user, &body.version, &body.algorithm)?;
 
     Ok(update_backup_version::v3::Response {})
 }
@@ -47,13 +41,12 @@ pub async fn update_backup_version_route(
 ///
 /// Get information about the latest backup version.
 pub async fn get_latest_backup_info_route(
-    db: DatabaseGuard,
     body: Ruma<get_latest_backup_info::v3::Request>,
 ) -> Result<get_latest_backup_info::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
     let (version, algorithm) =
-        db.key_backups
+        services().key_backups
             .get_latest_backup(sender_user)?
             .ok_or(Error::BadRequest(
                 ErrorKind::NotFound,
@@ -62,8 +55,8 @@ pub async fn get_latest_backup_info_route(
 
     Ok(get_latest_backup_info::v3::Response {
         algorithm,
-        count: (db.key_backups.count_keys(sender_user, &version)? as u32).into(),
-        etag: db.key_backups.get_etag(sender_user, &version)?,
+        count: (services().key_backups.count_keys(sender_user, &version)? as u32).into(),
+        etag: services().key_backups.get_etag(sender_user, &version)?,
         version,
     })
 }
@@ -72,11 +65,10 @@ pub async fn get_latest_backup_info_route(
 ///
 /// Get information about an existing backup.
 pub async fn get_backup_info_route(
-    db: DatabaseGuard,
     body: Ruma<get_backup_info::v3::IncomingRequest>,
 ) -> Result<get_backup_info::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
-    let algorithm = db
+    let algorithm = services()
         .key_backups
         .get_backup(sender_user, &body.version)?
         .ok_or(Error::BadRequest(
@@ -86,8 +78,8 @@ pub async fn get_backup_info_route(
 
     Ok(get_backup_info::v3::Response {
         algorithm,
-        count: (db.key_backups.count_keys(sender_user, &body.version)? as u32).into(),
-        etag: db.key_backups.get_etag(sender_user, &body.version)?,
+        count: (services().key_backups.count_keys(sender_user, &body.version)? as u32).into(),
+        etag: services().key_backups.get_etag(sender_user, &body.version)?,
         version: body.version.to_owned(),
     })
 }
@@ -98,14 +90,11 @@ pub async fn get_backup_info_route(
 ///
 /// - Deletes both information about the backup, as well as all key data related to the backup
 pub async fn delete_backup_version_route(
-    db: DatabaseGuard,
     body: Ruma<delete_backup_version::v3::IncomingRequest>,
 ) -> Result<delete_backup_version::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
-    db.key_backups.delete_backup(sender_user, &body.version)?;
-
-    db.flush()?;
+    services().key_backups.delete_backup(sender_user, &body.version)?;
 
     Ok(delete_backup_version::v3::Response {})
 }
@@ -118,13 +107,12 @@ pub async fn delete_backup_version_route(
 /// - Adds the keys to the backup
 /// - Returns the new number of keys in this backup and the etag
 pub async fn add_backup_keys_route(
-    db: DatabaseGuard,
     body: Ruma<add_backup_keys::v3::IncomingRequest>,
 ) -> Result<add_backup_keys::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
     if Some(&body.version)
-        != db
+        != services()
             .key_backups
             .get_latest_backup_version(sender_user)?
             .as_ref()
@@ -137,22 +125,19 @@ pub async fn add_backup_keys_route(
 
     for (room_id, room) in &body.rooms {
         for (session_id, key_data) in &room.sessions {
-            db.key_backups.add_key(
+            services().key_backups.add_key(
                 sender_user,
                 &body.version,
                 room_id,
                 session_id,
                 key_data,
-                &db.globals,
             )?
         }
     }
 
-    db.flush()?;
-
     Ok(add_backup_keys::v3::Response {
-        count: (db.key_backups.count_keys(sender_user, &body.version)? as u32).into(),
-        etag: db.key_backups.get_etag(sender_user, &body.version)?,
+        count: (services().key_backups.count_keys(sender_user, &body.version)? as u32).into(),
+        etag: services().key_backups.get_etag(sender_user, &body.version)?,
     })
 }
 
@@ -164,13 +149,12 @@ pub async fn add_backup_keys_route(
 /// - Adds the keys to the backup
 /// - Returns the new number of keys in this backup and the etag
 pub async fn add_backup_keys_for_room_route(
-    db: DatabaseGuard,
     body: Ruma<add_backup_keys_for_room::v3::IncomingRequest>,
 ) -> Result<add_backup_keys_for_room::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
     if Some(&body.version)
-        != db
+        != services()
             .key_backups
             .get_latest_backup_version(sender_user)?
             .as_ref()
@@ -182,21 +166,18 @@ pub async fn add_backup_keys_for_room_route(
     }
 
     for (session_id, key_data) in &body.sessions {
-        db.key_backups.add_key(
+        services().key_backups.add_key(
             sender_user,
             &body.version,
             &body.room_id,
             session_id,
             key_data,
-            &db.globals,
         )?
     }
 
-    db.flush()?;
-
     Ok(add_backup_keys_for_room::v3::Response {
-        count: (db.key_backups.count_keys(sender_user, &body.version)? as u32).into(),
-        etag: db.key_backups.get_etag(sender_user, &body.version)?,
+        count: (services().key_backups.count_keys(sender_user, &body.version)? as u32).into(),
+        etag: services().key_backups.get_etag(sender_user, &body.version)?,
     })
 }
 
@@ -208,13 +189,12 @@ pub async fn add_backup_keys_for_room_route(
 /// - Adds the keys to the backup
 /// - Returns the new number of keys in this backup and the etag
 pub async fn add_backup_keys_for_session_route(
-    db: DatabaseGuard,
     body: Ruma<add_backup_keys_for_session::v3::IncomingRequest>,
 ) -> Result<add_backup_keys_for_session::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
     if Some(&body.version)
-        != db
+        != services()
             .key_backups
             .get_latest_backup_version(sender_user)?
             .as_ref()
@@ -225,20 +205,17 @@ pub async fn add_backup_keys_for_session_route(
         ));
     }
 
-    db.key_backups.add_key(
+    services().key_backups.add_key(
         sender_user,
         &body.version,
         &body.room_id,
         &body.session_id,
         &body.session_data,
-        &db.globals,
     )?;
 
-    db.flush()?;
-
     Ok(add_backup_keys_for_session::v3::Response {
-        count: (db.key_backups.count_keys(sender_user, &body.version)? as u32).into(),
-        etag: db.key_backups.get_etag(sender_user, &body.version)?,
+        count: (services().key_backups.count_keys(sender_user, &body.version)? as u32).into(),
+        etag: services().key_backups.get_etag(sender_user, &body.version)?,
     })
 }
 
@@ -246,12 +223,11 @@ pub async fn add_backup_keys_for_session_route(
 ///
 /// Retrieves all keys from the backup.
 pub async fn get_backup_keys_route(
-    db: DatabaseGuard,
     body: Ruma<get_backup_keys::v3::IncomingRequest>,
 ) -> Result<get_backup_keys::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
-    let rooms = db.key_backups.get_all(sender_user, &body.version)?;
+    let rooms = services().key_backups.get_all(sender_user, &body.version)?;
 
     Ok(get_backup_keys::v3::Response { rooms })
 }
@@ -260,12 +236,11 @@ pub async fn get_backup_keys_route(
 ///
 /// Retrieves all keys from the backup for a given room.
 pub async fn get_backup_keys_for_room_route(
-    db: DatabaseGuard,
     body: Ruma<get_backup_keys_for_room::v3::IncomingRequest>,
 ) -> Result<get_backup_keys_for_room::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
-    let sessions = db
+    let sessions = services()
         .key_backups
         .get_room(sender_user, &body.version, &body.room_id)?;
 
@@ -276,12 +251,11 @@ pub async fn get_backup_keys_for_room_route(
 ///
 /// Retrieves a key from the backup.
 pub async fn get_backup_keys_for_session_route(
-    db: DatabaseGuard,
     body: Ruma<get_backup_keys_for_session::v3::IncomingRequest>,
 ) -> Result<get_backup_keys_for_session::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
-    let key_data = db
+    let key_data = services()
         .key_backups
         .get_session(sender_user, &body.version, &body.room_id, &body.session_id)?
         .ok_or(Error::BadRequest(
@@ -296,18 +270,15 @@ pub async fn get_backup_keys_for_session_route(
 ///
 /// Delete the keys from the backup.
 pub async fn delete_backup_keys_route(
-    db: DatabaseGuard,
     body: Ruma<delete_backup_keys::v3::IncomingRequest>,
 ) -> Result<delete_backup_keys::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
-    db.key_backups.delete_all_keys(sender_user, &body.version)?;
-
-    db.flush()?;
+    services().key_backups.delete_all_keys(sender_user, &body.version)?;
 
     Ok(delete_backup_keys::v3::Response {
-        count: (db.key_backups.count_keys(sender_user, &body.version)? as u32).into(),
-        etag: db.key_backups.get_etag(sender_user, &body.version)?,
+        count: (services().key_backups.count_keys(sender_user, &body.version)? as u32).into(),
+        etag: services().key_backups.get_etag(sender_user, &body.version)?,
     })
 }
 
@@ -315,19 +286,16 @@ pub async fn delete_backup_keys_route(
 ///
 /// Delete the keys from the backup for a given room.
 pub async fn delete_backup_keys_for_room_route(
-    db: DatabaseGuard,
     body: Ruma<delete_backup_keys_for_room::v3::IncomingRequest>,
 ) -> Result<delete_backup_keys_for_room::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
-    db.key_backups
+    services().key_backups
         .delete_room_keys(sender_user, &body.version, &body.room_id)?;
 
-    db.flush()?;
-
     Ok(delete_backup_keys_for_room::v3::Response {
-        count: (db.key_backups.count_keys(sender_user, &body.version)? as u32).into(),
-        etag: db.key_backups.get_etag(sender_user, &body.version)?,
+        count: (services().key_backups.count_keys(sender_user, &body.version)? as u32).into(),
+        etag: services().key_backups.get_etag(sender_user, &body.version)?,
     })
 }
 
@@ -335,18 +303,15 @@ pub async fn delete_backup_keys_for_room_route(
 ///
 /// Delete a key from the backup.
 pub async fn delete_backup_keys_for_session_route(
-    db: DatabaseGuard,
     body: Ruma<delete_backup_keys_for_session::v3::IncomingRequest>,
 ) -> Result<delete_backup_keys_for_session::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
-    db.key_backups
+    services().key_backups
         .delete_room_key(sender_user, &body.version, &body.room_id, &body.session_id)?;
 
-    db.flush()?;
-
     Ok(delete_backup_keys_for_session::v3::Response {
-        count: (db.key_backups.count_keys(sender_user, &body.version)? as u32).into(),
-        etag: db.key_backups.get_etag(sender_user, &body.version)?,
+        count: (services().key_backups.count_keys(sender_user, &body.version)? as u32).into(),
+        etag: services().key_backups.get_etag(sender_user, &body.version)?,
     })
 }

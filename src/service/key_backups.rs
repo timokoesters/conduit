@@ -1,4 +1,4 @@
-use crate::{utils, Error, Result};
+use crate::{utils, Error, Result, services};
 use ruma::{
     api::client::{
         backup::{BackupAlgorithm, KeyBackupData, RoomKeyBackup},
@@ -9,22 +9,13 @@ use ruma::{
 };
 use std::{collections::BTreeMap, sync::Arc};
 
-use super::abstraction::Tree;
-
-pub struct KeyBackups {
-    pub(super) backupid_algorithm: Arc<dyn Tree>, // BackupId = UserId + Version(Count)
-    pub(super) backupid_etag: Arc<dyn Tree>,      // BackupId = UserId + Version(Count)
-    pub(super) backupkeyid_backup: Arc<dyn Tree>, // BackupKeyId = UserId + Version + RoomId + SessionId
-}
-
 impl KeyBackups {
     pub fn create_backup(
         &self,
         user_id: &UserId,
         backup_metadata: &Raw<BackupAlgorithm>,
-        globals: &super::globals::Globals,
     ) -> Result<String> {
-        let version = globals.next_count()?.to_string();
+        let version = services().globals.next_count()?.to_string();
 
         let mut key = user_id.as_bytes().to_vec();
         key.push(0xff);
@@ -35,7 +26,7 @@ impl KeyBackups {
             &serde_json::to_vec(backup_metadata).expect("BackupAlgorithm::to_vec always works"),
         )?;
         self.backupid_etag
-            .insert(&key, &globals.next_count()?.to_be_bytes())?;
+            .insert(&key, &services().globals.next_count()?.to_be_bytes())?;
         Ok(version)
     }
 
@@ -61,7 +52,6 @@ impl KeyBackups {
         user_id: &UserId,
         version: &str,
         backup_metadata: &Raw<BackupAlgorithm>,
-        globals: &super::globals::Globals,
     ) -> Result<String> {
         let mut key = user_id.as_bytes().to_vec();
         key.push(0xff);
@@ -77,7 +67,7 @@ impl KeyBackups {
         self.backupid_algorithm
             .insert(&key, backup_metadata.json().get().as_bytes())?;
         self.backupid_etag
-            .insert(&key, &globals.next_count()?.to_be_bytes())?;
+            .insert(&key, &services().globals.next_count()?.to_be_bytes())?;
         Ok(version.to_owned())
     }
 
@@ -157,7 +147,6 @@ impl KeyBackups {
         room_id: &RoomId,
         session_id: &str,
         key_data: &Raw<KeyBackupData>,
-        globals: &super::globals::Globals,
     ) -> Result<()> {
         let mut key = user_id.as_bytes().to_vec();
         key.push(0xff);
@@ -171,7 +160,7 @@ impl KeyBackups {
         }
 
         self.backupid_etag
-            .insert(&key, &globals.next_count()?.to_be_bytes())?;
+            .insert(&key, &services().globals.next_count()?.to_be_bytes())?;
 
         key.push(0xff);
         key.extend_from_slice(room_id.as_bytes());

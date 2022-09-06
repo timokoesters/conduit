@@ -1,3 +1,7 @@
+use std::collections::HashMap;
+
+use ruma::{UserId, RoomId, events::presence::PresenceEvent};
+
 pub trait Data {
     /// Adds a presence event which will be saved until a new event replaces it.
     ///

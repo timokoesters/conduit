@@ -1,8 +1,6 @@
 use crate::{
-    client_server::{self, claim_keys_helper, get_keys_helper},
-    database::{rooms::CompressedStateEvent, DatabaseGuard},
-    pdu::EventHash,
-    utils, Database, Error, PduEvent, Result, Ruma,
+    api::client_server::{self, claim_keys_helper, get_keys_helper},
+    utils, Error, PduEvent, Result, Ruma, services, service::pdu::{gen_event_id_canonical_json, PduBuilder},
 };
 use axum::{response::IntoResponse, Json};
 use futures_util::{stream::FuturesUnordered, StreamExt};
@@ -126,22 +124,21 @@ impl FedDest {
     }
 }
 
-#[tracing::instrument(skip(globals, request))]
+#[tracing::instrument(skip(request))]
 pub(crate) async fn send_request<T: OutgoingRequest>(
-    globals: &crate::database::globals::Globals,
     destination: &ServerName,
     request: T,
 ) -> Result<T::IncomingResponse>
 where
     T: Debug,
 {
-    if !globals.allow_federation() {
+    if !services().globals.allow_federation() {
         return Err(Error::bad_config("Federation is disabled."));
     }
 
     let mut write_destination_to_cache = false;
 
-    let cached_result = globals
+    let cached_result = services().globals
         .actual_destination_cache
         .read()
         .unwrap()
@@ -153,7 +150,7 @@ where
     } else {
         write_destination_to_cache = true;
 
-        let result = find_actual_destination(globals, destination).await;
+        let result = find_actual_destination(destination).await;
 
         (result.0, result.1.into_uri_string())
     };
@@ -194,15 +191,15 @@ where
             .to_string()
             .into(),
     );
-    request_map.insert("origin".to_owned(), globals.server_name().as_str().into());
+    request_map.insert("origin".to_owned(), services().globals.server_name().as_str().into());
     request_map.insert("destination".to_owned(), destination.as_str().into());
 
     let mut request_json =
         serde_json::from_value(request_map.into()).expect("valid JSON is valid BTreeMap");
 
     ruma::signatures::sign_json(
-        globals.server_name().as_str(),
-        globals.keypair(),
+        services().globals.server_name().as_str(),
+        services().globals.keypair(),
         &mut request_json,
     )
     .expect("our request json is what ruma expects");
@@ -227,7 +224,7 @@ where
                 AUTHORIZATION,
                 HeaderValue::from_str(&format!(
                     "X-Matrix origin={},key=\"{}\",sig=\"{}\"",
-                    globals.server_name(),
+                    services().globals.server_name(),
                     s.0,
                     s.1
                 ))
@@ -241,7 +238,7 @@ where
 
     let url = reqwest_request.url().clone();
 
-    let response = globals.federation_client().execute(reqwest_request).await;
+    let response = services().globals.federation_client().execute(reqwest_request).await;
 
     match response {
         Ok(mut response) => {
@@ -281,7 +278,7 @@ where
             if status == 200 {
                 let response = T::IncomingResponse::try_from_http_response(http_response);
                 if response.is_ok() && write_destination_to_cache {
-                    globals.actual_destination_cache.write().unwrap().insert(
+                    services().globals.actual_destination_cache.write().unwrap().insert(
                         Box::<ServerName>::from(destination),
                         (actual_destination, host),
                     );
@@ -332,9 +329,7 @@ fn add_port_to_hostname(destination_str: &str) -> FedDest {
 /// Returns: actual_destination, host header
 /// Implemented according to the specification at https://matrix.org/docs/spec/server_server/r0.1.4#resolving-server-names
 /// Numbers in comments below refer to bullet points in linked section of specification
-#[tracing::instrument(skip(globals))]
 async fn find_actual_destination(
-    globals: &crate::database::globals::Globals,
     destination: &'_ ServerName,
 ) -> (FedDest, FedDest) {
     let destination_str = destination.as_str().to_owned();
@@ -350,7 +345,7 @@ async fn find_actual_destination(
                 let (host, port) = destination_str.split_at(pos);
                 FedDest::Named(host.to_owned(), port.to_owned())
             } else {
-                match request_well_known(globals, destination.as_str()).await {
+                match request_well_known(destination.as_str()).await {
                     // 3: A .well-known file is available
                     Some(delegated_hostname) => {
                         hostname = add_port_to_hostname(&delegated_hostname).into_uri_string();
@@ -364,17 +359,17 @@ async fn find_actual_destination(
                                 } else {
                                     // Delegated hostname has no port in this branch
                                     if let Some(hostname_override) =
-                                        query_srv_record(globals, &delegated_hostname).await
+                                        query_srv_record(&delegated_hostname).await
                                     {
                                         // 3.3: SRV lookup successful
                                         let force_port = hostname_override.port();
 
-                                        if let Ok(override_ip) = globals
+                                        if let Ok(override_ip) = services().globals
                                             .dns_resolver()
                                             .lookup_ip(hostname_override.hostname())
                                             .await
                                         {
-                                            globals.tls_name_override.write().unwrap().insert(
+                                            services().globals.tls_name_override.write().unwrap().insert(
                                                 delegated_hostname.clone(),
                                                 (
                                                     override_ip.iter().collect(),
@@ -400,17 +395,17 @@ async fn find_actual_destination(
                     }
                     // 4: No .well-known or an error occured
                     None => {
-                        match query_srv_record(globals, &destination_str).await {
+                        match query_srv_record(&destination_str).await {
                             // 4: SRV record found
                             Some(hostname_override) => {
                                 let force_port = hostname_override.port();
 
-                                if let Ok(override_ip) = globals
+                                if let Ok(override_ip) = services().globals
                                     .dns_resolver()
                                     .lookup_ip(hostname_override.hostname())
                                     .await
                                 {
-                                    globals.tls_name_override.write().unwrap().insert(
+                                    services().globals.tls_name_override.write().unwrap().insert(
                                         hostname.clone(),
                                         (override_ip.iter().collect(), force_port.unwrap_or(8448)),
                                     );
@@ -448,12 +443,10 @@ async fn find_actual_destination(
     (actual_destination, hostname)
 }
 
-#[tracing::instrument(skip(globals))]
 async fn query_srv_record(
-    globals: &crate::database::globals::Globals,
     hostname: &'_ str,
 ) -> Option<FedDest> {
-    if let Ok(Some(host_port)) = globals
+    if let Ok(Some(host_port)) = services().globals
         .dns_resolver()
         .srv_lookup(format!("_matrix._tcp.{}", hostname))
         .await
@@ -472,13 +465,11 @@ async fn query_srv_record(
     }
 }
 
-#[tracing::instrument(skip(globals))]
 async fn request_well_known(
-    globals: &crate::database::globals::Globals,
     destination: &str,
 ) -> Option<String> {
     let body: serde_json::Value = serde_json::from_str(
-        &globals
+        &services().globals
             .default_client()
             .get(&format!(
                 "https://{}/.well-known/matrix/server",
@@ -499,10 +490,9 @@ async fn request_well_known(
 ///
 /// Get version information on this server.
 pub async fn get_server_version_route(
-    db: DatabaseGuard,
     _body: Ruma<get_server_version::v1::Request>,
 ) -> Result<get_server_version::v1::Response> {
-    if !db.globals.allow_federation() {
+    if !services().globals.allow_federation() {
         return Err(Error::bad_config("Federation is disabled."));
     }
 
@@ -521,24 +511,24 @@ pub async fn get_server_version_route(
 /// - Matrix does not support invalidating public keys, so the key returned by this will be valid
 /// forever.
 // Response type for this endpoint is Json because we need to calculate a signature for the response
-pub async fn get_server_keys_route(db: DatabaseGuard) -> Result<impl IntoResponse> {
-    if !db.globals.allow_federation() {
+pub async fn get_server_keys_route() -> Result<impl IntoResponse> {
+    if !services().globals.allow_federation() {
         return Err(Error::bad_config("Federation is disabled."));
     }
 
     let mut verify_keys: BTreeMap<Box<ServerSigningKeyId>, VerifyKey> = BTreeMap::new();
     verify_keys.insert(
-        format!("ed25519:{}", db.globals.keypair().version())
+        format!("ed25519:{}", services().globals.keypair().version())
             .try_into()
             .expect("found invalid server signing keys in DB"),
         VerifyKey {
-            key: Base64::new(db.globals.keypair().public_key().to_vec()),
+            key: Base64::new(services().globals.keypair().public_key().to_vec()),
         },
     );
     let mut response = serde_json::from_slice(
         get_server_keys::v2::Response {
             server_key: Raw::new(&ServerSigningKeys {
-                server_name: db.globals.server_name().to_owned(),
+                server_name: services().globals.server_name().to_owned(),
                 verify_keys,
                 old_verify_keys: BTreeMap::new(),
                 signatures: BTreeMap::new(),
@@ -556,8 +546,8 @@ pub async fn get_server_keys_route(db: DatabaseGuard) -> Result<impl IntoRespons
     .unwrap();
 
     ruma::signatures::sign_json(
-        db.globals.server_name().as_str(),
-        db.globals.keypair(),
+        services().globals.server_name().as_str(),
+        services().globals.keypair(),
         &mut response,
     )
     .unwrap();
@@ -571,23 +561,21 @@ pub async fn get_server_keys_route(db: DatabaseGuard) -> Result<impl IntoRespons
 ///
 /// - Matrix does not support invalidating public keys, so the key returned by this will be valid
 /// forever.
-pub async fn get_server_keys_deprecated_route(db: DatabaseGuard) -> impl IntoResponse {
-    get_server_keys_route(db).await
+pub async fn get_server_keys_deprecated_route() -> impl IntoResponse {
+    get_server_keys_route().await
 }
 
 /// # `POST /_matrix/federation/v1/publicRooms`
 ///
 /// Lists the public rooms on this server.
 pub async fn get_public_rooms_filtered_route(
-    db: DatabaseGuard,
     body: Ruma<get_public_rooms_filtered::v1::IncomingRequest>,
 ) -> Result<get_public_rooms_filtered::v1::Response> {
-    if !db.globals.allow_federation() {
+    if !services().globals.allow_federation() {
         return Err(Error::bad_config("Federation is disabled."));
     }
 
     let response = client_server::get_public_rooms_filtered_helper(
-        &db,
         None,
         body.limit,
         body.since.as_deref(),
@@ -608,15 +596,13 @@ pub async fn get_public_rooms_filtered_route(
 ///
 /// Lists the public rooms on this server.
 pub async fn get_public_rooms_route(
-    db: DatabaseGuard,
     body: Ruma<get_public_rooms::v1::IncomingRequest>,
 ) -> Result<get_public_rooms::v1::Response> {
-    if !db.globals.allow_federation() {
+    if !services().globals.allow_federation() {
         return Err(Error::bad_config("Federation is disabled."));
     }
 
     let response = client_server::get_public_rooms_filtered_helper(
-        &db,
         None,
         body.limit,
         body.since.as_deref(),
@@ -637,10 +623,9 @@ pub async fn get_public_rooms_route(
 ///
 /// Push EDUs and PDUs to this server.
 pub async fn send_transaction_message_route(
-    db: DatabaseGuard,
     body: Ruma<send_transaction_message::v1::IncomingRequest>,
 ) -> Result<send_transaction_message::v1::Response> {
-    if !db.globals.allow_federation() {
+    if !services().globals.allow_federation() {
         return Err(Error::bad_config("Federation is disabled."));
     }
 
@@ -663,7 +648,7 @@ pub async fn send_transaction_message_route(
 
     for pdu in &body.pdus {
         // We do not add the event_id field to the pdu here because of signature and hashes checks
-        let (event_id, value) = match crate::pdu::gen_event_id_canonical_json(pdu, &db) {
+        let (event_id, value) = match gen_event_id_canonical_json(pdu) {
             Ok(t) => t,
             Err(_) => {
                 // Event could not be converted to canonical json
@@ -684,10 +669,10 @@ pub async fn send_transaction_message_route(
             }
         };
 
-        acl_check(&sender_servername, &room_id, &db)?;
+        acl_check(&sender_servername, &room_id)?;
 
         let mutex = Arc::clone(
-            db.globals
+            services().globals
                 .roomid_mutex_federation
                 .write()
                 .unwrap()
@@ -698,13 +683,12 @@ pub async fn send_transaction_message_route(
         let start_time = Instant::now();
         resolved_map.insert(
             event_id.clone(),
-            handle_incoming_pdu(
+            services().rooms.event_handler.handle_incoming_pdu(
                 &sender_servername,
                 &event_id,
                 &room_id,
                 value,
                 true,
-                &db,
                 &pub_key_map,
             )
             .await
@@ -743,7 +727,7 @@ pub async fn send_transaction_message_route(
                             .event_ids
                             .iter()
                             .filter_map(|id| {
-                                db.rooms.get_pdu_count(id).ok().flatten().map(|r| (id, r))
+                                services().rooms.get_pdu_count(id).ok().flatten().map(|r| (id, r))
                             })
                             .max_by_key(|(_, count)| *count)
                         {
@@ -760,11 +744,10 @@ pub async fn send_transaction_message_route(
                                 content: ReceiptEventContent(receipt_content),
                                 room_id: room_id.clone(),
                             };
-                            db.rooms.edus.readreceipt_update(
+                            services().rooms.edus.readreceipt_update(
                                 &user_id,
                                 &room_id,
                                 event,
-                                &db.globals,
                             )?;
                         } else {
                             // TODO fetch missing events
@@ -774,26 +757,24 @@ pub async fn send_transaction_message_route(
                 }
             }
             Edu::Typing(typing) => {
-                if db.rooms.is_joined(&typing.user_id, &typing.room_id)? {
+                if services().rooms.is_joined(&typing.user_id, &typing.room_id)? {
                     if typing.typing {
-                        db.rooms.edus.typing_add(
+                        services().rooms.edus.typing_add(
                             &typing.user_id,
                             &typing.room_id,
                             3000 + utils::millis_since_unix_epoch(),
-                            &db.globals,
                         )?;
                     } else {
-                        db.rooms.edus.typing_remove(
+                        services().rooms.edus.typing_remove(
                             &typing.user_id,
                             &typing.room_id,
-                            &db.globals,
                         )?;
                     }
                 }
             }
             Edu::DeviceListUpdate(DeviceListUpdateContent { user_id, .. }) => {
-                db.users
-                    .mark_device_key_update(&user_id, &db.rooms, &db.globals)?;
+                services().users
+                    .mark_device_key_update(&user_id)?;
             }
             Edu::DirectToDevice(DirectDeviceContent {
                 sender,
@@ -802,7 +783,7 @@ pub async fn send_transaction_message_route(
                 messages,
             }) => {
                 // Check if this is a new transaction id
-                if db
+                if services()
                     .transaction_ids
                     .existing_txnid(&sender, None, &message_id)?
                     .is_some()
@@ -814,7 +795,7 @@ pub async fn send_transaction_message_route(
                     for (target_device_id_maybe, event) in map {
                         match target_device_id_maybe {
                             DeviceIdOrAllDevices::DeviceId(target_device_id) => {
-                                db.users.add_to_device_event(
+                                services().users.add_to_device_event(
                                     &sender,
                                     target_user_id,
                                     target_device_id,
@@ -825,13 +806,12 @@ pub async fn send_transaction_message_route(
                                             "Event is invalid",
                                         )
                                     })?,
-                                    &db.globals,
                                 )?
                             }
 
                             DeviceIdOrAllDevices::AllDevices => {
-                                for target_device_id in db.users.all_device_ids(target_user_id) {
-                                    db.users.add_to_device_event(
+                                for target_device_id in services().users.all_device_ids(target_user_id) {
+                                    services().users.add_to_device_event(
                                         &sender,
                                         target_user_id,
                                         &target_device_id?,
@@ -842,7 +822,6 @@ pub async fn send_transaction_message_route(
                                                 "Event is invalid",
                                             )
                                         })?,
-                                        &db.globals,
                                     )?;
                                 }
                             }
@@ -851,7 +830,7 @@ pub async fn send_transaction_message_route(
                 }
 
                 // Save transaction id with empty data
-                db.transaction_ids
+                services().transaction_ids
                     .add_txnid(&sender, None, &message_id, &[])?;
             }
             Edu::SigningKeyUpdate(SigningKeyUpdateContent {
@@ -863,21 +842,17 @@ pub async fn send_transaction_message_route(
                     continue;
                 }
                 if let Some(master_key) = master_key {
-                    db.users.add_cross_signing_keys(
+                    services().users.add_cross_signing_keys(
                         &user_id,
                         &master_key,
                         &self_signing_key,
                         &None,
-                        &db.rooms,
-                        &db.globals,
                     )?;
                 }
             }
             Edu::_Custom(_) => {}
         }
     }
-
-    db.flush()?;
 
     Ok(send_transaction_message::v1::Response { pdus: resolved_map })
 }
@@ -886,14 +861,13 @@ pub async fn send_transaction_message_route(
 /// fetch them from the server and save to our DB.
 #[tracing::instrument(skip_all)]
 pub(crate) async fn fetch_signing_keys(
-    db: &Database,
     origin: &ServerName,
     signature_ids: Vec<String>,
 ) -> Result<BTreeMap<String, Base64>> {
     let contains_all_ids =
         |keys: &BTreeMap<String, Base64>| signature_ids.iter().all(|id| keys.contains_key(id));
 
-    let permit = db
+    let permit = services()
         .globals
         .servername_ratelimiter
         .read()
@@ -904,7 +878,7 @@ pub(crate) async fn fetch_signing_keys(
     let permit = match permit {
         Some(p) => p,
         None => {
-            let mut write = db.globals.servername_ratelimiter.write().unwrap();
+            let mut write = services().globals.servername_ratelimiter.write().unwrap();
             let s = Arc::clone(
                 write
                     .entry(origin.to_owned())
@@ -916,7 +890,7 @@ pub(crate) async fn fetch_signing_keys(
     }
     .await;
 
-    let back_off = |id| match db
+    let back_off = |id| match services()
         .globals
         .bad_signature_ratelimiter
         .write()
@@ -929,7 +903,7 @@ pub(crate) async fn fetch_signing_keys(
         hash_map::Entry::Occupied(mut e) => *e.get_mut() = (Instant::now(), e.get().1 + 1),
     };
 
-    if let Some((time, tries)) = db
+    if let Some((time, tries)) = services()
         .globals
         .bad_signature_ratelimiter
         .read()
@@ -950,7 +924,7 @@ pub(crate) async fn fetch_signing_keys(
 
     trace!("Loading signing keys for {}", origin);
 
-    let mut result: BTreeMap<_, _> = db
+    let mut result: BTreeMap<_, _> = services()
         .globals
         .signing_keys_for(origin)?
         .into_iter()
@@ -963,14 +937,14 @@ pub(crate) async fn fetch_signing_keys(
 
     debug!("Fetching signing keys for {} over federation", origin);
 
-    if let Some(server_key) = db
+    if let Some(server_key) = services()
         .sending
-        .send_federation_request(&db.globals, origin, get_server_keys::v2::Request::new())
+        .send_federation_request(origin, get_server_keys::v2::Request::new())
         .await
         .ok()
         .and_then(|resp| resp.server_key.deserialize().ok())
     {
-        db.globals.add_signing_key(origin, server_key.clone())?;
+        services().globals.add_signing_key(origin, server_key.clone())?;
 
         result.extend(
             server_key
@@ -990,12 +964,11 @@ pub(crate) async fn fetch_signing_keys(
         }
     }
 
-    for server in db.globals.trusted_servers() {
+    for server in services().globals.trusted_servers() {
         debug!("Asking {} for {}'s signing key", server, origin);
-        if let Some(server_keys) = db
+        if let Some(server_keys) = services()
             .sending
             .send_federation_request(
-                &db.globals,
                 server,
                 get_remote_server_keys::v2::Request::new(
                     origin,
@@ -1018,7 +991,7 @@ pub(crate) async fn fetch_signing_keys(
         {
             trace!("Got signing keys: {:?}", server_keys);
             for k in server_keys {
-                db.globals.add_signing_key(origin, k.clone())?;
+                services().globals.add_signing_key(origin, k.clone())?;
                 result.extend(
                     k.verify_keys
                         .into_iter()
@@ -1047,11 +1020,10 @@ pub(crate) async fn fetch_signing_keys(
     ))
 }
 
-#[tracing::instrument(skip(starting_events, db))]
+#[tracing::instrument(skip(starting_events))]
 pub(crate) async fn get_auth_chain<'a>(
     room_id: &RoomId,
     starting_events: Vec<Arc<EventId>>,
-    db: &'a Database,
 ) -> Result<impl Iterator<Item = Arc<EventId>> + 'a> {
     const NUM_BUCKETS: usize = 50;
 
@@ -1059,7 +1031,7 @@ pub(crate) async fn get_auth_chain<'a>(
 
     let mut i = 0;
     for id in starting_events {
-        let short = db.rooms.get_or_create_shorteventid(&id, &db.globals)?;
+        let short = services().rooms.get_or_create_shorteventid(&id)?;
         let bucket_id = (short % NUM_BUCKETS as u64) as usize;
         buckets[bucket_id].insert((short, id.clone()));
         i += 1;
@@ -1078,7 +1050,7 @@ pub(crate) async fn get_auth_chain<'a>(
         }
 
         let chunk_key: Vec<u64> = chunk.iter().map(|(short, _)| short).copied().collect();
-        if let Some(cached) = db.rooms.get_auth_chain_from_cache(&chunk_key)? {
+        if let Some(cached) = services().rooms.get_auth_chain_from_cache(&chunk_key)? {
             hits += 1;
             full_auth_chain.extend(cached.iter().copied());
             continue;
@@ -1090,13 +1062,13 @@ pub(crate) async fn get_auth_chain<'a>(
         let mut misses2 = 0;
         let mut i = 0;
         for (sevent_id, event_id) in chunk {
-            if let Some(cached) = db.rooms.get_auth_chain_from_cache(&[sevent_id])? {
+            if let Some(cached) = services().rooms.get_auth_chain_from_cache(&[sevent_id])? {
                 hits2 += 1;
                 chunk_cache.extend(cached.iter().copied());
             } else {
                 misses2 += 1;
-                let auth_chain = Arc::new(get_auth_chain_inner(room_id, &event_id, db)?);
-                db.rooms
+                let auth_chain = Arc::new(get_auth_chain_inner(room_id, &event_id)?);
+                services().rooms
                     .cache_auth_chain(vec![sevent_id], Arc::clone(&auth_chain))?;
                 println!(
                     "cache missed event {} with auth chain len {}",
@@ -1118,7 +1090,7 @@ pub(crate) async fn get_auth_chain<'a>(
             misses2
         );
         let chunk_cache = Arc::new(chunk_cache);
-        db.rooms
+        services().rooms
             .cache_auth_chain(chunk_key, Arc::clone(&chunk_cache))?;
         full_auth_chain.extend(chunk_cache.iter());
     }
@@ -1132,28 +1104,27 @@ pub(crate) async fn get_auth_chain<'a>(
 
     Ok(full_auth_chain
         .into_iter()
-        .filter_map(move |sid| db.rooms.get_eventid_from_short(sid).ok()))
+        .filter_map(move |sid| services().rooms.get_eventid_from_short(sid).ok()))
 }
 
-#[tracing::instrument(skip(event_id, db))]
+#[tracing::instrument(skip(event_id))]
 fn get_auth_chain_inner(
     room_id: &RoomId,
     event_id: &EventId,
-    db: &Database,
 ) -> Result<HashSet<u64>> {
     let mut todo = vec![Arc::from(event_id)];
     let mut found = HashSet::new();
 
     while let Some(event_id) = todo.pop() {
-        match db.rooms.get_pdu(&event_id) {
+        match services().rooms.get_pdu(&event_id) {
             Ok(Some(pdu)) => {
                 if pdu.room_id != room_id {
                     return Err(Error::BadRequest(ErrorKind::Forbidden, "Evil event in db"));
                 }
                 for auth_event in &pdu.auth_events {
-                    let sauthevent = db
+                    let sauthevent = services()
                         .rooms
-                        .get_or_create_shorteventid(auth_event, &db.globals)?;
+                        .get_or_create_shorteventid(auth_event)?;
 
                     if !found.contains(&sauthevent) {
                         found.insert(sauthevent);
@@ -1179,10 +1150,9 @@ fn get_auth_chain_inner(
 ///
 /// - Only works if a user of this server is currently invited or joined the room
 pub async fn get_event_route(
-    db: DatabaseGuard,
     body: Ruma<get_event::v1::IncomingRequest>,
 ) -> Result<get_event::v1::Response> {
-    if !db.globals.allow_federation() {
+    if !services().globals.allow_federation() {
         return Err(Error::bad_config("Federation is disabled."));
     }
 
@@ -1191,7 +1161,7 @@ pub async fn get_event_route(
         .as_ref()
         .expect("server is authenticated");
 
-    let event = db
+    let event = services()
         .rooms
         .get_pdu_json(&body.event_id)?
         .ok_or(Error::BadRequest(ErrorKind::NotFound, "Event not found."))?;
@@ -1204,7 +1174,7 @@ pub async fn get_event_route(
     let room_id = <&RoomId>::try_from(room_id_str)
         .map_err(|_| Error::bad_database("Invalid room id field in event in database"))?;
 
-    if !db.rooms.server_in_room(sender_servername, room_id)? {
+    if !services().rooms.server_in_room(sender_servername, room_id)? {
         return Err(Error::BadRequest(
             ErrorKind::Forbidden,
             "Server is not in room",
@@ -1212,7 +1182,7 @@ pub async fn get_event_route(
     }
 
     Ok(get_event::v1::Response {
-        origin: db.globals.server_name().to_owned(),
+        origin: services().globals.server_name().to_owned(),
         origin_server_ts: MilliSecondsSinceUnixEpoch::now(),
         pdu: PduEvent::convert_to_outgoing_federation_event(event),
     })
@@ -1222,10 +1192,9 @@ pub async fn get_event_route(
 ///
 /// Retrieves events that the sender is missing.
 pub async fn get_missing_events_route(
-    db: DatabaseGuard,
     body: Ruma<get_missing_events::v1::IncomingRequest>,
 ) -> Result<get_missing_events::v1::Response> {
-    if !db.globals.allow_federation() {
+    if !services().globals.allow_federation() {
         return Err(Error::bad_config("Federation is disabled."));
     }
 
@@ -1234,21 +1203,21 @@ pub async fn get_missing_events_route(
         .as_ref()
         .expect("server is authenticated");
 
-    if !db.rooms.server_in_room(sender_servername, &body.room_id)? {
+    if !services().rooms.server_in_room(sender_servername, &body.room_id)? {
         return Err(Error::BadRequest(
             ErrorKind::Forbidden,
             "Server is not in room",
         ));
     }
 
-    acl_check(sender_servername, &body.room_id, &db)?;
+    acl_check(sender_servername, &body.room_id)?;
 
     let mut queued_events = body.latest_events.clone();
     let mut events = Vec::new();
 
     let mut i = 0;
     while i < queued_events.len() && events.len() < u64::from(body.limit) as usize {
-        if let Some(pdu) = db.rooms.get_pdu_json(&queued_events[i])? {
+        if let Some(pdu) = services().rooms.get_pdu_json(&queued_events[i])? {
             let room_id_str = pdu
                 .get("room_id")
                 .and_then(|val| val.as_str())
@@ -1295,10 +1264,9 @@ pub async fn get_missing_events_route(
 ///
 /// - This does not include the event itself
 pub async fn get_event_authorization_route(
-    db: DatabaseGuard,
     body: Ruma<get_event_authorization::v1::IncomingRequest>,
 ) -> Result<get_event_authorization::v1::Response> {
-    if !db.globals.allow_federation() {
+    if !services().globals.allow_federation() {
         return Err(Error::bad_config("Federation is disabled."));
     }
 
@@ -1307,16 +1275,16 @@ pub async fn get_event_authorization_route(
         .as_ref()
         .expect("server is authenticated");
 
-    if !db.rooms.server_in_room(sender_servername, &body.room_id)? {
+    if !services().rooms.server_in_room(sender_servername, &body.room_id)? {
         return Err(Error::BadRequest(
             ErrorKind::Forbidden,
             "Server is not in room.",
         ));
     }
 
-    acl_check(sender_servername, &body.room_id, &db)?;
+    acl_check(sender_servername, &body.room_id)?;
 
-    let event = db
+    let event = services()
         .rooms
         .get_pdu_json(&body.event_id)?
         .ok_or(Error::BadRequest(ErrorKind::NotFound, "Event not found."))?;
@@ -1329,11 +1297,11 @@ pub async fn get_event_authorization_route(
     let room_id = <&RoomId>::try_from(room_id_str)
         .map_err(|_| Error::bad_database("Invalid room id field in event in database"))?;
 
-    let auth_chain_ids = get_auth_chain(room_id, vec![Arc::from(&*body.event_id)], &db).await?;
+    let auth_chain_ids = get_auth_chain(room_id, vec![Arc::from(&*body.event_id)]).await?;
 
     Ok(get_event_authorization::v1::Response {
         auth_chain: auth_chain_ids
-            .filter_map(|id| db.rooms.get_pdu_json(&id).ok()?)
+            .filter_map(|id| services().rooms.get_pdu_json(&id).ok()?)
             .map(PduEvent::convert_to_outgoing_federation_event)
             .collect(),
     })
@@ -1343,10 +1311,9 @@ pub async fn get_event_authorization_route(
 ///
 /// Retrieves the current state of the room.
 pub async fn get_room_state_route(
-    db: DatabaseGuard,
     body: Ruma<get_room_state::v1::IncomingRequest>,
 ) -> Result<get_room_state::v1::Response> {
-    if !db.globals.allow_federation() {
+    if !services().globals.allow_federation() {
         return Err(Error::bad_config("Federation is disabled."));
     }
 
@@ -1355,16 +1322,16 @@ pub async fn get_room_state_route(
         .as_ref()
         .expect("server is authenticated");
 
-    if !db.rooms.server_in_room(sender_servername, &body.room_id)? {
+    if !services().rooms.server_in_room(sender_servername, &body.room_id)? {
         return Err(Error::BadRequest(
             ErrorKind::Forbidden,
             "Server is not in room.",
         ));
     }
 
-    acl_check(sender_servername, &body.room_id, &db)?;
+    acl_check(sender_servername, &body.room_id)?;
 
-    let shortstatehash = db
+    let shortstatehash = services()
         .rooms
         .pdu_shortstatehash(&body.event_id)?
         .ok_or(Error::BadRequest(
@@ -1372,25 +1339,25 @@ pub async fn get_room_state_route(
             "Pdu state not found.",
         ))?;
 
-    let pdus = db
+    let pdus = services()
         .rooms
         .state_full_ids(shortstatehash)
         .await?
         .into_iter()
         .map(|(_, id)| {
             PduEvent::convert_to_outgoing_federation_event(
-                db.rooms.get_pdu_json(&id).unwrap().unwrap(),
+                services().rooms.get_pdu_json(&id).unwrap().unwrap(),
             )
         })
         .collect();
 
     let auth_chain_ids =
-        get_auth_chain(&body.room_id, vec![Arc::from(&*body.event_id)], &db).await?;
+        get_auth_chain(&body.room_id, vec![Arc::from(&*body.event_id)]).await?;
 
     Ok(get_room_state::v1::Response {
         auth_chain: auth_chain_ids
             .map(|id| {
-                db.rooms.get_pdu_json(&id).map(|maybe_json| {
+                services().rooms.get_pdu_json(&id).map(|maybe_json| {
                     PduEvent::convert_to_outgoing_federation_event(maybe_json.unwrap())
                 })
             })
@@ -1404,10 +1371,9 @@ pub async fn get_room_state_route(
 ///
 /// Retrieves the current state of the room.
 pub async fn get_room_state_ids_route(
-    db: DatabaseGuard,
     body: Ruma<get_room_state_ids::v1::IncomingRequest>,
 ) -> Result<get_room_state_ids::v1::Response> {
-    if !db.globals.allow_federation() {
+    if !services().globals.allow_federation() {
         return Err(Error::bad_config("Federation is disabled."));
     }
 
@@ -1416,16 +1382,16 @@ pub async fn get_room_state_ids_route(
         .as_ref()
         .expect("server is authenticated");
 
-    if !db.rooms.server_in_room(sender_servername, &body.room_id)? {
+    if !services().rooms.server_in_room(sender_servername, &body.room_id)? {
         return Err(Error::BadRequest(
             ErrorKind::Forbidden,
             "Server is not in room.",
         ));
     }
 
-    acl_check(sender_servername, &body.room_id, &db)?;
+    acl_check(sender_servername, &body.room_id)?;
 
-    let shortstatehash = db
+    let shortstatehash = services()
         .rooms
         .pdu_shortstatehash(&body.event_id)?
         .ok_or(Error::BadRequest(
@@ -1433,7 +1399,7 @@ pub async fn get_room_state_ids_route(
             "Pdu state not found.",
         ))?;
 
-    let pdu_ids = db
+    let pdu_ids = services()
         .rooms
         .state_full_ids(shortstatehash)
         .await?
@@ -1442,7 +1408,7 @@ pub async fn get_room_state_ids_route(
         .collect();
 
     let auth_chain_ids =
-        get_auth_chain(&body.room_id, vec![Arc::from(&*body.event_id)], &db).await?;
+        get_auth_chain(&body.room_id, vec![Arc::from(&*body.event_id)]).await?;
 
     Ok(get_room_state_ids::v1::Response {
         auth_chain_ids: auth_chain_ids.map(|id| (*id).to_owned()).collect(),
@@ -1454,14 +1420,13 @@ pub async fn get_room_state_ids_route(
 ///
 /// Creates a join template.
 pub async fn create_join_event_template_route(
-    db: DatabaseGuard,
     body: Ruma<prepare_join_event::v1::IncomingRequest>,
 ) -> Result<prepare_join_event::v1::Response> {
-    if !db.globals.allow_federation() {
+    if !services().globals.allow_federation() {
         return Err(Error::bad_config("Federation is disabled."));
     }
 
-    if !db.rooms.exists(&body.room_id)? {
+    if !services().rooms.exists(&body.room_id)? {
         return Err(Error::BadRequest(
             ErrorKind::NotFound,
             "Room is unknown to this server.",
@@ -1473,11 +1438,21 @@ pub async fn create_join_event_template_route(
         .as_ref()
         .expect("server is authenticated");
 
-    acl_check(sender_servername, &body.room_id, &db)?;
+    acl_check(sender_servername, &body.room_id)?;
+
+    let mutex_state = Arc::clone(
+        services().globals
+            .roomid_mutex_state
+            .write()
+            .unwrap()
+            .entry(body.room_id.to_owned())
+            .or_default(),
+    );
+    let state_lock = mutex_state.lock().await;
 
     // TODO: Conduit does not implement restricted join rules yet, we always reject
     let join_rules_event =
-        db.rooms
+        services().rooms
             .room_state_get(&body.room_id, &StateEventType::RoomJoinRules, "")?;
 
     let join_rules_event_content: Option<RoomJoinRulesEventContent> = join_rules_event
@@ -1502,7 +1477,8 @@ pub async fn create_join_event_template_route(
         }
     }
 
-    if !body.ver.contains(&room_version_id) {
+    let room_version_id = services().rooms.state.get_room_version(&body.room_id);
+    if !body.ver.contains(room_version_id) {
         return Err(Error::BadRequest(
             ErrorKind::IncompatibleRoomVersion {
                 room_version: room_version_id,
@@ -1523,10 +1499,15 @@ pub async fn create_join_event_template_route(
     })
     .expect("member event is valid value");
 
-    let state_key = body.user_id.to_string();
-    let kind = StateEventType::RoomMember;
+    let (pdu, pdu_json) = services().rooms.timeline.create_hash_and_sign_event(PduBuilder {
+        event_type: RoomEventType::RoomMember,
+        content,
+        unsigned: None,
+        state_key: Some(body.user_id.to_string()),
+        redacts: None,
+    }, &body.user_id, &body.room_id, &state_lock);
 
-    let (pdu, pdu_json) = create_hash_and_sign_event();
+    drop(state_lock);
 
     Ok(prepare_join_event::v1::Response {
         room_version: Some(room_version_id),
@@ -1535,26 +1516,25 @@ pub async fn create_join_event_template_route(
 }
 
 async fn create_join_event(
-    db: &DatabaseGuard,
     sender_servername: &ServerName,
     room_id: &RoomId,
     pdu: &RawJsonValue,
 ) -> Result<RoomState> {
-    if !db.globals.allow_federation() {
+    if !services().globals.allow_federation() {
         return Err(Error::bad_config("Federation is disabled."));
     }
 
-    if !db.rooms.exists(room_id)? {
+    if !services().rooms.exists(room_id)? {
         return Err(Error::BadRequest(
             ErrorKind::NotFound,
             "Room is unknown to this server.",
         ));
     }
 
-    acl_check(sender_servername, room_id, db)?;
+    acl_check(sender_servername, room_id)?;
 
     // TODO: Conduit does not implement restricted join rules yet, we always reject
-    let join_rules_event = db
+    let join_rules_event = services()
         .rooms
         .room_state_get(room_id, &StateEventType::RoomJoinRules, "")?;
 
@@ -1581,7 +1561,7 @@ async fn create_join_event(
     }
 
     // We need to return the state prior to joining, let's keep a reference to that here
-    let shortstatehash = db
+    let shortstatehash = services()
         .rooms
         .current_shortstatehash(room_id)?
         .ok_or(Error::BadRequest(
@@ -1593,7 +1573,7 @@ async fn create_join_event(
     // let mut auth_cache = EventMap::new();
 
     // We do not add the event_id field to the pdu here because of signature and hashes checks
-    let (event_id, value) = match crate::pdu::gen_event_id_canonical_json(pdu, &db) {
+    let (event_id, value) = match gen_event_id_canonical_json(pdu) {
         Ok(t) => t,
         Err(_) => {
             // Event could not be converted to canonical json
@@ -1614,7 +1594,7 @@ async fn create_join_event(
     .map_err(|_| Error::BadRequest(ErrorKind::InvalidParam, "Origin field is invalid."))?;
 
     let mutex = Arc::clone(
-        db.globals
+        services().globals
             .roomid_mutex_federation
             .write()
             .unwrap()
@@ -1622,7 +1602,7 @@ async fn create_join_event(
             .or_default(),
     );
     let mutex_lock = mutex.lock().await;
-    let pdu_id = handle_incoming_pdu(&origin, &event_id, room_id, value, true, db, &pub_key_map)
+    let pdu_id = services().rooms.event_handler.handle_incoming_pdu(&origin, &event_id, room_id, value, true, &pub_key_map)
         .await
         .map_err(|e| {
             warn!("Error while handling incoming send join PDU: {}", e);
@@ -1637,32 +1617,29 @@ async fn create_join_event(
         ))?;
     drop(mutex_lock);
 
-    let state_ids = db.rooms.state_full_ids(shortstatehash).await?;
+    let state_ids = services().rooms.state_full_ids(shortstatehash).await?;
     let auth_chain_ids = get_auth_chain(
         room_id,
         state_ids.iter().map(|(_, id)| id.clone()).collect(),
-        db,
     )
     .await?;
 
-    let servers = db
+    let servers = services()
         .rooms
         .room_servers(room_id)
         .filter_map(|r| r.ok())
-        .filter(|server| &**server != db.globals.server_name());
+        .filter(|server| &**server != services().globals.server_name());
 
-    db.sending.send_pdu(servers, &pdu_id)?;
-
-    db.flush()?;
+    services().sending.send_pdu(servers, &pdu_id)?;
 
     Ok(RoomState {
         auth_chain: auth_chain_ids
-            .filter_map(|id| db.rooms.get_pdu_json(&id).ok().flatten())
+            .filter_map(|id| services().rooms.get_pdu_json(&id).ok().flatten())
             .map(PduEvent::convert_to_outgoing_federation_event)
             .collect(),
         state: state_ids
             .iter()
-            .filter_map(|(_, id)| db.rooms.get_pdu_json(id).ok().flatten())
+            .filter_map(|(_, id)| services().rooms.get_pdu_json(id).ok().flatten())
             .map(PduEvent::convert_to_outgoing_federation_event)
             .collect(),
     })
@@ -1672,7 +1649,6 @@ async fn create_join_event(
 ///
 /// Submits a signed join event.
 pub async fn create_join_event_v1_route(
-    db: DatabaseGuard,
     body: Ruma<create_join_event::v1::IncomingRequest>,
 ) -> Result<create_join_event::v1::Response> {
     let sender_servername = body
@@ -1680,7 +1656,7 @@ pub async fn create_join_event_v1_route(
         .as_ref()
         .expect("server is authenticated");
 
-    let room_state = create_join_event(&db, sender_servername, &body.room_id, &body.pdu).await?;
+    let room_state = create_join_event(sender_servername, &body.room_id, &body.pdu).await?;
 
     Ok(create_join_event::v1::Response { room_state })
 }
@@ -1689,7 +1665,6 @@ pub async fn create_join_event_v1_route(
 ///
 /// Submits a signed join event.
 pub async fn create_join_event_v2_route(
-    db: DatabaseGuard,
     body: Ruma<create_join_event::v2::IncomingRequest>,
 ) -> Result<create_join_event::v2::Response> {
     let sender_servername = body
@@ -1697,7 +1672,7 @@ pub async fn create_join_event_v2_route(
         .as_ref()
         .expect("server is authenticated");
 
-    let room_state = create_join_event(&db, sender_servername, &body.room_id, &body.pdu).await?;
+    let room_state = create_join_event(sender_servername, &body.room_id, &body.pdu).await?;
 
     Ok(create_join_event::v2::Response { room_state })
 }
@@ -1706,10 +1681,9 @@ pub async fn create_join_event_v2_route(
 ///
 /// Invites a remote user to a room.
 pub async fn create_invite_route(
-    db: DatabaseGuard,
     body: Ruma<create_invite::v2::IncomingRequest>,
 ) -> Result<create_invite::v2::Response> {
-    if !db.globals.allow_federation() {
+    if !services().globals.allow_federation() {
         return Err(Error::bad_config("Federation is disabled."));
     }
 
@@ -1718,9 +1692,9 @@ pub async fn create_invite_route(
         .as_ref()
         .expect("server is authenticated");
 
-    acl_check(sender_servername, &body.room_id, &db)?;
+    acl_check(sender_servername, &body.room_id)?;
 
-    if !db.rooms.is_supported_version(&db, &body.room_version) {
+    if !services().rooms.is_supported_version(&body.room_version) {
         return Err(Error::BadRequest(
             ErrorKind::IncompatibleRoomVersion {
                 room_version: body.room_version.clone(),
@@ -1733,8 +1707,8 @@ pub async fn create_invite_route(
         .map_err(|_| Error::BadRequest(ErrorKind::InvalidParam, "Invite event is invalid."))?;
 
     ruma::signatures::hash_and_sign_event(
-        db.globals.server_name().as_str(),
-        db.globals.keypair(),
+        services().globals.server_name().as_str(),
+        services().globals.keypair(),
         &mut signed_event,
         &body.room_version,
     )
@@ -1793,19 +1767,16 @@ pub async fn create_invite_route(
     invite_state.push(pdu.to_stripped_state_event());
 
     // If the room already exists, the remote server will notify us about the join via /send
-    if !db.rooms.exists(&pdu.room_id)? {
-        db.rooms.update_membership(
+    if !services().rooms.exists(&pdu.room_id)? {
+        services().rooms.update_membership(
             &body.room_id,
             &invited_user,
             MembershipState::Invite,
             &sender,
             Some(invite_state),
-            &db,
             true,
         )?;
     }
-
-    db.flush()?;
 
     Ok(create_invite::v2::Response {
         event: PduEvent::convert_to_outgoing_federation_event(signed_event),
@@ -1816,10 +1787,9 @@ pub async fn create_invite_route(
 ///
 /// Gets information on all devices of the user.
 pub async fn get_devices_route(
-    db: DatabaseGuard,
     body: Ruma<get_devices::v1::IncomingRequest>,
 ) -> Result<get_devices::v1::Response> {
-    if !db.globals.allow_federation() {
+    if !services().globals.allow_federation() {
         return Err(Error::bad_config("Federation is disabled."));
     }
 
@@ -1830,19 +1800,19 @@ pub async fn get_devices_route(
 
     Ok(get_devices::v1::Response {
         user_id: body.user_id.clone(),
-        stream_id: db
+        stream_id: services()
             .users
             .get_devicelist_version(&body.user_id)?
             .unwrap_or(0)
             .try_into()
             .expect("version will not grow that large"),
-        devices: db
+        devices: services()
             .users
             .all_devices_metadata(&body.user_id)
             .filter_map(|r| r.ok())
             .filter_map(|metadata| {
                 Some(UserDevice {
-                    keys: db
+                    keys: services()
                         .users
                         .get_device_keys(&body.user_id, &metadata.device_id)
                         .ok()??,
@@ -1851,10 +1821,10 @@ pub async fn get_devices_route(
                 })
             })
             .collect(),
-        master_key: db
+        master_key: services()
             .users
             .get_master_key(&body.user_id, |u| u.server_name() == sender_servername)?,
-        self_signing_key: db
+        self_signing_key: services()
             .users
             .get_self_signing_key(&body.user_id, |u| u.server_name() == sender_servername)?,
     })
@@ -1864,14 +1834,13 @@ pub async fn get_devices_route(
 ///
 /// Resolve a room alias to a room id.
 pub async fn get_room_information_route(
-    db: DatabaseGuard,
     body: Ruma<get_room_information::v1::IncomingRequest>,
 ) -> Result<get_room_information::v1::Response> {
-    if !db.globals.allow_federation() {
+    if !services().globals.allow_federation() {
         return Err(Error::bad_config("Federation is disabled."));
     }
 
-    let room_id = db
+    let room_id = services()
         .rooms
         .id_from_alias(&body.room_alias)?
         .ok_or(Error::BadRequest(
@@ -1881,7 +1850,7 @@ pub async fn get_room_information_route(
 
     Ok(get_room_information::v1::Response {
         room_id,
-        servers: vec![db.globals.server_name().to_owned()],
+        servers: vec![services().globals.server_name().to_owned()],
     })
 }
 
@@ -1889,10 +1858,9 @@ pub async fn get_room_information_route(
 ///
 /// Gets information on a profile.
 pub async fn get_profile_information_route(
-    db: DatabaseGuard,
     body: Ruma<get_profile_information::v1::IncomingRequest>,
 ) -> Result<get_profile_information::v1::Response> {
-    if !db.globals.allow_federation() {
+    if !services().globals.allow_federation() {
         return Err(Error::bad_config("Federation is disabled."));
     }
 
@@ -1901,17 +1869,17 @@ pub async fn get_profile_information_route(
     let mut blurhash = None;
 
     match &body.field {
-        Some(ProfileField::DisplayName) => displayname = db.users.displayname(&body.user_id)?,
+        Some(ProfileField::DisplayName) => displayname = services().users.displayname(&body.user_id)?,
         Some(ProfileField::AvatarUrl) => {
-            avatar_url = db.users.avatar_url(&body.user_id)?;
-            blurhash = db.users.blurhash(&body.user_id)?
+            avatar_url = services().users.avatar_url(&body.user_id)?;
+            blurhash = services().users.blurhash(&body.user_id)?
         }
         // TODO: what to do with custom
         Some(_) => {}
         None => {
-            displayname = db.users.displayname(&body.user_id)?;
-            avatar_url = db.users.avatar_url(&body.user_id)?;
-            blurhash = db.users.blurhash(&body.user_id)?;
+            displayname = services().users.displayname(&body.user_id)?;
+            avatar_url = services().users.avatar_url(&body.user_id)?;
+            blurhash = services().users.blurhash(&body.user_id)?;
         }
     }
 
@@ -1926,10 +1894,9 @@ pub async fn get_profile_information_route(
 ///
 /// Gets devices and identity keys for the given users.
 pub async fn get_keys_route(
-    db: DatabaseGuard,
     body: Ruma<get_keys::v1::Request>,
 ) -> Result<get_keys::v1::Response> {
-    if !db.globals.allow_federation() {
+    if !services().globals.allow_federation() {
         return Err(Error::bad_config("Federation is disabled."));
     }
 
@@ -1937,11 +1904,8 @@ pub async fn get_keys_route(
         None,
         &body.device_keys,
         |u| Some(u.server_name()) == body.sender_servername.as_deref(),
-        &db,
     )
     .await?;
-
-    db.flush()?;
 
     Ok(get_keys::v1::Response {
         device_keys: result.device_keys,
@@ -1954,16 +1918,13 @@ pub async fn get_keys_route(
 ///
 /// Claims one-time keys.
 pub async fn claim_keys_route(
-    db: DatabaseGuard,
     body: Ruma<claim_keys::v1::Request>,
 ) -> Result<claim_keys::v1::Response> {
-    if !db.globals.allow_federation() {
+    if !services().globals.allow_federation() {
         return Err(Error::bad_config("Federation is disabled."));
     }
 
-    let result = claim_keys_helper(&body.one_time_keys, &db).await?;
-
-    db.flush()?;
+    let result = claim_keys_helper(&body.one_time_keys).await?;
 
     Ok(claim_keys::v1::Response {
         one_time_keys: result.one_time_keys,
@@ -1974,7 +1935,6 @@ pub async fn claim_keys_route(
 pub(crate) async fn fetch_required_signing_keys(
     event: &BTreeMap<String, CanonicalJsonValue>,
     pub_key_map: &RwLock<BTreeMap<String, BTreeMap<String, Base64>>>,
-    db: &Database,
 ) -> Result<()> {
     let signatures = event
         .get("signatures")
@@ -1996,7 +1956,6 @@ pub(crate) async fn fetch_required_signing_keys(
         let signature_ids = signature_object.keys().cloned().collect::<Vec<_>>();
 
         let fetch_res = fetch_signing_keys(
-            db,
             signature_server.as_str().try_into().map_err(|_| {
                 Error::BadServerResponse("Invalid servername in signatures of server response pdu.")
             })?,
@@ -2028,7 +1987,6 @@ fn get_server_keys_from_cache(
     servers: &mut BTreeMap<Box<ServerName>, BTreeMap<Box<ServerSigningKeyId>, QueryCriteria>>,
     room_version: &RoomVersionId,
     pub_key_map: &mut RwLockWriteGuard<'_, BTreeMap<String, BTreeMap<String, Base64>>>,
-    db: &Database,
 ) -> Result<()> {
     let value: CanonicalJsonObject = serde_json::from_str(pdu.get()).map_err(|e| {
         error!("Invalid PDU in server response: {:?}: {:?}", pdu, e);
@@ -2043,7 +2001,7 @@ fn get_server_keys_from_cache(
     let event_id = <&EventId>::try_from(event_id.as_str())
         .expect("ruma's reference hashes are valid event ids");
 
-    if let Some((time, tries)) = db
+    if let Some((time, tries)) = services()
         .globals
         .bad_event_ratelimiter
         .read()
@@ -2092,7 +2050,7 @@ fn get_server_keys_from_cache(
 
         trace!("Loading signing keys for {}", origin);
 
-        let result: BTreeMap<_, _> = db
+        let result: BTreeMap<_, _> = services()
             .globals
             .signing_keys_for(origin)?
             .into_iter()
@@ -2114,7 +2072,6 @@ pub(crate) async fn fetch_join_signing_keys(
     event: &create_join_event::v2::Response,
     room_version: &RoomVersionId,
     pub_key_map: &RwLock<BTreeMap<String, BTreeMap<String, Base64>>>,
-    db: &Database,
 ) -> Result<()> {
     let mut servers: BTreeMap<Box<ServerName>, BTreeMap<Box<ServerSigningKeyId>, QueryCriteria>> =
         BTreeMap::new();
@@ -2127,10 +2084,10 @@ pub(crate) async fn fetch_join_signing_keys(
         // Try to fetch keys, failure is okay
         // Servers we couldn't find in the cache will be added to `servers`
         for pdu in &event.room_state.state {
-            let _ = get_server_keys_from_cache(pdu, &mut servers, room_version, &mut pkm, db);
+            let _ = get_server_keys_from_cache(pdu, &mut servers, room_version, &mut pkm);
         }
         for pdu in &event.room_state.auth_chain {
-            let _ = get_server_keys_from_cache(pdu, &mut servers, room_version, &mut pkm, db);
+            let _ = get_server_keys_from_cache(pdu, &mut servers, room_version, &mut pkm);
         }
 
         drop(pkm);
@@ -2141,12 +2098,11 @@ pub(crate) async fn fetch_join_signing_keys(
         return Ok(());
     }
 
-    for server in db.globals.trusted_servers() {
+    for server in services().globals.trusted_servers() {
         trace!("Asking batch signing keys from trusted server {}", server);
-        if let Ok(keys) = db
+        if let Ok(keys) = services()
             .sending
             .send_federation_request(
-                &db.globals,
                 server,
                 get_remote_server_keys_batch::v2::Request {
                     server_keys: servers.clone(),
@@ -2164,7 +2120,7 @@ pub(crate) async fn fetch_join_signing_keys(
                 // TODO: Check signature from trusted server?
                 servers.remove(&k.server_name);
 
-                let result = db
+                let result = services()
                     .globals
                     .add_signing_key(&k.server_name, k.clone())?
                     .into_iter()
@@ -2184,9 +2140,8 @@ pub(crate) async fn fetch_join_signing_keys(
         .into_iter()
         .map(|(server, _)| async move {
             (
-                db.sending
+                services().sending
                     .send_federation_request(
-                        &db.globals,
                         &server,
                         get_server_keys::v2::Request::new(),
                     )
@@ -2198,7 +2153,7 @@ pub(crate) async fn fetch_join_signing_keys(
 
     while let Some(result) = futures.next().await {
         if let (Ok(get_keys_response), origin) = result {
-            let result: BTreeMap<_, _> = db
+            let result: BTreeMap<_, _> = services()
                 .globals
                 .add_signing_key(&origin, get_keys_response.server_key.deserialize().unwrap())?
                 .into_iter()
@@ -2216,8 +2171,8 @@ pub(crate) async fn fetch_join_signing_keys(
 }
 
 /// Returns Ok if the acl allows the server
-fn acl_check(server_name: &ServerName, room_id: &RoomId, db: &Database) -> Result<()> {
-    let acl_event = match db
+fn acl_check(server_name: &ServerName, room_id: &RoomId) -> Result<()> {
+    let acl_event = match services()
         .rooms
         .room_state_get(room_id, &StateEventType::RoomServerAcl, "")?
     {

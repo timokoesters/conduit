@@ -24,7 +24,7 @@ use serde::Deserialize;
 use tracing::{debug, error, warn};
 
 use super::{Ruma, RumaResponse};
-use crate::{database::DatabaseGuard, server_server, Error, Result};
+use crate::{Error, Result, api::server_server, services};
 
 #[async_trait]
 impl<T, B> FromRequest<B> for Ruma<T>
@@ -44,7 +44,6 @@ where
         }
 
         let metadata = T::METADATA;
-        let db = DatabaseGuard::from_request(req).await?;
         let auth_header = Option::<TypedHeader<Authorization<Bearer>>>::from_request(req).await?;
         let path_params = Path::<Vec<String>>::from_request(req).await?;
 
@@ -71,7 +70,7 @@ where
 
         let mut json_body = serde_json::from_slice::<CanonicalJsonValue>(&body).ok();
 
-        let appservices = db.appservice.all().unwrap();
+        let appservices = services().appservice.all().unwrap();
         let appservice_registration = appservices.iter().find(|(_id, registration)| {
             registration
                 .get("as_token")
@@ -91,14 +90,14 @@ where
                                         .unwrap()
                                         .as_str()
                                         .unwrap(),
-                                    db.globals.server_name(),
+                                    services().globals.server_name(),
                                 )
                                 .unwrap()
                             },
                             |s| UserId::parse(s).unwrap(),
                         );
 
-                        if !db.users.exists(&user_id).unwrap() {
+                        if !services().users.exists(&user_id).unwrap() {
                             return Err(Error::BadRequest(
                                 ErrorKind::Forbidden,
                                 "User does not exist.",
@@ -124,7 +123,7 @@ where
                             }
                         };
 
-                        match db.users.find_from_token(token).unwrap() {
+                        match services().users.find_from_token(token).unwrap() {
                             None => {
                                 return Err(Error::BadRequest(
                                     ErrorKind::UnknownToken { soft_logout: false },
@@ -185,7 +184,7 @@ where
                             (
                                 "destination".to_owned(),
                                 CanonicalJsonValue::String(
-                                    db.globals.server_name().as_str().to_owned(),
+                                    services().globals.server_name().as_str().to_owned(),
                                 ),
                             ),
                             (
@@ -199,7 +198,6 @@ where
                         };
 
                         let keys_result = server_server::fetch_signing_keys(
-                            &db,
                             &x_matrix.origin,
                             vec![x_matrix.key.to_owned()],
                         )
@@ -251,7 +249,7 @@ where
 
         if let Some(CanonicalJsonValue::Object(json_body)) = &mut json_body {
             let user_id = sender_user.clone().unwrap_or_else(|| {
-                UserId::parse_with_server_name("", db.globals.server_name())
+                UserId::parse_with_server_name("", services().globals.server_name())
                     .expect("we know this is valid")
             });
 
@@ -261,7 +259,7 @@ where
                 .and_then(|auth| auth.get("session"))
                 .and_then(|session| session.as_str())
                 .and_then(|session| {
-                    db.uiaa.get_uiaa_request(
+                    services().uiaa.get_uiaa_request(
                         &user_id,
                         &sender_device.clone().unwrap_or_else(|| "".into()),
                         session,

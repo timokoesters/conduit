@@ -1,4 +1,4 @@
-use crate::{database::DatabaseGuard, utils::HtmlEscape, Error, Result, Ruma};
+use crate::{utils::HtmlEscape, Error, Result, Ruma, services};
 use ruma::{
     api::client::{error::ErrorKind, room::report_content},
     events::room::message,
@@ -10,12 +10,11 @@ use ruma::{
 /// Reports an inappropriate event to homeserver admins
 ///
 pub async fn report_event_route(
-    db: DatabaseGuard,
     body: Ruma<report_content::v3::IncomingRequest>,
 ) -> Result<report_content::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
-    let pdu = match db.rooms.get_pdu(&body.event_id)? {
+    let pdu = match services().rooms.get_pdu(&body.event_id)? {
         Some(pdu) => pdu,
         _ => {
             return Err(Error::BadRequest(
@@ -39,7 +38,7 @@ pub async fn report_event_route(
         ));
     };
 
-    db.admin
+    services().admin
         .send_message(message::RoomMessageEventContent::text_html(
             format!(
                 "Report received from: {}\n\n\
@@ -65,8 +64,6 @@ pub async fn report_event_route(
                 HtmlEscape(body.reason.as_deref().unwrap_or(""))
             ),
         ));
-
-    db.flush()?;
 
     Ok(report_content::v3::Response {})
 }

@@ -1,10 +1,14 @@
-impl service::room::directory::Data for KeyValueDatabase {
+use ruma::RoomId;
+
+use crate::{service, database::KeyValueDatabase, utils, Error};
+
+impl service::rooms::directory::Data for KeyValueDatabase {
     fn set_public(&self, room_id: &RoomId) -> Result<()> {
-        self.publicroomids.insert(room_id.as_bytes(), &[])?;
+        self.publicroomids.insert(room_id.as_bytes(), &[])
     }
 
     fn set_not_public(&self, room_id: &RoomId) -> Result<()> {
-        self.publicroomids.remove(room_id.as_bytes())?;
+        self.publicroomids.remove(room_id.as_bytes())
     }
 
     fn is_public_room(&self, room_id: &RoomId) -> Result<bool> {

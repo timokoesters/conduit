@@ -90,6 +90,8 @@ figment = { version = "0.10.6", features = ["env", "toml"] }
 
 tikv-jemalloc-ctl = { version = "0.4.2", features = ["use_std"], optional = true }
 tikv-jemallocator = { version = "0.4.1", features = ["unprefixed_malloc_on_supported_platforms"], optional = true }
+lazy_static = "1.4.0"
+async-trait = "0.1.57"
 
 [features]
 default = ["conduit_bin", "backend_sqlite", "backend_rocksdb", "jemalloc"]

@@ -1,7 +1,11 @@
 mod data;
-pub use data::Data;
+use std::{collections::HashSet, sync::Arc};
 
-use crate::service::*;
+pub use data::Data;
+use regex::Regex;
+use ruma::{RoomId, UserId, events::{room::{member::MembershipState, create::RoomCreateEventContent}, AnyStrippedStateEvent, StateEventType, tag::TagEvent, RoomAccountDataEventType, GlobalAccountDataEventType, direct::DirectEvent, ignored_user_list::IgnoredUserListEvent, AnySyncStateEvent}, serde::Raw, ServerName};
+
+use crate::{service::*, SERVICE, utils, Error};
 
 pub struct Service<D: Data> {
     db: D,
@@ -9,7 +13,7 @@ pub struct Service<D: Data> {
 
 impl Service<_> {
     /// Update current membership data.
-    #[tracing::instrument(skip(self, last_state, db))]
+    #[tracing::instrument(skip(self, last_state))]
     pub fn update_membership(
         &self,
         room_id: &RoomId,
@@ -17,12 +21,11 @@ impl Service<_> {
         membership: MembershipState,
         sender: &UserId,
         last_state: Option<Vec<Raw<AnyStrippedStateEvent>>>,
-        db: &Database,
         update_joined_count: bool,
     ) -> Result<()> {
         // Keep track what remote users exist by adding them as "deactivated" users
-        if user_id.server_name() != db.globals.server_name() {
-            db.users.create(user_id, None)?;
+        if user_id.server_name() != SERVICE.globals.server_name() {
+            SERVICE.users.create(user_id, None)?;
             // TODO: displayname, avatar url
         }
 
@@ -82,7 +85,7 @@ impl Service<_> {
                             user_id,
                             RoomAccountDataEventType::Tag,
                         )? {
-                            db.account_data
+                            SERVICE.account_data
                                 .update(
                                     Some(room_id),
                                     user_id,
@@ -94,7 +97,7 @@ impl Service<_> {
                         };
 
                         // Copy direct chat flag
-                        if let Some(mut direct_event) = db.account_data.get::<DirectEvent>(
+                        if let Some(mut direct_event) = SERVICE.account_data.get::<DirectEvent>(
                             None,
                             user_id,
                             GlobalAccountDataEventType::Direct.to_string().into(),
@@ -109,12 +112,11 @@ impl Service<_> {
                             }
 
                             if room_ids_updated {
-                                db.account_data.update(
+                                SERVICE.account_data.update(
                                     None,
                                     user_id,
                                     GlobalAccountDataEventType::Direct.to_string().into(),
                                     &direct_event,
-                                    &db.globals,
                                 )?;
                             }
                         };
@@ -130,7 +132,7 @@ impl Service<_> {
             }
             MembershipState::Invite => {
                 // We want to know if the sender is ignored by the receiver
-                let is_ignored = db
+                let is_ignored = SERVICE
                     .account_data
                     .get::<IgnoredUserListEvent>(
                         None,    // Ignored users are in global account data
@@ -186,7 +188,7 @@ impl Service<_> {
     }
 
     #[tracing::instrument(skip(self, room_id, db))]
-    pub fn update_joined_count(&self, room_id: &RoomId, db: &Database) -> Result<()> {
+    pub fn update_joined_count(&self, room_id: &RoomId) -> Result<()> {
         let mut joinedcount = 0_u64;
         let mut invitedcount = 0_u64;
         let mut joined_servers = HashSet::new();
@@ -226,11 +228,10 @@ impl Service<_> {
         Ok(())
     }
 
-    #[tracing::instrument(skip(self, room_id, db))]
+    #[tracing::instrument(skip(self, room_id))]
     pub fn get_our_real_users(
         &self,
         room_id: &RoomId,
-        db: &Database,
     ) -> Result<Arc<HashSet<Box<UserId>>>> {
         let maybe = self
             .our_real_users_cache
@@ -241,7 +242,7 @@ impl Service<_> {
         if let Some(users) = maybe {
             Ok(users)
         } else {
-            self.update_joined_count(room_id, db)?;
+            self.update_joined_count(room_id)?;
             Ok(Arc::clone(
                 self.our_real_users_cache
                     .read()
@@ -252,12 +253,11 @@ impl Service<_> {
         }
     }
 
-    #[tracing::instrument(skip(self, room_id, appservice, db))]
+    #[tracing::instrument(skip(self, room_id, appservice))]
     pub fn appservice_in_room(
         &self,
         room_id: &RoomId,
         appservice: &(String, serde_yaml::Value),
-        db: &Database,
     ) -> Result<bool> {
         let maybe = self
             .appservice_in_room_cache
@@ -285,7 +285,7 @@ impl Service<_> {
                 .get("sender_localpart")
                 .and_then(|string| string.as_str())
                 .and_then(|string| {
-                    UserId::parse_with_server_name(string, db.globals.server_name()).ok()
+                    UserId::parse_with_server_name(string, SERVICE.globals.server_name()).ok()
                 });
 
             let in_room = bridge_user_id

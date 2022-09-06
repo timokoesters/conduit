@@ -1,7 +1,9 @@
-pub trait Data {
-    pub fn index_pdu<'a>(&self, room_id: &RoomId, pdu_id: u64, message_body: String) -> Result<()>;
+use ruma::RoomId;
 
-    pub fn search_pdus<'a>(
+pub trait Data {
+    fn index_pdu<'a>(&self, room_id: &RoomId, pdu_id: u64, message_body: String) -> Result<()>;
+
+    fn search_pdus<'a>(
         &'a self,
         room_id: &RoomId,
         search_string: &str,

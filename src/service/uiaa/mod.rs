@@ -1,7 +1,9 @@
 mod data;
 pub use data::Data;
+use ruma::{api::client::{uiaa::{UiaaInfo, IncomingAuthData, IncomingPassword, AuthType}, error::ErrorKind}, DeviceId, UserId, signatures::CanonicalJsonValue};
+use tracing::error;
 
-use crate::service::*;
+use crate::{service::*, utils, Error, SERVICE};
 
 pub struct Service<D: Data> {
     db: D,
@@ -36,8 +38,6 @@ impl Service<_> {
         device_id: &DeviceId,
         auth: &IncomingAuthData,
         uiaainfo: &UiaaInfo,
-        users: &super::users::Users,
-        globals: &super::globals::Globals,
     ) -> Result<(bool, UiaaInfo)> {
         let mut uiaainfo = auth
             .session()
@@ -66,13 +66,13 @@ impl Service<_> {
                 };
 
                 let user_id =
-                    UserId::parse_with_server_name(username.clone(), globals.server_name())
+                    UserId::parse_with_server_name(username.clone(), SERVICE.globals.server_name())
                         .map_err(|_| {
                             Error::BadRequest(ErrorKind::InvalidParam, "User ID is invalid.")
                         })?;
 
                 // Check if password is correct
-                if let Some(hash) = users.password_hash(&user_id)? {
+                if let Some(hash) = SERVICE.users.password_hash(&user_id)? {
                     let hash_matches =
                         argon2::verify_encoded(&hash, password.as_bytes()).unwrap_or(false);
 

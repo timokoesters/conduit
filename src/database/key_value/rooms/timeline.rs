@@ -1,4 +1,11 @@
-impl service::room::timeline::Data for KeyValueDatabase {
+use std::{collections::hash_map, mem::size_of, sync::Arc};
+
+use ruma::{UserId, RoomId, api::client::error::ErrorKind, EventId, signatures::CanonicalJsonObject};
+use tracing::error;
+
+use crate::{service, database::KeyValueDatabase, utils, Error, PduEvent};
+
+impl service::rooms::timeline::Data for KeyValueDatabase {
     fn last_timeline_count(&self, sender_user: &UserId, room_id: &RoomId) -> Result<u64> {
         match self
             .lasttimelinecount_cache
@@ -37,7 +44,7 @@ impl service::room::timeline::Data for KeyValueDatabase {
     }
 
     /// Returns the json of a pdu.
-    pub fn get_pdu_json(&self, event_id: &EventId) -> Result<Option<CanonicalJsonObject>> {
+    fn get_pdu_json(&self, event_id: &EventId) -> Result<Option<CanonicalJsonObject>> {
         self.eventid_pduid
             .get(event_id.as_bytes())?
             .map_or_else(
@@ -55,7 +62,7 @@ impl service::room::timeline::Data for KeyValueDatabase {
     }
 
     /// Returns the json of a pdu.
-    pub fn get_non_outlier_pdu_json(
+    fn get_non_outlier_pdu_json(
         &self,
         event_id: &EventId,
     ) -> Result<Option<CanonicalJsonObject>> {
@@ -74,14 +81,14 @@ impl service::room::timeline::Data for KeyValueDatabase {
     }
 
     /// Returns the pdu's id.
-    pub fn get_pdu_id(&self, event_id: &EventId) -> Result<Option<Vec<u8>>> {
+    fn get_pdu_id(&self, event_id: &EventId) -> Result<Option<Vec<u8>>> {
         self.eventid_pduid.get(event_id.as_bytes())
     }
 
     /// Returns the pdu.
     ///
     /// Checks the `eventid_outlierpdu` Tree if not found in the timeline.
-    pub fn get_non_outlier_pdu(&self, event_id: &EventId) -> Result<Option<PduEvent>> {
+    fn get_non_outlier_pdu(&self, event_id: &EventId) -> Result<Option<PduEvent>> {
         self.eventid_pduid
             .get(event_id.as_bytes())?
             .map(|pduid| {
@@ -99,7 +106,7 @@ impl service::room::timeline::Data for KeyValueDatabase {
     /// Returns the pdu.
     ///
     /// Checks the `eventid_outlierpdu` Tree if not found in the timeline.
-    pub fn get_pdu(&self, event_id: &EventId) -> Result<Option<Arc<PduEvent>>> {
+    fn get_pdu(&self, event_id: &EventId) -> Result<Option<Arc<PduEvent>>> {
         if let Some(p) = self.pdu_cache.lock().unwrap().get_mut(event_id) {
             return Ok(Some(Arc::clone(p)));
         }
@@ -135,7 +142,7 @@ impl service::room::timeline::Data for KeyValueDatabase {
     /// Returns the pdu.
     ///
     /// This does __NOT__ check the outliers `Tree`.
-    pub fn get_pdu_from_id(&self, pdu_id: &[u8]) -> Result<Option<PduEvent>> {
+    fn get_pdu_from_id(&self, pdu_id: &[u8]) -> Result<Option<PduEvent>> {
         self.pduid_pdu.get(pdu_id)?.map_or(Ok(None), |pdu| {
             Ok(Some(
                 serde_json::from_slice(&pdu)
@@ -145,7 +152,7 @@ impl service::room::timeline::Data for KeyValueDatabase {
     }
 
     /// Returns the pdu as a `BTreeMap<String, CanonicalJsonValue>`.
-    pub fn get_pdu_json_from_id(&self, pdu_id: &[u8]) -> Result<Option<CanonicalJsonObject>> {
+    fn get_pdu_json_from_id(&self, pdu_id: &[u8]) -> Result<Option<CanonicalJsonObject>> {
         self.pduid_pdu.get(pdu_id)?.map_or(Ok(None), |pdu| {
             Ok(Some(
                 serde_json::from_slice(&pdu)
@@ -155,7 +162,7 @@ impl service::room::timeline::Data for KeyValueDatabase {
     }
 
     /// Returns the `count` of this pdu's id.
-    pub fn pdu_count(&self, pdu_id: &[u8]) -> Result<u64> {
+    fn pdu_count(&self, pdu_id: &[u8]) -> Result<u64> {
         utils::u64_from_bytes(&pdu_id[pdu_id.len() - size_of::<u64>()..])
             .map_err(|_| Error::bad_database("PDU has invalid count bytes."))
     }
@@ -178,7 +185,7 @@ impl service::room::timeline::Data for KeyValueDatabase {
 
     /// Returns an iterator over all events in a room that happened after the event with id `since`
     /// in chronological order.
-    pub fn pdus_since<'a>(
+    fn pdus_since<'a>(
         &'a self,
         user_id: &UserId,
         room_id: &RoomId,
@@ -212,7 +219,7 @@ impl service::room::timeline::Data for KeyValueDatabase {
 
     /// Returns an iterator over all events and their tokens in a room that happened before the
     /// event with id `until` in reverse-chronological order.
-    pub fn pdus_until<'a>(
+    fn pdus_until<'a>(
         &'a self,
         user_id: &UserId,
         room_id: &RoomId,
@@ -246,7 +253,7 @@ impl service::room::timeline::Data for KeyValueDatabase {
             }))
     }
 
-    pub fn pdus_after<'a>(
+    fn pdus_after<'a>(
         &'a self,
         user_id: &UserId,
         room_id: &RoomId,

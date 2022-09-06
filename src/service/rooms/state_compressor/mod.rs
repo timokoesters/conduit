@@ -1,7 +1,12 @@
-mod data;
-pub use data::Data;
+pub mod data;
+use std::{mem::size_of, sync::Arc, collections::HashSet};
 
-use crate::service::*;
+pub use data::Data;
+use ruma::{EventId, RoomId};
+
+use crate::{service::*, utils};
+
+use self::data::StateDiff;
 
 pub struct Service<D: Data> {
     db: D,
@@ -30,9 +35,9 @@ impl Service<_> {
             return Ok(r.clone());
         }
 
-        self.db.get_statediff(shortstatehash)?;
+        let StateDiff { parent, added, removed } = self.db.get_statediff(shortstatehash)?;
 
-        if parent != 0_u64 {
+        if let Some(parent) = parent {
             let mut response = self.load_shortstatehash_info(parent)?;
             let mut state = response.last().unwrap().1.clone();
             state.extend(added.iter().copied());
@@ -155,7 +160,7 @@ impl Service<_> {
 
         if parent_states.is_empty() {
             // There is no parent layer, create a new state
-            self.db.save_statediff(shortstatehash, StateDiff { parent: 0, new: statediffnew, removed: statediffremoved })?;
+            self.db.save_statediff(shortstatehash, StateDiff { parent: None, added: statediffnew, removed: statediffremoved })?;
 
             return Ok(());
         };
@@ -197,7 +202,7 @@ impl Service<_> {
             )?;
         } else {
             // Diff small enough, we add diff as layer on top of parent
-            self.db.save_statediff(shortstatehash, StateDiff { parent: parent.0, new: statediffnew, removed: statediffremoved })?;
+            self.db.save_statediff(shortstatehash, StateDiff { parent: Some(parent.0), added: statediffnew, removed: statediffremoved })?;
         }
 
         Ok(())

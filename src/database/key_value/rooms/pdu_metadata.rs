@@ -1,4 +1,10 @@
-impl service::room::pdu_metadata::Data for KeyValueDatabase {
+use std::sync::Arc;
+
+use ruma::{RoomId, EventId};
+
+use crate::{service, database::KeyValueDatabase};
+
+impl service::rooms::pdu_metadata::Data for KeyValueDatabase {
     fn mark_as_referenced(&self, room_id: &RoomId, event_ids: &[Arc<EventId>]) -> Result<()> {
         for prev in event_ids {
             let mut key = room_id.as_bytes().to_vec();

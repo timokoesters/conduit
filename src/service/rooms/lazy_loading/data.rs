@@ -1,3 +1,5 @@
+use ruma::{RoomId, DeviceId, UserId};
+
 pub trait Data {
     fn lazy_load_was_sent_before(
         &self,

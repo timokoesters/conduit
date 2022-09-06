@@ -1,11 +1,18 @@
+use std::{mem::size_of, collections::BTreeMap};
+
+use ruma::{api::client::{filter::IncomingFilterDefinition, error::ErrorKind, device::Device}, UserId, RoomAliasId, MxcUri, DeviceId, MilliSecondsSinceUnixEpoch, DeviceKeyId, encryption::{OneTimeKey, CrossSigningKey, DeviceKeys}, serde::Raw, events::{AnyToDeviceEvent, StateEventType}, DeviceKeyAlgorithm, UInt};
+use tracing::warn;
+
+use crate::{service::{self, users::clean_signatures}, database::KeyValueDatabase, Error, utils, services};
+
 impl service::users::Data for KeyValueDatabase {
     /// Check if a user has an account on this homeserver.
-    pub fn exists(&self, user_id: &UserId) -> Result<bool> {
+    fn exists(&self, user_id: &UserId) -> Result<bool> {
         Ok(self.userid_password.get(user_id.as_bytes())?.is_some())
     }
 
     /// Check if account is deactivated
-    pub fn is_deactivated(&self, user_id: &UserId) -> Result<bool> {
+    fn is_deactivated(&self, user_id: &UserId) -> Result<bool> {
         Ok(self
             .userid_password
             .get(user_id.as_bytes())?
@@ -16,33 +23,13 @@ impl service::users::Data for KeyValueDatabase {
             .is_empty())
     }
 
-    /// Check if a user is an admin
-    pub fn is_admin(
-        &self,
-        user_id: &UserId,
-        rooms: &super::rooms::Rooms,
-        globals: &super::globals::Globals,
-    ) -> Result<bool> {
-        let admin_room_alias_id = RoomAliasId::parse(format!("#admins:{}", globals.server_name()))
-            .map_err(|_| Error::BadRequest(ErrorKind::InvalidParam, "Invalid alias."))?;
-        let admin_room_id = rooms.id_from_alias(&admin_room_alias_id)?.unwrap();
-
-        rooms.is_joined(user_id, &admin_room_id)
-    }
-
-    /// Create a new user account on this homeserver.
-    pub fn create(&self, user_id: &UserId, password: Option<&str>) -> Result<()> {
-        self.set_password(user_id, password)?;
-        Ok(())
-    }
-
     /// Returns the number of users registered on this server.
-    pub fn count(&self) -> Result<usize> {
+    fn count(&self) -> Result<usize> {
         Ok(self.userid_password.iter().count())
     }
 
     /// Find out which user an access token belongs to.
-    pub fn find_from_token(&self, token: &str) -> Result<Option<(Box<UserId>, String)>> {
+    fn find_from_token(&self, token: &str) -> Result<Option<(Box<UserId>, String)>> {
         self.token_userdeviceid
             .get(token.as_bytes())?
             .map_or(Ok(None), |bytes| {
@@ -69,7 +56,7 @@ impl service::users::Data for KeyValueDatabase {
     }
 
     /// Returns an iterator over all users on this homeserver.
-    pub fn iter(&self) -> impl Iterator<Item = Result<Box<UserId>>> + '_ {
+    fn iter(&self) -> impl Iterator<Item = Result<Box<UserId>>> + '_ {
         self.userid_password.iter().map(|(bytes, _)| {
             UserId::parse(utils::string_from_bytes(&bytes).map_err(|_| {
                 Error::bad_database("User ID in userid_password is invalid unicode.")
@@ -81,7 +68,7 @@ impl service::users::Data for KeyValueDatabase {
     /// Returns a list of local users as list of usernames.
     ///
     /// A user account is considered `local` if the length of it's password is greater then zero.
-    pub fn list_local_users(&self) -> Result<Vec<String>> {
+    fn list_local_users(&self) -> Result<Vec<String>> {
         let users: Vec<String> = self
             .userid_password
             .iter()
@@ -113,7 +100,7 @@ impl service::users::Data for KeyValueDatabase {
     }
 
     /// Returns the password hash for the given user.
-    pub fn password_hash(&self, user_id: &UserId) -> Result<Option<String>> {
+    fn password_hash(&self, user_id: &UserId) -> Result<Option<String>> {
         self.userid_password
             .get(user_id.as_bytes())?
             .map_or(Ok(None), |bytes| {
@@ -124,7 +111,7 @@ impl service::users::Data for KeyValueDatabase {
     }
 
     /// Hash and set the user's password to the Argon2 hash
-    pub fn set_password(&self, user_id: &UserId, password: Option<&str>) -> Result<()> {
+    fn set_password(&self, user_id: &UserId, password: Option<&str>) -> Result<()> {
         if let Some(password) = password {
             if let Ok(hash) = utils::calculate_hash(password) {
                 self.userid_password
@@ -143,7 +130,7 @@ impl service::users::Data for KeyValueDatabase {
     }
 
     /// Returns the displayname of a user on this homeserver.
-    pub fn displayname(&self, user_id: &UserId) -> Result<Option<String>> {
+    fn displayname(&self, user_id: &UserId) -> Result<Option<String>> {
         self.userid_displayname
             .get(user_id.as_bytes())?
             .map_or(Ok(None), |bytes| {
@@ -154,7 +141,7 @@ impl service::users::Data for KeyValueDatabase {
     }
 
     /// Sets a new displayname or removes it if displayname is None. You still need to nofify all rooms of this change.
-    pub fn set_displayname(&self, user_id: &UserId, displayname: Option<String>) -> Result<()> {
+    fn set_displayname(&self, user_id: &UserId, displayname: Option<String>) -> Result<()> {
         if let Some(displayname) = displayname {
             self.userid_displayname
                 .insert(user_id.as_bytes(), displayname.as_bytes())?;
@@ -166,7 +153,7 @@ impl service::users::Data for KeyValueDatabase {
     }
 
     /// Get the avatar_url of a user.
-    pub fn avatar_url(&self, user_id: &UserId) -> Result<Option<Box<MxcUri>>> {
+    fn avatar_url(&self, user_id: &UserId) -> Result<Option<Box<MxcUri>>> {
         self.userid_avatarurl
             .get(user_id.as_bytes())?
             .map(|bytes| {
@@ -179,7 +166,7 @@ impl service::users::Data for KeyValueDatabase {
     }
 
     /// Sets a new avatar_url or removes it if avatar_url is None.
-    pub fn set_avatar_url(&self, user_id: &UserId, avatar_url: Option<Box<MxcUri>>) -> Result<()> {
+    fn set_avatar_url(&self, user_id: &UserId, avatar_url: Option<Box<MxcUri>>) -> Result<()> {
         if let Some(avatar_url) = avatar_url {
             self.userid_avatarurl
                 .insert(user_id.as_bytes(), avatar_url.to_string().as_bytes())?;
@@ -191,7 +178,7 @@ impl service::users::Data for KeyValueDatabase {
     }
 
     /// Get the blurhash of a user.
-    pub fn blurhash(&self, user_id: &UserId) -> Result<Option<String>> {
+    fn blurhash(&self, user_id: &UserId) -> Result<Option<String>> {
         self.userid_blurhash
             .get(user_id.as_bytes())?
             .map(|bytes| {
@@ -204,7 +191,7 @@ impl service::users::Data for KeyValueDatabase {
     }
 
     /// Sets a new avatar_url or removes it if avatar_url is None.
-    pub fn set_blurhash(&self, user_id: &UserId, blurhash: Option<String>) -> Result<()> {
+    fn set_blurhash(&self, user_id: &UserId, blurhash: Option<String>) -> Result<()> {
         if let Some(blurhash) = blurhash {
             self.userid_blurhash
                 .insert(user_id.as_bytes(), blurhash.as_bytes())?;
@@ -216,7 +203,7 @@ impl service::users::Data for KeyValueDatabase {
     }
 
     /// Adds a new device to a user.
-    pub fn create_device(
+    fn create_device(
         &self,
         user_id: &UserId,
         device_id: &DeviceId,
@@ -250,7 +237,7 @@ impl service::users::Data for KeyValueDatabase {
     }
 
     /// Removes a device from a user.
-    pub fn remove_device(&self, user_id: &UserId, device_id: &DeviceId) -> Result<()> {
+    fn remove_device(&self, user_id: &UserId, device_id: &DeviceId) -> Result<()> {
         let mut userdeviceid = user_id.as_bytes().to_vec();
         userdeviceid.push(0xff);
         userdeviceid.extend_from_slice(device_id.as_bytes());
@@ -280,7 +267,7 @@ impl service::users::Data for KeyValueDatabase {
     }
 
     /// Returns an iterator over all device ids of this user.
-    pub fn all_device_ids<'a>(
+    fn all_device_ids<'a>(
         &'a self,
         user_id: &UserId,
     ) -> impl Iterator<Item = Result<Box<DeviceId>>> + 'a {
@@ -302,7 +289,7 @@ impl service::users::Data for KeyValueDatabase {
     }
 
     /// Replaces the access token of one device.
-    pub fn set_token(&self, user_id: &UserId, device_id: &DeviceId, token: &str) -> Result<()> {
+    fn set_token(&self, user_id: &UserId, device_id: &DeviceId, token: &str) -> Result<()> {
         let mut userdeviceid = user_id.as_bytes().to_vec();
         userdeviceid.push(0xff);
         userdeviceid.extend_from_slice(device_id.as_bytes());
@@ -325,13 +312,12 @@ impl service::users::Data for KeyValueDatabase {
         Ok(())
     }
 
-    pub fn add_one_time_key(
+    fn add_one_time_key(
         &self,
         user_id: &UserId,
         device_id: &DeviceId,
         one_time_key_key: &DeviceKeyId,
         one_time_key_value: &Raw<OneTimeKey>,
-        globals: &super::globals::Globals,
     ) -> Result<()> {
         let mut key = user_id.as_bytes().to_vec();
         key.push(0xff);
@@ -356,12 +342,12 @@ impl service::users::Data for KeyValueDatabase {
         )?;
 
         self.userid_lastonetimekeyupdate
-            .insert(user_id.as_bytes(), &globals.next_count()?.to_be_bytes())?;
+            .insert(user_id.as_bytes(), &services().globals.next_count()?.to_be_bytes())?;
 
         Ok(())
     }
 
-    pub fn last_one_time_keys_update(&self, user_id: &UserId) -> Result<u64> {
+    fn last_one_time_keys_update(&self, user_id: &UserId) -> Result<u64> {
         self.userid_lastonetimekeyupdate
             .get(user_id.as_bytes())?
             .map(|bytes| {
@@ -372,12 +358,11 @@ impl service::users::Data for KeyValueDatabase {
             .unwrap_or(Ok(0))
     }
 
-    pub fn take_one_time_key(
+    fn take_one_time_key(
         &self,
         user_id: &UserId,
         device_id: &DeviceId,
         key_algorithm: &DeviceKeyAlgorithm,
-        globals: &super::globals::Globals,
     ) -> Result<Option<(Box<DeviceKeyId>, Raw<OneTimeKey>)>> {
         let mut prefix = user_id.as_bytes().to_vec();
         prefix.push(0xff);
@@ -388,7 +373,7 @@ impl service::users::Data for KeyValueDatabase {
         prefix.push(b':');
 
         self.userid_lastonetimekeyupdate
-            .insert(user_id.as_bytes(), &globals.next_count()?.to_be_bytes())?;
+            .insert(user_id.as_bytes(), &services().globals.next_count()?.to_be_bytes())?;
 
         self.onetimekeyid_onetimekeys
             .scan_prefix(prefix)
@@ -411,7 +396,7 @@ impl service::users::Data for KeyValueDatabase {
             .transpose()
     }
 
-    pub fn count_one_time_keys(
+    fn count_one_time_keys(
         &self,
         user_id: &UserId,
         device_id: &DeviceId,
@@ -443,13 +428,11 @@ impl service::users::Data for KeyValueDatabase {
         Ok(counts)
     }
 
-    pub fn add_device_keys(
+    fn add_device_keys(
         &self,
         user_id: &UserId,
         device_id: &DeviceId,
         device_keys: &Raw<DeviceKeys>,
-        rooms: &super::rooms::Rooms,
-        globals: &super::globals::Globals,
     ) -> Result<()> {
         let mut userdeviceid = user_id.as_bytes().to_vec();
         userdeviceid.push(0xff);
@@ -460,19 +443,17 @@ impl service::users::Data for KeyValueDatabase {
             &serde_json::to_vec(&device_keys).expect("DeviceKeys::to_vec always works"),
         )?;
 
-        self.mark_device_key_update(user_id, rooms, globals)?;
+        self.mark_device_key_update(user_id)?;
 
         Ok(())
     }
 
-    pub fn add_cross_signing_keys(
+    fn add_cross_signing_keys(
         &self,
         user_id: &UserId,
         master_key: &Raw<CrossSigningKey>,
         self_signing_key: &Option<Raw<CrossSigningKey>>,
         user_signing_key: &Option<Raw<CrossSigningKey>>,
-        rooms: &super::rooms::Rooms,
-        globals: &super::globals::Globals,
     ) -> Result<()> {
         // TODO: Check signatures
 
@@ -575,19 +556,17 @@ impl service::users::Data for KeyValueDatabase {
                 .insert(user_id.as_bytes(), &user_signing_key_key)?;
         }
 
-        self.mark_device_key_update(user_id, rooms, globals)?;
+        self.mark_device_key_update(user_id)?;
 
         Ok(())
     }
 
-    pub fn sign_key(
+    fn sign_key(
         &self,
         target_id: &UserId,
         key_id: &str,
         signature: (String, String),
         sender_id: &UserId,
-        rooms: &super::rooms::Rooms,
-        globals: &super::globals::Globals,
     ) -> Result<()> {
         let mut key = target_id.as_bytes().to_vec();
         key.push(0xff);
@@ -619,12 +598,12 @@ impl service::users::Data for KeyValueDatabase {
         )?;
 
         // TODO: Should we notify about this change?
-        self.mark_device_key_update(target_id, rooms, globals)?;
+        self.mark_device_key_update(target_id)?;
 
         Ok(())
     }
 
-    pub fn keys_changed<'a>(
+    fn keys_changed<'a>(
         &'a self,
         user_or_room_id: &str,
         from: u64,
@@ -662,16 +641,14 @@ impl service::users::Data for KeyValueDatabase {
             })
     }
 
-    pub fn mark_device_key_update(
+    fn mark_device_key_update(
         &self,
         user_id: &UserId,
-        rooms: &super::rooms::Rooms,
-        globals: &super::globals::Globals,
     ) -> Result<()> {
-        let count = globals.next_count()?.to_be_bytes();
-        for room_id in rooms.rooms_joined(user_id).filter_map(|r| r.ok()) {
+        let count = services().globals.next_count()?.to_be_bytes();
+        for room_id in services().rooms.rooms_joined(user_id).filter_map(|r| r.ok()) {
             // Don't send key updates to unencrypted rooms
-            if rooms
+            if services().rooms
                 .room_state_get(&room_id, &StateEventType::RoomEncryption, "")?
                 .is_none()
             {
@@ -693,7 +670,7 @@ impl service::users::Data for KeyValueDatabase {
         Ok(())
     }
 
-    pub fn get_device_keys(
+    fn get_device_keys(
         &self,
         user_id: &UserId,
         device_id: &DeviceId,
@@ -709,7 +686,7 @@ impl service::users::Data for KeyValueDatabase {
         })
     }
 
-    pub fn get_master_key<F: Fn(&UserId) -> bool>(
+    fn get_master_key<F: Fn(&UserId) -> bool>(
         &self,
         user_id: &UserId,
         allowed_signatures: F,
@@ -730,7 +707,7 @@ impl service::users::Data for KeyValueDatabase {
             })
     }
 
-    pub fn get_self_signing_key<F: Fn(&UserId) -> bool>(
+    fn get_self_signing_key<F: Fn(&UserId) -> bool>(
         &self,
         user_id: &UserId,
         allowed_signatures: F,
@@ -751,7 +728,7 @@ impl service::users::Data for KeyValueDatabase {
             })
     }
 
-    pub fn get_user_signing_key(&self, user_id: &UserId) -> Result<Option<Raw<CrossSigningKey>>> {
+    fn get_user_signing_key(&self, user_id: &UserId) -> Result<Option<Raw<CrossSigningKey>>> {
         self.userid_usersigningkeyid
             .get(user_id.as_bytes())?
             .map_or(Ok(None), |key| {
@@ -763,20 +740,19 @@ impl service::users::Data for KeyValueDatabase {
             })
     }
 
-    pub fn add_to_device_event(
+    fn add_to_device_event(
         &self,
         sender: &UserId,
         target_user_id: &UserId,
         target_device_id: &DeviceId,
         event_type: &str,
         content: serde_json::Value,
-        globals: &super::globals::Globals,
     ) -> Result<()> {
         let mut key = target_user_id.as_bytes().to_vec();
         key.push(0xff);
         key.extend_from_slice(target_device_id.as_bytes());
         key.push(0xff);
-        key.extend_from_slice(&globals.next_count()?.to_be_bytes());
+        key.extend_from_slice(&services().globals.next_count()?.to_be_bytes());
 
         let mut json = serde_json::Map::new();
         json.insert("type".to_owned(), event_type.to_owned().into());
@@ -790,7 +766,7 @@ impl service::users::Data for KeyValueDatabase {
         Ok(())
     }
 
-    pub fn get_to_device_events(
+    fn get_to_device_events(
         &self,
         user_id: &UserId,
         device_id: &DeviceId,
@@ -812,7 +788,7 @@ impl service::users::Data for KeyValueDatabase {
         Ok(events)
     }
 
-    pub fn remove_to_device_events(
+    fn remove_to_device_events(
         &self,
         user_id: &UserId,
         device_id: &DeviceId,
@@ -833,7 +809,7 @@ impl service::users::Data for KeyValueDatabase {
             .map(|(key, _)| {
                 Ok::<_, Error>((
                     key.clone(),
-                    utils::u64_from_bytes(&key[key.len() - mem::size_of::<u64>()..key.len()])
+                    utils::u64_from_bytes(&key[key.len() - size_of::<u64>()..key.len()])
                         .map_err(|_| Error::bad_database("ToDeviceId has invalid count bytes."))?,
                 ))
             })
@@ -846,7 +822,7 @@ impl service::users::Data for KeyValueDatabase {
         Ok(())
     }
 
-    pub fn update_device_metadata(
+    fn update_device_metadata(
         &self,
         user_id: &UserId,
         device_id: &DeviceId,
@@ -871,7 +847,7 @@ impl service::users::Data for KeyValueDatabase {
     }
 
     /// Get device metadata.
-    pub fn get_device_metadata(
+    fn get_device_metadata(
         &self,
         user_id: &UserId,
         device_id: &DeviceId,
@@ -889,7 +865,7 @@ impl service::users::Data for KeyValueDatabase {
             })
     }
 
-    pub fn get_devicelist_version(&self, user_id: &UserId) -> Result<Option<u64>> {
+    fn get_devicelist_version(&self, user_id: &UserId) -> Result<Option<u64>> {
         self.userid_devicelistversion
             .get(user_id.as_bytes())?
             .map_or(Ok(None), |bytes| {
@@ -899,7 +875,7 @@ impl service::users::Data for KeyValueDatabase {
             })
     }
 
-    pub fn all_devices_metadata<'a>(
+    fn all_devices_metadata<'a>(
         &'a self,
         user_id: &UserId,
     ) -> impl Iterator<Item = Result<Device>> + 'a {
@@ -915,7 +891,7 @@ impl service::users::Data for KeyValueDatabase {
     }
 
     /// Creates a new sync filter. Returns the filter id.
-    pub fn create_filter(
+    fn create_filter(
         &self,
         user_id: &UserId,
         filter: &IncomingFilterDefinition,
@@ -934,7 +910,7 @@ impl service::users::Data for KeyValueDatabase {
         Ok(filter_id)
     }
 
-    pub fn get_filter(
+    fn get_filter(
         &self,
         user_id: &UserId,
         filter_id: &str,

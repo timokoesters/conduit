@@ -8,23 +8,15 @@ use ruma::{
 use serde::{de::DeserializeOwned, Serialize};
 use std::{collections::HashMap, sync::Arc};
 
-use super::abstraction::Tree;
-
-pub struct AccountData {
-    pub(super) roomuserdataid_accountdata: Arc<dyn Tree>, // RoomUserDataId = Room + User + Count + Type
-    pub(super) roomusertype_roomuserdataid: Arc<dyn Tree>, // RoomUserType = Room + User + Type
-}
-
 impl AccountData {
     /// Places one event in the account data of the user and removes the previous entry.
-    #[tracing::instrument(skip(self, room_id, user_id, event_type, data, globals))]
+    #[tracing::instrument(skip(self, room_id, user_id, event_type, data))]
     pub fn update<T: Serialize>(
         &self,
         room_id: Option<&RoomId>,
         user_id: &UserId,
         event_type: RoomAccountDataEventType,
         data: &T,
-        globals: &super::globals::Globals,
     ) -> Result<()> {
         let mut prefix = room_id
             .map(|r| r.to_string())
@@ -36,7 +28,7 @@ impl AccountData {
         prefix.push(0xff);
 
         let mut roomuserdataid = prefix.clone();
-        roomuserdataid.extend_from_slice(&globals.next_count()?.to_be_bytes());
+        roomuserdataid.extend_from_slice(&services().globals.next_count()?.to_be_bytes());
         roomuserdataid.push(0xff);
         roomuserdataid.extend_from_slice(event_type.to_string().as_bytes());
 

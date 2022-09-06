@@ -1,4 +1,4 @@
-use crate::{database::DatabaseGuard, pdu::PduBuilder, utils, Error, Result, Ruma};
+use crate::{utils, Error, Result, Ruma, services, service::pdu::PduBuilder};
 use ruma::{
     api::{
         client::{
@@ -20,16 +20,15 @@ use std::sync::Arc;
 ///
 /// - Also makes sure other users receive the update using presence EDUs
 pub async fn set_displayname_route(
-    db: DatabaseGuard,
     body: Ruma<set_display_name::v3::IncomingRequest>,
 ) -> Result<set_display_name::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
-    db.users
+    services().users
         .set_displayname(sender_user, body.displayname.clone())?;
 
     // Send a new membership event and presence update into all joined rooms
-    let all_rooms_joined: Vec<_> = db
+    let all_rooms_joined: Vec<_> = services()
         .rooms
         .rooms_joined(sender_user)
         .filter_map(|r| r.ok())
@@ -40,7 +39,7 @@ pub async fn set_displayname_route(
                     content: to_raw_value(&RoomMemberEventContent {
                         displayname: body.displayname.clone(),
                         ..serde_json::from_str(
-                            db.rooms
+                            services().rooms
                                 .room_state_get(
                                     &room_id,
                                     &StateEventType::RoomMember,
@@ -70,7 +69,7 @@ pub async fn set_displayname_route(
 
     for (pdu_builder, room_id) in all_rooms_joined {
         let mutex_state = Arc::clone(
-            db.globals
+            services().globals
                 .roomid_mutex_state
                 .write()
                 .unwrap()
@@ -79,19 +78,19 @@ pub async fn set_displayname_route(
         );
         let state_lock = mutex_state.lock().await;
 
-        let _ = db
+        let _ = services()
             .rooms
-            .build_and_append_pdu(pdu_builder, sender_user, &room_id, &db, &state_lock);
+            .build_and_append_pdu(pdu_builder, sender_user, &room_id, &state_lock);
 
         // Presence update
-        db.rooms.edus.update_presence(
+        services().rooms.edus.update_presence(
             sender_user,
             &room_id,
             ruma::events::presence::PresenceEvent {
                 content: ruma::events::presence::PresenceEventContent {
-                    avatar_url: db.users.avatar_url(sender_user)?,
+                    avatar_url: services().users.avatar_url(sender_user)?,
                     currently_active: None,
-                    displayname: db.users.displayname(sender_user)?,
+                    displayname: services().users.displayname(sender_user)?,
                     last_active_ago: Some(
                         utils::millis_since_unix_epoch()
                             .try_into()
@@ -102,11 +101,8 @@ pub async fn set_displayname_route(
                 },
                 sender: sender_user.clone(),
             },
-            &db.globals,
         )?;
     }
-
-    db.flush()?;
 
     Ok(set_display_name::v3::Response {})
 }
@@ -117,14 +113,12 @@ pub async fn set_displayname_route(
 ///
 /// - If user is on another server: Fetches displayname over federation
 pub async fn get_displayname_route(
-    db: DatabaseGuard,
     body: Ruma<get_display_name::v3::IncomingRequest>,
 ) -> Result<get_display_name::v3::Response> {
-    if body.user_id.server_name() != db.globals.server_name() {
-        let response = db
+    if body.user_id.server_name() != services().globals.server_name() {
+        let response = services()
             .sending
             .send_federation_request(
-                &db.globals,
                 body.user_id.server_name(),
                 federation::query::get_profile_information::v1::Request {
                     user_id: &body.user_id,
@@ -139,7 +133,7 @@ pub async fn get_displayname_route(
     }
 
     Ok(get_display_name::v3::Response {
-        displayname: db.users.displayname(&body.user_id)?,
+        displayname: services().users.displayname(&body.user_id)?,
     })
 }
 
@@ -149,18 +143,17 @@ pub async fn get_displayname_route(
 ///
 /// - Also makes sure other users receive the update using presence EDUs
 pub async fn set_avatar_url_route(
-    db: DatabaseGuard,
     body: Ruma<set_avatar_url::v3::IncomingRequest>,
 ) -> Result<set_avatar_url::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
-    db.users
+    services().users
         .set_avatar_url(sender_user, body.avatar_url.clone())?;
 
-    db.users.set_blurhash(sender_user, body.blurhash.clone())?;
+    services().users.set_blurhash(sender_user, body.blurhash.clone())?;
 
     // Send a new membership event and presence update into all joined rooms
-    let all_joined_rooms: Vec<_> = db
+    let all_joined_rooms: Vec<_> = services()
         .rooms
         .rooms_joined(sender_user)
         .filter_map(|r| r.ok())
@@ -171,7 +164,7 @@ pub async fn set_avatar_url_route(
                     content: to_raw_value(&RoomMemberEventContent {
                         avatar_url: body.avatar_url.clone(),
                         ..serde_json::from_str(
-                            db.rooms
+                            services().rooms
                                 .room_state_get(
                                     &room_id,
                                     &StateEventType::RoomMember,
@@ -201,7 +194,7 @@ pub async fn set_avatar_url_route(
 
     for (pdu_builder, room_id) in all_joined_rooms {
         let mutex_state = Arc::clone(
-            db.globals
+            services().globals
                 .roomid_mutex_state
                 .write()
                 .unwrap()
@@ -210,19 +203,19 @@ pub async fn set_avatar_url_route(
         );
         let state_lock = mutex_state.lock().await;
 
-        let _ = db
+        let _ = services()
             .rooms
-            .build_and_append_pdu(pdu_builder, sender_user, &room_id, &db, &state_lock);
+            .build_and_append_pdu(pdu_builder, sender_user, &room_id, &state_lock);
 
         // Presence update
-        db.rooms.edus.update_presence(
+        services().rooms.edus.update_presence(
             sender_user,
             &room_id,
             ruma::events::presence::PresenceEvent {
                 content: ruma::events::presence::PresenceEventContent {
-                    avatar_url: db.users.avatar_url(sender_user)?,
+                    avatar_url: services().users.avatar_url(sender_user)?,
                     currently_active: None,
-                    displayname: db.users.displayname(sender_user)?,
+                    displayname: services().users.displayname(sender_user)?,
                     last_active_ago: Some(
                         utils::millis_since_unix_epoch()
                             .try_into()
@@ -233,11 +226,9 @@ pub async fn set_avatar_url_route(
                 },
                 sender: sender_user.clone(),
             },
-            &db.globals,
+            &services().globals,
         )?;
     }
-
-    db.flush()?;
 
     Ok(set_avatar_url::v3::Response {})
 }
@@ -248,14 +239,12 @@ pub async fn set_avatar_url_route(
 ///
 /// - If user is on another server: Fetches avatar_url and blurhash over federation
 pub async fn get_avatar_url_route(
-    db: DatabaseGuard,
     body: Ruma<get_avatar_url::v3::IncomingRequest>,
 ) -> Result<get_avatar_url::v3::Response> {
-    if body.user_id.server_name() != db.globals.server_name() {
-        let response = db
+    if body.user_id.server_name() != services().globals.server_name() {
+        let response = services()
             .sending
             .send_federation_request(
-                &db.globals,
                 body.user_id.server_name(),
                 federation::query::get_profile_information::v1::Request {
                     user_id: &body.user_id,
@@ -271,8 +260,8 @@ pub async fn get_avatar_url_route(
     }
 
     Ok(get_avatar_url::v3::Response {
-        avatar_url: db.users.avatar_url(&body.user_id)?,
-        blurhash: db.users.blurhash(&body.user_id)?,
+        avatar_url: services().users.avatar_url(&body.user_id)?,
+        blurhash: services().users.blurhash(&body.user_id)?,
     })
 }
 
@@ -282,14 +271,12 @@ pub async fn get_avatar_url_route(
 ///
 /// - If user is on another server: Fetches profile over federation
 pub async fn get_profile_route(
-    db: DatabaseGuard,
     body: Ruma<get_profile::v3::IncomingRequest>,
 ) -> Result<get_profile::v3::Response> {
-    if body.user_id.server_name() != db.globals.server_name() {
-        let response = db
+    if body.user_id.server_name() != services().globals.server_name() {
+        let response = services()
             .sending
             .send_federation_request(
-                &db.globals,
                 body.user_id.server_name(),
                 federation::query::get_profile_information::v1::Request {
                     user_id: &body.user_id,
@@ -305,7 +292,7 @@ pub async fn get_profile_route(
         });
     }
 
-    if !db.users.exists(&body.user_id)? {
+    if !services().users.exists(&body.user_id)? {
         // Return 404 if this user doesn't exist
         return Err(Error::BadRequest(
             ErrorKind::NotFound,
@@ -314,8 +301,8 @@ pub async fn get_profile_route(
     }
 
     Ok(get_profile::v3::Response {
-        avatar_url: db.users.avatar_url(&body.user_id)?,
-        blurhash: db.users.blurhash(&body.user_id)?,
-        displayname: db.users.displayname(&body.user_id)?,
+        avatar_url: services().users.avatar_url(&body.user_id)?,
+        blurhash: services().users.blurhash(&body.user_id)?,
+        displayname: services().users.displayname(&body.user_id)?,
     })
 }

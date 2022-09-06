@@ -1,7 +1,10 @@
 mod data;
-pub use data::Data;
+use std::{collections::BTreeMap, mem};
 
-use crate::service::*;
+pub use data::Data;
+use ruma::{UserId, MxcUri, DeviceId, DeviceKeyId, serde::Raw, encryption::{OneTimeKey, CrossSigningKey, DeviceKeys}, DeviceKeyAlgorithm, UInt, events::AnyToDeviceEvent, api::client::{device::Device, filter::IncomingFilterDefinition}};
+
+use crate::{service::*, Error};
 
 pub struct Service<D: Data> {
     db: D,
@@ -19,17 +22,23 @@ impl Service<_> {
     }
 
     /// Check if a user is an admin
-    pub fn is_admin(
+    fn is_admin(
         &self,
         user_id: &UserId,
     ) -> Result<bool> {
-        self.db.is_admin(user_id)
+        let admin_room_alias_id = RoomAliasId::parse(format!("#admins:{}", globals.server_name()))
+            .map_err(|_| Error::BadRequest(ErrorKind::InvalidParam, "Invalid alias."))?;
+        let admin_room_id = rooms.id_from_alias(&admin_room_alias_id)?.unwrap();
+
+        rooms.is_joined(user_id, &admin_room_id)
     }
 
     /// Create a new user account on this homeserver.
-    pub fn create(&self, user_id: &UserId, password: Option<&str>) -> Result<()> {
-        self.db.set_password(user_id, password)
+    fn create(&self, user_id: &UserId, password: Option<&str>) -> Result<()> {
+        self.db.set_password(user_id, password)?;
+        Ok(())
     }
+
 
     /// Returns the number of users registered on this server.
     pub fn count(&self) -> Result<usize> {
@@ -136,7 +145,6 @@ impl Service<_> {
         device_id: &DeviceId,
         one_time_key_key: &DeviceKeyId,
         one_time_key_value: &Raw<OneTimeKey>,
-        globals: &super::globals::Globals,
     ) -> Result<()> {
         self.db.add_one_time_key(user_id, device_id, one_time_key_key, one_time_key_value)
     }
@@ -220,7 +228,7 @@ impl Service<_> {
         user_id: &UserId,
         allowed_signatures: F,
     ) -> Result<Option<Raw<CrossSigningKey>>> {
-        self.db.get_master_key(user_id, allow_signatures)
+        self.db.get_master_key(user_id, allowed_signatures)
     }
 
     pub fn get_self_signing_key<F: Fn(&UserId) -> bool>(
@@ -327,7 +335,7 @@ impl Service<_> {
 }
 
 /// Ensure that a user only sees signatures from themselves and the target user
-fn clean_signatures<F: Fn(&UserId) -> bool>(
+pub fn clean_signatures<F: Fn(&UserId) -> bool>(
     cross_signing_key: &mut serde_json::Value,
     user_id: &UserId,
     allowed_signatures: F,

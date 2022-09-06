@@ -9,17 +9,26 @@
 
 mod config;
 mod database;
-mod error;
-mod pdu;
-mod ruma_wrapper;
+mod service;
+pub mod api;
 mod utils;
 
-pub mod appservice_server;
-pub mod client_server;
-pub mod server_server;
+use std::cell::Cell;
 
 pub use config::Config;
-pub use database::Database;
-pub use error::{Error, Result};
-pub use pdu::PduEvent;
-pub use ruma_wrapper::{Ruma, RumaResponse};
+pub use utils::error::{Error, Result};
+pub use service::{Services, pdu::PduEvent};
+pub use api::ruma_wrapper::{Ruma, RumaResponse};
+
+use crate::database::KeyValueDatabase;
+
+pub static SERVICES: Cell<Option<ServicesEnum>> = Cell::new(None);
+
+enum ServicesEnum {
+    Rocksdb(Services<KeyValueDatabase>)
+}
+
+pub fn services() -> Services {
+    SERVICES.get().unwrap()
+}
+

@@ -1,5 +1,6 @@
 mod data;
 pub use data::Data;
+use ruma::{RoomId, UserId};
 
 use crate::service::*;
 

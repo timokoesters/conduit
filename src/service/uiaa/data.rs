@@ -1,3 +1,5 @@
+use ruma::{api::client::uiaa::UiaaInfo, DeviceId, UserId, signatures::CanonicalJsonValue};
+
 pub trait Data {
     fn set_uiaa_request(
         &self,

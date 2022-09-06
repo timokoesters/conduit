@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::{database::DatabaseGuard, pdu::PduBuilder, Result, Ruma};
+use crate::{Result, Ruma, services, service::pdu::PduBuilder};
 use ruma::{
     api::client::redact::redact_event,
     events::{room::redaction::RoomRedactionEventContent, RoomEventType},
@@ -14,14 +14,13 @@ use serde_json::value::to_raw_value;
 ///
 /// - TODO: Handle txn id
 pub async fn redact_event_route(
-    db: DatabaseGuard,
     body: Ruma<redact_event::v3::IncomingRequest>,
 ) -> Result<redact_event::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
     let body = body.body;
 
     let mutex_state = Arc::clone(
-        db.globals
+        services().globals
             .roomid_mutex_state
             .write()
             .unwrap()
@@ -30,7 +29,7 @@ pub async fn redact_event_route(
     );
     let state_lock = mutex_state.lock().await;
 
-    let event_id = db.rooms.build_and_append_pdu(
+    let event_id = services().rooms.build_and_append_pdu(
         PduBuilder {
             event_type: RoomEventType::RoomRedaction,
             content: to_raw_value(&RoomRedactionEventContent {
@@ -43,13 +42,10 @@ pub async fn redact_event_route(
         },
         sender_user,
         &body.room_id,
-        &db,
         &state_lock,
     )?;
 
     drop(state_lock);
-
-    db.flush()?;
 
     let event_id = (*event_id).to_owned();
     Ok(redact_event::v3::Response { event_id })

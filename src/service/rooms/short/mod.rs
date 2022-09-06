@@ -1,7 +1,10 @@
 mod data;
-pub use data::Data;
+use std::sync::Arc;
 
-use crate::service::*;
+pub use data::Data;
+use ruma::{EventId, events::StateEventType};
+
+use crate::{service::*, Error, utils};
 
 pub struct Service<D: Data> {
     db: D,
@@ -188,7 +191,6 @@ impl Service<_> {
     fn get_or_create_shortstatehash(
         &self,
         state_hash: &StateHashId,
-        globals: &super::globals::Globals,
     ) -> Result<(u64, bool)> {
         Ok(match self.statehash_shortstatehash.get(state_hash)? {
             Some(shortstatehash) => (

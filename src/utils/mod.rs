@@ -1,3 +1,5 @@
+pub mod error;
+
 use argon2::{Config, Variant};
 use cmp::Ordering;
 use rand::prelude::*;

@@ -98,9 +98,9 @@ dependencies = [
 
 [[package]]
 name = "async-trait"
-version = "0.1.56"
+version = "0.1.57"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "96cf8829f67d2eab0b2dfa42c5d0ef737e0724e4a82b01b3e292456202b19716"
+checksum = "76464446b8bc32758d7e88ee1a804d9914cd9b1cb264c029899680b0be29826f"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -408,6 +408,7 @@ checksum = "3d7b894f5411737b7867f4827955924d7c254fc9f4d91a6aad6b097804b1018b"
 name = "conduit"
 version = "0.3.0-next"
 dependencies = [
+ "async-trait",
  "axum",
  "axum-server",
  "base64 0.13.0",
@@ -422,6 +423,7 @@ dependencies = [
  "http",
  "image",
  "jsonwebtoken",
+ "lazy_static",
  "lru-cache",
  "num_cpus",
  "opentelemetry",

@@ -1,4 +1,8 @@
-impl service::room::metadata::Data for KeyValueDatabase {
+use ruma::RoomId;
+
+use crate::{service, database::KeyValueDatabase};
+
+impl service::rooms::metadata::Data for KeyValueDatabase {
     fn exists(&self, room_id: &RoomId) -> Result<bool> {
         let prefix = match self.get_shortroomid(room_id)? {
             Some(b) => b.to_be_bytes().to_vec(),

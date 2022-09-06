@@ -1,3 +1,5 @@
+use ruma::{RoomId, events::receipt::ReceiptEvent, UserId, serde::Raw};
+
 pub trait Data {
     /// Replaces the previous read receipt.
     fn readreceipt_update(

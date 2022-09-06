@@ -5,14 +5,6 @@ use std::{
     time::Instant,
 };
 
-use crate::{
-    client_server::AUTO_GEN_PASSWORD_LENGTH,
-    error::{Error, Result},
-    pdu::PduBuilder,
-    server_server, utils,
-    utils::HtmlEscape,
-    Database, PduEvent,
-};
 use clap::Parser;
 use regex::Regex;
 use ruma::{
@@ -36,6 +28,10 @@ use ruma::{
 use serde_json::value::to_raw_value;
 use tokio::sync::{mpsc, MutexGuard, RwLock, RwLockReadGuard};
 
+use crate::{services, Error, api::{server_server, client_server::AUTO_GEN_PASSWORD_LENGTH}, PduEvent, utils::{HtmlEscape, self}};
+
+use super::pdu::PduBuilder;
+
 #[derive(Debug)]
 pub enum AdminRoomEvent {
     ProcessMessage(String),
@@ -50,22 +46,19 @@ pub struct Admin {
 impl Admin {
     pub fn start_handler(
         &self,
-        db: Arc<RwLock<Database>>,
         mut receiver: mpsc::UnboundedReceiver<AdminRoomEvent>,
     ) {
         tokio::spawn(async move {
             // TODO: Use futures when we have long admin commands
             //let mut futures = FuturesUnordered::new();
 
-            let guard = db.read().await;
-
-            let conduit_user = UserId::parse(format!("@conduit:{}", guard.globals.server_name()))
+            let conduit_user = UserId::parse(format!("@conduit:{}", services().globals.server_name()))
                 .expect("@conduit:server_name is valid");
 
-            let conduit_room = guard
+            let conduit_room = services()
                 .rooms
                 .id_from_alias(
-                    format!("#admins:{}", guard.globals.server_name())
+                    format!("#admins:{}", services().globals.server_name())
                         .as_str()
                         .try_into()
                         .expect("#admins:server_name is a valid room alias"),
@@ -73,12 +66,9 @@ impl Admin {
                 .expect("Database data for admin room alias must be valid")
                 .expect("Admin room must exist");
 
-            drop(guard);
-
             let send_message = |message: RoomMessageEventContent,
-                                guard: RwLockReadGuard<'_, Database>,
                                 mutex_lock: &MutexGuard<'_, ()>| {
-                guard
+                services()
                     .rooms
                     .build_and_append_pdu(
                         PduBuilder {
@@ -91,7 +81,6 @@ impl Admin {
                         },
                         &conduit_user,
                         &conduit_room,
-                        &guard,
                         mutex_lock,
                     )
                     .unwrap();
@@ -100,15 +89,13 @@ impl Admin {
             loop {
                 tokio::select! {
                     Some(event) = receiver.recv() => {
-                        let guard = db.read().await;
-
                         let message_content = match event {
                             AdminRoomEvent::SendMessage(content) => content,
-                            AdminRoomEvent::ProcessMessage(room_message) => process_admin_message(&*guard, room_message).await
+                            AdminRoomEvent::ProcessMessage(room_message) => process_admin_message(room_message).await
                         };
 
                         let mutex_state = Arc::clone(
-                            guard.globals
+                            services().globals
                                 .roomid_mutex_state
                                 .write()
                                 .unwrap()
@@ -118,7 +105,7 @@ impl Admin {
 
                         let state_lock = mutex_state.lock().await;
 
-                        send_message(message_content, guard, &state_lock);
+                        send_message(message_content, &state_lock);
 
                         drop(state_lock);
                     }
@@ -141,7 +128,7 @@ impl Admin {
 }
 
 // Parse and process a message from the admin room
-async fn process_admin_message(db: &Database, room_message: String) -> RoomMessageEventContent {
+async fn process_admin_message(room_message: String) -> RoomMessageEventContent {
     let mut lines = room_message.lines();
     let command_line = lines.next().expect("each string has at least one line");
     let body: Vec<_> = lines.collect();
@@ -149,7 +136,7 @@ async fn process_admin_message(db: &Database, room_message: String) -> RoomMessa
     let admin_command = match parse_admin_command(&command_line) {
         Ok(command) => command,
         Err(error) => {
-            let server_name = db.globals.server_name();
+            let server_name = services().globals.server_name();
             let message = error
                 .to_string()
                 .replace("server.name", server_name.as_str());
@@ -159,7 +146,7 @@ async fn process_admin_message(db: &Database, room_message: String) -> RoomMessa
         }
     };
 
-    match process_admin_command(db, admin_command, body).await {
+    match process_admin_command(admin_command, body).await {
         Ok(reply_message) => reply_message,
         Err(error) => {
             let markdown_message = format!(
@@ -322,7 +309,6 @@ enum AdminCommand {
 }
 
 async fn process_admin_command(
-    db: &Database,
     command: AdminCommand,
     body: Vec<&str>,
 ) -> Result<RoomMessageEventContent> {
@@ -332,7 +318,7 @@ async fn process_admin_command(
                 let appservice_config = body[1..body.len() - 1].join("\n");
                 let parsed_config = serde_yaml::from_str::<serde_yaml::Value>(&appservice_config);
                 match parsed_config {
-                    Ok(yaml) => match db.appservice.register_appservice(yaml) {
+                    Ok(yaml) => match services().appservice.register_appservice(yaml) {
                         Ok(id) => RoomMessageEventContent::text_plain(format!(
                             "Appservice registered with ID: {}.",
                             id
@@ -355,7 +341,7 @@ async fn process_admin_command(
         }
         AdminCommand::UnregisterAppservice {
             appservice_identifier,
-        } => match db.appservice.unregister_appservice(&appservice_identifier) {
+        } => match services().appservice.unregister_appservice(&appservice_identifier) {
             Ok(()) => RoomMessageEventContent::text_plain("Appservice unregistered."),
             Err(e) => RoomMessageEventContent::text_plain(format!(
                 "Failed to unregister appservice: {}",
@@ -363,7 +349,7 @@ async fn process_admin_command(
             )),
         },
         AdminCommand::ListAppservices => {
-            if let Ok(appservices) = db.appservice.iter_ids().map(|ids| ids.collect::<Vec<_>>()) {
+            if let Ok(appservices) = services().appservice.iter_ids().map(|ids| ids.collect::<Vec<_>>()) {
                 let count = appservices.len();
                 let output = format!(
                     "Appservices ({}): {}",
@@ -380,14 +366,14 @@ async fn process_admin_command(
             }
         }
         AdminCommand::ListRooms => {
-            let room_ids = db.rooms.iter_ids();
+            let room_ids = services().rooms.iter_ids();
             let output = format!(
                 "Rooms:\n{}",
                 room_ids
                     .filter_map(|r| r.ok())
                     .map(|id| id.to_string()
                         + "\tMembers: "
-                        + &db
+                        + &services()
                             .rooms
                             .room_joined_count(&id)
                             .ok()
@@ -399,7 +385,7 @@ async fn process_admin_command(
             );
             RoomMessageEventContent::text_plain(output)
         }
-        AdminCommand::ListLocalUsers => match db.users.list_local_users() {
+        AdminCommand::ListLocalUsers => match services().users.list_local_users() {
             Ok(users) => {
                 let mut msg: String = format!("Found {} local user account(s):\n", users.len());
                 msg += &users.join("\n");
@@ -408,7 +394,7 @@ async fn process_admin_command(
             Err(e) => RoomMessageEventContent::text_plain(e.to_string()),
         },
         AdminCommand::IncomingFederation => {
-            let map = db.globals.roomid_federationhandletime.read().unwrap();
+            let map = services().globals.roomid_federationhandletime.read().unwrap();
             let mut msg: String = format!("Handling {} incoming pdus:\n", map.len());
 
             for (r, (e, i)) in map.iter() {
@@ -425,7 +411,7 @@ async fn process_admin_command(
         }
         AdminCommand::GetAuthChain { event_id } => {
             let event_id = Arc::<EventId>::from(event_id);
-            if let Some(event) = db.rooms.get_pdu_json(&event_id)? {
+            if let Some(event) = services().rooms.get_pdu_json(&event_id)? {
                 let room_id_str = event
                     .get("room_id")
                     .and_then(|val| val.as_str())
@@ -435,7 +421,7 @@ async fn process_admin_command(
                     Error::bad_database("Invalid room id field in event in database")
                 })?;
                 let start = Instant::now();
-                let count = server_server::get_auth_chain(room_id, vec![event_id], db)
+                let count = server_server::get_auth_chain(room_id, vec![event_id])
                     .await?
                     .count();
                 let elapsed = start.elapsed();
@@ -486,10 +472,10 @@ async fn process_admin_command(
         }
         AdminCommand::GetPdu { event_id } => {
             let mut outlier = false;
-            let mut pdu_json = db.rooms.get_non_outlier_pdu_json(&event_id)?;
+            let mut pdu_json = services().rooms.get_non_outlier_pdu_json(&event_id)?;
             if pdu_json.is_none() {
                 outlier = true;
-                pdu_json = db.rooms.get_pdu_json(&event_id)?;
+                pdu_json = services().rooms.get_pdu_json(&event_id)?;
             }
             match pdu_json {
                 Some(json) => {
@@ -519,7 +505,7 @@ async fn process_admin_command(
                 None => RoomMessageEventContent::text_plain("PDU not found."),
             }
         }
-        AdminCommand::DatabaseMemoryUsage => match db._db.memory_usage() {
+        AdminCommand::DatabaseMemoryUsage => match services()._db.memory_usage() {
             Ok(response) => RoomMessageEventContent::text_plain(response),
             Err(e) => RoomMessageEventContent::text_plain(format!(
                 "Failed to get database memory usage: {}",
@@ -528,12 +514,12 @@ async fn process_admin_command(
         },
         AdminCommand::ShowConfig => {
             // Construct and send the response
-            RoomMessageEventContent::text_plain(format!("{}", db.globals.config))
+            RoomMessageEventContent::text_plain(format!("{}", services().globals.config))
         }
         AdminCommand::ResetPassword { username } => {
             let user_id = match UserId::parse_with_server_name(
                 username.as_str().to_lowercase(),
-                db.globals.server_name(),
+                services().globals.server_name(),
             ) {
                 Ok(id) => id,
                 Err(e) => {
@@ -545,10 +531,10 @@ async fn process_admin_command(
             };
 
             // Check if the specified user is valid
-            if !db.users.exists(&user_id)?
-                || db.users.is_deactivated(&user_id)?
+            if !services().users.exists(&user_id)?
+                || services().users.is_deactivated(&user_id)?
                 || user_id
-                    == UserId::parse_with_server_name("conduit", db.globals.server_name())
+                    == UserId::parse_with_server_name("conduit", services().globals.server_name())
                         .expect("conduit user exists")
             {
                 return Ok(RoomMessageEventContent::text_plain(
@@ -558,7 +544,7 @@ async fn process_admin_command(
 
             let new_password = utils::random_string(AUTO_GEN_PASSWORD_LENGTH);
 
-            match db.users.set_password(&user_id, Some(new_password.as_str())) {
+            match services().users.set_password(&user_id, Some(new_password.as_str())) {
                 Ok(()) => RoomMessageEventContent::text_plain(format!(
                     "Successfully reset the password for user {}: {}",
                     user_id, new_password
@@ -574,7 +560,7 @@ async fn process_admin_command(
             // Validate user id
             let user_id = match UserId::parse_with_server_name(
                 username.as_str().to_lowercase(),
-                db.globals.server_name(),
+                services().globals.server_name(),
             ) {
                 Ok(id) => id,
                 Err(e) => {
@@ -589,21 +575,21 @@ async fn process_admin_command(
                     "userid {user_id} is not allowed due to historical"
                 )));
             }
-            if db.users.exists(&user_id)? {
+            if services().users.exists(&user_id)? {
                 return Ok(RoomMessageEventContent::text_plain(format!(
                     "userid {user_id} already exists"
                 )));
             }
             // Create user
-            db.users.create(&user_id, Some(password.as_str()))?;
+            services().users.create(&user_id, Some(password.as_str()))?;
 
             // Default to pretty displayname
             let displayname = format!("{} ⚡️", user_id.localpart());
-            db.users
+            services().users
                 .set_displayname(&user_id, Some(displayname.clone()))?;
 
             // Initial account data
-            db.account_data.update(
+            services().account_data.update(
                 None,
                 &user_id,
                 ruma::events::GlobalAccountDataEventType::PushRules
@@ -614,12 +600,9 @@ async fn process_admin_command(
                         global: ruma::push::Ruleset::server_default(&user_id),
                     },
                 },
-                &db.globals,
             )?;
 
             // we dont add a device since we're not the user, just the creator
-
-            db.flush()?;
 
             // Inhibit login does not work for guests
             RoomMessageEventContent::text_plain(format!(
@@ -627,11 +610,11 @@ async fn process_admin_command(
             ))
         }
         AdminCommand::DisableRoom { room_id } => {
-            db.rooms.disabledroomids.insert(room_id.as_bytes(), &[])?;
+            services().rooms.disabledroomids.insert(room_id.as_bytes(), &[])?;
             RoomMessageEventContent::text_plain("Room disabled.")
         }
         AdminCommand::EnableRoom { room_id } => {
-            db.rooms.disabledroomids.remove(room_id.as_bytes())?;
+            services().rooms.disabledroomids.remove(room_id.as_bytes())?;
             RoomMessageEventContent::text_plain("Room enabled.")
         }
         AdminCommand::DeactivateUser {
@@ -639,16 +622,16 @@ async fn process_admin_command(
             user_id,
         } => {
             let user_id = Arc::<UserId>::from(user_id);
-            if db.users.exists(&user_id)? {
+            if services().users.exists(&user_id)? {
                 RoomMessageEventContent::text_plain(format!(
                     "Making {} leave all rooms before deactivation...",
                     user_id
                 ));
 
-                db.users.deactivate_account(&user_id)?;
+                services().users.deactivate_account(&user_id)?;
 
                 if leave_rooms {
-                    db.rooms.leave_all_rooms(&user_id, &db).await?;
+                    services().rooms.leave_all_rooms(&user_id).await?;
                 }
 
                 RoomMessageEventContent::text_plain(format!(
@@ -685,7 +668,7 @@ async fn process_admin_command(
 
                 if !force {
                     user_ids.retain(|&user_id| {
-                        match db.users.is_admin(user_id, &db.rooms, &db.globals) {
+                        match services().users.is_admin(user_id) {
                             Ok(is_admin) => match is_admin {
                                 true => {
                                     admins.push(user_id.localpart());
@@ -699,7 +682,7 @@ async fn process_admin_command(
                 }
 
                 for &user_id in &user_ids {
-                    match db.users.deactivate_account(user_id) {
+                    match services().users.deactivate_account(user_id) {
                         Ok(_) => deactivation_count += 1,
                         Err(_) => {}
                     }
@@ -707,7 +690,7 @@ async fn process_admin_command(
 
                 if leave_rooms {
                     for &user_id in &user_ids {
-                        let _ = db.rooms.leave_all_rooms(user_id, &db).await;
+                        let _ = services().rooms.leave_all_rooms(user_id).await;
                     }
                 }
 
@@ -814,13 +797,13 @@ fn usage_to_html(text: &str, server_name: &ServerName) -> String {
 ///
 /// Users in this room are considered admins by conduit, and the room can be
 /// used to issue admin commands by talking to the server user inside it.
-pub(crate) async fn create_admin_room(db: &Database) -> Result<()> {
-    let room_id = RoomId::new(db.globals.server_name());
+pub(crate) async fn create_admin_room() -> Result<()> {
+    let room_id = RoomId::new(services().globals.server_name());
 
-    db.rooms.get_or_create_shortroomid(&room_id, &db.globals)?;
+    services().rooms.get_or_create_shortroomid(&room_id)?;
 
     let mutex_state = Arc::clone(
-        db.globals
+        services().globals
             .roomid_mutex_state
             .write()
             .unwrap()
@@ -830,10 +813,10 @@ pub(crate) async fn create_admin_room(db: &Database) -> Result<()> {
     let state_lock = mutex_state.lock().await;
 
     // Create a user for the server
-    let conduit_user = UserId::parse_with_server_name("conduit", db.globals.server_name())
+    let conduit_user = UserId::parse_with_server_name("conduit", services().globals.server_name())
         .expect("@conduit:server_name is valid");
 
-    db.users.create(&conduit_user, None)?;
+    services().users.create(&conduit_user, None)?;
 
     let mut content = RoomCreateEventContent::new(conduit_user.clone());
     content.federate = true;
@@ -841,7 +824,7 @@ pub(crate) async fn create_admin_room(db: &Database) -> Result<()> {
     content.room_version = RoomVersionId::V6;
 
     // 1. The room create event
-    db.rooms.build_and_append_pdu(
+    services().rooms.build_and_append_pdu(
         PduBuilder {
             event_type: RoomEventType::RoomCreate,
             content: to_raw_value(&content).expect("event is valid, we just created it"),
@@ -851,12 +834,11 @@ pub(crate) async fn create_admin_room(db: &Database) -> Result<()> {
         },
         &conduit_user,
         &room_id,
-        &db,
         &state_lock,
     )?;
 
     // 2. Make conduit bot join
-    db.rooms.build_and_append_pdu(
+    services().rooms.build_and_append_pdu(
         PduBuilder {
             event_type: RoomEventType::RoomMember,
             content: to_raw_value(&RoomMemberEventContent {
@@ -876,7 +858,6 @@ pub(crate) async fn create_admin_room(db: &Database) -> Result<()> {
         },
         &conduit_user,
         &room_id,
-        &db,
         &state_lock,
     )?;
 
@@ -884,7 +865,7 @@ pub(crate) async fn create_admin_room(db: &Database) -> Result<()> {
     let mut users = BTreeMap::new();
     users.insert(conduit_user.clone(), 100.into());
 
-    db.rooms.build_and_append_pdu(
+    services().rooms.build_and_append_pdu(
         PduBuilder {
             event_type: RoomEventType::RoomPowerLevels,
             content: to_raw_value(&RoomPowerLevelsEventContent {
@@ -898,12 +879,11 @@ pub(crate) async fn create_admin_room(db: &Database) -> Result<()> {
         },
         &conduit_user,
         &room_id,
-        &db,
         &state_lock,
     )?;
 
     // 4.1 Join Rules
-    db.rooms.build_and_append_pdu(
+    services().rooms.build_and_append_pdu(
         PduBuilder {
             event_type: RoomEventType::RoomJoinRules,
             content: to_raw_value(&RoomJoinRulesEventContent::new(JoinRule::Invite))
@@ -914,12 +894,11 @@ pub(crate) async fn create_admin_room(db: &Database) -> Result<()> {
         },
         &conduit_user,
         &room_id,
-        &db,
         &state_lock,
     )?;
 
     // 4.2 History Visibility
-    db.rooms.build_and_append_pdu(
+    services().rooms.build_and_append_pdu(
         PduBuilder {
             event_type: RoomEventType::RoomHistoryVisibility,
             content: to_raw_value(&RoomHistoryVisibilityEventContent::new(
@@ -932,12 +911,11 @@ pub(crate) async fn create_admin_room(db: &Database) -> Result<()> {
         },
         &conduit_user,
         &room_id,
-        &db,
         &state_lock,
     )?;
 
     // 4.3 Guest Access
-    db.rooms.build_and_append_pdu(
+    services().rooms.build_and_append_pdu(
         PduBuilder {
             event_type: RoomEventType::RoomGuestAccess,
             content: to_raw_value(&RoomGuestAccessEventContent::new(GuestAccess::Forbidden))
@@ -948,14 +926,13 @@ pub(crate) async fn create_admin_room(db: &Database) -> Result<()> {
         },
         &conduit_user,
         &room_id,
-        &db,
         &state_lock,
     )?;
 
     // 5. Events implied by name and topic
-    let room_name = RoomName::parse(format!("{} Admin Room", db.globals.server_name()))
+    let room_name = RoomName::parse(format!("{} Admin Room", services().globals.server_name()))
         .expect("Room name is valid");
-    db.rooms.build_and_append_pdu(
+    services().rooms.build_and_append_pdu(
         PduBuilder {
             event_type: RoomEventType::RoomName,
             content: to_raw_value(&RoomNameEventContent::new(Some(room_name)))
@@ -966,15 +943,14 @@ pub(crate) async fn create_admin_room(db: &Database) -> Result<()> {
         },
         &conduit_user,
         &room_id,
-        &db,
         &state_lock,
     )?;
 
-    db.rooms.build_and_append_pdu(
+    services().rooms.build_and_append_pdu(
         PduBuilder {
             event_type: RoomEventType::RoomTopic,
             content: to_raw_value(&RoomTopicEventContent {
-                topic: format!("Manage {}", db.globals.server_name()),
+                topic: format!("Manage {}", services().globals.server_name()),
             })
             .expect("event is valid, we just created it"),
             unsigned: None,
@@ -983,16 +959,15 @@ pub(crate) async fn create_admin_room(db: &Database) -> Result<()> {
         },
         &conduit_user,
         &room_id,
-        &db,
         &state_lock,
     )?;
 
     // 6. Room alias
-    let alias: Box<RoomAliasId> = format!("#admins:{}", db.globals.server_name())
+    let alias: Box<RoomAliasId> = format!("#admins:{}", services().globals.server_name())
         .try_into()
         .expect("#admins:server_name is a valid alias name");
 
-    db.rooms.build_and_append_pdu(
+    services().rooms.build_and_append_pdu(
         PduBuilder {
             event_type: RoomEventType::RoomCanonicalAlias,
             content: to_raw_value(&RoomCanonicalAliasEventContent {
@@ -1006,11 +981,10 @@ pub(crate) async fn create_admin_room(db: &Database) -> Result<()> {
         },
         &conduit_user,
         &room_id,
-        &db,
         &state_lock,
     )?;
 
-    db.rooms.set_alias(&alias, Some(&room_id), &db.globals)?;
+    services().rooms.set_alias(&alias, Some(&room_id))?;
 
     Ok(())
 }
@@ -1019,20 +993,19 @@ pub(crate) async fn create_admin_room(db: &Database) -> Result<()> {
 ///
 /// In conduit, this is equivalent to granting admin privileges.
 pub(crate) async fn make_user_admin(
-    db: &Database,
     user_id: &UserId,
     displayname: String,
 ) -> Result<()> {
-    let admin_room_alias: Box<RoomAliasId> = format!("#admins:{}", db.globals.server_name())
+    let admin_room_alias: Box<RoomAliasId> = format!("#admins:{}", services().globals.server_name())
         .try_into()
         .expect("#admins:server_name is a valid alias name");
-    let room_id = db
+    let room_id = services()
         .rooms
         .id_from_alias(&admin_room_alias)?
         .expect("Admin room must exist");
 
     let mutex_state = Arc::clone(
-        db.globals
+        services().globals
             .roomid_mutex_state
             .write()
             .unwrap()
@@ -1042,11 +1015,11 @@ pub(crate) async fn make_user_admin(
     let state_lock = mutex_state.lock().await;
 
     // Use the server user to grant the new admin's power level
-    let conduit_user = UserId::parse_with_server_name("conduit", db.globals.server_name())
+    let conduit_user = UserId::parse_with_server_name("conduit", services().globals.server_name())
         .expect("@conduit:server_name is valid");
 
     // Invite and join the real user
-    db.rooms.build_and_append_pdu(
+    services().rooms.build_and_append_pdu(
         PduBuilder {
             event_type: RoomEventType::RoomMember,
             content: to_raw_value(&RoomMemberEventContent {
@@ -1066,10 +1039,9 @@ pub(crate) async fn make_user_admin(
         },
         &conduit_user,
         &room_id,
-        &db,
         &state_lock,
     )?;
-    db.rooms.build_and_append_pdu(
+    services().rooms.build_and_append_pdu(
         PduBuilder {
             event_type: RoomEventType::RoomMember,
             content: to_raw_value(&RoomMemberEventContent {
@@ -1089,7 +1061,6 @@ pub(crate) async fn make_user_admin(
         },
         &user_id,
         &room_id,
-        &db,
         &state_lock,
     )?;
 
@@ -1098,7 +1069,7 @@ pub(crate) async fn make_user_admin(
     users.insert(conduit_user.to_owned(), 100.into());
     users.insert(user_id.to_owned(), 100.into());
 
-    db.rooms.build_and_append_pdu(
+    services().rooms.build_and_append_pdu(
         PduBuilder {
             event_type: RoomEventType::RoomPowerLevels,
             content: to_raw_value(&RoomPowerLevelsEventContent {
@@ -1112,17 +1083,16 @@ pub(crate) async fn make_user_admin(
         },
         &conduit_user,
         &room_id,
-        &db,
         &state_lock,
     )?;
 
     // Send welcome message
-    db.rooms.build_and_append_pdu(
+    services().rooms.build_and_append_pdu(
         PduBuilder {
             event_type: RoomEventType::RoomMessage,
             content: to_raw_value(&RoomMessageEventContent::text_html(
-                    format!("## Thank you for trying out Conduit!\n\nConduit is currently in Beta. This means you can join and participate in most Matrix rooms, but not all features are supported and you might run into bugs from time to time.\n\nHelpful links:\n> Website: https://conduit.rs\n> Git and Documentation: https://gitlab.com/famedly/conduit\n> Report issues: https://gitlab.com/famedly/conduit/-/issues\n\nFor a list of available commands, send the following message in this room: `@conduit:{}: --help`\n\nHere are some rooms you can join (by typing the command):\n\nConduit room (Ask questions and get notified on updates):\n`/join #conduit:fachschaften.org`\n\nConduit lounge (Off-topic, only Conduit users are allowed to join)\n`/join #conduit-lounge:conduit.rs`", db.globals.server_name()).to_owned(),
-                    format!("<h2>Thank you for trying out Conduit!</h2>\n<p>Conduit is currently in Beta. This means you can join and participate in most Matrix rooms, but not all features are supported and you might run into bugs from time to time.</p>\n<p>Helpful links:</p>\n<blockquote>\n<p>Website: https://conduit.rs<br>Git and Documentation: https://gitlab.com/famedly/conduit<br>Report issues: https://gitlab.com/famedly/conduit/-/issues</p>\n</blockquote>\n<p>For a list of available commands, send the following message in this room: <code>@conduit:{}: --help</code></p>\n<p>Here are some rooms you can join (by typing the command):</p>\n<p>Conduit room (Ask questions and get notified on updates):<br><code>/join #conduit:fachschaften.org</code></p>\n<p>Conduit lounge (Off-topic, only Conduit users are allowed to join)<br><code>/join #conduit-lounge:conduit.rs</code></p>\n", db.globals.server_name()).to_owned(),
+                    format!("## Thank you for trying out Conduit!\n\nConduit is currently in Beta. This means you can join and participate in most Matrix rooms, but not all features are supported and you might run into bugs from time to time.\n\nHelpful links:\n> Website: https://conduit.rs\n> Git and Documentation: https://gitlab.com/famedly/conduit\n> Report issues: https://gitlab.com/famedly/conduit/-/issues\n\nFor a list of available commands, send the following message in this room: `@conduit:{}: --help`\n\nHere are some rooms you can join (by typing the command):\n\nConduit room (Ask questions and get notified on updates):\n`/join #conduit:fachschaften.org`\n\nConduit lounge (Off-topic, only Conduit users are allowed to join)\n`/join #conduit-lounge:conduit.rs`", services().globals.server_name()).to_owned(),
+                    format!("<h2>Thank you for trying out Conduit!</h2>\n<p>Conduit is currently in Beta. This means you can join and participate in most Matrix rooms, but not all features are supported and you might run into bugs from time to time.</p>\n<p>Helpful links:</p>\n<blockquote>\n<p>Website: https://conduit.rs<br>Git and Documentation: https://gitlab.com/famedly/conduit<br>Report issues: https://gitlab.com/famedly/conduit/-/issues</p>\n</blockquote>\n<p>For a list of available commands, send the following message in this room: <code>@conduit:{}: --help</code></p>\n<p>Here are some rooms you can join (by typing the command):</p>\n<p>Conduit room (Ask questions and get notified on updates):<br><code>/join #conduit:fachschaften.org</code></p>\n<p>Conduit lounge (Off-topic, only Conduit users are allowed to join)<br><code>/join #conduit-lounge:conduit.rs</code></p>\n", services().globals.server_name()).to_owned(),
             ))
             .expect("event is valid, we just created it"),
             unsigned: None,
@@ -1131,7 +1101,6 @@ pub(crate) async fn make_user_admin(
         },
         &conduit_user,
         &room_id,
-        &db,
         &state_lock,
     )?;
 

@@ -1,3 +1,7 @@
+use std::collections::HashSet;
+
+use ruma::{UserId, RoomId};
+
 pub trait Data {
     /// Sets a user as typing until the timeout timestamp is reached or roomtyping_remove is
     /// called.

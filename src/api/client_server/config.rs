@@ -1,4 +1,4 @@
-use crate::{database::DatabaseGuard, Error, Result, Ruma};
+use crate::{Error, Result, Ruma, services};
 use ruma::{
     api::client::{
         config::{
@@ -17,7 +17,6 @@ use serde_json::{json, value::RawValue as RawJsonValue};
 ///
 /// Sets some account data for the sender user.
 pub async fn set_global_account_data_route(
-    db: DatabaseGuard,
     body: Ruma<set_global_account_data::v3::IncomingRequest>,
 ) -> Result<set_global_account_data::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -27,7 +26,7 @@ pub async fn set_global_account_data_route(
 
     let event_type = body.event_type.to_string();
 
-    db.account_data.update(
+    services().account_data.update(
         None,
         sender_user,
         event_type.clone().into(),
@@ -35,10 +34,7 @@ pub async fn set_global_account_data_route(
             "type": event_type,
             "content": data,
         }),
-        &db.globals,
     )?;
-
-    db.flush()?;
 
     Ok(set_global_account_data::v3::Response {})
 }
@@ -47,7 +43,6 @@ pub async fn set_global_account_data_route(
 ///
 /// Sets some room account data for the sender user.
 pub async fn set_room_account_data_route(
-    db: DatabaseGuard,
     body: Ruma<set_room_account_data::v3::IncomingRequest>,
 ) -> Result<set_room_account_data::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -57,7 +52,7 @@ pub async fn set_room_account_data_route(
 
     let event_type = body.event_type.to_string();
 
-    db.account_data.update(
+    services().account_data.update(
         Some(&body.room_id),
         sender_user,
         event_type.clone().into(),
@@ -65,10 +60,7 @@ pub async fn set_room_account_data_route(
             "type": event_type,
             "content": data,
         }),
-        &db.globals,
     )?;
-
-    db.flush()?;
 
     Ok(set_room_account_data::v3::Response {})
 }
@@ -77,12 +69,11 @@ pub async fn set_room_account_data_route(
 ///
 /// Gets some account data for the sender user.
 pub async fn get_global_account_data_route(
-    db: DatabaseGuard,
     body: Ruma<get_global_account_data::v3::IncomingRequest>,
 ) -> Result<get_global_account_data::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
-    let event: Box<RawJsonValue> = db
+    let event: Box<RawJsonValue> = services()
         .account_data
         .get(None, sender_user, body.event_type.clone().into())?
         .ok_or(Error::BadRequest(ErrorKind::NotFound, "Data not found."))?;
@@ -98,12 +89,11 @@ pub async fn get_global_account_data_route(
 ///
 /// Gets some room account data for the sender user.
 pub async fn get_room_account_data_route(
-    db: DatabaseGuard,
     body: Ruma<get_room_account_data::v3::IncomingRequest>,
 ) -> Result<get_room_account_data::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
-    let event: Box<RawJsonValue> = db
+    let event: Box<RawJsonValue> = services()
         .account_data
         .get(
             Some(&body.room_id),

@@ -1,4 +1,11 @@
-impl service::room::state::Data for KeyValueDatabase {
+use ruma::{RoomId, EventId};
+use std::sync::Arc;
+use std::{sync::MutexGuard, collections::HashSet};
+use std::fmt::Debug;
+
+use crate::{service, database::KeyValueDatabase, utils, Error};
+
+impl service::rooms::state::Data for KeyValueDatabase {
     fn get_room_shortstatehash(&self, room_id: &RoomId) -> Result<Option<u64>> {
         self.roomid_shortstatehash
             .get(room_id.as_bytes())?
@@ -9,21 +16,21 @@ impl service::room::state::Data for KeyValueDatabase {
             })
     }
 
-    fn set_room_state(&self, room_id: &RoomId, new_shortstatehash: u64
-        _mutex_lock: &MutexGuard<'_, StateLock>, // Take mutex guard to make sure users get the room state mutex
+    fn set_room_state(&self, room_id: &RoomId, new_shortstatehash: u64,
+        _mutex_lock: &MutexGuard<'_, ()>, // Take mutex guard to make sure users get the room state mutex
         ) -> Result<()> {
         self.roomid_shortstatehash
             .insert(room_id.as_bytes(), &new_shortstatehash.to_be_bytes())?;
         Ok(())
     }
 
-    fn set_event_state(&self) -> Result<()> {
-        db.shorteventid_shortstatehash
+    fn set_event_state(&self, shorteventid: Vec<u8>, shortstatehash: Vec<u8>) -> Result<()> {
+        self.shorteventid_shortstatehash
             .insert(&shorteventid.to_be_bytes(), &shortstatehash.to_be_bytes())?;
         Ok(())
     }
 
-    fn get_pdu_leaves(&self, room_id: &RoomId) -> Result<HashSet<Arc<EventId>>> {
+    fn get_forward_extremities(&self, room_id: &RoomId) -> Result<HashSet<Arc<EventId>>> {
         let mut prefix = room_id.as_bytes().to_vec();
         prefix.push(0xff);
 
@@ -38,11 +45,11 @@ impl service::room::state::Data for KeyValueDatabase {
             .collect()
     }
 
-    fn set_forward_extremities(
+    fn set_forward_extremities<'a>(
         &self,
         room_id: &RoomId,
         event_ids: impl IntoIterator<Item = &'a EventId> + Debug,
-        _mutex_lock: &MutexGuard<'_, StateLock>, // Take mutex guard to make sure users get the room state mutex
+        _mutex_lock: &MutexGuard<'_, ()>, // Take mutex guard to make sure users get the room state mutex
     ) -> Result<()> {
         let mut prefix = room_id.as_bytes().to_vec();
         prefix.push(0xff);

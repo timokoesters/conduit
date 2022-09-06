@@ -1,4 +1,4 @@
-use crate::{database::DatabaseGuard, Result, Ruma};
+use crate::{Result, Ruma, services};
 use ruma::{
     api::client::user_directory::search_users,
     events::{
@@ -14,20 +14,19 @@ use ruma::{
 /// - Hides any local users that aren't in any public rooms (i.e. those that have the join rule set to public)
 /// and don't share a room with the sender
 pub async fn search_users_route(
-    db: DatabaseGuard,
     body: Ruma<search_users::v3::IncomingRequest>,
 ) -> Result<search_users::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
     let limit = u64::from(body.limit) as usize;
 
-    let mut users = db.users.iter().filter_map(|user_id| {
+    let mut users = services().users.iter().filter_map(|user_id| {
         // Filter out buggy users (they should not exist, but you never know...)
         let user_id = user_id.ok()?;
 
         let user = search_users::v3::User {
             user_id: user_id.clone(),
-            display_name: db.users.displayname(&user_id).ok()?,
-            avatar_url: db.users.avatar_url(&user_id).ok()?,
+            display_name: services().users.displayname(&user_id).ok()?,
+            avatar_url: services().users.avatar_url(&user_id).ok()?,
         };
 
         let user_id_matches = user
@@ -50,11 +49,11 @@ pub async fn search_users_route(
         }
 
         let user_is_in_public_rooms =
-            db.rooms
+            services().rooms
                 .rooms_joined(&user_id)
                 .filter_map(|r| r.ok())
                 .any(|room| {
-                    db.rooms
+                    services().rooms
                         .room_state_get(&room, &StateEventType::RoomJoinRules, "")
                         .map_or(false, |event| {
                             event.map_or(false, |event| {
@@ -70,7 +69,7 @@ pub async fn search_users_route(
             return Some(user);
         }
 
-        let user_is_in_shared_rooms = db
+        let user_is_in_shared_rooms = services()
             .rooms
             .get_shared_rooms(vec![sender_user.clone(), user_id.clone()])
             .ok()?

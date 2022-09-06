@@ -1,6 +1,8 @@
+use crate::{database::KeyValueDatabase, service, utils, Error};
+
 impl service::appservice::Data for KeyValueDatabase {
     /// Registers an appservice and returns the ID to the caller
-    pub fn register_appservice(&self, yaml: serde_yaml::Value) -> Result<String> {
+    fn register_appservice(&self, yaml: serde_yaml::Value) -> Result<String> {
         // TODO: Rumaify
         let id = yaml.get("id").unwrap().as_str().unwrap();
         self.id_appserviceregistrations.insert(

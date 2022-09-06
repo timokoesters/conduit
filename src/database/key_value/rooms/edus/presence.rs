@@ -1,4 +1,10 @@
-impl service::room::edus::presence::Data for KeyValueDatabase {
+use std::collections::HashMap;
+
+use ruma::{UserId, RoomId, events::presence::PresenceEvent, presence::PresenceState, UInt};
+
+use crate::{service, database::KeyValueDatabase, utils, Error, services};
+
+impl service::rooms::edus::presence::Data for KeyValueDatabase {
     fn update_presence(
         &self,
         user_id: &UserId,
@@ -7,7 +13,7 @@ impl service::room::edus::presence::Data for KeyValueDatabase {
     ) -> Result<()> {
         // TODO: Remove old entry? Or maybe just wipe completely from time to time?
 
-        let count = globals.next_count()?.to_be_bytes();
+        let count = services().globals.next_count()?.to_be_bytes();
 
         let mut presence_id = room_id.as_bytes().to_vec();
         presence_id.push(0xff);
@@ -101,6 +107,7 @@ impl service::room::edus::presence::Data for KeyValueDatabase {
         Ok(hashmap)
     }
 
+    /*
     fn presence_maintain(&self, db: Arc<TokioRwLock<Database>>) {
         // TODO @M0dEx: move this to a timed tasks module
         tokio::spawn(async move {
@@ -117,6 +124,7 @@ impl service::room::edus::presence::Data for KeyValueDatabase {
             }
         });
     }
+    */
 }
 
 fn parse_presence_event(bytes: &[u8]) -> Result<PresenceEvent> {

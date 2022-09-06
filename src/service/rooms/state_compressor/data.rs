@@ -1,4 +1,6 @@
-struct StateDiff {
+use crate::service::rooms::CompressedStateEvent;
+
+pub struct StateDiff {
     parent: Option<u64>,
     added: Vec<CompressedStateEvent>,
     removed: Vec<CompressedStateEvent>,

@@ -1,3 +1,7 @@
+use ruma::{EventId, signatures::CanonicalJsonObject};
+
+use crate::PduEvent;
+
 pub trait Data {
     fn get_outlier_pdu_json(&self, event_id: &EventId) -> Result<Option<CanonicalJsonObject>>;
     fn get_outlier_pdu(&self, event_id: &EventId) -> Result<Option<PduEvent>>;

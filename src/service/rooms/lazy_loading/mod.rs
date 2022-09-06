@@ -1,5 +1,8 @@
 mod data;
+use std::collections::HashSet;
+
 pub use data::Data;
+use ruma::{DeviceId, UserId, RoomId};
 
 use crate::service::*;
 
@@ -47,7 +50,7 @@ impl Service<_> {
         room_id: &RoomId,
         since: u64,
     ) -> Result<()> {
-        self.db.lazy_load_confirm_delivery(user_d, device_id, room_id, since)
+        self.db.lazy_load_confirm_delivery(user_id, device_id, room_id, since)
     }
 
     #[tracing::instrument(skip(self))]
@@ -57,6 +60,6 @@ impl Service<_> {
         device_id: &DeviceId,
         room_id: &RoomId,
     ) -> Result<()> {
-        self.db.lazy_load_reset(user_id, device_id, room_id);
+        self.db.lazy_load_reset(user_id, device_id, room_id)
     }
 }

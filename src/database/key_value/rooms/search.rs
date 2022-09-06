@@ -1,7 +1,12 @@
-impl service::room::search::Data for KeyValueDatabase {
+use std::mem::size_of;
 
+use ruma::RoomId;
+
+use crate::{service, database::KeyValueDatabase, utils};
+
+impl service::rooms::search::Data for KeyValueDatabase {
     fn index_pdu<'a>(&self, room_id: &RoomId, pdu_id: u64, message_body: String) -> Result<()> {
-        let mut batch = body
+        let mut batch = message_body
             .split_terminator(|c: char| !c.is_alphanumeric())
             .filter(|s| !s.is_empty())
             .filter(|word| word.len() <= 50)
@@ -14,7 +19,7 @@ impl service::room::search::Data for KeyValueDatabase {
                 (key, Vec::new())
             });
 
-        self.tokenids.insert_batch(&mut batch)?;
+        self.tokenids.insert_batch(&mut batch)
     }
 
     fn search_pdus<'a>(
@@ -64,3 +69,4 @@ impl service::room::search::Data for KeyValueDatabase {
             )
         }))
     }
+}

@@ -1,4 +1,4 @@
-use crate::{database::DatabaseGuard, Error, Result, Ruma};
+use crate::{Error, Result, Ruma, services};
 use ruma::api::client::{
     error::ErrorKind,
     search::search_events::{
@@ -15,7 +15,6 @@ use std::collections::BTreeMap;
 ///
 /// - Only works if the user is currently joined to the room (TODO: Respect history visibility)
 pub async fn search_events_route(
-    db: DatabaseGuard,
     body: Ruma<search_events::v3::IncomingRequest>,
 ) -> Result<search_events::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
@@ -24,7 +23,7 @@ pub async fn search_events_route(
     let filter = &search_criteria.filter;
 
     let room_ids = filter.rooms.clone().unwrap_or_else(|| {
-        db.rooms
+        services().rooms
             .rooms_joined(sender_user)
             .filter_map(|r| r.ok())
             .collect()
@@ -35,14 +34,14 @@ pub async fn search_events_route(
     let mut searches = Vec::new();
 
     for room_id in room_ids {
-        if !db.rooms.is_joined(sender_user, &room_id)? {
+        if !services().rooms.is_joined(sender_user, &room_id)? {
             return Err(Error::BadRequest(
                 ErrorKind::Forbidden,
                 "You don't have permission to view this room.",
             ));
         }
 
-        if let Some(search) = db
+        if let Some(search) = services()
             .rooms
             .search_pdus(&room_id, &search_criteria.search_term)?
         {
@@ -85,7 +84,7 @@ pub async fn search_events_route(
                     start: None,
                 },
                 rank: None,
-                result: db
+                result: services()
                     .rooms
                     .get_pdu_from_id(result)?
                     .map(|pdu| pdu.to_room_event()),

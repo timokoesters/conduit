@@ -1,7 +1,27 @@
 mod data;
 pub use data::Data;
 
-use crate::service::*;
+use crate::{services, Error, PduEvent};
+use bytes::BytesMut;
+use ruma::{
+    api::{
+        client::push::{get_pushers, set_pusher, PusherKind},
+        push_gateway::send_event_notification::{
+            self,
+            v1::{Device, Notification, NotificationCounts, NotificationPriority},
+        },
+        MatrixVersion, OutgoingRequest, SendAccessToken,
+    },
+    events::{
+        room::{name::RoomNameEventContent, power_levels::RoomPowerLevelsEventContent},
+        AnySyncRoomEvent, RoomEventType, StateEventType,
+    },
+    push::{Action, PushConditionRoomCtx, PushFormat, Ruleset, Tweak},
+    serde::Raw,
+    uint, RoomId, UInt, UserId,
+};
+use std::{fmt::Debug, mem};
+use tracing::{error, info, warn};
 
 pub struct Service<D: Data> {
     db: D,
@@ -27,9 +47,8 @@ impl Service<_> {
         self.db.get_pusher_senderkeys(sender)
     }
 
-    #[tracing::instrument(skip(globals, destination, request))]
+    #[tracing::instrument(skip(destination, request))]
     pub async fn send_request<T: OutgoingRequest>(
-        globals: &crate::database::globals::Globals,
         destination: &str,
         request: T,
     ) -> Result<T::IncomingResponse>
@@ -57,7 +76,7 @@ impl Service<_> {
         //*reqwest_request.timeout_mut() = Some(Duration::from_secs(5));
 
         let url = reqwest_request.url().clone();
-        let response = globals.default_client().execute(reqwest_request).await;
+        let response = services().globals.default_client().execute(reqwest_request).await;
 
         match response {
             Ok(mut response) => {
@@ -105,19 +124,19 @@ impl Service<_> {
         }
     }
 
-    #[tracing::instrument(skip(user, unread, pusher, ruleset, pdu, db))]
+    #[tracing::instrument(skip(user, unread, pusher, ruleset, pdu))]
     pub async fn send_push_notice(
+        &self,
         user: &UserId,
         unread: UInt,
         pusher: &get_pushers::v3::Pusher,
         ruleset: Ruleset,
         pdu: &PduEvent,
-        db: &Database,
     ) -> Result<()> {
         let mut notify = None;
         let mut tweaks = Vec::new();
 
-        let power_levels: RoomPowerLevelsEventContent = db
+        let power_levels: RoomPowerLevelsEventContent = services()
             .rooms
             .room_state_get(&pdu.room_id, &StateEventType::RoomPowerLevels, "")?
             .map(|ev| {
@@ -127,13 +146,12 @@ impl Service<_> {
             .transpose()?
             .unwrap_or_default();
 
-        for action in get_actions(
+        for action in self.get_actions(
             user,
             &ruleset,
             &power_levels,
             &pdu.to_sync_room_event(),
             &pdu.room_id,
-            db,
         )? {
             let n = match action {
                 Action::DontNotify => false,
@@ -155,27 +173,26 @@ impl Service<_> {
         }
 
         if notify == Some(true) {
-            send_notice(unread, pusher, tweaks, pdu, db).await?;
+            self.send_notice(unread, pusher, tweaks, pdu).await?;
         }
         // Else the event triggered no actions
 
         Ok(())
     }
 
-    #[tracing::instrument(skip(user, ruleset, pdu, db))]
+    #[tracing::instrument(skip(user, ruleset, pdu))]
     pub fn get_actions<'a>(
+        &self,
         user: &UserId,
         ruleset: &'a Ruleset,
         power_levels: &RoomPowerLevelsEventContent,
         pdu: &Raw<AnySyncRoomEvent>,
         room_id: &RoomId,
-        db: &Database,
     ) -> Result<&'a [Action]> {
         let ctx = PushConditionRoomCtx {
             room_id: room_id.to_owned(),
             member_count: 10_u32.into(), // TODO: get member count efficiently
-            user_display_name: db
-                .users
+            user_display_name: services().users
                 .displayname(user)?
                 .unwrap_or_else(|| user.localpart().to_owned()),
             users_power_levels: power_levels.users.clone(),
@@ -186,13 +203,13 @@ impl Service<_> {
         Ok(ruleset.get_actions(pdu, &ctx))
     }
 
-    #[tracing::instrument(skip(unread, pusher, tweaks, event, db))]
+    #[tracing::instrument(skip(unread, pusher, tweaks, event))]
     async fn send_notice(
+        &self,
         unread: UInt,
         pusher: &get_pushers::v3::Pusher,
         tweaks: Vec<Tweak>,
         event: &PduEvent,
-        db: &Database,
     ) -> Result<()> {
         // TODO: email
         if pusher.kind == PusherKind::Email {
@@ -240,12 +257,8 @@ impl Service<_> {
         }
 
         if event_id_only {
-            send_request(
-                &db.globals,
-                url,
-                send_event_notification::v1::Request::new(notifi),
-            )
-            .await?;
+            self.send_request(url, send_event_notification::v1::Request::new(notifi))
+                .await?;
         } else {
             notifi.sender = Some(&event.sender);
             notifi.event_type = Some(&event.kind);
@@ -256,11 +269,11 @@ impl Service<_> {
                 notifi.user_is_target = event.state_key.as_deref() == Some(event.sender.as_str());
             }
 
-            let user_name = db.users.displayname(&event.sender)?;
+            let user_name = services().users.displayname(&event.sender)?;
             notifi.sender_display_name = user_name.as_deref();
 
             let room_name = if let Some(room_name_pdu) =
-                db.rooms
+                services().rooms
                     .room_state_get(&event.room_id, &StateEventType::RoomName, "")?
             {
                 serde_json::from_str::<RoomNameEventContent>(room_name_pdu.content.get())
@@ -272,8 +285,7 @@ impl Service<_> {
 
             notifi.room_name = room_name.as_deref();
 
-            send_request(
-                &db.globals,
+            self.send_request(
                 url,
                 send_event_notification::v1::Request::new(notifi),
             )

@@ -1,5 +1,5 @@
 pub trait Data {
-    pub fn add_txnid(
+    fn add_txnid(
         &self,
         user_id: &UserId,
         device_id: Option<&DeviceId>,
@@ -7,7 +7,7 @@ pub trait Data {
         data: &[u8],
     ) -> Result<()>;
 
-    pub fn existing_txnid(
+    fn existing_txnid(
         &self,
         user_id: &UserId,
         device_id: Option<&DeviceId>,
