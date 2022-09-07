@@ -86,10 +86,10 @@ pub async fn set_room_visibility_route(
 
     match &body.visibility {
         room::Visibility::Public => {
-            services().rooms.set_public(&body.room_id, true)?;
+            services().rooms.directory.set_public(&body.room_id)?;
             info!("{} made {} public", sender_user, body.room_id);
         }
-        room::Visibility::Private => services().rooms.set_public(&body.room_id, false)?,
+        room::Visibility::Private => services().rooms.directory.set_not_public(&body.room_id)?,
         _ => {
             return Err(Error::BadRequest(
                 ErrorKind::InvalidParam,
@@ -108,7 +108,7 @@ pub async fn get_room_visibility_route(
     body: Ruma<get_room_visibility::v3::IncomingRequest>,
 ) -> Result<get_room_visibility::v3::Response> {
     Ok(get_room_visibility::v3::Response {
-        visibility: if services().rooms.is_public_room(&body.room_id)? {
+        visibility: if services().rooms.directory.is_public_room(&body.room_id)? {
             room::Visibility::Public
         } else {
             room::Visibility::Private
@@ -176,6 +176,7 @@ pub(crate) async fn get_public_rooms_filtered_helper(
 
     let mut all_rooms: Vec<_> = services()
         .rooms
+        .directory
         .public_rooms()
         .map(|room_id| {
             let room_id = room_id?;
@@ -183,6 +184,7 @@ pub(crate) async fn get_public_rooms_filtered_helper(
             let chunk = PublicRoomsChunk {
                 canonical_alias: services()
                     .rooms
+                    .state_accessor
                     .room_state_get(&room_id, &StateEventType::RoomCanonicalAlias, "")?
                     .map_or(Ok(None), |s| {
                         serde_json::from_str(s.content.get())
@@ -193,6 +195,7 @@ pub(crate) async fn get_public_rooms_filtered_helper(
                     })?,
                 name: services()
                     .rooms
+                    .state_accessor
                     .room_state_get(&room_id, &StateEventType::RoomName, "")?
                     .map_or(Ok(None), |s| {
                         serde_json::from_str(s.content.get())
@@ -203,6 +206,7 @@ pub(crate) async fn get_public_rooms_filtered_helper(
                     })?,
                 num_joined_members: services()
                     .rooms
+                    .state_cache
                     .room_joined_count(&room_id)?
                     .unwrap_or_else(|| {
                         warn!("Room {} has no member count", room_id);
@@ -212,6 +216,7 @@ pub(crate) async fn get_public_rooms_filtered_helper(
                     .expect("user count should not be that big"),
                 topic: services()
                     .rooms
+                    .state_accessor
                     .room_state_get(&room_id, &StateEventType::RoomTopic, "")?
                     .map_or(Ok(None), |s| {
                         serde_json::from_str(s.content.get())
@@ -222,6 +227,7 @@ pub(crate) async fn get_public_rooms_filtered_helper(
                     })?,
                 world_readable: services()
                     .rooms
+                    .state_accessor
                     .room_state_get(&room_id, &StateEventType::RoomHistoryVisibility, "")?
                     .map_or(Ok(false), |s| {
                         serde_json::from_str(s.content.get())
@@ -236,6 +242,7 @@ pub(crate) async fn get_public_rooms_filtered_helper(
                     })?,
                 guest_can_join: services()
                     .rooms
+                    .state_accessor
                     .room_state_get(&room_id, &StateEventType::RoomGuestAccess, "")?
                     .map_or(Ok(false), |s| {
                         serde_json::from_str(s.content.get())
@@ -248,6 +255,7 @@ pub(crate) async fn get_public_rooms_filtered_helper(
                     })?,
                 avatar_url: services()
                     .rooms
+                    .state_accessor
                     .room_state_get(&room_id, &StateEventType::RoomAvatar, "")?
                     .map(|s| {
                         serde_json::from_str(s.content.get())
@@ -261,6 +269,7 @@ pub(crate) async fn get_public_rooms_filtered_helper(
                     .flatten(),
                 join_rule: services()
                     .rooms
+                    .state_accessor
                     .room_state_get(&room_id, &StateEventType::RoomJoinRules, "")?
                     .map(|s| {
                         serde_json::from_str(s.content.get())

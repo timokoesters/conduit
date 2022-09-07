@@ -1,4 +1,5 @@
 use ruma::{RoomId, events::receipt::ReceiptEvent, UserId, serde::Raw};
+use crate::Result;
 
 pub trait Data {
     /// Replaces the previous read receipt.
@@ -14,13 +15,13 @@ pub trait Data {
         &self,
         room_id: &RoomId,
         since: u64,
-    ) -> impl Iterator<
+    ) -> Box<dyn Iterator<
         Item = Result<(
             Box<UserId>,
             u64,
             Raw<ruma::events::AnySyncEphemeralRoomEvent>,
         )>,
-    >;
+    >>;
 
     /// Sets a private read marker at `count`.
     fn private_read_set(&self, room_id: &RoomId, user_id: &UserId, count: u64) -> Result<()>;

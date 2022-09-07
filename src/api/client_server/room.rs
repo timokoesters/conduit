@@ -87,7 +87,7 @@ pub async fn create_room_route(
                             Error::BadRequest(ErrorKind::InvalidParam, "Invalid alias.")
                         })?;
 
-                if services().rooms.id_from_alias(&alias)?.is_some() {
+                if services().rooms.alias.resolve_local_alias(&alias)?.is_some() {
                     Err(Error::BadRequest(
                         ErrorKind::RoomInUse,
                         "Room alias already exists.",

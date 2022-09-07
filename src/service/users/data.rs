@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
-
+use crate::Result;
 use ruma::{UserId, DeviceId, DeviceKeyAlgorithm, DeviceKeyId, serde::Raw, encryption::{OneTimeKey, DeviceKeys, CrossSigningKey}, UInt, events::AnyToDeviceEvent, api::client::{device::Device, filter::IncomingFilterDefinition}, MxcUri};
 
-trait Data {
+pub trait Data {
     /// Check if a user has an account on this homeserver.
     fn exists(&self, user_id: &UserId) -> Result<bool>;
 
@@ -16,7 +16,7 @@ trait Data {
     fn find_from_token(&self, token: &str) -> Result<Option<(Box<UserId>, String)>>;
 
     /// Returns an iterator over all users on this homeserver.
-    fn iter(&self) -> impl Iterator<Item = Result<Box<UserId>>> + '_;
+    fn iter(&self) -> Box<dyn Iterator<Item = Result<Box<UserId>>>>;
 
     /// Returns a list of local users as list of usernames.
     ///
@@ -69,7 +69,7 @@ trait Data {
     fn all_device_ids<'a>(
         &'a self,
         user_id: &UserId,
-    ) -> impl Iterator<Item = Result<Box<DeviceId>>> + 'a;
+    ) -> Box<dyn Iterator<Item = Result<Box<DeviceId>>>>;
 
     /// Replaces the access token of one device.
     fn set_token(&self, user_id: &UserId, device_id: &DeviceId, token: &str) -> Result<()>;
@@ -125,7 +125,7 @@ trait Data {
         user_or_room_id: &str,
         from: u64,
         to: Option<u64>,
-    ) -> impl Iterator<Item = Result<Box<UserId>>> + 'a;
+    ) -> Box<dyn Iterator<Item = Result<Box<UserId>>>>;
 
     fn mark_device_key_update(
         &self,
@@ -193,7 +193,7 @@ trait Data {
     fn all_devices_metadata<'a>(
         &'a self,
         user_id: &UserId,
-    ) -> impl Iterator<Item = Result<Device>> + 'a;
+    ) -> Box<dyn Iterator<Item = Result<Device>>>;
 
     /// Creates a new sync filter. Returns the filter id.
     fn create_filter(

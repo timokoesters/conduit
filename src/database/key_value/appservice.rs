@@ -1,4 +1,4 @@
-use crate::{database::KeyValueDatabase, service, utils, Error};
+use crate::{database::KeyValueDatabase, service, utils, Error, Result};
 
 impl service::appservice::Data for KeyValueDatabase {
     /// Registers an appservice and returns the ID to the caller
@@ -54,7 +54,7 @@ impl service::appservice::Data for KeyValueDatabase {
             )
     }
 
-    fn iter_ids(&self) -> Result<impl Iterator<Item = Result<String>> + '_> {
+    fn iter_ids(&self) -> Result<Box<dyn Iterator<Item = Result<String>>>> {
         Ok(self.id_appserviceregistrations.iter().map(|(id, _)| {
             utils::string_from_bytes(&id)
                 .map_err(|_| Error::bad_database("Invalid id bytes in id_appserviceregistrations."))

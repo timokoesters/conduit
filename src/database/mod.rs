@@ -1,7 +1,7 @@
 pub mod abstraction;
 pub mod key_value;
 
-use crate::{utils, Config, Error, Result, service::{users, globals, uiaa, rooms, account_data, media, key_backups, transaction_ids, sending, admin::{self, create_admin_room}, appservice, pusher}};
+use crate::{utils, Config, Error, Result, service::{users, globals, uiaa, rooms, account_data, media, key_backups, transaction_ids, sending, appservice, pusher}};
 use abstraction::KeyValueDatabaseEngine;
 use directories::ProjectDirs;
 use futures_util::{stream::FuturesUnordered, StreamExt};
@@ -253,7 +253,7 @@ impl KeyValueDatabase {
         let (admin_sender, admin_receiver) = mpsc::unbounded_channel();
         let (sending_sender, sending_receiver) = mpsc::unbounded_channel();
 
-        let db = Arc::new(TokioRwLock::from(Self {
+        let db = Self {
             _db: builder.clone(),
                 userid_password: builder.open_tree("userid_password")?,
                 userid_displayname: builder.open_tree("userid_displayname")?,
@@ -345,10 +345,9 @@ impl KeyValueDatabase {
                 senderkey_pusher: builder.open_tree("senderkey_pusher")?,
                 global: builder.open_tree("global")?,
                 server_signingkeys: builder.open_tree("server_signingkeys")?,
-        }));
+        };
 
         // TODO: do this after constructing the db
-        let guard = db.read().await;
 
         // Matrix resource ownership is based on the server name; changing it
         // requires recreating the database from scratch.

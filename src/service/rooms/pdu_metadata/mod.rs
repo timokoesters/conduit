@@ -4,13 +4,13 @@ use std::sync::Arc;
 pub use data::Data;
 use ruma::{RoomId, EventId};
 
-use crate::service::*;
+use crate::Result;
 
 pub struct Service<D: Data> {
     db: D,
 }
 
-impl Service<_> {
+impl<D: Data> Service<D> {
     #[tracing::instrument(skip(self, room_id, event_ids))]
     pub fn mark_as_referenced(&self, room_id: &RoomId, event_ids: &[Arc<EventId>]) -> Result<()> {
         self.db.mark_as_referenced(room_id, event_ids)

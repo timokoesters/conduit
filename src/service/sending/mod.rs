@@ -6,7 +6,7 @@ use std::{
 };
 
 use crate::{
-    appservice_server, database::pusher, server_server, utils, Database, Error, PduEvent, Result,
+    utils, Error, PduEvent, Result, services, api::{server_server, appservice_server},
 };
 use federation::transactions::send_transaction_message;
 use futures_util::{stream::FuturesUnordered, StreamExt};
@@ -33,8 +33,6 @@ use tokio::{
     sync::{mpsc, RwLock, Semaphore},
 };
 use tracing::{error, warn};
-
-use super::abstraction::Tree;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum OutgoingKind {
@@ -77,11 +75,8 @@ pub enum SendingEventType {
     Edu(Vec<u8>),
 }
 
-pub struct Sending {
+pub struct Service {
     /// The state for a given state hash.
-    pub(super) servername_educount: Arc<dyn Tree>, // EduCount: Count of last EDU sync
-    pub(super) servernameevent_data: Arc<dyn Tree>, // ServernameEvent = (+ / $)SenderKey / ServerName / UserId + PduId / Id (for edus), Data = EDU content
-    pub(super) servercurrentevent_data: Arc<dyn Tree>, // ServerCurrentEvents = (+ / $)ServerName / UserId + PduId / Id (for edus), Data = EDU content
     pub(super) maximum_requests: Arc<Semaphore>,
     pub sender: mpsc::UnboundedSender<(Vec<u8>, Vec<u8>)>,
 }
@@ -92,10 +87,9 @@ enum TransactionStatus {
     Retrying(u32),        // number of times failed
 }
 
-impl Sending {
+impl Service {
     pub fn start_handler(
         &self,
-        db: Arc<RwLock<Database>>,
         mut receiver: mpsc::UnboundedReceiver<(Vec<u8>, Vec<u8>)>,
     ) {
         tokio::spawn(async move {
@@ -106,9 +100,7 @@ impl Sending {
             // Retry requests we could not finish yet
             let mut initial_transactions = HashMap::<OutgoingKind, Vec<SendingEventType>>::new();
 
-            let guard = db.read().await;
-
-            for (key, outgoing_kind, event) in guard
+            for (key, outgoing_kind, event) in services()
                 .sending
                 .servercurrentevent_data
                 .iter()
@@ -127,14 +119,12 @@ impl Sending {
                         "Dropping some current events: {:?} {:?} {:?}",
                         key, outgoing_kind, event
                     );
-                    guard.sending.servercurrentevent_data.remove(&key).unwrap();
+                    services().sending.servercurrentevent_data.remove(&key).unwrap();
                     continue;
                 }
 
                 entry.push(event);
             }
-
-            drop(guard);
 
             for (outgoing_kind, events) in initial_transactions {
                 current_transaction_status
@@ -142,7 +132,6 @@ impl Sending {
                 futures.push(Self::handle_events(
                     outgoing_kind.clone(),
                     events,
-                    Arc::clone(&db),
                 ));
             }
 
@@ -151,17 +140,15 @@ impl Sending {
                     Some(response) = futures.next() => {
                         match response {
                             Ok(outgoing_kind) => {
-                                let guard = db.read().await;
-
                                 let prefix = outgoing_kind.get_prefix();
-                                for (key, _) in guard.sending.servercurrentevent_data
+                                for (key, _) in services().sending.servercurrentevent_data
                                     .scan_prefix(prefix.clone())
                                 {
-                                    guard.sending.servercurrentevent_data.remove(&key).unwrap();
+                                    services().sending.servercurrentevent_data.remove(&key).unwrap();
                                 }
 
                                 // Find events that have been added since starting the last request
-                                let new_events: Vec<_> = guard.sending.servernameevent_data
+                                let new_events: Vec<_> = services().sending.servernameevent_data
                                     .scan_prefix(prefix.clone())
                                     .filter_map(|(k, v)| {
                                         Self::parse_servercurrentevent(&k, v).ok().map(|ev| (ev, k))
@@ -175,17 +162,14 @@ impl Sending {
                                     // Insert pdus we found
                                     for (e, key) in &new_events {
                                         let value = if let SendingEventType::Edu(value) = &e.1 { &**value } else { &[] };
-                                        guard.sending.servercurrentevent_data.insert(key, value).unwrap();
-                                        guard.sending.servernameevent_data.remove(key).unwrap();
+                                        services().sending.servercurrentevent_data.insert(key, value).unwrap();
+                                        services().sending.servernameevent_data.remove(key).unwrap();
                                     }
-
-                                    drop(guard);
 
                                     futures.push(
                                         Self::handle_events(
                                             outgoing_kind.clone(),
                                             new_events.into_iter().map(|(event, _)| event.1).collect(),
-                                            Arc::clone(&db),
                                         )
                                     );
                                 } else {
@@ -206,15 +190,12 @@ impl Sending {
                     },
                     Some((key, value)) = receiver.recv() => {
                         if let Ok((outgoing_kind, event)) = Self::parse_servercurrentevent(&key, value) {
-                            let guard = db.read().await;
-
                             if let Ok(Some(events)) = Self::select_events(
                                 &outgoing_kind,
                                 vec![(event, key)],
                                 &mut current_transaction_status,
-                                &guard
                             ) {
-                                futures.push(Self::handle_events(outgoing_kind, events, Arc::clone(&db)));
+                                futures.push(Self::handle_events(outgoing_kind, events));
                             }
                         }
                     }
@@ -223,12 +204,11 @@ impl Sending {
         });
     }
 
-    #[tracing::instrument(skip(outgoing_kind, new_events, current_transaction_status, db))]
+    #[tracing::instrument(skip(outgoing_kind, new_events, current_transaction_status))]
     fn select_events(
         outgoing_kind: &OutgoingKind,
         new_events: Vec<(SendingEventType, Vec<u8>)>, // Events we want to send: event and full key
         current_transaction_status: &mut HashMap<Vec<u8>, TransactionStatus>,
-        db: &Database,
     ) -> Result<Option<Vec<SendingEventType>>> {
         let mut retry = false;
         let mut allow = true;
@@ -266,7 +246,7 @@ impl Sending {
 
         if retry {
             // We retry the previous transaction
-            for (key, value) in db.sending.servercurrentevent_data.scan_prefix(prefix) {
+            for (key, value) in services().sending.servercurrentevent_data.scan_prefix(prefix) {
                 if let Ok((_, e)) = Self::parse_servercurrentevent(&key, value) {
                     events.push(e);
                 }
@@ -278,22 +258,22 @@ impl Sending {
                 } else {
                     &[][..]
                 };
-                db.sending
+                services().sending
                     .servercurrentevent_data
                     .insert(&full_key, value)?;
 
                 // If it was a PDU we have to unqueue it
                 // TODO: don't try to unqueue EDUs
-                db.sending.servernameevent_data.remove(&full_key)?;
+                services().sending.servernameevent_data.remove(&full_key)?;
 
                 events.push(e);
             }
 
             if let OutgoingKind::Normal(server_name) = outgoing_kind {
-                if let Ok((select_edus, last_count)) = Self::select_edus(db, server_name) {
+                if let Ok((select_edus, last_count)) = Self::select_edus(server_name) {
                     events.extend(select_edus.into_iter().map(SendingEventType::Edu));
 
-                    db.sending
+                    services().sending
                         .servername_educount
                         .insert(server_name.as_bytes(), &last_count.to_be_bytes())?;
                 }
@@ -303,10 +283,10 @@ impl Sending {
         Ok(Some(events))
     }
 
-    #[tracing::instrument(skip(db, server))]
-    pub fn select_edus(db: &Database, server: &ServerName) -> Result<(Vec<Vec<u8>>, u64)> {
+    #[tracing::instrument(skip(server))]
+    pub fn select_edus(server: &ServerName) -> Result<(Vec<Vec<u8>>, u64)> {
         // u64: count of last edu
-        let since = db
+        let since = services()
             .sending
             .servername_educount
             .get(server.as_bytes())?
@@ -318,25 +298,25 @@ impl Sending {
         let mut max_edu_count = since;
         let mut device_list_changes = HashSet::new();
 
-        'outer: for room_id in db.rooms.server_rooms(server) {
+        'outer: for room_id in services().rooms.server_rooms(server) {
             let room_id = room_id?;
             // Look for device list updates in this room
             device_list_changes.extend(
-                db.users
+                services().users
                     .keys_changed(&room_id.to_string(), since, None)
                     .filter_map(|r| r.ok())
-                    .filter(|user_id| user_id.server_name() == db.globals.server_name()),
+                    .filter(|user_id| user_id.server_name() == services().globals.server_name()),
             );
 
             // Look for read receipts in this room
-            for r in db.rooms.edus.readreceipts_since(&room_id, since) {
+            for r in services().rooms.edus.readreceipts_since(&room_id, since) {
                 let (user_id, count, read_receipt) = r?;
 
                 if count > max_edu_count {
                     max_edu_count = count;
                 }
 
-                if user_id.server_name() != db.globals.server_name() {
+                if user_id.server_name() != services().globals.server_name() {
                     continue;
                 }
 
@@ -496,14 +476,11 @@ impl Sending {
         Ok(())
     }
 
-    #[tracing::instrument(skip(db, events, kind))]
+    #[tracing::instrument(skip(events, kind))]
     async fn handle_events(
         kind: OutgoingKind,
         events: Vec<SendingEventType>,
-        db: Arc<RwLock<Database>>,
     ) -> Result<OutgoingKind, (OutgoingKind, Error)> {
-        let db = db.read().await;
-
         match &kind {
             OutgoingKind::Appservice(id) => {
                 let mut pdu_jsons = Vec::new();
@@ -511,7 +488,7 @@ impl Sending {
                 for event in &events {
                     match event {
                         SendingEventType::Pdu(pdu_id) => {
-                            pdu_jsons.push(db.rooms
+                            pdu_jsons.push(services().rooms
                                 .get_pdu_from_id(pdu_id)
                                 .map_err(|e| (kind.clone(), e))?
                                 .ok_or_else(|| {
@@ -530,11 +507,10 @@ impl Sending {
                     }
                 }
 
-                let permit = db.sending.maximum_requests.acquire().await;
+                let permit = services().sending.maximum_requests.acquire().await;
 
                 let response = appservice_server::send_request(
-                    &db.globals,
-                    db.appservice
+                    services().appservice
                         .get_registration(&id)
                         .map_err(|e| (kind.clone(), e))?
                         .ok_or_else(|| {
@@ -576,7 +552,7 @@ impl Sending {
                     match event {
                         SendingEventType::Pdu(pdu_id) => {
                             pdus.push(
-                                db.rooms
+                                services().rooms
                                     .get_pdu_from_id(pdu_id)
                                     .map_err(|e| (kind.clone(), e))?
                                     .ok_or_else(|| {
@@ -624,7 +600,7 @@ impl Sending {
                     senderkey.push(0xff);
                     senderkey.extend_from_slice(pushkey);
 
-                    let pusher = match db
+                    let pusher = match services()
                         .pusher
                         .get_pusher(&senderkey)
                         .map_err(|e| (OutgoingKind::Push(user.clone(), pushkey.clone()), e))?
@@ -633,7 +609,7 @@ impl Sending {
                         None => continue,
                     };
 
-                    let rules_for_user = db
+                    let rules_for_user = services()
                         .account_data
                         .get(
                             None,
@@ -644,22 +620,21 @@ impl Sending {
                         .map(|ev: PushRulesEvent| ev.content.global)
                         .unwrap_or_else(|| push::Ruleset::server_default(&userid));
 
-                    let unread: UInt = db
+                    let unread: UInt = services()
                         .rooms
                         .notification_count(&userid, &pdu.room_id)
                         .map_err(|e| (kind.clone(), e))?
                         .try_into()
                         .expect("notifiation count can't go that high");
 
-                    let permit = db.sending.maximum_requests.acquire().await;
+                    let permit = services().sending.maximum_requests.acquire().await;
 
-                    let _response = pusher::send_push_notice(
+                    let _response = services().pusher.send_push_notice(
                         &userid,
                         unread,
                         &pusher,
                         rules_for_user,
                         &pdu,
-                        &db,
                     )
                     .await
                     .map(|_response| kind.clone())
@@ -678,7 +653,7 @@ impl Sending {
                         SendingEventType::Pdu(pdu_id) => {
                             // TODO: check room version and remove event_id if needed
                             let raw = PduEvent::convert_to_outgoing_federation_event(
-                                db.rooms
+                                services().rooms
                                     .get_pdu_json_from_id(pdu_id)
                                     .map_err(|e| (OutgoingKind::Normal(server.clone()), e))?
                                     .ok_or_else(|| {
@@ -700,13 +675,12 @@ impl Sending {
                     }
                 }
 
-                let permit = db.sending.maximum_requests.acquire().await;
+                let permit = services().sending.maximum_requests.acquire().await;
 
                 let response = server_server::send_request(
-                    &db.globals,
                     &*server,
                     send_transaction_message::v1::Request {
-                        origin: db.globals.server_name(),
+                        origin: services().globals.server_name(),
                         pdus: &pdu_jsons,
                         edus: &edu_jsons,
                         origin_server_ts: MilliSecondsSinceUnixEpoch::now(),
@@ -809,10 +783,9 @@ impl Sending {
         })
     }
 
-    #[tracing::instrument(skip(self, globals, destination, request))]
+    #[tracing::instrument(skip(self, destination, request))]
     pub async fn send_federation_request<T: OutgoingRequest>(
         &self,
-        globals: &crate::database::globals::Globals,
         destination: &ServerName,
         request: T,
     ) -> Result<T::IncomingResponse>
@@ -820,16 +793,15 @@ impl Sending {
         T: Debug,
     {
         let permit = self.maximum_requests.acquire().await;
-        let response = server_server::send_request(globals, destination, request).await;
+        let response = server_server::send_request(destination, request).await;
         drop(permit);
 
         response
     }
 
-    #[tracing::instrument(skip(self, globals, registration, request))]
+    #[tracing::instrument(skip(self, registration, request))]
     pub async fn send_appservice_request<T: OutgoingRequest>(
         &self,
-        globals: &crate::database::globals::Globals,
         registration: serde_yaml::Value,
         request: T,
     ) -> Result<T::IncomingResponse>
@@ -837,7 +809,7 @@ impl Sending {
         T: Debug,
     {
         let permit = self.maximum_requests.acquire().await;
-        let response = appservice_server::send_request(globals, registration, request).await;
+        let response = appservice_server::send_request(registration, request).await;
         drop(permit);
 
         response

@@ -2,7 +2,7 @@ use std::mem;
 
 use ruma::{UserId, RoomId, events::receipt::ReceiptEvent, serde::Raw, signatures::CanonicalJsonObject};
 
-use crate::{database::KeyValueDatabase, service, utils, Error, services};
+use crate::{database::KeyValueDatabase, service, utils, Error, services, Result};
 
 impl service::rooms::edus::read_receipt::Data for KeyValueDatabase {
     fn readreceipt_update(
@@ -50,13 +50,13 @@ impl service::rooms::edus::read_receipt::Data for KeyValueDatabase {
         &'a self,
         room_id: &RoomId,
         since: u64,
-    ) -> impl Iterator<
+    ) -> Box<dyn Iterator<
         Item=Result<(
             Box<UserId>,
             u64,
             Raw<ruma::events::AnySyncEphemeralRoomEvent>,
         )>,
-    > + 'a {
+    >> {
         let mut prefix = room_id.as_bytes().to_vec();
         prefix.push(0xff);
         let prefix2 = prefix.clone();

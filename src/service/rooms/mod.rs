@@ -16,7 +16,9 @@ pub mod state_compressor;
 pub mod timeline;
 pub mod user;
 
-pub struct Service<D> {
+pub trait Data: alias::Data + auth_chain::Data + directory::Data + edus::Data + lazy_loading::Data + metadata::Data + outlier::Data + pdu_metadata::Data + search::Data + short::Data + state::Data + state_accessor::Data + state_cache::Data + state_compressor::Data + timeline::Data + user::Data {}
+
+pub struct Service<D: Data> {
     pub alias: alias::Service<D>,
     pub auth_chain: auth_chain::Service<D>,
     pub directory: directory::Service<D>,

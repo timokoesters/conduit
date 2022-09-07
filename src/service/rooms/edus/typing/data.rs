@@ -1,5 +1,5 @@
 use std::collections::HashSet;
-
+use crate::Result;
 use ruma::{UserId, RoomId};
 
 pub trait Data {
@@ -14,5 +14,5 @@ pub trait Data {
     fn last_typing_update(&self, room_id: &RoomId) -> Result<u64>;
 
     /// Returns all user ids currently typing.
-    fn typings_all(&self, room_id: &RoomId) -> Result<HashSet<UserId>>;
+    fn typings_all(&self, room_id: &RoomId) -> Result<HashSet<Box<UserId>>>;
 }

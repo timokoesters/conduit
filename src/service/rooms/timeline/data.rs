@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use ruma::{signatures::CanonicalJsonObject, EventId, UserId, RoomId};
 
-use crate::PduEvent;
+use crate::{Result, PduEvent};
 
 pub trait Data {
     fn last_timeline_count(&self, sender_user: &UserId, room_id: &RoomId) -> Result<u64>;
@@ -48,28 +48,26 @@ pub trait Data {
 
     /// Returns an iterator over all events in a room that happened after the event with id `since`
     /// in chronological order.
-    #[tracing::instrument(skip(self))]
     fn pdus_since<'a>(
         &'a self,
         user_id: &UserId,
         room_id: &RoomId,
         since: u64,
-    ) -> Result<impl Iterator<Item = Result<(Vec<u8>, PduEvent)>> + 'a>;
+    ) -> Result<Box<dyn Iterator<Item = Result<(Vec<u8>, PduEvent)>>>>;
 
     /// Returns an iterator over all events and their tokens in a room that happened before the
     /// event with id `until` in reverse-chronological order.
-    #[tracing::instrument(skip(self))]
     fn pdus_until<'a>(
         &'a self,
         user_id: &UserId,
         room_id: &RoomId,
         until: u64,
-    ) -> Result<impl Iterator<Item = Result<(Vec<u8>, PduEvent)>> + 'a>;
+    ) -> Result<Box<dyn Iterator<Item = Result<(Vec<u8>, PduEvent)>>>>;
 
     fn pdus_after<'a>(
         &'a self,
         user_id: &UserId,
         room_id: &RoomId,
         from: u64,
-    ) -> Result<impl Iterator<Item = Result<(Vec<u8>, PduEvent)>> + 'a>;
+    ) -> Result<Box<dyn Iterator<Item = Result<(Vec<u8>, PduEvent)>>>>;
 }

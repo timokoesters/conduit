@@ -1842,7 +1842,7 @@ pub async fn get_room_information_route(
 
     let room_id = services()
         .rooms
-        .id_from_alias(&body.room_alias)?
+        .alias.resolve_local_alias(&body.room_alias)?
         .ok_or(Error::BadRequest(
             ErrorKind::NotFound,
             "Room alias not found.",

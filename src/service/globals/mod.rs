@@ -3,7 +3,7 @@ pub use data::Data;
 
 use crate::service::*;
 
-use crate::{database::Config, server_server::FedDest, utils, Error, Result};
+use crate::{Config, utils, Error, Result};
 use ruma::{
     api::{
         client::sync::sync_events,
@@ -24,8 +24,6 @@ use std::{
 use tokio::sync::{broadcast, watch::Receiver, Mutex as TokioMutex, Semaphore};
 use tracing::error;
 use trust_dns_resolver::TokioAsyncResolver;
-
-use super::abstraction::Tree;
 
 pub const COUNTER: &[u8] = b"c";
 
@@ -93,47 +91,18 @@ impl Default for RotationHandler {
 }
 
 
-impl Service<_> {
+impl<D: Data> Service<D> {
     pub fn load(
-        globals: Arc<dyn Tree>,
-        server_signingkeys: Arc<dyn Tree>,
+        db: D,
         config: Config,
     ) -> Result<Self> {
-        let keypair_bytes = globals.get(b"keypair")?.map_or_else(
-            || {
-                let keypair = utils::generate_keypair();
-                globals.insert(b"keypair", &keypair)?;
-                Ok::<_, Error>(keypair)
-            },
-            |s| Ok(s.to_vec()),
-        )?;
-
-        let mut parts = keypair_bytes.splitn(2, |&b| b == 0xff);
-
-        let keypair = utils::string_from_bytes(
-            // 1. version
-            parts
-                .next()
-                .expect("splitn always returns at least one element"),
-        )
-        .map_err(|_| Error::bad_database("Invalid version bytes in keypair."))
-        .and_then(|version| {
-            // 2. key
-            parts
-                .next()
-                .ok_or_else(|| Error::bad_database("Invalid keypair format in database."))
-                .map(|key| (version, key))
-        })
-        .and_then(|(version, key)| {
-            ruma::signatures::Ed25519KeyPair::from_der(key, version)
-                .map_err(|_| Error::bad_database("Private or public keys are invalid."))
-        });
+        let keypair = db.load_keypair();
 
         let keypair = match keypair {
             Ok(k) => k,
             Err(e) => {
                 error!("Keypair invalid. Deleting...");
-                globals.remove(b"keypair")?;
+                db.remove_keypair();
                 return Err(e);
             }
         };
@@ -167,7 +136,7 @@ impl Service<_> {
         let unstable_room_versions = vec![RoomVersionId::V3, RoomVersionId::V4, RoomVersionId::V5];
 
         let mut s = Self {
-            globals,
+            db,
             config,
             keypair: Arc::new(keypair),
             dns_resolver: TokioAsyncResolver::tokio_from_system_conf().map_err(|e| {
@@ -181,7 +150,6 @@ impl Service<_> {
             tls_name_override,
             federation_client,
             default_client,
-            server_signingkeys,
             jwt_decoding_key,
             stable_room_versions,
             unstable_room_versions,

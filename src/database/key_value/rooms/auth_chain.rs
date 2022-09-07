@@ -1,5 +1,9 @@
-impl service::room::auth_chain::Data for KeyValueDatabase {
-    fn get_cached_eventid_authchain<'a>() -> Result<HashSet<u64>> {
+use std::{collections::HashSet, mem::size_of};
+
+use crate::{service, database::KeyValueDatabase, Result, utils};
+
+impl service::rooms::auth_chain::Data for KeyValueDatabase {
+    fn get_cached_eventid_authchain(&self, shorteventid: u64) -> Result<HashSet<u64>> {
         self.shorteventid_authchain
             .get(&shorteventid.to_be_bytes())?
             .map(|chain| {
@@ -12,8 +16,8 @@ impl service::room::auth_chain::Data for KeyValueDatabase {
             })
     }
 
-    fn cache_eventid_authchain<'a>(shorteventid: u64, auth_chain: &HashSet<u64>) -> Result<()> {
-        shorteventid_authchain.insert(
+    fn cache_eventid_authchain(&self, shorteventid: u64, auth_chain: &HashSet<u64>) -> Result<()> {
+        self.shorteventid_authchain.insert(
             &shorteventid.to_be_bytes(),
             &auth_chain
                 .iter()

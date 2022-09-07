@@ -5,13 +5,13 @@ pub use data::Data;
 use regex::Regex;
 use ruma::{RoomId, UserId, events::{room::{member::MembershipState, create::RoomCreateEventContent}, AnyStrippedStateEvent, StateEventType, tag::TagEvent, RoomAccountDataEventType, GlobalAccountDataEventType, direct::DirectEvent, ignored_user_list::IgnoredUserListEvent, AnySyncStateEvent}, serde::Raw, ServerName};
 
-use crate::{service::*, SERVICE, utils, Error};
+use crate::{Result, services, utils, Error};
 
 pub struct Service<D: Data> {
     db: D,
 }
 
-impl Service<_> {
+impl<D: Data> Service<D> {
     /// Update current membership data.
     #[tracing::instrument(skip(self, last_state))]
     pub fn update_membership(
@@ -24,8 +24,8 @@ impl Service<_> {
         update_joined_count: bool,
     ) -> Result<()> {
         // Keep track what remote users exist by adding them as "deactivated" users
-        if user_id.server_name() != SERVICE.globals.server_name() {
-            SERVICE.users.create(user_id, None)?;
+        if user_id.server_name() != services().globals.server_name() {
+            services().users.create(user_id, None)?;
             // TODO: displayname, avatar url
         }
 
@@ -36,10 +36,6 @@ impl Service<_> {
         let mut serverroom_id = user_id.server_name().as_bytes().to_vec();
         serverroom_id.push(0xff);
         serverroom_id.extend_from_slice(room_id.as_bytes());
-
-        let mut roomuser_id = room_id.as_bytes().to_vec();
-        roomuser_id.push(0xff);
-        roomuser_id.extend_from_slice(user_id.as_bytes());
 
         match &membership {
             MembershipState::Join => {
@@ -80,24 +76,23 @@ impl Service<_> {
                         //     .ok();
 
                         // Copy old tags to new room
-                        if let Some(tag_event) = db.account_data.get::<TagEvent>(
+                        if let Some(tag_event) = services().account_data.get::<TagEvent>(
                             Some(&predecessor.room_id),
                             user_id,
                             RoomAccountDataEventType::Tag,
                         )? {
-                            SERVICE.account_data
+                            services().account_data
                                 .update(
                                     Some(room_id),
                                     user_id,
                                     RoomAccountDataEventType::Tag,
                                     &tag_event,
-                                    &db.globals,
                                 )
                                 .ok();
                         };
 
                         // Copy direct chat flag
-                        if let Some(mut direct_event) = SERVICE.account_data.get::<DirectEvent>(
+                        if let Some(mut direct_event) = services().account_data.get::<DirectEvent>(
                             None,
                             user_id,
                             GlobalAccountDataEventType::Direct.to_string().into(),
@@ -112,7 +107,7 @@ impl Service<_> {
                             }
 
                             if room_ids_updated {
-                                SERVICE.account_data.update(
+                                services().account_data.update(
                                     None,
                                     user_id,
                                     GlobalAccountDataEventType::Direct.to_string().into(),
@@ -123,16 +118,11 @@ impl Service<_> {
                     }
                 }
 
-                self.userroomid_joined.insert(&userroom_id, &[])?;
-                self.roomuserid_joined.insert(&roomuser_id, &[])?;
-                self.userroomid_invitestate.remove(&userroom_id)?;
-                self.roomuserid_invitecount.remove(&roomuser_id)?;
-                self.userroomid_leftstate.remove(&userroom_id)?;
-                self.roomuserid_leftcount.remove(&roomuser_id)?;
+                self.db.mark_as_joined(user_id, room_id)?;
             }
             MembershipState::Invite => {
                 // We want to know if the sender is ignored by the receiver
-                let is_ignored = SERVICE
+                let is_ignored = services()
                     .account_data
                     .get::<IgnoredUserListEvent>(
                         None,    // Ignored users are in global account data
@@ -153,41 +143,22 @@ impl Service<_> {
                     return Ok(());
                 }
 
-                self.userroomid_invitestate.insert(
-                    &userroom_id,
-                    &serde_json::to_vec(&last_state.unwrap_or_default())
-                        .expect("state to bytes always works"),
-                )?;
-                self.roomuserid_invitecount
-                    .insert(&roomuser_id, &db.globals.next_count()?.to_be_bytes())?;
-                self.userroomid_joined.remove(&userroom_id)?;
-                self.roomuserid_joined.remove(&roomuser_id)?;
-                self.userroomid_leftstate.remove(&userroom_id)?;
-                self.roomuserid_leftcount.remove(&roomuser_id)?;
+                self.db.mark_as_invited(user_id, room_id, last_state)?;
             }
             MembershipState::Leave | MembershipState::Ban => {
-                self.userroomid_leftstate.insert(
-                    &userroom_id,
-                    &serde_json::to_vec(&Vec::<Raw<AnySyncStateEvent>>::new()).unwrap(),
-                )?; // TODO
-                self.roomuserid_leftcount
-                    .insert(&roomuser_id, &db.globals.next_count()?.to_be_bytes())?;
-                self.userroomid_joined.remove(&userroom_id)?;
-                self.roomuserid_joined.remove(&roomuser_id)?;
-                self.userroomid_invitestate.remove(&userroom_id)?;
-                self.roomuserid_invitecount.remove(&roomuser_id)?;
+                self.db.mark_as_left(user_id, room_id)?;
             }
             _ => {}
         }
 
         if update_joined_count {
-            self.update_joined_count(room_id, db)?;
+            self.update_joined_count(room_id)?;
         }
 
         Ok(())
     }
 
-    #[tracing::instrument(skip(self, room_id, db))]
+    #[tracing::instrument(skip(self, room_id))]
     pub fn update_joined_count(&self, room_id: &RoomId) -> Result<()> {
         let mut joinedcount = 0_u64;
         let mut invitedcount = 0_u64;
@@ -196,8 +167,8 @@ impl Service<_> {
 
         for joined in self.room_members(room_id).filter_map(|r| r.ok()) {
             joined_servers.insert(joined.server_name().to_owned());
-            if joined.server_name() == db.globals.server_name()
-                && !db.users.is_deactivated(&joined).unwrap_or(true)
+            if joined.server_name() == services().globals.server_name()
+                && !services().users.is_deactivated(&joined).unwrap_or(true)
             {
                 real_users.insert(joined);
             }
@@ -285,7 +256,7 @@ impl Service<_> {
                 .get("sender_localpart")
                 .and_then(|string| string.as_str())
                 .and_then(|string| {
-                    UserId::parse_with_server_name(string, SERVICE.globals.server_name()).ok()
+                    UserId::parse_with_server_name(string, services().globals.server_name()).ok()
                 });
 
             let in_room = bridge_user_id

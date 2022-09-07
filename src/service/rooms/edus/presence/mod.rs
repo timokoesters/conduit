@@ -4,13 +4,13 @@ use std::collections::HashMap;
 pub use data::Data;
 use ruma::{RoomId, UserId, events::presence::PresenceEvent};
 
-use crate::service::*;
+use crate::Result;
 
 pub struct Service<D: Data> {
     db: D,
 }
 
-impl Service<_> {
+impl<D: Data> Service<D> {
     /// Adds a presence event which will be saved until a new event replaces it.
     ///
     /// Note: This method takes a RoomId because presence updates are always bound to rooms to

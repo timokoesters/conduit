@@ -4,13 +4,13 @@ use std::collections::HashSet;
 pub use data::Data;
 use ruma::{DeviceId, UserId, RoomId};
 
-use crate::service::*;
+use crate::Result;
 
 pub struct Service<D: Data> {
     db: D,
 }
 
-impl Service<_> {
+impl<D: Data> Service<D> {
     #[tracing::instrument(skip(self))]
     pub fn lazy_load_was_sent_before(
         &self,

@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use super::{DEVICE_ID_LENGTH, SESSION_ID_LENGTH, TOKEN_LENGTH};
 use crate::{
-    utils, Error, Result, Ruma, services,
+    utils, Error, Result, Ruma, services, api::client_server,
 };
 use ruma::{
     api::client::{
@@ -381,7 +381,7 @@ pub async fn deactivate_route(
     }
 
     // Make the user leave all rooms before deactivation
-    services().rooms.leave_all_rooms(&sender_user).await?;
+    client_server::leave_all_rooms(&sender_user).await?;
 
     // Remove devices and mark account as deactivated
     services().users.deactivate_account(sender_user)?;

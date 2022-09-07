@@ -1,3 +1,6 @@
+use ruma::{DeviceId, UserId, TransactionId};
+use crate::Result;
+
 pub trait Data {
     fn add_txnid(
         &self,

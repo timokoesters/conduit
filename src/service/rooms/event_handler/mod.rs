@@ -250,7 +250,7 @@ impl Service {
 
             // We go through all the signatures we see on the value and fetch the corresponding signing
             // keys
-            self.fetch_required_signing_keys(&value, pub_key_map, db)
+            self.fetch_required_signing_keys(&value, pub_key_map)
                 .await?;
 
             // 2. Check signatures, otherwise drop
@@ -1152,6 +1152,11 @@ impl Service {
         let mut graph: HashMap<Arc<EventId>, _> = HashMap::new();
         let mut eventid_info = HashMap::new();
         let mut todo_outlier_stack: Vec<Arc<EventId>> = initial_set;
+
+        let first_pdu_in_room = services()
+            .rooms
+            .first_pdu_in_room(room_id)?
+            .ok_or_else(|| Error::bad_database("Failed to find first pdu in db."))?;
 
         let mut amount = 0;
 

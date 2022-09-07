@@ -1,4 +1,5 @@
-use crate::service::rooms::CompressedStateEvent;
+use super::CompressedStateEvent;
+use crate::Result;
 
 pub struct StateDiff {
     parent: Option<u64>,
@@ -7,6 +8,6 @@ pub struct StateDiff {
 }
 
 pub trait Data {
-    fn get_statediff(shortstatehash: u64) -> Result<StateDiff>;
-    fn save_statediff(shortstatehash: u64, diff: StateDiff) -> Result<()>;
+    fn get_statediff(&self, shortstatehash: u64) -> Result<StateDiff>;
+    fn save_statediff(&self, shortstatehash: u64, diff: StateDiff) -> Result<()>;
 }

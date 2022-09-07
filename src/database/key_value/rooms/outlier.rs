@@ -1,6 +1,6 @@
 use ruma::{EventId, signatures::CanonicalJsonObject};
 
-use crate::{service, database::KeyValueDatabase, PduEvent, Error};
+use crate::{service, database::KeyValueDatabase, PduEvent, Error, Result};
 
 impl service::rooms::outlier::Data for KeyValueDatabase {
     fn get_outlier_pdu_json(&self, event_id: &EventId) -> Result<Option<CanonicalJsonObject>> {

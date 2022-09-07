@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use ruma::{UserId, RoomId, events::presence::PresenceEvent, presence::PresenceState, UInt};
 
-use crate::{service, database::KeyValueDatabase, utils, Error, services};
+use crate::{service, database::KeyValueDatabase, utils, Error, services, Result};
 
 impl service::rooms::edus::presence::Data for KeyValueDatabase {
     fn update_presence(
@@ -56,8 +56,8 @@ impl service::rooms::edus::presence::Data for KeyValueDatabase {
 
     fn get_presence_event(
         &self,
-        user_id: &UserId,
         room_id: &RoomId,
+        user_id: &UserId,
         count: u64,
     ) -> Result<Option<PresenceEvent>> {
         let mut presence_id = room_id.as_bytes().to_vec();

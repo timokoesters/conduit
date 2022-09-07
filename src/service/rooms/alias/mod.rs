@@ -1,12 +1,14 @@
 mod data;
 pub use data::Data;
+
 use ruma::{RoomAliasId, RoomId};
+use crate::Result;
 
 pub struct Service<D: Data> {
     db: D,
 }
 
-impl Service<_> {
+impl<D: Data> Service<D> {
     #[tracing::instrument(skip(self))]
     pub fn set_alias(
         &self,
@@ -26,7 +28,7 @@ impl Service<_> {
 
     #[tracing::instrument(skip(self))]
     pub fn resolve_local_alias(&self, alias: &RoomAliasId) -> Result<Option<Box<RoomId>>> {
-        self.db.resolve_local_alias(alias: &RoomAliasId)
+        self.db.resolve_local_alias(alias)
     }
 
     #[tracing::instrument(skip(self))]

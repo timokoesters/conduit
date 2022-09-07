@@ -6,13 +6,15 @@ use ruma::{RoomId, events::{room::{member::MembershipState, create::RoomCreateEv
 use serde::Deserialize;
 use tracing::warn;
 
-use crate::{service::*, SERVICE, PduEvent, Error, utils::calculate_hash};
+use crate::{Result, services, PduEvent, Error, utils::calculate_hash};
+
+use super::state_compressor::CompressedStateEvent;
 
 pub struct Service<D: Data> {
     db: D,
 }
 
-impl Service<_> {
+impl<D: Data> Service<D> {
     /// Set the room to the given statehash and update caches.
     pub fn force_state(
         &self,
@@ -23,11 +25,11 @@ impl Service<_> {
     ) -> Result<()> {
 
         for event_id in statediffnew.into_iter().filter_map(|new| {
-            SERVICE.rooms.state_compressor.parse_compressed_state_event(new)
+            services().rooms.state_compressor.parse_compressed_state_event(new)
                 .ok()
                 .map(|(_, id)| id)
         }) {
-            let pdu = match SERVICE.rooms.timeline.get_pdu_json(&event_id)? {
+            let pdu = match services().rooms.timeline.get_pdu_json(&event_id)? {
                 Some(pdu) => pdu,
                 None => continue,
             };
@@ -63,10 +65,10 @@ impl Service<_> {
                 Err(_) => continue,
             };
 
-            SERVICE.room.state_cache.update_membership(room_id, &user_id, membership, &pdu.sender, None, false)?;
+            services().room.state_cache.update_membership(room_id, &user_id, membership, &pdu.sender, None, false)?;
         }
 
-        SERVICE.room.state_cache.update_joined_count(room_id)?;
+        services().room.state_cache.update_joined_count(room_id)?;
 
         self.db.set_room_state(room_id, shortstatehash);
 
@@ -84,7 +86,7 @@ impl Service<_> {
         room_id: &RoomId,
         state_ids_compressed: HashSet<CompressedStateEvent>,
     ) -> Result<()> {
-        let shorteventid = SERVICE.short.get_or_create_shorteventid(event_id)?;
+        let shorteventid = services().short.get_or_create_shorteventid(event_id)?;
 
         let previous_shortstatehash = self.db.get_room_shortstatehash(room_id)?;
 
@@ -96,11 +98,11 @@ impl Service<_> {
         );
 
         let (shortstatehash, already_existed) =
-            SERVICE.short.get_or_create_shortstatehash(&state_hash)?;
+            services().short.get_or_create_shortstatehash(&state_hash)?;
 
         if !already_existed {
             let states_parents = previous_shortstatehash
-                .map_or_else(|| Ok(Vec::new()), |p| SERVICE.room.state_compressor.load_shortstatehash_info(p))?;
+                .map_or_else(|| Ok(Vec::new()), |p| services().room.state_compressor.load_shortstatehash_info(p))?;
 
             let (statediffnew, statediffremoved) =
                 if let Some(parent_stateinfo) = states_parents.last() {
@@ -119,7 +121,7 @@ impl Service<_> {
                 } else {
                     (state_ids_compressed, HashSet::new())
                 };
-            SERVICE.room.state_compressor.save_state_from_diff(
+            services().room.state_compressor.save_state_from_diff(
                 shortstatehash,
                 statediffnew,
                 statediffremoved,
@@ -176,7 +178,7 @@ impl Service<_> {
             }
 
             // TODO: statehash with deterministic inputs
-            let shortstatehash = SERVICE.globals.next_count()?;
+            let shortstatehash = services().globals.next_count()?;
 
             let mut statediffnew = HashSet::new();
             statediffnew.insert(new);
@@ -272,5 +274,9 @@ impl Service<_> {
             .map(|create_event| create_event.room_version)
             .ok_or_else(|| Error::BadDatabase("Invalid room version"))?;
         Ok(room_version)
+    }
+
+    pub fn get_room_shortstatehash(&self, room_id: &RoomId) -> Result<Option<u64>> {
+        self.db.get_room_shortstatehash(room_id)
     }
 }

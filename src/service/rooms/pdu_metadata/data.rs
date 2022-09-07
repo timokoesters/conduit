@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use ruma::{EventId, RoomId};
+use crate::Result;
 
 pub trait Data {
     fn mark_as_referenced(&self, room_id: &RoomId, event_ids: &[Arc<EventId>]) -> Result<()>;

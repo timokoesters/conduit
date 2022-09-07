@@ -3,7 +3,7 @@ use std::{mem::size_of, collections::BTreeMap};
 use ruma::{api::client::{filter::IncomingFilterDefinition, error::ErrorKind, device::Device}, UserId, RoomAliasId, MxcUri, DeviceId, MilliSecondsSinceUnixEpoch, DeviceKeyId, encryption::{OneTimeKey, CrossSigningKey, DeviceKeys}, serde::Raw, events::{AnyToDeviceEvent, StateEventType}, DeviceKeyAlgorithm, UInt};
 use tracing::warn;
 
-use crate::{service::{self, users::clean_signatures}, database::KeyValueDatabase, Error, utils, services};
+use crate::{service::{self, users::clean_signatures}, database::KeyValueDatabase, Error, utils, services, Result};
 
 impl service::users::Data for KeyValueDatabase {
     /// Check if a user has an account on this homeserver.
@@ -56,7 +56,7 @@ impl service::users::Data for KeyValueDatabase {
     }
 
     /// Returns an iterator over all users on this homeserver.
-    fn iter(&self) -> impl Iterator<Item = Result<Box<UserId>>> + '_ {
+    fn iter(&self) -> Box<dyn Iterator<Item = Result<Box<UserId>>>> {
         self.userid_password.iter().map(|(bytes, _)| {
             UserId::parse(utils::string_from_bytes(&bytes).map_err(|_| {
                 Error::bad_database("User ID in userid_password is invalid unicode.")
@@ -270,7 +270,7 @@ impl service::users::Data for KeyValueDatabase {
     fn all_device_ids<'a>(
         &'a self,
         user_id: &UserId,
-    ) -> impl Iterator<Item = Result<Box<DeviceId>>> + 'a {
+    ) -> Box<dyn Iterator<Item = Result<Box<DeviceId>>>> {
         let mut prefix = user_id.as_bytes().to_vec();
         prefix.push(0xff);
         // All devices have metadata
@@ -608,7 +608,7 @@ impl service::users::Data for KeyValueDatabase {
         user_or_room_id: &str,
         from: u64,
         to: Option<u64>,
-    ) -> impl Iterator<Item = Result<Box<UserId>>> + 'a {
+    ) -> Box<dyn Iterator<Item = Result<Box<UserId>>>> {
         let mut prefix = user_or_room_id.as_bytes().to_vec();
         prefix.push(0xff);
 
@@ -878,7 +878,7 @@ impl service::users::Data for KeyValueDatabase {
     fn all_devices_metadata<'a>(
         &'a self,
         user_id: &UserId,
-    ) -> impl Iterator<Item = Result<Device>> + 'a {
+    ) -> Box<dyn Iterator<Item = Result<Device>>> {
         let mut key = user_id.as_bytes().to_vec();
         key.push(0xff);
 

@@ -1,7 +1,7 @@
 mod data;
 pub use data::Data;
 
-use crate::{services, Error, PduEvent};
+use crate::{services, Error, PduEvent, Result};
 use bytes::BytesMut;
 use ruma::{
     api::{
@@ -27,7 +27,7 @@ pub struct Service<D: Data> {
     db: D,
 }
 
-impl Service<_> {
+impl<D: Data> Service<D> {
     pub fn set_pusher(&self, sender: &UserId, pusher: set_pusher::v3::Pusher) -> Result<()> {
         self.db.set_pusher(sender, pusher)
     }

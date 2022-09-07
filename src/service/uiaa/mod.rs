@@ -1,15 +1,16 @@
 mod data;
 pub use data::Data;
-use ruma::{api::client::{uiaa::{UiaaInfo, IncomingAuthData, IncomingPassword, AuthType}, error::ErrorKind}, DeviceId, UserId, signatures::CanonicalJsonValue};
+
+use ruma::{api::client::{uiaa::{UiaaInfo, IncomingAuthData, IncomingPassword, AuthType, IncomingUserIdentifier}, error::ErrorKind}, DeviceId, UserId, signatures::CanonicalJsonValue};
 use tracing::error;
 
-use crate::{service::*, utils, Error, SERVICE};
+use crate::{Result, utils, Error, services, api::client_server::SESSION_ID_LENGTH};
 
 pub struct Service<D: Data> {
     db: D,
 }
 
-impl Service<_> {
+impl<D: Data> Service<D> {
     /// Creates a new Uiaa session. Make sure the session token is unique.
     pub fn create(
         &self,
@@ -56,7 +57,7 @@ impl Service<_> {
                 ..
             }) => {
                 let username = match identifier {
-                    UserIdOrLocalpart(username) => username,
+                    IncomingUserIdentifier::UserIdOrLocalpart(username) => username,
                     _ => {
                         return Err(Error::BadRequest(
                             ErrorKind::Unrecognized,
@@ -66,13 +67,13 @@ impl Service<_> {
                 };
 
                 let user_id =
-                    UserId::parse_with_server_name(username.clone(), SERVICE.globals.server_name())
+                    UserId::parse_with_server_name(username.clone(), services().globals.server_name())
                         .map_err(|_| {
                             Error::BadRequest(ErrorKind::InvalidParam, "User ID is invalid.")
                         })?;
 
                 // Check if password is correct
-                if let Some(hash) = SERVICE.users.password_hash(&user_id)? {
+                if let Some(hash) = services().users.password_hash(&user_id)? {
                     let hash_matches =
                         argon2::verify_encoded(&hash, password.as_bytes()).unwrap_or(false);
 

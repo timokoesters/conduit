@@ -2,13 +2,13 @@ mod data;
 pub use data::Data;
 use ruma::{RoomId, UserId};
 
-use crate::service::*;
+use crate::Result;
 
 pub struct Service<D: Data> {
     db: D,
 }
 
-impl Service<_> {
+impl<D: Data> Service<D> {
     pub fn reset_notification_counts(&self, user_id: &UserId, room_id: &RoomId) -> Result<()> {
         self.db.reset_notification_counts(user_id, room_id)
     }
@@ -27,7 +27,7 @@ impl Service<_> {
         token: u64,
         shortstatehash: u64,
     ) -> Result<()> {
-        self.db.associate_token_shortstatehash(user_id, room_id)
+        self.db.associate_token_shortstatehash(room_id, token, shortstatehash)
     }
 
     pub fn get_token_shortstatehash(&self, room_id: &RoomId, token: u64) -> Result<Option<u64>> {

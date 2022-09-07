@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::{sync::MutexGuard, collections::HashSet};
 use std::fmt::Debug;
 
-use crate::{service, database::KeyValueDatabase, utils, Error};
+use crate::{service, database::KeyValueDatabase, utils, Error, Result};
 
 impl service::rooms::state::Data for KeyValueDatabase {
     fn get_room_shortstatehash(&self, room_id: &RoomId) -> Result<Option<u64>> {
@@ -24,7 +24,7 @@ impl service::rooms::state::Data for KeyValueDatabase {
         Ok(())
     }
 
-    fn set_event_state(&self, shorteventid: Vec<u8>, shortstatehash: Vec<u8>) -> Result<()> {
+    fn set_event_state(&self, shorteventid: u64, shortstatehash: u64) -> Result<()> {
         self.shorteventid_shortstatehash
             .insert(&shorteventid.to_be_bytes(), &shortstatehash.to_be_bytes())?;
         Ok(())

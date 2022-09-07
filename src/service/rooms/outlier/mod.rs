@@ -2,13 +2,13 @@ mod data;
 pub use data::Data;
 use ruma::{EventId, signatures::CanonicalJsonObject};
 
-use crate::{service::*, PduEvent};
+use crate::{Result, PduEvent};
 
 pub struct Service<D: Data> {
     db: D,
 }
 
-impl Service<_> {
+impl<D: Data> Service<D> {
     /// Returns the pdu from the outlier tree.
     pub fn get_outlier_pdu_json(&self, event_id: &EventId) -> Result<Option<CanonicalJsonObject>> {
         self.db.get_outlier_pdu_json(event_id)

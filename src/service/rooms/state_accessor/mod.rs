@@ -4,13 +4,13 @@ use std::{sync::Arc, collections::{HashMap, BTreeMap}};
 pub use data::Data;
 use ruma::{events::StateEventType, RoomId, EventId};
 
-use crate::{service::*, PduEvent};
+use crate::{Result, PduEvent};
 
 pub struct Service<D: Data> {
     db: D,
 }
 
-impl Service<_> {
+impl<D: Data> Service<D> {
     /// Builds a StateMap by iterating over all keys that start
     /// with state_hash, this gives the full state for the given state_hash.
     #[tracing::instrument(skip(self))]

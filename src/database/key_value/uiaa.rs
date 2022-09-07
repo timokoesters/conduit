@@ -1,8 +1,6 @@
-use std::io::ErrorKind;
+use ruma::{UserId, DeviceId, signatures::CanonicalJsonValue, api::client::{uiaa::UiaaInfo, error::ErrorKind}};
 
-use ruma::{UserId, DeviceId, signatures::CanonicalJsonValue, api::client::uiaa::UiaaInfo};
-
-use crate::{database::KeyValueDatabase, service, Error};
+use crate::{database::KeyValueDatabase, service, Error, Result};
 
 impl service::uiaa::Data for KeyValueDatabase {
     fn set_uiaa_request(

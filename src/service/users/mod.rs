@@ -2,15 +2,15 @@ mod data;
 use std::{collections::BTreeMap, mem};
 
 pub use data::Data;
-use ruma::{UserId, MxcUri, DeviceId, DeviceKeyId, serde::Raw, encryption::{OneTimeKey, CrossSigningKey, DeviceKeys}, DeviceKeyAlgorithm, UInt, events::AnyToDeviceEvent, api::client::{device::Device, filter::IncomingFilterDefinition}};
+use ruma::{UserId, MxcUri, DeviceId, DeviceKeyId, serde::Raw, encryption::{OneTimeKey, CrossSigningKey, DeviceKeys}, DeviceKeyAlgorithm, UInt, events::AnyToDeviceEvent, api::client::{device::Device, filter::IncomingFilterDefinition, error::ErrorKind}, RoomAliasId};
 
-use crate::{service::*, Error};
+use crate::{Result, Error, services};
 
 pub struct Service<D: Data> {
     db: D,
 }
 
-impl Service<_> {
+impl<D: Data> Service<D> {
     /// Check if a user has an account on this homeserver.
     pub fn exists(&self, user_id: &UserId) -> Result<bool> {
         self.db.exists(user_id)
@@ -22,19 +22,19 @@ impl Service<_> {
     }
 
     /// Check if a user is an admin
-    fn is_admin(
+    pub fn is_admin(
         &self,
         user_id: &UserId,
     ) -> Result<bool> {
-        let admin_room_alias_id = RoomAliasId::parse(format!("#admins:{}", globals.server_name()))
+        let admin_room_alias_id = RoomAliasId::parse(format!("#admins:{}", services().globals.server_name()))
             .map_err(|_| Error::BadRequest(ErrorKind::InvalidParam, "Invalid alias."))?;
-        let admin_room_id = rooms.id_from_alias(&admin_room_alias_id)?.unwrap();
+        let admin_room_id = services().rooms.alias.resolve_local_alias(&admin_room_alias_id)?.unwrap();
 
-        rooms.is_joined(user_id, &admin_room_id)
+        services().rooms.state_cache.is_joined(user_id, &admin_room_id)
     }
 
     /// Create a new user account on this homeserver.
-    fn create(&self, user_id: &UserId, password: Option<&str>) -> Result<()> {
+    pub fn create(&self, user_id: &UserId, password: Option<&str>) -> Result<()> {
         self.db.set_password(user_id, password)?;
         Ok(())
     }

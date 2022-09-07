@@ -4,7 +4,7 @@ use std::{mem::size_of, sync::Arc, collections::HashSet};
 pub use data::Data;
 use ruma::{EventId, RoomId};
 
-use crate::{service::*, utils};
+use crate::{Result, utils, services};
 
 use self::data::StateDiff;
 
@@ -12,7 +12,9 @@ pub struct Service<D: Data> {
     db: D,
 }
 
-impl Service<_> {
+pub type CompressedStateEvent = [u8; 2 * size_of::<u64>()];
+
+impl<D: Data> Service<D> {
     /// Returns a stack with info on shortstatehash, full state, added diff and removed diff for the selected shortstatehash and each parent layer.
     #[tracing::instrument(skip(self))]
     pub fn load_shortstatehash_info(
@@ -62,12 +64,11 @@ impl Service<_> {
         &self,
         shortstatekey: u64,
         event_id: &EventId,
-        globals: &super::globals::Globals,
     ) -> Result<CompressedStateEvent> {
         let mut v = shortstatekey.to_be_bytes().to_vec();
         v.extend_from_slice(
             &self
-                .get_or_create_shorteventid(event_id, globals)?
+                .get_or_create_shorteventid(event_id)?
                 .to_be_bytes(),
         );
         Ok(v.try_into().expect("we checked the size above"))
@@ -210,15 +211,16 @@ impl Service<_> {
 
     /// Returns the new shortstatehash
     pub fn save_state(
+        &self,
         room_id: &RoomId,
         new_state_ids_compressed: HashSet<CompressedStateEvent>,
     ) -> Result<(u64, 
             HashSet<CompressedStateEvent>, // added
             HashSet<CompressedStateEvent>)> // removed
     {
-        let previous_shortstatehash = self.d.current_shortstatehash(room_id)?;
+        let previous_shortstatehash = self.db.current_shortstatehash(room_id)?;
 
-        let state_hash = self.calculate_hash(
+        let state_hash = utils::calculate_hash(
             &new_state_ids_compressed
                 .iter()
                 .map(|bytes| &bytes[..])
@@ -226,7 +228,7 @@ impl Service<_> {
         );
 
         let (new_shortstatehash, already_existed) =
-            self.get_or_create_shortstatehash(&state_hash, &db.globals)?;
+            services().rooms.short.get_or_create_shortstatehash(&state_hash)?;
 
         if Some(new_shortstatehash) == previous_shortstatehash {
             return Ok(());

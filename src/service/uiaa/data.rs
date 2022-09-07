@@ -1,4 +1,5 @@
 use ruma::{api::client::uiaa::UiaaInfo, DeviceId, UserId, signatures::CanonicalJsonValue};
+use crate::Result;
 
 pub trait Data {
     fn set_uiaa_request(

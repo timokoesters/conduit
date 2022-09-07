@@ -3,13 +3,13 @@ use std::{sync::Arc, collections::HashSet};
 
 pub use data::Data;
 
-use crate::service::*;
+use crate::Result;
 
 pub struct Service<D: Data> {
     db: D,
 }
 
-impl Service<_> {
+impl<D: Data> Service<D> {
     #[tracing::instrument(skip(self))]
     pub fn get_cached_eventid_authchain<'a>(
         &'a self,

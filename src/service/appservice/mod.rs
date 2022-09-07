@@ -1,13 +1,13 @@
 mod data;
 pub use data::Data;
 
-use crate::service::*;
+use crate::Result;
 
 pub struct Service<D: Data> {
     db: D,
 }
 
-impl Service<_> {
+impl<D: Data> Service<D> {
     /// Registers an appservice and returns the ID to the caller
     pub fn register_appservice(&self, yaml: serde_yaml::Value) -> Result<String> {
         self.db.register_appservice(yaml)

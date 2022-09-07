@@ -1,4 +1,5 @@
 use ruma::{RoomId, DeviceId, UserId};
+use crate::Result;
 
 pub trait Data {
     fn lazy_load_was_sent_before(

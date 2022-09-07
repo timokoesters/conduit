@@ -3,7 +3,7 @@ use std::{collections::hash_map, mem::size_of, sync::Arc};
 use ruma::{UserId, RoomId, api::client::error::ErrorKind, EventId, signatures::CanonicalJsonObject};
 use tracing::error;
 
-use crate::{service, database::KeyValueDatabase, utils, Error, PduEvent};
+use crate::{service, database::KeyValueDatabase, utils, Error, PduEvent, Result};
 
 impl service::rooms::timeline::Data for KeyValueDatabase {
     fn last_timeline_count(&self, sender_user: &UserId, room_id: &RoomId) -> Result<u64> {
@@ -190,7 +190,7 @@ impl service::rooms::timeline::Data for KeyValueDatabase {
         user_id: &UserId,
         room_id: &RoomId,
         since: u64,
-    ) -> Result<impl Iterator<Item = Result<(Vec<u8>, PduEvent)>> + 'a> {
+    ) -> Result<Box<dyn Iterator<Item = Result<(Vec<u8>, PduEvent)>>>> {
         let prefix = self
             .get_shortroomid(room_id)?
             .expect("room exists")
@@ -224,7 +224,7 @@ impl service::rooms::timeline::Data for KeyValueDatabase {
         user_id: &UserId,
         room_id: &RoomId,
         until: u64,
-    ) -> Result<impl Iterator<Item = Result<(Vec<u8>, PduEvent)>> + 'a> {
+    ) -> Result<Box<dyn Iterator<Item = Result<(Vec<u8>, PduEvent)>>>> {
         // Create the first part of the full pdu id
         let prefix = self
             .get_shortroomid(room_id)?
@@ -258,7 +258,7 @@ impl service::rooms::timeline::Data for KeyValueDatabase {
         user_id: &UserId,
         room_id: &RoomId,
         from: u64,
-    ) -> Result<impl Iterator<Item = Result<(Vec<u8>, PduEvent)>> + 'a> {
+    ) -> Result<Box<dyn Iterator<Item = Result<(Vec<u8>, PduEvent)>>>> {
         // Create the first part of the full pdu id
         let prefix = self
             .get_shortroomid(room_id)?

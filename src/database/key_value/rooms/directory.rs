@@ -1,6 +1,6 @@
 use ruma::RoomId;
 
-use crate::{service, database::KeyValueDatabase, utils, Error};
+use crate::{service, database::KeyValueDatabase, utils, Error, Result};
 
 impl service::rooms::directory::Data for KeyValueDatabase {
     fn set_public(&self, room_id: &RoomId) -> Result<()> {
@@ -15,7 +15,7 @@ impl service::rooms::directory::Data for KeyValueDatabase {
         Ok(self.publicroomids.get(room_id.as_bytes())?.is_some())
     }
 
-    fn public_rooms(&self) -> impl Iterator<Item = Result<Box<RoomId>>> + '_ {
+    fn public_rooms(&self) -> Box<dyn Iterator<Item = Result<Box<RoomId>>>> {
         self.publicroomids.iter().map(|(bytes, _)| {
             RoomId::parse(
                 utils::string_from_bytes(&bytes).map_err(|_| {

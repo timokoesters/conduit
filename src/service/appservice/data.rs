@@ -1,5 +1,6 @@
+use crate::Result;
+
 pub trait Data {
-    type Iter: Iterator;
     /// Registers an appservice and returns the ID to the caller
     fn register_appservice(&self, yaml: serde_yaml::Value) -> Result<String>;
 
@@ -12,7 +13,7 @@ pub trait Data {
 
     fn get_registration(&self, id: &str) -> Result<Option<serde_yaml::Value>>;
 
-    fn iter_ids(&self) -> Result<Self::Iter<Item = Result<String>>>;
+    fn iter_ids(&self) -> Result<Box<dyn Iterator<Item = Result<String>>>>;
 
     fn all(&self) -> Result<Vec<(String, serde_yaml::Value)>>;
 }

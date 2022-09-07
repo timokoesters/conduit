@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use ruma::{UserId, RoomId};
 
-use crate::{database::KeyValueDatabase, service, utils, Error, services};
+use crate::{database::KeyValueDatabase, service, utils, Error, services, Result};
 
 impl service::rooms::edus::typing::Data for KeyValueDatabase {
     fn typing_add(
@@ -79,7 +79,7 @@ impl service::rooms::edus::typing::Data for KeyValueDatabase {
     fn typings_all(
         &self,
         room_id: &RoomId,
-    ) -> Result<HashSet<UserId>> {
+    ) -> Result<HashSet<Box<UserId>>> {
         let mut prefix = room_id.as_bytes().to_vec();
         prefix.push(0xff);
 

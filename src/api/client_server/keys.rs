@@ -230,7 +230,7 @@ pub async fn get_key_changes_route(
             .filter_map(|r| r.ok()),
     );
 
-    for room_id in services().rooms.rooms_joined(sender_user).filter_map(|r| r.ok()) {
+    for room_id in services().rooms.state_cache.rooms_joined(sender_user).filter_map(|r| r.ok()) {
         device_list_updates.extend(
             services().users
                 .keys_changed(

@@ -99,7 +99,7 @@ pub async fn get_content_route(
         content_disposition,
         content_type,
         file,
-    }) = services().media.get(&mxc).await?
+    }) = services().media.get(mxc.clone()).await?
     {
         Ok(get_content::v3::Response {
             file,
@@ -129,7 +129,7 @@ pub async fn get_content_as_filename_route(
         content_disposition: _,
         content_type,
         file,
-    }) = services().media.get(&mxc).await?
+    }) = services().media.get(mxc.clone()).await?
     {
         Ok(get_content_as_filename::v3::Response {
             file,
@@ -165,7 +165,7 @@ pub async fn get_content_thumbnail_route(
     }) = services()
         .media
         .get_thumbnail(
-            &mxc,
+            mxc.clone(),
             body.width
                 .try_into()
                 .map_err(|_| Error::BadRequest(ErrorKind::InvalidParam, "Width is invalid."))?,

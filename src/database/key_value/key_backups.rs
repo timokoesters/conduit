@@ -1,16 +1,11 @@
-use crate::{utils, Error, Result, services};
-use ruma::{
-    api::client::{
-        backup::{BackupAlgorithm, KeyBackupData, RoomKeyBackup},
-        error::ErrorKind,
-    },
-    serde::Raw,
-    RoomId, UserId,
-};
-use std::{collections::BTreeMap, sync::Arc};
+use std::collections::BTreeMap;
 
-impl KeyBackups {
-    pub fn create_backup(
+use ruma::{UserId, serde::Raw, api::client::{backup::{BackupAlgorithm, KeyBackupData, RoomKeyBackup}, error::ErrorKind}, RoomId};
+
+use crate::{Result, service, database::KeyValueDatabase, services, Error, utils};
+
+impl service::key_backups::Data for KeyValueDatabase {
+    fn create_backup(
         &self,
         user_id: &UserId,
         backup_metadata: &Raw<BackupAlgorithm>,
@@ -30,7 +25,7 @@ impl KeyBackups {
         Ok(version)
     }
 
-    pub fn delete_backup(&self, user_id: &UserId, version: &str) -> Result<()> {
+    fn delete_backup(&self, user_id: &UserId, version: &str) -> Result<()> {
         let mut key = user_id.as_bytes().to_vec();
         key.push(0xff);
         key.extend_from_slice(version.as_bytes());
@@ -47,7 +42,7 @@ impl KeyBackups {
         Ok(())
     }
 
-    pub fn update_backup(
+    fn update_backup(
         &self,
         user_id: &UserId,
         version: &str,
@@ -71,7 +66,7 @@ impl KeyBackups {
         Ok(version.to_owned())
     }
 
-    pub fn get_latest_backup_version(&self, user_id: &UserId) -> Result<Option<String>> {
+    fn get_latest_backup_version(&self, user_id: &UserId) -> Result<Option<String>> {
         let mut prefix = user_id.as_bytes().to_vec();
         prefix.push(0xff);
         let mut last_possible_key = prefix.clone();
@@ -92,7 +87,7 @@ impl KeyBackups {
             .transpose()
     }
 
-    pub fn get_latest_backup(
+    fn get_latest_backup(
         &self,
         user_id: &UserId,
     ) -> Result<Option<(String, Raw<BackupAlgorithm>)>> {
@@ -123,7 +118,7 @@ impl KeyBackups {
             .transpose()
     }
 
-    pub fn get_backup(
+    fn get_backup(
         &self,
         user_id: &UserId,
         version: &str,
@@ -140,7 +135,7 @@ impl KeyBackups {
             })
     }
 
-    pub fn add_key(
+    fn add_key(
         &self,
         user_id: &UserId,
         version: &str,
@@ -173,7 +168,7 @@ impl KeyBackups {
         Ok(())
     }
 
-    pub fn count_keys(&self, user_id: &UserId, version: &str) -> Result<usize> {
+    fn count_keys(&self, user_id: &UserId, version: &str) -> Result<usize> {
         let mut prefix = user_id.as_bytes().to_vec();
         prefix.push(0xff);
         prefix.extend_from_slice(version.as_bytes());
@@ -181,7 +176,7 @@ impl KeyBackups {
         Ok(self.backupkeyid_backup.scan_prefix(prefix).count())
     }
 
-    pub fn get_etag(&self, user_id: &UserId, version: &str) -> Result<String> {
+    fn get_etag(&self, user_id: &UserId, version: &str) -> Result<String> {
         let mut key = user_id.as_bytes().to_vec();
         key.push(0xff);
         key.extend_from_slice(version.as_bytes());
@@ -196,7 +191,7 @@ impl KeyBackups {
         .to_string())
     }
 
-    pub fn get_all(
+    fn get_all(
         &self,
         user_id: &UserId,
         version: &str,
@@ -252,7 +247,7 @@ impl KeyBackups {
         Ok(rooms)
     }
 
-    pub fn get_room(
+    fn get_room(
         &self,
         user_id: &UserId,
         version: &str,
@@ -289,7 +284,7 @@ impl KeyBackups {
             .collect())
     }
 
-    pub fn get_session(
+    fn get_session(
         &self,
         user_id: &UserId,
         version: &str,
@@ -314,7 +309,7 @@ impl KeyBackups {
             .transpose()
     }
 
-    pub fn delete_all_keys(&self, user_id: &UserId, version: &str) -> Result<()> {
+    fn delete_all_keys(&self, user_id: &UserId, version: &str) -> Result<()> {
         let mut key = user_id.as_bytes().to_vec();
         key.push(0xff);
         key.extend_from_slice(version.as_bytes());
@@ -327,7 +322,7 @@ impl KeyBackups {
         Ok(())
     }
 
-    pub fn delete_room_keys(
+    fn delete_room_keys(
         &self,
         user_id: &UserId,
         version: &str,
@@ -347,7 +342,7 @@ impl KeyBackups {
         Ok(())
     }
 
-    pub fn delete_room_key(
+    fn delete_room_key(
         &self,
         user_id: &UserId,
         version: &str,

@@ -1,9 +1,9 @@
-//mod account_data;
+mod account_data;
 //mod admin;
 mod appservice;
-//mod globals;
-//mod key_backups;
-//mod media;
+mod globals;
+mod key_backups;
+mod media;
 //mod pdu;
 mod pusher;
 mod rooms;

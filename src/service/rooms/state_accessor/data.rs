@@ -1,9 +1,11 @@
-use std::{sync::Arc, collections::HashMap};
+use std::{sync::Arc, collections::{HashMap, BTreeMap}};
 
+use async_trait::async_trait;
 use ruma::{EventId, events::StateEventType, RoomId};
 
-use crate::PduEvent;
+use crate::{Result, PduEvent};
 
+#[async_trait]
 pub trait Data {
     /// Builds a StateMap by iterating over all keys that start
     /// with state_hash, this gives the full state for the given state_hash.

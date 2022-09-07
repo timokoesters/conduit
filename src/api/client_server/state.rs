@@ -246,7 +246,7 @@ async fn send_state_event_for_key_helper(
             if alias.server_name() != services().globals.server_name()
                 || services()
                     .rooms
-                    .id_from_alias(&alias)?
+                    .alias.resolve_local_alias(&alias)?
                     .filter(|room| room == room_id) // Make sure it's the right room
                     .is_none()
             {

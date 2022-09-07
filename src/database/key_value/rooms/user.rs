@@ -1,6 +1,6 @@
 use ruma::{UserId, RoomId};
 
-use crate::{service, database::KeyValueDatabase, utils, Error};
+use crate::{service, database::KeyValueDatabase, utils, Error, Result};
 
 impl service::rooms::user::Data for KeyValueDatabase {
     fn reset_notification_counts(&self, user_id: &UserId, room_id: &RoomId) -> Result<()> {
@@ -78,7 +78,7 @@ impl service::rooms::user::Data for KeyValueDatabase {
     fn get_shared_rooms<'a>(
         &'a self,
         users: Vec<Box<UserId>>,
-    ) -> Result<impl Iterator<Item = Result<Box<RoomId>>> + 'a> {
+    ) -> Result<Box<dyn Iterator<Item = Result<Box<RoomId>>>>> {
         let iterators = users.into_iter().map(move |user_id| {
             let mut prefix = user_id.as_bytes().to_vec();
             prefix.push(0xff);

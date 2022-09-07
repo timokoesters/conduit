@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use ruma::{RoomId, EventId};
 
-use crate::{service, database::KeyValueDatabase};
+use crate::{service, database::KeyValueDatabase, Result};
 
 impl service::rooms::pdu_metadata::Data for KeyValueDatabase {
     fn mark_as_referenced(&self, room_id: &RoomId, event_ids: &[Arc<EventId>]) -> Result<()> {

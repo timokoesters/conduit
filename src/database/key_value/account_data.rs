@@ -1,17 +1,14 @@
-use crate::{utils, Error, Result};
-use ruma::{
-    api::client::error::ErrorKind,
-    events::{AnyEphemeralRoomEvent, RoomAccountDataEventType},
-    serde::Raw,
-    RoomId, UserId,
-};
-use serde::{de::DeserializeOwned, Serialize};
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 
-impl AccountData {
+use ruma::{UserId, DeviceId, signatures::CanonicalJsonValue, api::client::{uiaa::UiaaInfo, error::ErrorKind}, events::{RoomAccountDataEventType, AnyEphemeralRoomEvent}, serde::Raw, RoomId};
+use serde::{Serialize, de::DeserializeOwned};
+
+use crate::{Result, database::KeyValueDatabase, service, Error, utils, services};
+
+impl service::account_data::Data for KeyValueDatabase {
     /// Places one event in the account data of the user and removes the previous entry.
     #[tracing::instrument(skip(self, room_id, user_id, event_type, data))]
-    pub fn update<T: Serialize>(
+    fn update<T: Serialize>(
         &self,
         room_id: Option<&RoomId>,
         user_id: &UserId,
@@ -63,7 +60,7 @@ impl AccountData {
 
     /// Searches the account data for a specific kind.
     #[tracing::instrument(skip(self, room_id, user_id, kind))]
-    pub fn get<T: DeserializeOwned>(
+    fn get<T: DeserializeOwned>(
         &self,
         room_id: Option<&RoomId>,
         user_id: &UserId,
@@ -96,7 +93,7 @@ impl AccountData {
 
     /// Returns all changes to the account data that happened after `since`.
     #[tracing::instrument(skip(self, room_id, user_id, since))]
-    pub fn changes_since(
+    fn changes_since(
         &self,
         room_id: Option<&RoomId>,
         user_id: &UserId,

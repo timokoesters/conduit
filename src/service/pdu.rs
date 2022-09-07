@@ -1,4 +1,4 @@
-use crate::{Database, Error, services};
+use crate::{Error, services};
 use ruma::{
     events::{
         room::member::RoomMemberEventContent, AnyEphemeralRoomEvent, AnyRoomEvent, AnyStateEvent,
@@ -357,7 +357,7 @@ pub(crate) fn gen_event_id_canonical_json(
     Ok((event_id, value))
 }
 
-/// Build the start of a PDU in order to add it to the `Database`.
+/// Build the start of a PDU in order to add it to the Database.
 #[derive(Debug, Deserialize)]
 pub struct PduBuilder {
     #[serde(rename = "type")]

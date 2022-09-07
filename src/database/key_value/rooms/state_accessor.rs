@@ -1,6 +1,6 @@
 use std::{collections::{BTreeMap, HashMap}, sync::Arc};
 
-use crate::{database::KeyValueDatabase, service, PduEvent, Error, utils};
+use crate::{database::KeyValueDatabase, service, PduEvent, Error, utils, Result};
 use async_trait::async_trait;
 use ruma::{EventId, events::StateEventType, RoomId};
 

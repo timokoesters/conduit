@@ -1,14 +1,14 @@
 mod data;
 pub use data::Data;
-use ruma::{UserId, DeviceId, TransactionId};
 
-use crate::service::*;
+use ruma::{UserId, DeviceId, TransactionId};
+use crate::Result;
 
 pub struct Service<D: Data> {
     db: D,
 }
 
-impl Service<_> {
+impl<D: Data> Service<D> {
     pub fn add_txnid(
         &self,
         user_id: &UserId,

@@ -25,12 +25,12 @@ pub async fn create_alias_route(
         ));
     }
 
-    if services().rooms.id_from_alias(&body.room_alias)?.is_some() {
+    if services().rooms.alias.resolve_local_alias(&body.room_alias)?.is_some() {
         return Err(Error::Conflict("Alias already exists."));
     }
 
-    services().rooms
-        .set_alias(&body.room_alias, Some(&body.room_id))?;
+    services().rooms.alias
+        .set_alias(&body.room_alias, &body.room_id)?;
 
     Ok(create_alias::v3::Response::new())
 }
@@ -51,7 +51,7 @@ pub async fn delete_alias_route(
         ));
     }
 
-    services().rooms.set_alias(&body.room_alias, None)?;
+    services().rooms.alias.remove_alias(&body.room_alias)?;
 
     // TODO: update alt_aliases?
 
@@ -88,7 +88,7 @@ pub(crate) async fn get_alias_helper(
     }
 
     let mut room_id = None;
-    match services().rooms.id_from_alias(room_alias)? {
+    match services().rooms.alias.resolve_local_alias(room_alias)? {
         Some(r) => room_id = Some(r),
         None => {
             for (_id, registration) in services().appservice.all()? {
@@ -115,7 +115,7 @@ pub(crate) async fn get_alias_helper(
                         .await
                         .is_ok()
                 {
-                    room_id = Some(services().rooms.id_from_alias(room_alias)?.ok_or_else(|| {
+                    room_id = Some(services().rooms.alias.resolve_local_alias(room_alias)?.ok_or_else(|| {
                         Error::bad_config("Appservice lied to us. Room does not exist.")
                     })?);
                     break;

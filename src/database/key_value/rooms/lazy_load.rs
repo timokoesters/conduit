@@ -1,6 +1,6 @@
 use ruma::{UserId, DeviceId, RoomId};
 
-use crate::{service, database::KeyValueDatabase};
+use crate::{service, database::KeyValueDatabase, Result};
 
 impl service::rooms::lazy_loading::Data for KeyValueDatabase {
     fn lazy_load_was_sent_before(
