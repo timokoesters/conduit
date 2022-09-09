@@ -222,6 +222,10 @@ impl Service {
         self.config.max_request_size
     }
 
+    pub fn max_fetch_prev_events(&self) -> u16 {
+        self.config.max_fetch_prev_events
+    }
+
     pub fn allow_registration(&self) -> bool {
         self.config.allow_registration
     }

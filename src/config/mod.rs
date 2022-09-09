@@ -40,6 +40,8 @@ pub struct Config {
     pub max_request_size: u32,
     #[serde(default = "default_max_concurrent_requests")]
     pub max_concurrent_requests: u16,
+    #[serde(default = "default_max_fetch_prev_events")]
+    pub max_fetch_prev_events: u16,
     #[serde(default = "false_fn")]
     pub allow_registration: bool,
     #[serde(default = "true_fn")]
@@ -247,6 +249,10 @@ fn default_max_request_size() -> u32 {
 
 fn default_max_concurrent_requests() -> u16 {
     100
+}
+
+fn default_max_fetch_prev_events() -> u16 {
+    100_u16
 }
 
 fn default_log() -> String {
