@@ -2,7 +2,7 @@ mod data;
 use std::{collections::HashMap, sync::Arc};
 
 pub use data::Data;
-use ruma::{RoomId, UserId, events::presence::PresenceEvent};
+use ruma::{events::presence::PresenceEvent, RoomId, UserId};
 
 use crate::Result;
 

@@ -1,5 +1,5 @@
-use ruma::{api::client::uiaa::UiaaInfo, DeviceId, UserId, signatures::CanonicalJsonValue};
 use crate::Result;
+use ruma::{api::client::uiaa::UiaaInfo, signatures::CanonicalJsonValue, DeviceId, UserId};
 
 pub trait Data: Send + Sync {
     fn set_uiaa_request(

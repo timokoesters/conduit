@@ -1,14 +1,11 @@
 use std::sync::Arc;
 
-use ruma::{EventId, events::StateEventType, RoomId};
+use ruma::{events::StateEventType, EventId, RoomId};
 
-use crate::{Result, database::KeyValueDatabase, service, utils, Error, services};
+use crate::{database::KeyValueDatabase, service, services, utils, Error, Result};
 
 impl service::rooms::short::Data for KeyValueDatabase {
-    fn get_or_create_shorteventid(
-        &self,
-        event_id: &EventId,
-    ) -> Result<u64> {
+    fn get_or_create_shorteventid(&self, event_id: &EventId) -> Result<u64> {
         if let Some(short) = self.eventidshort_cache.lock().unwrap().get_mut(event_id) {
             return Ok(*short);
         }
@@ -180,10 +177,7 @@ impl service::rooms::short::Data for KeyValueDatabase {
     }
 
     /// Returns (shortstatehash, already_existed)
-    fn get_or_create_shortstatehash(
-        &self,
-        state_hash: &[u8],
-    ) -> Result<(u64, bool)> {
+    fn get_or_create_shortstatehash(&self, state_hash: &[u8]) -> Result<(u64, bool)> {
         Ok(match self.statehash_shortstatehash.get(state_hash)? {
             Some(shortstatehash) => (
                 utils::u64_from_bytes(&shortstatehash)
@@ -209,10 +203,7 @@ impl service::rooms::short::Data for KeyValueDatabase {
             .transpose()
     }
 
-    fn get_or_create_shortroomid(
-        &self,
-        room_id: &RoomId,
-    ) -> Result<u64> {
+    fn get_or_create_shortroomid(&self, room_id: &RoomId) -> Result<u64> {
         Ok(match self.roomid_shortroomid.get(room_id.as_bytes())? {
             Some(short) => utils::u64_from_bytes(&short)
                 .map_err(|_| Error::bad_database("Invalid shortroomid in db."))?,

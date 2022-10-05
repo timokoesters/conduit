@@ -1,10 +1,10 @@
-use ruma::{RoomId, EventId};
-use tokio::sync::MutexGuard;
-use std::sync::Arc;
+use ruma::{EventId, RoomId};
 use std::collections::HashSet;
 use std::fmt::Debug;
+use std::sync::Arc;
+use tokio::sync::MutexGuard;
 
-use crate::{service, database::KeyValueDatabase, utils, Error, Result};
+use crate::{database::KeyValueDatabase, service, utils, Error, Result};
 
 impl service::rooms::state::Data for KeyValueDatabase {
     fn get_room_shortstatehash(&self, room_id: &RoomId) -> Result<Option<u64>> {
@@ -17,9 +17,12 @@ impl service::rooms::state::Data for KeyValueDatabase {
             })
     }
 
-    fn set_room_state(&self, room_id: &RoomId, new_shortstatehash: u64,
+    fn set_room_state(
+        &self,
+        room_id: &RoomId,
+        new_shortstatehash: u64,
         _mutex_lock: &MutexGuard<'_, ()>, // Take mutex guard to make sure users get the room state mutex
-        ) -> Result<()> {
+    ) -> Result<()> {
         self.roomid_shortstatehash
             .insert(room_id.as_bytes(), &new_shortstatehash.to_be_bytes())?;
         Ok(())

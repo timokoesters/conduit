@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::{Result, Ruma, services, service::pdu::PduBuilder};
+use crate::{service::pdu::PduBuilder, services, Result, Ruma};
 use ruma::{
     api::client::redact::redact_event,
     events::{room::redaction::RoomRedactionEventContent, RoomEventType},
@@ -20,7 +20,8 @@ pub async fn redact_event_route(
     let body = body.body;
 
     let mutex_state = Arc::clone(
-        services().globals
+        services()
+            .globals
             .roomid_mutex_state
             .write()
             .unwrap()

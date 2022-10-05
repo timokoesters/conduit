@@ -3,9 +3,7 @@ mod data;
 pub use data::Data;
 
 use ruma::{
-    api::client::{
-        error::ErrorKind,
-    },
+    api::client::error::ErrorKind,
     events::{AnyEphemeralRoomEvent, RoomAccountDataEventType},
     serde::Raw,
     signatures::CanonicalJsonValue,

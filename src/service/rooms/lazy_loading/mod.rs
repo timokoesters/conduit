@@ -1,15 +1,19 @@
 mod data;
-use std::{collections::{HashSet, HashMap}, sync::{Mutex, Arc}};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::{Arc, Mutex},
+};
 
 pub use data::Data;
-use ruma::{DeviceId, UserId, RoomId};
+use ruma::{DeviceId, RoomId, UserId};
 
 use crate::Result;
 
 pub struct Service {
     db: Arc<dyn Data>,
 
-    lazy_load_waiting: Mutex<HashMap<(Box<UserId>, Box<DeviceId>, Box<RoomId>, u64), HashSet<Box<UserId>>>>,
+    lazy_load_waiting:
+        Mutex<HashMap<(Box<UserId>, Box<DeviceId>, Box<RoomId>, u64), HashSet<Box<UserId>>>>,
 }
 
 impl Service {
@@ -21,7 +25,8 @@ impl Service {
         room_id: &RoomId,
         ll_user: &UserId,
     ) -> Result<bool> {
-        self.db.lazy_load_was_sent_before(user_id, device_id, room_id, ll_user)
+        self.db
+            .lazy_load_was_sent_before(user_id, device_id, room_id, ll_user)
     }
 
     #[tracing::instrument(skip(self))]
@@ -58,7 +63,12 @@ impl Service {
             room_id.to_owned(),
             since,
         )) {
-            self.db.lazy_load_confirm_delivery(user_id, device_id, room_id, &mut user_ids.iter().map(|&u| &*u))?;
+            self.db.lazy_load_confirm_delivery(
+                user_id,
+                device_id,
+                room_id,
+                &mut user_ids.iter().map(|&u| &*u),
+            )?;
         } else {
             // Ignore
         }

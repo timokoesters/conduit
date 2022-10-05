@@ -2,7 +2,7 @@ use std::mem::size_of;
 
 use ruma::RoomId;
 
-use crate::{service, database::KeyValueDatabase, utils, Result, services};
+use crate::{database::KeyValueDatabase, service, services, utils, Result};
 
 impl service::rooms::search::Data for KeyValueDatabase {
     fn index_pdu<'a>(&self, shortroomid: u64, pdu_id: &[u8], message_body: String) -> Result<()> {
@@ -27,7 +27,9 @@ impl service::rooms::search::Data for KeyValueDatabase {
         room_id: &RoomId,
         search_string: &str,
     ) -> Result<Option<(Box<dyn Iterator<Item = Vec<u8>>>, Vec<String>)>> {
-        let prefix = services().rooms.short
+        let prefix = services()
+            .rooms
+            .short
             .get_shortroomid(room_id)?
             .expect("room exists")
             .to_be_bytes()
@@ -63,10 +65,10 @@ impl service::rooms::search::Data for KeyValueDatabase {
         };
 
         let mapped = common_elements.map(move |id| {
-                    let mut pduid = prefix_clone.clone();
-                    pduid.extend_from_slice(&id);
-                    pduid
-                });
+            let mut pduid = prefix_clone.clone();
+            pduid.extend_from_slice(&id);
+            pduid
+        });
 
         Ok(Some((Box::new(mapped), words)))
     }

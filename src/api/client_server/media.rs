@@ -1,6 +1,4 @@
-use crate::{
-    utils, Error, Result, Ruma, services, service::media::FileMeta,
-};
+use crate::{service::media::FileMeta, services, utils, Error, Result, Ruma};
 use ruma::api::client::{
     error::ErrorKind,
     media::{
@@ -37,11 +35,11 @@ pub async fn create_content_route(
         utils::random_string(MXC_LENGTH)
     );
 
-    services().media
+    services()
+        .media
         .create(
             mxc.clone(),
-            body
-                .filename
+            body.filename
                 .as_ref()
                 .map(|filename| "inline; filename=".to_owned() + filename)
                 .as_deref(),
@@ -73,7 +71,8 @@ pub async fn get_remote_content(
         )
         .await?;
 
-    services().media
+    services()
+        .media
         .create(
             mxc.to_string(),
             content_response.content_disposition.as_deref(),
@@ -192,7 +191,8 @@ pub async fn get_content_thumbnail_route(
             )
             .await?;
 
-        services().media
+        services()
+            .media
             .upload_thumbnail(
                 mxc,
                 None,

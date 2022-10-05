@@ -1,8 +1,10 @@
 use std::mem;
 
-use ruma::{UserId, RoomId, events::receipt::ReceiptEvent, serde::Raw, signatures::CanonicalJsonObject};
+use ruma::{
+    events::receipt::ReceiptEvent, serde::Raw, signatures::CanonicalJsonObject, RoomId, UserId,
+};
 
-use crate::{database::KeyValueDatabase, service, utils, Error, services, Result};
+use crate::{database::KeyValueDatabase, service, services, utils, Error, Result};
 
 impl service::rooms::edus::read_receipt::Data for KeyValueDatabase {
     fn readreceipt_update(
@@ -50,13 +52,15 @@ impl service::rooms::edus::read_receipt::Data for KeyValueDatabase {
         &'a self,
         room_id: &RoomId,
         since: u64,
-    ) -> Box<dyn Iterator<
-        Item=Result<(
-            Box<UserId>,
-            u64,
-            Raw<ruma::events::AnySyncEphemeralRoomEvent>,
-        )>,
-    >> {
+    ) -> Box<
+        dyn Iterator<
+            Item = Result<(
+                Box<UserId>,
+                u64,
+                Raw<ruma::events::AnySyncEphemeralRoomEvent>,
+            )>,
+        >,
+    > {
         let mut prefix = room_id.as_bytes().to_vec();
         prefix.push(0xff);
         let prefix2 = prefix.clone();
@@ -64,42 +68,44 @@ impl service::rooms::edus::read_receipt::Data for KeyValueDatabase {
         let mut first_possible_edu = prefix.clone();
         first_possible_edu.extend_from_slice(&(since + 1).to_be_bytes()); // +1 so we don't send the event at since
 
-        Box::new(self.readreceiptid_readreceipt
-            .iter_from(&first_possible_edu, false)
-            .take_while(move |(k, _)| k.starts_with(&prefix2))
-            .map(move |(k, v)| {
-                let count =
-                    utils::u64_from_bytes(&k[prefix.len()..prefix.len() + mem::size_of::<u64>()])
-                        .map_err(|_| Error::bad_database("Invalid readreceiptid count in db."))?;
-                let user_id = UserId::parse(
-                    utils::string_from_bytes(&k[prefix.len() + mem::size_of::<u64>() + 1..])
-                        .map_err(|_| {
-                            Error::bad_database("Invalid readreceiptid userid bytes in db.")
-                        })?,
-                )
+        Box::new(
+            self.readreceiptid_readreceipt
+                .iter_from(&first_possible_edu, false)
+                .take_while(move |(k, _)| k.starts_with(&prefix2))
+                .map(move |(k, v)| {
+                    let count = utils::u64_from_bytes(
+                        &k[prefix.len()..prefix.len() + mem::size_of::<u64>()],
+                    )
+                    .map_err(|_| Error::bad_database("Invalid readreceiptid count in db."))?;
+                    let user_id = UserId::parse(
+                        utils::string_from_bytes(&k[prefix.len() + mem::size_of::<u64>() + 1..])
+                            .map_err(|_| {
+                                Error::bad_database("Invalid readreceiptid userid bytes in db.")
+                            })?,
+                    )
                     .map_err(|_| Error::bad_database("Invalid readreceiptid userid in db."))?;
 
-                let mut json = serde_json::from_slice::<CanonicalJsonObject>(&v).map_err(|_| {
-                    Error::bad_database("Read receipt in roomlatestid_roomlatest is invalid json.")
-                })?;
-                json.remove("room_id");
+                    let mut json =
+                        serde_json::from_slice::<CanonicalJsonObject>(&v).map_err(|_| {
+                            Error::bad_database(
+                                "Read receipt in roomlatestid_roomlatest is invalid json.",
+                            )
+                        })?;
+                    json.remove("room_id");
 
-                Ok((
-                    user_id,
-                    count,
-                    Raw::from_json(
-                        serde_json::value::to_raw_value(&json).expect("json is valid raw value"),
-                    ),
-                ))
-            }))
+                    Ok((
+                        user_id,
+                        count,
+                        Raw::from_json(
+                            serde_json::value::to_raw_value(&json)
+                                .expect("json is valid raw value"),
+                        ),
+                    ))
+                }),
+        )
     }
 
-    fn private_read_set(
-        &self,
-        room_id: &RoomId,
-        user_id: &UserId,
-        count: u64,
-    ) -> Result<()> {
+    fn private_read_set(&self, room_id: &RoomId, user_id: &UserId, count: u64) -> Result<()> {
         let mut key = room_id.as_bytes().to_vec();
         key.push(0xff);
         key.extend_from_slice(user_id.as_bytes());

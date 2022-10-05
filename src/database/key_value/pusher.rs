@@ -1,6 +1,9 @@
-use ruma::{UserId, api::client::push::{set_pusher, get_pushers}};
+use ruma::{
+    api::client::push::{get_pushers, set_pusher},
+    UserId,
+};
 
-use crate::{service, database::KeyValueDatabase, Error, Result};
+use crate::{database::KeyValueDatabase, service, Error, Result};
 
 impl service::pusher::Data for KeyValueDatabase {
     fn set_pusher(&self, sender: &UserId, pusher: set_pusher::v3::Pusher) -> Result<()> {
@@ -48,10 +51,7 @@ impl service::pusher::Data for KeyValueDatabase {
             .collect()
     }
 
-    fn get_pusher_senderkeys<'a>(
-        &'a self,
-        sender: &UserId,
-    ) -> Box<dyn Iterator<Item = Vec<u8>>> {
+    fn get_pusher_senderkeys<'a>(&'a self, sender: &UserId) -> Box<dyn Iterator<Item = Vec<u8>>> {
         let mut prefix = sender.as_bytes().to_vec();
         prefix.push(0xff);
 

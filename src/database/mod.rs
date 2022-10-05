@@ -1,8 +1,16 @@
 pub mod abstraction;
 pub mod key_value;
 
-use crate::{utils, Config, Error, Result, service::{users, globals, uiaa, rooms::{self, state_compressor::CompressedStateEvent}, account_data, media, key_backups, transaction_ids, sending, appservice, pusher}, services, PduEvent, Services, SERVICES};
+use crate::{
+    service::{
+        account_data, appservice, globals, key_backups, media, pusher,
+        rooms::{self, state_compressor::CompressedStateEvent},
+        sending, transaction_ids, uiaa, users,
+    },
+    services, utils, Config, Error, PduEvent, Result, Services, SERVICES,
+};
 use abstraction::KeyValueDatabaseEngine;
+use abstraction::KvTree;
 use directories::ProjectDirs;
 use futures_util::{stream::FuturesUnordered, StreamExt};
 use lru_cache::LruCache;
@@ -12,7 +20,8 @@ use ruma::{
         GlobalAccountDataEvent, GlobalAccountDataEventType, StateEventType,
     },
     push::Ruleset,
-    DeviceId, EventId, RoomId, UserId, signatures::CanonicalJsonValue,
+    signatures::CanonicalJsonValue,
+    DeviceId, EventId, RoomId, UserId,
 };
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
@@ -25,7 +34,6 @@ use std::{
 };
 use tokio::sync::{mpsc, OwnedRwLockReadGuard, RwLock as TokioRwLock, Semaphore};
 use tracing::{debug, error, info, warn};
-use abstraction::KvTree;
 
 pub struct KeyValueDatabase {
     _db: Arc<dyn KeyValueDatabaseEngine>,
@@ -65,9 +73,9 @@ pub struct KeyValueDatabase {
     pub(super) readreceiptid_readreceipt: Arc<dyn KvTree>, // ReadReceiptId = RoomId + Count + UserId
     pub(super) roomuserid_privateread: Arc<dyn KvTree>, // RoomUserId = Room + User, PrivateRead = Count
     pub(super) roomuserid_lastprivatereadupdate: Arc<dyn KvTree>, // LastPrivateReadUpdate = Count
-    pub(super) typingid_userid: Arc<dyn KvTree>, // TypingId = RoomId + TimeoutTime + Count
+    pub(super) typingid_userid: Arc<dyn KvTree>,        // TypingId = RoomId + TimeoutTime + Count
     pub(super) roomid_lasttypingupdate: Arc<dyn KvTree>, // LastRoomTypingUpdate = Count
-    pub(super) presenceid_presence: Arc<dyn KvTree>, // PresenceId = RoomId + Count + UserId
+    pub(super) presenceid_presence: Arc<dyn KvTree>,    // PresenceId = RoomId + Count + UserId
     pub(super) userid_lastpresenceupdate: Arc<dyn KvTree>, // LastPresenceUpdate = Count
 
     //pub rooms: rooms::Rooms,
@@ -279,134 +287,132 @@ impl KeyValueDatabase {
 
         let db = Arc::new(Self {
             _db: builder.clone(),
-                userid_password: builder.open_tree("userid_password")?,
-                userid_displayname: builder.open_tree("userid_displayname")?,
-                userid_avatarurl: builder.open_tree("userid_avatarurl")?,
-                userid_blurhash: builder.open_tree("userid_blurhash")?,
-                userdeviceid_token: builder.open_tree("userdeviceid_token")?,
-                userdeviceid_metadata: builder.open_tree("userdeviceid_metadata")?,
-                userid_devicelistversion: builder.open_tree("userid_devicelistversion")?,
-                token_userdeviceid: builder.open_tree("token_userdeviceid")?,
-                onetimekeyid_onetimekeys: builder.open_tree("onetimekeyid_onetimekeys")?,
-                userid_lastonetimekeyupdate: builder.open_tree("userid_lastonetimekeyupdate")?,
-                keychangeid_userid: builder.open_tree("keychangeid_userid")?,
-                keyid_key: builder.open_tree("keyid_key")?,
-                userid_masterkeyid: builder.open_tree("userid_masterkeyid")?,
-                userid_selfsigningkeyid: builder.open_tree("userid_selfsigningkeyid")?,
-                userid_usersigningkeyid: builder.open_tree("userid_usersigningkeyid")?,
-                userfilterid_filter: builder.open_tree("userfilterid_filter")?,
-                todeviceid_events: builder.open_tree("todeviceid_events")?,
+            userid_password: builder.open_tree("userid_password")?,
+            userid_displayname: builder.open_tree("userid_displayname")?,
+            userid_avatarurl: builder.open_tree("userid_avatarurl")?,
+            userid_blurhash: builder.open_tree("userid_blurhash")?,
+            userdeviceid_token: builder.open_tree("userdeviceid_token")?,
+            userdeviceid_metadata: builder.open_tree("userdeviceid_metadata")?,
+            userid_devicelistversion: builder.open_tree("userid_devicelistversion")?,
+            token_userdeviceid: builder.open_tree("token_userdeviceid")?,
+            onetimekeyid_onetimekeys: builder.open_tree("onetimekeyid_onetimekeys")?,
+            userid_lastonetimekeyupdate: builder.open_tree("userid_lastonetimekeyupdate")?,
+            keychangeid_userid: builder.open_tree("keychangeid_userid")?,
+            keyid_key: builder.open_tree("keyid_key")?,
+            userid_masterkeyid: builder.open_tree("userid_masterkeyid")?,
+            userid_selfsigningkeyid: builder.open_tree("userid_selfsigningkeyid")?,
+            userid_usersigningkeyid: builder.open_tree("userid_usersigningkeyid")?,
+            userfilterid_filter: builder.open_tree("userfilterid_filter")?,
+            todeviceid_events: builder.open_tree("todeviceid_events")?,
 
-                userdevicesessionid_uiaainfo: builder.open_tree("userdevicesessionid_uiaainfo")?,
-                userdevicesessionid_uiaarequest: RwLock::new(BTreeMap::new()),
-                    readreceiptid_readreceipt: builder.open_tree("readreceiptid_readreceipt")?,
-                    roomuserid_privateread: builder.open_tree("roomuserid_privateread")?, // "Private" read receipt
-                    roomuserid_lastprivatereadupdate: builder
-                        .open_tree("roomuserid_lastprivatereadupdate")?,
-                    typingid_userid: builder.open_tree("typingid_userid")?,
-                    roomid_lasttypingupdate: builder.open_tree("roomid_lasttypingupdate")?,
-                    presenceid_presence: builder.open_tree("presenceid_presence")?,
-                    userid_lastpresenceupdate: builder.open_tree("userid_lastpresenceupdate")?,
-                pduid_pdu: builder.open_tree("pduid_pdu")?,
-                eventid_pduid: builder.open_tree("eventid_pduid")?,
-                roomid_pduleaves: builder.open_tree("roomid_pduleaves")?,
+            userdevicesessionid_uiaainfo: builder.open_tree("userdevicesessionid_uiaainfo")?,
+            userdevicesessionid_uiaarequest: RwLock::new(BTreeMap::new()),
+            readreceiptid_readreceipt: builder.open_tree("readreceiptid_readreceipt")?,
+            roomuserid_privateread: builder.open_tree("roomuserid_privateread")?, // "Private" read receipt
+            roomuserid_lastprivatereadupdate: builder
+                .open_tree("roomuserid_lastprivatereadupdate")?,
+            typingid_userid: builder.open_tree("typingid_userid")?,
+            roomid_lasttypingupdate: builder.open_tree("roomid_lasttypingupdate")?,
+            presenceid_presence: builder.open_tree("presenceid_presence")?,
+            userid_lastpresenceupdate: builder.open_tree("userid_lastpresenceupdate")?,
+            pduid_pdu: builder.open_tree("pduid_pdu")?,
+            eventid_pduid: builder.open_tree("eventid_pduid")?,
+            roomid_pduleaves: builder.open_tree("roomid_pduleaves")?,
 
-                alias_roomid: builder.open_tree("alias_roomid")?,
-                aliasid_alias: builder.open_tree("aliasid_alias")?,
-                publicroomids: builder.open_tree("publicroomids")?,
+            alias_roomid: builder.open_tree("alias_roomid")?,
+            aliasid_alias: builder.open_tree("aliasid_alias")?,
+            publicroomids: builder.open_tree("publicroomids")?,
 
-                tokenids: builder.open_tree("tokenids")?,
+            tokenids: builder.open_tree("tokenids")?,
 
-                roomserverids: builder.open_tree("roomserverids")?,
-                serverroomids: builder.open_tree("serverroomids")?,
-                userroomid_joined: builder.open_tree("userroomid_joined")?,
-                roomuserid_joined: builder.open_tree("roomuserid_joined")?,
-                roomid_joinedcount: builder.open_tree("roomid_joinedcount")?,
-                roomid_invitedcount: builder.open_tree("roomid_invitedcount")?,
-                roomuseroncejoinedids: builder.open_tree("roomuseroncejoinedids")?,
-                userroomid_invitestate: builder.open_tree("userroomid_invitestate")?,
-                roomuserid_invitecount: builder.open_tree("roomuserid_invitecount")?,
-                userroomid_leftstate: builder.open_tree("userroomid_leftstate")?,
-                roomuserid_leftcount: builder.open_tree("roomuserid_leftcount")?,
+            roomserverids: builder.open_tree("roomserverids")?,
+            serverroomids: builder.open_tree("serverroomids")?,
+            userroomid_joined: builder.open_tree("userroomid_joined")?,
+            roomuserid_joined: builder.open_tree("roomuserid_joined")?,
+            roomid_joinedcount: builder.open_tree("roomid_joinedcount")?,
+            roomid_invitedcount: builder.open_tree("roomid_invitedcount")?,
+            roomuseroncejoinedids: builder.open_tree("roomuseroncejoinedids")?,
+            userroomid_invitestate: builder.open_tree("userroomid_invitestate")?,
+            roomuserid_invitecount: builder.open_tree("roomuserid_invitecount")?,
+            userroomid_leftstate: builder.open_tree("userroomid_leftstate")?,
+            roomuserid_leftcount: builder.open_tree("roomuserid_leftcount")?,
 
-                disabledroomids: builder.open_tree("disabledroomids")?,
+            disabledroomids: builder.open_tree("disabledroomids")?,
 
-                lazyloadedids: builder.open_tree("lazyloadedids")?,
+            lazyloadedids: builder.open_tree("lazyloadedids")?,
 
-                userroomid_notificationcount: builder.open_tree("userroomid_notificationcount")?,
-                userroomid_highlightcount: builder.open_tree("userroomid_highlightcount")?,
+            userroomid_notificationcount: builder.open_tree("userroomid_notificationcount")?,
+            userroomid_highlightcount: builder.open_tree("userroomid_highlightcount")?,
 
-                statekey_shortstatekey: builder.open_tree("statekey_shortstatekey")?,
-                shortstatekey_statekey: builder.open_tree("shortstatekey_statekey")?,
+            statekey_shortstatekey: builder.open_tree("statekey_shortstatekey")?,
+            shortstatekey_statekey: builder.open_tree("shortstatekey_statekey")?,
 
-                shorteventid_authchain: builder.open_tree("shorteventid_authchain")?,
+            shorteventid_authchain: builder.open_tree("shorteventid_authchain")?,
 
-                roomid_shortroomid: builder.open_tree("roomid_shortroomid")?,
+            roomid_shortroomid: builder.open_tree("roomid_shortroomid")?,
 
-                shortstatehash_statediff: builder.open_tree("shortstatehash_statediff")?,
-                eventid_shorteventid: builder.open_tree("eventid_shorteventid")?,
-                shorteventid_eventid: builder.open_tree("shorteventid_eventid")?,
-                shorteventid_shortstatehash: builder.open_tree("shorteventid_shortstatehash")?,
-                roomid_shortstatehash: builder.open_tree("roomid_shortstatehash")?,
-                roomsynctoken_shortstatehash: builder.open_tree("roomsynctoken_shortstatehash")?,
-                statehash_shortstatehash: builder.open_tree("statehash_shortstatehash")?,
+            shortstatehash_statediff: builder.open_tree("shortstatehash_statediff")?,
+            eventid_shorteventid: builder.open_tree("eventid_shorteventid")?,
+            shorteventid_eventid: builder.open_tree("shorteventid_eventid")?,
+            shorteventid_shortstatehash: builder.open_tree("shorteventid_shortstatehash")?,
+            roomid_shortstatehash: builder.open_tree("roomid_shortstatehash")?,
+            roomsynctoken_shortstatehash: builder.open_tree("roomsynctoken_shortstatehash")?,
+            statehash_shortstatehash: builder.open_tree("statehash_shortstatehash")?,
 
-                eventid_outlierpdu: builder.open_tree("eventid_outlierpdu")?,
-                softfailedeventids: builder.open_tree("softfailedeventids")?,
+            eventid_outlierpdu: builder.open_tree("eventid_outlierpdu")?,
+            softfailedeventids: builder.open_tree("softfailedeventids")?,
 
-                referencedevents: builder.open_tree("referencedevents")?,
-                roomuserdataid_accountdata: builder.open_tree("roomuserdataid_accountdata")?,
-                roomusertype_roomuserdataid: builder.open_tree("roomusertype_roomuserdataid")?,
-                mediaid_file: builder.open_tree("mediaid_file")?,
-                backupid_algorithm: builder.open_tree("backupid_algorithm")?,
-                backupid_etag: builder.open_tree("backupid_etag")?,
-                backupkeyid_backup: builder.open_tree("backupkeyid_backup")?,
-                userdevicetxnid_response: builder.open_tree("userdevicetxnid_response")?,
-                servername_educount: builder.open_tree("servername_educount")?,
-                servernameevent_data: builder.open_tree("servernameevent_data")?,
-                servercurrentevent_data: builder.open_tree("servercurrentevent_data")?,
-                id_appserviceregistrations: builder.open_tree("id_appserviceregistrations")?,
-                senderkey_pusher: builder.open_tree("senderkey_pusher")?,
-                global: builder.open_tree("global")?,
-                server_signingkeys: builder.open_tree("server_signingkeys")?,
+            referencedevents: builder.open_tree("referencedevents")?,
+            roomuserdataid_accountdata: builder.open_tree("roomuserdataid_accountdata")?,
+            roomusertype_roomuserdataid: builder.open_tree("roomusertype_roomuserdataid")?,
+            mediaid_file: builder.open_tree("mediaid_file")?,
+            backupid_algorithm: builder.open_tree("backupid_algorithm")?,
+            backupid_etag: builder.open_tree("backupid_etag")?,
+            backupkeyid_backup: builder.open_tree("backupkeyid_backup")?,
+            userdevicetxnid_response: builder.open_tree("userdevicetxnid_response")?,
+            servername_educount: builder.open_tree("servername_educount")?,
+            servernameevent_data: builder.open_tree("servernameevent_data")?,
+            servercurrentevent_data: builder.open_tree("servercurrentevent_data")?,
+            id_appserviceregistrations: builder.open_tree("id_appserviceregistrations")?,
+            senderkey_pusher: builder.open_tree("senderkey_pusher")?,
+            global: builder.open_tree("global")?,
+            server_signingkeys: builder.open_tree("server_signingkeys")?,
 
-                cached_registrations: Arc::new(RwLock::new(HashMap::new())),
-                pdu_cache: Mutex::new(LruCache::new(
-                    config
-                        .pdu_cache_capacity
-                        .try_into()
-                        .expect("pdu cache capacity fits into usize"),
-                )),
-                auth_chain_cache: Mutex::new(LruCache::new(
-                    (100_000.0 * config.conduit_cache_capacity_modifier) as usize,
-                )),
-                shorteventid_cache: Mutex::new(LruCache::new(
-                    (100_000.0 * config.conduit_cache_capacity_modifier) as usize,
-                )),
-                eventidshort_cache: Mutex::new(LruCache::new(
-                    (100_000.0 * config.conduit_cache_capacity_modifier) as usize,
-                )),
-                shortstatekey_cache: Mutex::new(LruCache::new(
-                    (100_000.0 * config.conduit_cache_capacity_modifier) as usize,
-                )),
-                statekeyshort_cache: Mutex::new(LruCache::new(
-                    (100_000.0 * config.conduit_cache_capacity_modifier) as usize,
-                )),
-                our_real_users_cache: RwLock::new(HashMap::new()),
-                appservice_in_room_cache: RwLock::new(HashMap::new()),
-                lazy_load_waiting: Mutex::new(HashMap::new()),
-                stateinfo_cache: Mutex::new(LruCache::new(
-                    (100.0 * config.conduit_cache_capacity_modifier) as usize,
-                )),
-                lasttimelinecount_cache: Mutex::new(HashMap::new()),
-
+            cached_registrations: Arc::new(RwLock::new(HashMap::new())),
+            pdu_cache: Mutex::new(LruCache::new(
+                config
+                    .pdu_cache_capacity
+                    .try_into()
+                    .expect("pdu cache capacity fits into usize"),
+            )),
+            auth_chain_cache: Mutex::new(LruCache::new(
+                (100_000.0 * config.conduit_cache_capacity_modifier) as usize,
+            )),
+            shorteventid_cache: Mutex::new(LruCache::new(
+                (100_000.0 * config.conduit_cache_capacity_modifier) as usize,
+            )),
+            eventidshort_cache: Mutex::new(LruCache::new(
+                (100_000.0 * config.conduit_cache_capacity_modifier) as usize,
+            )),
+            shortstatekey_cache: Mutex::new(LruCache::new(
+                (100_000.0 * config.conduit_cache_capacity_modifier) as usize,
+            )),
+            statekeyshort_cache: Mutex::new(LruCache::new(
+                (100_000.0 * config.conduit_cache_capacity_modifier) as usize,
+            )),
+            our_real_users_cache: RwLock::new(HashMap::new()),
+            appservice_in_room_cache: RwLock::new(HashMap::new()),
+            lazy_load_waiting: Mutex::new(HashMap::new()),
+            stateinfo_cache: Mutex::new(LruCache::new(
+                (100.0 * config.conduit_cache_capacity_modifier) as usize,
+            )),
+            lasttimelinecount_cache: Mutex::new(HashMap::new()),
         });
 
         let services_raw = Box::new(Services::build(Arc::clone(&db), config)?);
 
         // This is the first and only time we initialize the SERVICE static
         *SERVICES.write().unwrap() = Some(Box::leak(services_raw));
-
 
         // Matrix resource ownership is based on the server name; changing it
         // requires recreating the database from scratch.
@@ -570,7 +576,10 @@ impl KeyValueDatabase {
                         let states_parents = last_roomsstatehash.map_or_else(
                             || Ok(Vec::new()),
                             |&last_roomsstatehash| {
-                                services().rooms.state_compressor.load_shortstatehash_info(dbg!(last_roomsstatehash))
+                                services()
+                                    .rooms
+                                    .state_compressor
+                                    .load_shortstatehash_info(dbg!(last_roomsstatehash))
                             },
                         )?;
 
@@ -643,14 +652,15 @@ impl KeyValueDatabase {
                         current_state = HashSet::new();
                         current_sstatehash = Some(sstatehash);
 
-                        let event_id = db
-                            .shorteventid_eventid
-                            .get(&seventid)
-                            .unwrap()
-                            .unwrap();
+                        let event_id = db.shorteventid_eventid.get(&seventid).unwrap().unwrap();
                         let string = utils::string_from_bytes(&event_id).unwrap();
                         let event_id = <&EventId>::try_from(string.as_str()).unwrap();
-                        let pdu = services().rooms.timeline.get_pdu(event_id).unwrap().unwrap();
+                        let pdu = services()
+                            .rooms
+                            .timeline
+                            .get_pdu(event_id)
+                            .unwrap()
+                            .unwrap();
 
                         if Some(&pdu.room_id) != current_room.as_ref() {
                             current_room = Some(pdu.room_id.clone());
@@ -764,8 +774,7 @@ impl KeyValueDatabase {
                     .peekable();
 
                 while iter.peek().is_some() {
-                    db.tokenids
-                        .insert_batch(&mut iter.by_ref().take(1000))?;
+                    db.tokenids.insert_batch(&mut iter.by_ref().take(1000))?;
                     println!("smaller batch done");
                 }
 
@@ -803,8 +812,7 @@ impl KeyValueDatabase {
 
                 // Force E2EE device list updates so we can send them over federation
                 for user_id in services().users.iter().filter_map(|r| r.ok()) {
-                    services().users
-                        .mark_device_key_update(&user_id)?;
+                    services().users.mark_device_key_update(&user_id)?;
                 }
 
                 services().globals.bump_database_version(10)?;
@@ -825,7 +833,8 @@ impl KeyValueDatabase {
 
             info!(
                 "Loaded {} database with version {}",
-                services().globals.config.database_backend, latest_database_version
+                services().globals.config.database_backend,
+                latest_database_version
             );
         } else {
             services()
@@ -837,7 +846,8 @@ impl KeyValueDatabase {
 
             warn!(
                 "Created new {} database with version {}",
-                services().globals.config.database_backend, latest_database_version
+                services().globals.config.database_backend,
+                latest_database_version
             );
         }
 
@@ -862,9 +872,7 @@ impl KeyValueDatabase {
             }
         };
 
-        services()
-            .sending
-            .start_handler(sending_receiver);
+        services().sending.start_handler(sending_receiver);
 
         Self::start_cleanup_task().await;
 
@@ -898,7 +906,8 @@ impl KeyValueDatabase {
 
         use std::time::{Duration, Instant};
 
-        let timer_interval = Duration::from_secs(services().globals.config.cleanup_second_interval as u64);
+        let timer_interval =
+            Duration::from_secs(services().globals.config.cleanup_second_interval as u64);
 
         tokio::spawn(async move {
             let mut i = interval(timer_interval);
@@ -937,8 +946,10 @@ fn set_emergency_access() -> Result<bool> {
     let conduit_user = UserId::parse_with_server_name("conduit", services().globals.server_name())
         .expect("@conduit:server_name is a valid UserId");
 
-    services().users
-        .set_password(&conduit_user, services().globals.emergency_password().as_deref())?;
+    services().users.set_password(
+        &conduit_user,
+        services().globals.emergency_password().as_deref(),
+    )?;
 
     let (ruleset, res) = match services().globals.emergency_password() {
         Some(_) => (Ruleset::server_default(&conduit_user), Ok(true)),
@@ -951,7 +962,8 @@ fn set_emergency_access() -> Result<bool> {
         GlobalAccountDataEventType::PushRules.to_string().into(),
         &serde_json::to_value(&GlobalAccountDataEvent {
             content: PushRulesEventContent { global: ruleset },
-        }).expect("to json value always works"),
+        })
+        .expect("to json value always works"),
     )?;
 
     res

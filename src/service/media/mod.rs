@@ -1,8 +1,8 @@
 mod data;
 pub use data::Data;
 
+use crate::{services, utils, Error, Result};
 use image::{imageops::FilterType, GenericImageView};
-use crate::{utils, Error, Result, services};
 use std::{mem, sync::Arc};
 use tokio::{
     fs::File,
@@ -29,7 +29,9 @@ impl Service {
         file: &[u8],
     ) -> Result<()> {
         // Width, Height = 0 if it's not a thumbnail
-        let key = self.db.create_file_metadata(mxc, 0, 0, content_disposition, content_type)?;
+        let key = self
+            .db
+            .create_file_metadata(mxc, 0, 0, content_disposition, content_type)?;
 
         let path = services().globals.get_media_file(&key);
         let mut f = File::create(path).await?;
@@ -48,7 +50,9 @@ impl Service {
         height: u32,
         file: &[u8],
     ) -> Result<()> {
-        let key = self.db.create_file_metadata(mxc, width, height, content_disposition, content_type)?;
+        let key =
+            self.db
+                .create_file_metadata(mxc, width, height, content_disposition, content_type)?;
 
         let path = services().globals.get_media_file(&key);
         let mut f = File::create(path).await?;
@@ -59,11 +63,12 @@ impl Service {
 
     /// Downloads a file.
     pub async fn get(&self, mxc: String) -> Result<Option<FileMeta>> {
-        if let Ok((content_disposition, content_type, key)) = self.db.search_file_metadata(mxc, 0, 0) {
+        if let Ok((content_disposition, content_type, key)) =
+            self.db.search_file_metadata(mxc, 0, 0)
+        {
             let path = services().globals.get_media_file(&key);
             let mut file = Vec::new();
             File::open(path).await?.read_to_end(&mut file).await?;
-
 
             Ok(Some(FileMeta {
                 content_disposition,
@@ -108,7 +113,9 @@ impl Service {
             .thumbnail_properties(width, height)
             .unwrap_or((0, 0, false)); // 0, 0 because that's the original file
 
-        if let Ok((content_disposition, content_type, key)) = self.db.search_file_metadata(mxc.clone(), width, height) {
+        if let Ok((content_disposition, content_type, key)) =
+            self.db.search_file_metadata(mxc.clone(), width, height)
+        {
             // Using saved thumbnail
             let path = services().globals.get_media_file(&key);
             let mut file = Vec::new();
@@ -119,7 +126,9 @@ impl Service {
                 content_type,
                 file: file.to_vec(),
             }))
-        } else if let Ok((content_disposition, content_type, key)) = self.db.search_file_metadata(mxc.clone(), 0, 0) {
+        } else if let Ok((content_disposition, content_type, key)) =
+            self.db.search_file_metadata(mxc.clone(), 0, 0)
+        {
             // Generate a thumbnail
             let path = services().globals.get_media_file(&key);
             let mut file = Vec::new();
@@ -180,7 +189,13 @@ impl Service {
                 thumbnail.write_to(&mut thumbnail_bytes, image::ImageOutputFormat::Png)?;
 
                 // Save thumbnail in database so we don't have to generate it again next time
-                let thumbnail_key = self.db.create_file_metadata(mxc, width, height, content_disposition.as_deref(), content_type.as_deref())?;
+                let thumbnail_key = self.db.create_file_metadata(
+                    mxc,
+                    width,
+                    height,
+                    content_disposition.as_deref(),
+                    content_type.as_deref(),
+                )?;
 
                 let path = services().globals.get_media_file(&thumbnail_key);
                 let mut f = File::create(path).await?;

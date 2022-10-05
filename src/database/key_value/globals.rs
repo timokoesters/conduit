@@ -2,9 +2,13 @@ use std::collections::BTreeMap;
 
 use async_trait::async_trait;
 use futures_util::{stream::FuturesUnordered, StreamExt};
-use ruma::{signatures::Ed25519KeyPair, UserId, DeviceId, ServerName, api::federation::discovery::{ServerSigningKeys, VerifyKey}, ServerSigningKeyId, MilliSecondsSinceUnixEpoch};
+use ruma::{
+    api::federation::discovery::{ServerSigningKeys, VerifyKey},
+    signatures::Ed25519KeyPair,
+    DeviceId, MilliSecondsSinceUnixEpoch, ServerName, ServerSigningKeyId, UserId,
+};
 
-use crate::{Result, service, database::KeyValueDatabase, Error, utils, services};
+use crate::{database::KeyValueDatabase, service, services, utils, Error, Result};
 
 pub const COUNTER: &[u8] = b"c";
 
@@ -35,28 +39,24 @@ impl service::globals::Data for KeyValueDatabase {
 
         // Return when *any* user changed his key
         // TODO: only send for user they share a room with
-        futures.push(
-            self.todeviceid_events
-                .watch_prefix(&userdeviceid_prefix),
-        );
+        futures.push(self.todeviceid_events.watch_prefix(&userdeviceid_prefix));
 
         futures.push(self.userroomid_joined.watch_prefix(&userid_prefix));
-        futures.push(
-            self.userroomid_invitestate
-                .watch_prefix(&userid_prefix),
-        );
+        futures.push(self.userroomid_invitestate.watch_prefix(&userid_prefix));
         futures.push(self.userroomid_leftstate.watch_prefix(&userid_prefix));
         futures.push(
             self.userroomid_notificationcount
                 .watch_prefix(&userid_prefix),
         );
-        futures.push(
-            self.userroomid_highlightcount
-                .watch_prefix(&userid_prefix),
-        );
+        futures.push(self.userroomid_highlightcount.watch_prefix(&userid_prefix));
 
         // Events for rooms we are in
-        for room_id in services().rooms.state_cache.rooms_joined(user_id).filter_map(|r| r.ok()) {
+        for room_id in services()
+            .rooms
+            .state_cache
+            .rooms_joined(user_id)
+            .filter_map(|r| r.ok())
+        {
             let short_roomid = services()
                 .rooms
                 .short
@@ -75,15 +75,9 @@ impl service::globals::Data for KeyValueDatabase {
             futures.push(self.pduid_pdu.watch_prefix(&short_roomid));
 
             // EDUs
-            futures.push(
-                self.roomid_lasttypingupdate
-                    .watch_prefix(&roomid_bytes),
-            );
+            futures.push(self.roomid_lasttypingupdate.watch_prefix(&roomid_bytes));
 
-            futures.push(
-                self.readreceiptid_readreceipt
-                    .watch_prefix(&roomid_prefix),
-            );
+            futures.push(self.readreceiptid_readreceipt.watch_prefix(&roomid_prefix));
 
             // Key changes
             futures.push(self.keychangeid_userid.watch_prefix(&roomid_prefix));
@@ -110,10 +104,7 @@ impl service::globals::Data for KeyValueDatabase {
         futures.push(self.keychangeid_userid.watch_prefix(&userid_prefix));
 
         // One time keys
-        futures.push(
-            self.userid_lastonetimekeyupdate
-                .watch_prefix(&userid_bytes),
-        );
+        futures.push(self.userid_lastonetimekeyupdate.watch_prefix(&userid_bytes));
 
         futures.push(Box::pin(services().globals.rotate.watch()));
 
@@ -238,10 +229,7 @@ impl service::globals::Data for KeyValueDatabase {
     }
 
     fn bump_database_version(&self, new_version: u64) -> Result<()> {
-        self.global
-            .insert(b"version", &new_version.to_be_bytes())?;
+        self.global.insert(b"version", &new_version.to_be_bytes())?;
         Ok(())
     }
-
-
 }

@@ -2,7 +2,7 @@ mod data;
 use std::sync::Arc;
 
 pub use data::Data;
-use ruma::{UserId, RoomId, events::SyncEphemeralRoomEvent};
+use ruma::{events::SyncEphemeralRoomEvent, RoomId, UserId};
 
 use crate::Result;
 

@@ -28,7 +28,15 @@ use ruma::{
 use serde_json::value::to_raw_value;
 use tokio::sync::{mpsc, MutexGuard, RwLock, RwLockReadGuard};
 
-use crate::{Result, services, Error, api::{server_server, client_server::{AUTO_GEN_PASSWORD_LENGTH, leave_all_rooms}}, PduEvent, utils::{HtmlEscape, self}};
+use crate::{
+    api::{
+        client_server::{leave_all_rooms, AUTO_GEN_PASSWORD_LENGTH},
+        server_server,
+    },
+    services,
+    utils::{self, HtmlEscape},
+    Error, PduEvent, Result,
+};
 
 use super::pdu::PduBuilder;
 
@@ -153,7 +161,6 @@ enum AdminCommand {
     EnableRoom { room_id: Box<RoomId> },
 }
 
-
 #[derive(Debug)]
 pub enum AdminRoomEvent {
     ProcessMessage(String),
@@ -166,16 +173,14 @@ pub struct Service {
 }
 
 impl Service {
-    pub fn start_handler(
-        &self,
-        mut receiver: mpsc::UnboundedReceiver<AdminRoomEvent>,
-    ) {
+    pub fn start_handler(&self, mut receiver: mpsc::UnboundedReceiver<AdminRoomEvent>) {
         tokio::spawn(async move {
             // TODO: Use futures when we have long admin commands
             //let mut futures = FuturesUnordered::new();
 
-            let conduit_user = UserId::parse(format!("@conduit:{}", services().globals.server_name()))
-                .expect("@conduit:server_name is valid");
+            let conduit_user =
+                UserId::parse(format!("@conduit:{}", services().globals.server_name()))
+                    .expect("@conduit:server_name is valid");
 
             let conduit_room = services()
                 .rooms
@@ -193,7 +198,8 @@ impl Service {
                                 mutex_lock: &MutexGuard<'_, ()>| {
                 services()
                     .rooms
-                    .timeline.build_and_append_pdu(
+                    .timeline
+                    .build_and_append_pdu(
                         PduBuilder {
                             event_type: RoomEventType::RoomMessage,
                             content: to_raw_value(&message)
@@ -316,9 +322,11 @@ impl Service {
     ) -> Result<RoomMessageEventContent> {
         let reply_message_content = match command {
             AdminCommand::RegisterAppservice => {
-                if body.len() > 2 && body[0].trim() == "```" && body.last().unwrap().trim() == "```" {
+                if body.len() > 2 && body[0].trim() == "```" && body.last().unwrap().trim() == "```"
+                {
                     let appservice_config = body[1..body.len() - 1].join("\n");
-                    let parsed_config = serde_yaml::from_str::<serde_yaml::Value>(&appservice_config);
+                    let parsed_config =
+                        serde_yaml::from_str::<serde_yaml::Value>(&appservice_config);
                     match parsed_config {
                         Ok(yaml) => match services().appservice.register_appservice(yaml) {
                             Ok(id) => RoomMessageEventContent::text_plain(format!(
@@ -343,7 +351,10 @@ impl Service {
             }
             AdminCommand::UnregisterAppservice {
                 appservice_identifier,
-            } => match services().appservice.unregister_appservice(&appservice_identifier) {
+            } => match services()
+                .appservice
+                .unregister_appservice(&appservice_identifier)
+            {
                 Ok(()) => RoomMessageEventContent::text_plain("Appservice unregistered."),
                 Err(e) => RoomMessageEventContent::text_plain(format!(
                     "Failed to unregister appservice: {}",
@@ -351,7 +362,11 @@ impl Service {
                 )),
             },
             AdminCommand::ListAppservices => {
-                if let Ok(appservices) = services().appservice.iter_ids().map(|ids| ids.collect::<Vec<_>>()) {
+                if let Ok(appservices) = services()
+                    .appservice
+                    .iter_ids()
+                    .map(|ids| ids.collect::<Vec<_>>())
+                {
                     let count = appservices.len();
                     let output = format!(
                         "Appservices ({}): {}",
@@ -399,7 +414,11 @@ impl Service {
                 Err(e) => RoomMessageEventContent::text_plain(e.to_string()),
             },
             AdminCommand::IncomingFederation => {
-                let map = services().globals.roomid_federationhandletime.read().unwrap();
+                let map = services()
+                    .globals
+                    .roomid_federationhandletime
+                    .read()
+                    .unwrap();
                 let mut msg: String = format!("Handling {} incoming pdus:\n", map.len());
 
                 for (r, (e, i)) in map.iter() {
@@ -426,7 +445,10 @@ impl Service {
                         Error::bad_database("Invalid room id field in event in database")
                     })?;
                     let start = Instant::now();
-                    let count = services().rooms.auth_chain.get_auth_chain(room_id, vec![event_id])
+                    let count = services()
+                        .rooms
+                        .auth_chain
+                        .get_auth_chain(room_id, vec![event_id])
                         .await?
                         .count();
                     let elapsed = start.elapsed();
@@ -439,7 +461,8 @@ impl Service {
                 }
             }
             AdminCommand::ParsePdu => {
-                if body.len() > 2 && body[0].trim() == "```" && body.last().unwrap().trim() == "```" {
+                if body.len() > 2 && body[0].trim() == "```" && body.last().unwrap().trim() == "```"
+                {
                     let string = body[1..body.len() - 1].join("\n");
                     match serde_json::from_str(&string) {
                         Ok(value) => {
@@ -477,15 +500,18 @@ impl Service {
             }
             AdminCommand::GetPdu { event_id } => {
                 let mut outlier = false;
-                let mut pdu_json = services().rooms.timeline.get_non_outlier_pdu_json(&event_id)?;
+                let mut pdu_json = services()
+                    .rooms
+                    .timeline
+                    .get_non_outlier_pdu_json(&event_id)?;
                 if pdu_json.is_none() {
                     outlier = true;
                     pdu_json = services().rooms.timeline.get_pdu_json(&event_id)?;
                 }
                 match pdu_json {
                     Some(json) => {
-                        let json_text =
-                            serde_json::to_string_pretty(&json).expect("canonical json is valid json");
+                        let json_text = serde_json::to_string_pretty(&json)
+                            .expect("canonical json is valid json");
                         RoomMessageEventContent::text_html(
                             format!(
                                 "{}\n```json\n{}\n```",
@@ -539,8 +565,11 @@ impl Service {
                 if !services().users.exists(&user_id)?
                     || services().users.is_deactivated(&user_id)?
                     || user_id
-                        == UserId::parse_with_server_name("conduit", services().globals.server_name())
-                            .expect("conduit user exists")
+                        == UserId::parse_with_server_name(
+                            "conduit",
+                            services().globals.server_name(),
+                        )
+                        .expect("conduit user exists")
                 {
                     return Ok(RoomMessageEventContent::text_plain(
                         "The specified user does not exist or is deactivated!",
@@ -549,7 +578,10 @@ impl Service {
 
                 let new_password = utils::random_string(AUTO_GEN_PASSWORD_LENGTH);
 
-                match services().users.set_password(&user_id, Some(new_password.as_str())) {
+                match services()
+                    .users
+                    .set_password(&user_id, Some(new_password.as_str()))
+                {
                     Ok(()) => RoomMessageEventContent::text_plain(format!(
                         "Successfully reset the password for user {}: {}",
                         user_id, new_password
@@ -590,7 +622,8 @@ impl Service {
 
                 // Default to pretty displayname
                 let displayname = format!("{} ⚡️", user_id.localpart());
-                services().users
+                services()
+                    .users
                     .set_displayname(&user_id, Some(displayname.clone()))?;
 
                 // Initial account data
@@ -604,7 +637,8 @@ impl Service {
                         content: ruma::events::push_rules::PushRulesEventContent {
                             global: ruma::push::Ruleset::server_default(&user_id),
                         },
-                    }).expect("to json value always works"),
+                    })
+                    .expect("to json value always works"),
                 )?;
 
                 // we dont add a device since we're not the user, just the creator
@@ -651,7 +685,8 @@ impl Service {
                 }
             }
             AdminCommand::DeactivateAll { leave_rooms, force } => {
-                if body.len() > 2 && body[0].trim() == "```" && body.last().unwrap().trim() == "```" {
+                if body.len() > 2 && body[0].trim() == "```" && body.last().unwrap().trim() == "```"
+                {
                     let usernames = body.clone().drain(1..body.len() - 1).collect::<Vec<_>>();
 
                     let mut user_ids: Vec<&UserId> = Vec::new();
@@ -672,17 +707,15 @@ impl Service {
                     let mut admins = Vec::new();
 
                     if !force {
-                        user_ids.retain(|&user_id| {
-                            match services().users.is_admin(user_id) {
-                                Ok(is_admin) => match is_admin {
-                                    true => {
-                                        admins.push(user_id.localpart());
-                                        false
-                                    }
-                                    false => true,
-                                },
-                                Err(_) => false,
-                            }
+                        user_ids.retain(|&user_id| match services().users.is_admin(user_id) {
+                            Ok(is_admin) => match is_admin {
+                                true => {
+                                    admins.push(user_id.localpart());
+                                    false
+                                }
+                                false => true,
+                            },
+                            Err(_) => false,
                         })
                     }
 
@@ -783,8 +816,8 @@ impl Service {
         } else {
             // Wrap the usage line in a code block, and add a yaml block example
             // This makes the usage of e.g. `register-appservice` more accurate
-            let re =
-                Regex::new("(?m)^USAGE:\n    (.*?)\n\n").expect("Regex compilation should not fail");
+            let re = Regex::new("(?m)^USAGE:\n    (.*?)\n\n")
+                .expect("Regex compilation should not fail");
             re.replace_all(&text, "USAGE:\n<pre>$1[nobr]\n[commandbodyblock]</pre>")
                 .replace("[commandbodyblock]", &command_body)
         };
@@ -808,7 +841,8 @@ impl Service {
         services().rooms.short.get_or_create_shortroomid(&room_id)?;
 
         let mutex_state = Arc::clone(
-            services().globals
+            services()
+                .globals
                 .roomid_mutex_state
                 .write()
                 .unwrap()
@@ -818,8 +852,9 @@ impl Service {
         let state_lock = mutex_state.lock().await;
 
         // Create a user for the server
-        let conduit_user = UserId::parse_with_server_name("conduit", services().globals.server_name())
-            .expect("@conduit:server_name is valid");
+        let conduit_user =
+            UserId::parse_with_server_name("conduit", services().globals.server_name())
+                .expect("@conduit:server_name is valid");
 
         services().users.create(&conduit_user, None)?;
 
@@ -1002,9 +1037,10 @@ impl Service {
         user_id: &UserId,
         displayname: String,
     ) -> Result<()> {
-        let admin_room_alias: Box<RoomAliasId> = format!("#admins:{}", services().globals.server_name())
-            .try_into()
-            .expect("#admins:server_name is a valid alias name");
+        let admin_room_alias: Box<RoomAliasId> =
+            format!("#admins:{}", services().globals.server_name())
+                .try_into()
+                .expect("#admins:server_name is a valid alias name");
         let room_id = services()
             .rooms
             .alias
@@ -1012,7 +1048,8 @@ impl Service {
             .expect("Admin room must exist");
 
         let mutex_state = Arc::clone(
-            services().globals
+            services()
+                .globals
                 .roomid_mutex_state
                 .write()
                 .unwrap()
@@ -1022,8 +1059,9 @@ impl Service {
         let state_lock = mutex_state.lock().await;
 
         // Use the server user to grant the new admin's power level
-        let conduit_user = UserId::parse_with_server_name("conduit", services().globals.server_name())
-            .expect("@conduit:server_name is valid");
+        let conduit_user =
+            UserId::parse_with_server_name("conduit", services().globals.server_name())
+                .expect("@conduit:server_name is valid");
 
         // Invite and join the real user
         services().rooms.timeline.build_and_append_pdu(

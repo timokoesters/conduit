@@ -1,4 +1,4 @@
-use crate::{Error, Result, Ruma, services};
+use crate::{services, Error, Result, Ruma};
 use ruma::{
     api::{
         client::{
@@ -123,7 +123,8 @@ pub(crate) async fn get_public_rooms_filtered_helper(
     filter: &IncomingFilter,
     _network: &IncomingRoomNetwork,
 ) -> Result<get_public_rooms_filtered::v3::Response> {
-    if let Some(other_server) = server.filter(|server| *server != services().globals.server_name().as_str())
+    if let Some(other_server) =
+        server.filter(|server| *server != services().globals.server_name().as_str())
     {
         let response = services()
             .sending

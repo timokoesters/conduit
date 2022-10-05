@@ -1,5 +1,5 @@
-use ruma::RoomId;
 use crate::Result;
+use ruma::RoomId;
 
 pub trait Data: Send + Sync {
     fn index_pdu<'a>(&self, shortroomid: u64, pdu_id: &[u8], message_body: String) -> Result<()>;

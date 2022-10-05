@@ -1,4 +1,4 @@
-use crate::{utils, Error, Result, Ruma, services};
+use crate::{services, utils, Error, Result, Ruma};
 use ruma::api::client::{error::ErrorKind, typing::create_typing_event};
 
 /// # `PUT /_matrix/client/r0/rooms/{roomId}/typing/{userId}`
@@ -11,7 +11,11 @@ pub async fn create_typing_event_route(
 
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
-    if !services().rooms.state_cache.is_joined(sender_user, &body.room_id)? {
+    if !services()
+        .rooms
+        .state_cache
+        .is_joined(sender_user, &body.room_id)?
+    {
         return Err(Error::BadRequest(
             ErrorKind::Forbidden,
             "You are not in this room.",
@@ -25,8 +29,10 @@ pub async fn create_typing_event_route(
             duration.as_millis() as u64 + utils::millis_since_unix_epoch(),
         )?;
     } else {
-        services().rooms
-            .edus.typing
+        services()
+            .rooms
+            .edus
+            .typing
             .typing_remove(sender_user, &body.room_id)?;
     }
 

@@ -1,11 +1,15 @@
 pub mod data;
-use std::{mem::size_of, sync::{Arc, Mutex}, collections::HashSet};
+use std::{
+    collections::HashSet,
+    mem::size_of,
+    sync::{Arc, Mutex},
+};
 
 pub use data::Data;
 use lru_cache::LruCache;
 use ruma::{EventId, RoomId};
 
-use crate::{Result, utils, services};
+use crate::{services, utils, Result};
 
 use self::data::StateDiff;
 
@@ -23,7 +27,6 @@ pub struct Service {
             )>,
         >,
     >,
-
 }
 
 pub type CompressedStateEvent = [u8; 2 * size_of::<u64>()];
@@ -51,7 +54,11 @@ impl Service {
             return Ok(r.clone());
         }
 
-        let StateDiff { parent, added, removed } = self.db.get_statediff(shortstatehash)?;
+        let StateDiff {
+            parent,
+            added,
+            removed,
+        } = self.db.get_statediff(shortstatehash)?;
 
         if let Some(parent) = parent {
             let mut response = self.load_shortstatehash_info(parent)?;
@@ -81,7 +88,9 @@ impl Service {
     ) -> Result<CompressedStateEvent> {
         let mut v = shortstatekey.to_be_bytes().to_vec();
         v.extend_from_slice(
-            &services().rooms.short
+            &services()
+                .rooms
+                .short
                 .get_or_create_shorteventid(event_id)?
                 .to_be_bytes(),
         );
@@ -175,7 +184,14 @@ impl Service {
 
         if parent_states.is_empty() {
             // There is no parent layer, create a new state
-            self.db.save_statediff(shortstatehash, StateDiff { parent: None, added: statediffnew, removed: statediffremoved })?;
+            self.db.save_statediff(
+                shortstatehash,
+                StateDiff {
+                    parent: None,
+                    added: statediffnew,
+                    removed: statediffremoved,
+                },
+            )?;
 
             return Ok(());
         };
@@ -217,7 +233,14 @@ impl Service {
             )?;
         } else {
             // Diff small enough, we add diff as layer on top of parent
-            self.db.save_statediff(shortstatehash, StateDiff { parent: Some(parent.0), added: statediffnew, removed: statediffremoved })?;
+            self.db.save_statediff(
+                shortstatehash,
+                StateDiff {
+                    parent: Some(parent.0),
+                    added: statediffnew,
+                    removed: statediffremoved,
+                },
+            )?;
         }
 
         Ok(())
@@ -228,8 +251,7 @@ impl Service {
         &self,
         room_id: &RoomId,
         new_state_ids_compressed: HashSet<CompressedStateEvent>,
-    ) -> Result<u64>
-    {
+    ) -> Result<u64> {
         let previous_shortstatehash = services().rooms.state.get_room_shortstatehash(room_id)?;
 
         let state_hash = utils::calculate_hash(
@@ -239,8 +261,10 @@ impl Service {
                 .collect::<Vec<_>>(),
         );
 
-        let (new_shortstatehash, already_existed) =
-            services().rooms.short.get_or_create_shortstatehash(&state_hash)?;
+        let (new_shortstatehash, already_existed) = services()
+            .rooms
+            .short
+            .get_or_create_shortstatehash(&state_hash)?;
 
         if Some(new_shortstatehash) == previous_shortstatehash {
             return Ok(new_shortstatehash);

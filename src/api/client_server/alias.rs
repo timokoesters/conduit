@@ -1,4 +1,4 @@
-use crate::{Error, Result, Ruma, services};
+use crate::{services, Error, Result, Ruma};
 use regex::Regex;
 use ruma::{
     api::{
@@ -25,11 +25,18 @@ pub async fn create_alias_route(
         ));
     }
 
-    if services().rooms.alias.resolve_local_alias(&body.room_alias)?.is_some() {
+    if services()
+        .rooms
+        .alias
+        .resolve_local_alias(&body.room_alias)?
+        .is_some()
+    {
         return Err(Error::Conflict("Alias already exists."));
     }
 
-    services().rooms.alias
+    services()
+        .rooms
+        .alias
         .set_alias(&body.room_alias, &body.room_id)?;
 
     Ok(create_alias::v3::Response::new())
@@ -69,9 +76,7 @@ pub async fn get_alias_route(
     get_alias_helper(&body.room_alias).await
 }
 
-pub(crate) async fn get_alias_helper(
-    room_alias: &RoomAliasId,
-) -> Result<get_alias::v3::Response> {
+pub(crate) async fn get_alias_helper(room_alias: &RoomAliasId) -> Result<get_alias::v3::Response> {
     if room_alias.server_name() != services().globals.server_name() {
         let response = services()
             .sending
@@ -115,9 +120,15 @@ pub(crate) async fn get_alias_helper(
                         .await
                         .is_ok()
                 {
-                    room_id = Some(services().rooms.alias.resolve_local_alias(room_alias)?.ok_or_else(|| {
-                        Error::bad_config("Appservice lied to us. Room does not exist.")
-                    })?);
+                    room_id = Some(
+                        services()
+                            .rooms
+                            .alias
+                            .resolve_local_alias(room_alias)?
+                            .ok_or_else(|| {
+                                Error::bad_config("Appservice lied to us. Room does not exist.")
+                            })?,
+                    );
                     break;
                 }
             }

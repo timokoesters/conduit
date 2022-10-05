@@ -1,9 +1,15 @@
 use std::collections::HashMap;
 
-use ruma::{UserId, DeviceId, signatures::CanonicalJsonValue, api::client::{uiaa::UiaaInfo, error::ErrorKind}, events::{RoomAccountDataEventType, AnyEphemeralRoomEvent}, serde::Raw, RoomId};
-use serde::{Serialize, de::DeserializeOwned};
+use ruma::{
+    api::client::{error::ErrorKind, uiaa::UiaaInfo},
+    events::{AnyEphemeralRoomEvent, RoomAccountDataEventType},
+    serde::Raw,
+    signatures::CanonicalJsonValue,
+    DeviceId, RoomId, UserId,
+};
+use serde::{de::DeserializeOwned, Serialize};
 
-use crate::{Result, database::KeyValueDatabase, service, Error, utils, services};
+use crate::{database::KeyValueDatabase, service, services, utils, Error, Result};
 
 impl service::account_data::Data for KeyValueDatabase {
     /// Places one event in the account data of the user and removes the previous entry.

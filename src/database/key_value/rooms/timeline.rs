@@ -1,13 +1,17 @@
 use std::{collections::hash_map, mem::size_of, sync::Arc};
 
-use ruma::{UserId, RoomId, api::client::error::ErrorKind, EventId, signatures::CanonicalJsonObject};
+use ruma::{
+    api::client::error::ErrorKind, signatures::CanonicalJsonObject, EventId, RoomId, UserId,
+};
 use tracing::error;
 
-use crate::{service, database::KeyValueDatabase, utils, Error, PduEvent, Result, services};
+use crate::{database::KeyValueDatabase, service, services, utils, Error, PduEvent, Result};
 
 impl service::rooms::timeline::Data for KeyValueDatabase {
     fn first_pdu_in_room(&self, room_id: &RoomId) -> Result<Option<Arc<PduEvent>>> {
-        let prefix = services().rooms.short
+        let prefix = services()
+            .rooms
+            .short
             .get_shortroomid(room_id)?
             .expect("room exists")
             .to_be_bytes()
@@ -82,10 +86,7 @@ impl service::rooms::timeline::Data for KeyValueDatabase {
     }
 
     /// Returns the json of a pdu.
-    fn get_non_outlier_pdu_json(
-        &self,
-        event_id: &EventId,
-    ) -> Result<Option<CanonicalJsonObject>> {
+    fn get_non_outlier_pdu_json(&self, event_id: &EventId) -> Result<Option<CanonicalJsonObject>> {
         self.eventid_pduid
             .get(event_id.as_bytes())?
             .map(|pduid| {
@@ -187,10 +188,17 @@ impl service::rooms::timeline::Data for KeyValueDatabase {
             .map_err(|_| Error::bad_database("PDU has invalid count bytes."))
     }
 
-    fn append_pdu(&self, pdu_id: &[u8], pdu: &PduEvent, json: &CanonicalJsonObject, count: u64) -> Result<()> {
+    fn append_pdu(
+        &self,
+        pdu_id: &[u8],
+        pdu: &PduEvent,
+        json: &CanonicalJsonObject,
+        count: u64,
+    ) -> Result<()> {
         self.pduid_pdu.insert(
             pdu_id,
-            &serde_json::to_vec(json).expect("CanonicalJsonObject is always a valid"))?;
+            &serde_json::to_vec(json).expect("CanonicalJsonObject is always a valid"),
+        )?;
 
         self.lasttimelinecount_cache
             .lock()
@@ -209,7 +217,8 @@ impl service::rooms::timeline::Data for KeyValueDatabase {
         if self.pduid_pdu.get(pdu_id)?.is_some() {
             self.pduid_pdu.insert(
                 pdu_id,
-                &serde_json::to_vec(pdu).expect("CanonicalJsonObject is always a valid"))?;
+                &serde_json::to_vec(pdu).expect("CanonicalJsonObject is always a valid"),
+            )?;
             Ok(())
         } else {
             Err(Error::BadRequest(
@@ -227,7 +236,9 @@ impl service::rooms::timeline::Data for KeyValueDatabase {
         room_id: &RoomId,
         since: u64,
     ) -> Result<Box<dyn Iterator<Item = Result<(Vec<u8>, PduEvent)>>>> {
-        let prefix = services().rooms.short
+        let prefix = services()
+            .rooms
+            .short
             .get_shortroomid(room_id)?
             .expect("room exists")
             .to_be_bytes()
@@ -239,18 +250,19 @@ impl service::rooms::timeline::Data for KeyValueDatabase {
 
         let user_id = user_id.to_owned();
 
-        Ok(Box::new(self
-            .pduid_pdu
-            .iter_from(&first_pdu_id, false)
-            .take_while(move |(k, _)| k.starts_with(&prefix))
-            .map(move |(pdu_id, v)| {
-                let mut pdu = serde_json::from_slice::<PduEvent>(&v)
-                    .map_err(|_| Error::bad_database("PDU in db is invalid."))?;
-                if pdu.sender != user_id {
-                    pdu.remove_transaction_id()?;
-                }
-                Ok((pdu_id, pdu))
-            })))
+        Ok(Box::new(
+            self.pduid_pdu
+                .iter_from(&first_pdu_id, false)
+                .take_while(move |(k, _)| k.starts_with(&prefix))
+                .map(move |(pdu_id, v)| {
+                    let mut pdu = serde_json::from_slice::<PduEvent>(&v)
+                        .map_err(|_| Error::bad_database("PDU in db is invalid."))?;
+                    if pdu.sender != user_id {
+                        pdu.remove_transaction_id()?;
+                    }
+                    Ok((pdu_id, pdu))
+                }),
+        ))
     }
 
     /// Returns an iterator over all events and their tokens in a room that happened before the
@@ -262,7 +274,9 @@ impl service::rooms::timeline::Data for KeyValueDatabase {
         until: u64,
     ) -> Result<Box<dyn Iterator<Item = Result<(Vec<u8>, PduEvent)>>>> {
         // Create the first part of the full pdu id
-        let prefix = services().rooms.short
+        let prefix = services()
+            .rooms
+            .short
             .get_shortroomid(room_id)?
             .expect("room exists")
             .to_be_bytes()
@@ -275,18 +289,19 @@ impl service::rooms::timeline::Data for KeyValueDatabase {
 
         let user_id = user_id.to_owned();
 
-        Ok(Box::new(self
-            .pduid_pdu
-            .iter_from(current, true)
-            .take_while(move |(k, _)| k.starts_with(&prefix))
-            .map(move |(pdu_id, v)| {
-                let mut pdu = serde_json::from_slice::<PduEvent>(&v)
-                    .map_err(|_| Error::bad_database("PDU in db is invalid."))?;
-                if pdu.sender != user_id {
-                    pdu.remove_transaction_id()?;
-                }
-                Ok((pdu_id, pdu))
-            })))
+        Ok(Box::new(
+            self.pduid_pdu
+                .iter_from(current, true)
+                .take_while(move |(k, _)| k.starts_with(&prefix))
+                .map(move |(pdu_id, v)| {
+                    let mut pdu = serde_json::from_slice::<PduEvent>(&v)
+                        .map_err(|_| Error::bad_database("PDU in db is invalid."))?;
+                    if pdu.sender != user_id {
+                        pdu.remove_transaction_id()?;
+                    }
+                    Ok((pdu_id, pdu))
+                }),
+        ))
     }
 
     fn pdus_after<'a>(
@@ -296,7 +311,9 @@ impl service::rooms::timeline::Data for KeyValueDatabase {
         from: u64,
     ) -> Result<Box<dyn Iterator<Item = Result<(Vec<u8>, PduEvent)>>>> {
         // Create the first part of the full pdu id
-        let prefix = services().rooms.short
+        let prefix = services()
+            .rooms
+            .short
             .get_shortroomid(room_id)?
             .expect("room exists")
             .to_be_bytes()
@@ -309,21 +326,27 @@ impl service::rooms::timeline::Data for KeyValueDatabase {
 
         let user_id = user_id.to_owned();
 
-        Ok(Box::new(self
-            .pduid_pdu
-            .iter_from(current, false)
-            .take_while(move |(k, _)| k.starts_with(&prefix))
-            .map(move |(pdu_id, v)| {
-                let mut pdu = serde_json::from_slice::<PduEvent>(&v)
-                    .map_err(|_| Error::bad_database("PDU in db is invalid."))?;
-                if pdu.sender != user_id {
-                    pdu.remove_transaction_id()?;
-                }
-                Ok((pdu_id, pdu))
-            })))
+        Ok(Box::new(
+            self.pduid_pdu
+                .iter_from(current, false)
+                .take_while(move |(k, _)| k.starts_with(&prefix))
+                .map(move |(pdu_id, v)| {
+                    let mut pdu = serde_json::from_slice::<PduEvent>(&v)
+                        .map_err(|_| Error::bad_database("PDU in db is invalid."))?;
+                    if pdu.sender != user_id {
+                        pdu.remove_transaction_id()?;
+                    }
+                    Ok((pdu_id, pdu))
+                }),
+        ))
     }
 
-    fn increment_notification_counts(&self, room_id: &RoomId, notifies: Vec<Box<UserId>>, highlights: Vec<Box<UserId>>) -> Result<()> {
+    fn increment_notification_counts(
+        &self,
+        room_id: &RoomId,
+        notifies: Vec<Box<UserId>>,
+        highlights: Vec<Box<UserId>>,
+    ) -> Result<()> {
         let notifies_batch = Vec::new();
         let highlights_batch = Vec::new();
         for user in notifies {

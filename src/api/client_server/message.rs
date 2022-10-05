@@ -1,4 +1,4 @@
-use crate::{utils, Error, Result, Ruma, services, service::pdu::PduBuilder};
+use crate::{service::pdu::PduBuilder, services, utils, Error, Result, Ruma};
 use ruma::{
     api::client::{
         error::ErrorKind,
@@ -25,7 +25,8 @@ pub async fn send_message_event_route(
     let sender_device = body.sender_device.as_deref();
 
     let mutex_state = Arc::clone(
-        services().globals
+        services()
+            .globals
             .roomid_mutex_state
             .write()
             .unwrap()
@@ -46,7 +47,8 @@ pub async fn send_message_event_route(
 
     // Check if this is a new transaction id
     if let Some(response) =
-        services().transaction_ids
+        services()
+            .transaction_ids
             .existing_txnid(sender_user, sender_device, &body.txn_id)?
     {
         // The client might have sent a txnid of the /sendToDevice endpoint
@@ -108,7 +110,11 @@ pub async fn get_message_events_route(
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
     let sender_device = body.sender_device.as_ref().expect("user is authenticated");
 
-    if !services().rooms.state_cache.is_joined(sender_user, &body.room_id)? {
+    if !services()
+        .rooms
+        .state_cache
+        .is_joined(sender_user, &body.room_id)?
+    {
         return Err(Error::BadRequest(
             ErrorKind::Forbidden,
             "You don't have permission to view this room.",
@@ -128,8 +134,12 @@ pub async fn get_message_events_route(
 
     let to = body.to.as_ref().map(|t| t.parse());
 
-    services().rooms
-        .lazy_loading.lazy_load_confirm_delivery(sender_user, sender_device, &body.room_id, from)?;
+    services().rooms.lazy_loading.lazy_load_confirm_delivery(
+        sender_user,
+        sender_device,
+        &body.room_id,
+        from,
+    )?;
 
     // Use limit or else 10
     let limit = body.limit.try_into().map_or(10_usize, |l: u32| l as usize);
@@ -149,8 +159,10 @@ pub async fn get_message_events_route(
                 .take(limit)
                 .filter_map(|r| r.ok()) // Filter out buggy events
                 .filter_map(|(pdu_id, pdu)| {
-                    services().rooms
-                        .timeline.pdu_count(&pdu_id)
+                    services()
+                        .rooms
+                        .timeline
+                        .pdu_count(&pdu_id)
                         .map(|pdu_count| (pdu_count, pdu))
                         .ok()
                 })
@@ -187,7 +199,8 @@ pub async fn get_message_events_route(
                 .take(limit)
                 .filter_map(|r| r.ok()) // Filter out buggy events
                 .filter_map(|(pdu_id, pdu)| {
-                    services().rooms
+                    services()
+                        .rooms
                         .timeline
                         .pdu_count(&pdu_id)
                         .map(|pdu_count| (pdu_count, pdu))
@@ -222,10 +235,11 @@ pub async fn get_message_events_route(
 
     resp.state = Vec::new();
     for ll_id in &lazy_loaded {
-        if let Some(member_event) =
-            services().rooms.state_accessor
-                .room_state_get(&body.room_id, &StateEventType::RoomMember, ll_id.as_str())?
-        {
+        if let Some(member_event) = services().rooms.state_accessor.room_state_get(
+            &body.room_id,
+            &StateEventType::RoomMember,
+            ll_id.as_str(),
+        )? {
             resp.state.push(member_event.to_state_event());
         }
     }

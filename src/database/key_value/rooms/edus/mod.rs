@@ -1,7 +1,7 @@
 mod presence;
-mod typing;
 mod read_receipt;
+mod typing;
 
-use crate::{service, database::KeyValueDatabase};
+use crate::{database::KeyValueDatabase, service};
 
 impl service::rooms::edus::Data for KeyValueDatabase {}

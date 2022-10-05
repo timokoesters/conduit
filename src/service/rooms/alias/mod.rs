@@ -3,8 +3,8 @@ use std::sync::Arc;
 
 pub use data::Data;
 
-use ruma::{RoomAliasId, RoomId};
 use crate::Result;
+use ruma::{RoomAliasId, RoomId};
 
 pub struct Service {
     db: Arc<dyn Data>,
@@ -12,19 +12,12 @@ pub struct Service {
 
 impl Service {
     #[tracing::instrument(skip(self))]
-    pub fn set_alias(
-        &self,
-        alias: &RoomAliasId,
-        room_id: &RoomId,
-    ) -> Result<()> {
+    pub fn set_alias(&self, alias: &RoomAliasId, room_id: &RoomId) -> Result<()> {
         self.db.set_alias(alias, room_id)
     }
 
     #[tracing::instrument(skip(self))]
-    pub fn remove_alias(
-        &self,
-        alias: &RoomAliasId,
-    ) -> Result<()> {
+    pub fn remove_alias(&self, alias: &RoomAliasId) -> Result<()> {
         self.db.remove_alias(alias)
     }
 

@@ -1,16 +1,11 @@
 use std::collections::HashSet;
 
-use ruma::{UserId, RoomId};
+use ruma::{RoomId, UserId};
 
-use crate::{database::KeyValueDatabase, service, utils, Error, services, Result};
+use crate::{database::KeyValueDatabase, service, services, utils, Error, Result};
 
 impl service::rooms::edus::typing::Data for KeyValueDatabase {
-    fn typing_add(
-        &self,
-        user_id: &UserId,
-        room_id: &RoomId,
-        timeout: u64,
-    ) -> Result<()> {
+    fn typing_add(&self, user_id: &UserId, room_id: &RoomId, timeout: u64) -> Result<()> {
         let mut prefix = room_id.as_bytes().to_vec();
         prefix.push(0xff);
 
@@ -30,11 +25,7 @@ impl service::rooms::edus::typing::Data for KeyValueDatabase {
         Ok(())
     }
 
-    fn typing_remove(
-        &self,
-        user_id: &UserId,
-        room_id: &RoomId,
-    ) -> Result<()> {
+    fn typing_remove(&self, user_id: &UserId, room_id: &RoomId) -> Result<()> {
         let mut prefix = room_id.as_bytes().to_vec();
         prefix.push(0xff);
 
@@ -53,17 +44,16 @@ impl service::rooms::edus::typing::Data for KeyValueDatabase {
         }
 
         if found_outdated {
-            self.roomid_lasttypingupdate
-                .insert(room_id.as_bytes(), &services().globals.next_count()?.to_be_bytes())?;
+            self.roomid_lasttypingupdate.insert(
+                room_id.as_bytes(),
+                &services().globals.next_count()?.to_be_bytes(),
+            )?;
         }
 
         Ok(())
     }
 
-    fn last_typing_update(
-        &self,
-        room_id: &RoomId,
-    ) -> Result<u64> {
+    fn last_typing_update(&self, room_id: &RoomId) -> Result<u64> {
         Ok(self
             .roomid_lasttypingupdate
             .get(room_id.as_bytes())?
@@ -76,10 +66,7 @@ impl service::rooms::edus::typing::Data for KeyValueDatabase {
             .unwrap_or(0))
     }
 
-    fn typings_all(
-        &self,
-        room_id: &RoomId,
-    ) -> Result<HashSet<Box<UserId>>> {
+    fn typings_all(&self, room_id: &RoomId) -> Result<HashSet<Box<UserId>>> {
         let mut prefix = room_id.as_bytes().to_vec();
         prefix.push(0xff);
 
@@ -89,7 +76,7 @@ impl service::rooms::edus::typing::Data for KeyValueDatabase {
             let user_id = UserId::parse(utils::string_from_bytes(&user_id).map_err(|_| {
                 Error::bad_database("User ID in typingid_userid is invalid unicode.")
             })?)
-                .map_err(|_| Error::bad_database("User ID in typingid_userid is invalid."))?;
+            .map_err(|_| Error::bad_database("User ID in typingid_userid is invalid."))?;
 
             user_ids.insert(user_id);
         }

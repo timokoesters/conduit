@@ -1,9 +1,7 @@
 use std::sync::Arc;
 
 use super::{DEVICE_ID_LENGTH, SESSION_ID_LENGTH, TOKEN_LENGTH};
-use crate::{
-    utils, Error, Result, Ruma, services, api::client_server,
-};
+use crate::{api::client_server, services, utils, Error, Result, Ruma};
 use ruma::{
     api::client::{
         account::{
@@ -43,16 +41,18 @@ pub async fn get_register_available_route(
     body: Ruma<get_username_availability::v3::IncomingRequest>,
 ) -> Result<get_username_availability::v3::Response> {
     // Validate user id
-    let user_id =
-        UserId::parse_with_server_name(body.username.to_lowercase(), services().globals.server_name())
-            .ok()
-            .filter(|user_id| {
-                !user_id.is_historical() && user_id.server_name() == services().globals.server_name()
-            })
-            .ok_or(Error::BadRequest(
-                ErrorKind::InvalidUsername,
-                "Username is invalid.",
-            ))?;
+    let user_id = UserId::parse_with_server_name(
+        body.username.to_lowercase(),
+        services().globals.server_name(),
+    )
+    .ok()
+    .filter(|user_id| {
+        !user_id.is_historical() && user_id.server_name() == services().globals.server_name()
+    })
+    .ok_or(Error::BadRequest(
+        ErrorKind::InvalidUsername,
+        "Username is invalid.",
+    ))?;
 
     // Check if username is creative enough
     if services().users.exists(&user_id)? {
@@ -95,17 +95,19 @@ pub async fn register_route(
 
     let user_id = match (&body.username, is_guest) {
         (Some(username), false) => {
-            let proposed_user_id =
-                UserId::parse_with_server_name(username.to_lowercase(), services().globals.server_name())
-                    .ok()
-                    .filter(|user_id| {
-                        !user_id.is_historical()
-                            && user_id.server_name() == services().globals.server_name()
-                    })
-                    .ok_or(Error::BadRequest(
-                        ErrorKind::InvalidUsername,
-                        "Username is invalid.",
-                    ))?;
+            let proposed_user_id = UserId::parse_with_server_name(
+                username.to_lowercase(),
+                services().globals.server_name(),
+            )
+            .ok()
+            .filter(|user_id| {
+                !user_id.is_historical()
+                    && user_id.server_name() == services().globals.server_name()
+            })
+            .ok_or(Error::BadRequest(
+                ErrorKind::InvalidUsername,
+                "Username is invalid.",
+            ))?;
             if services().users.exists(&proposed_user_id)? {
                 return Err(Error::BadRequest(
                     ErrorKind::UserInUse,
@@ -176,7 +178,8 @@ pub async fn register_route(
 
     // Default to pretty displayname
     let displayname = format!("{} ⚡️", user_id.localpart());
-    services().users
+    services()
+        .users
         .set_displayname(&user_id, Some(displayname.clone()))?;
 
     // Initial account data
@@ -188,7 +191,8 @@ pub async fn register_route(
             content: ruma::events::push_rules::PushRulesEventContent {
                 global: push::Ruleset::server_default(&user_id),
             },
-        }).expect("to json always works"),
+        })
+        .expect("to json always works"),
     )?;
 
     // Inhibit login does not work for guests
@@ -220,7 +224,8 @@ pub async fn register_route(
     )?;
 
     info!("New user {} registered on this server.", user_id);
-    services().admin
+    services()
+        .admin
         .send_message(RoomMessageEventContent::notice_plain(format!(
             "New user {} registered on this server.",
             user_id
@@ -229,7 +234,10 @@ pub async fn register_route(
     // If this is the first real user, grant them admin privileges
     // Note: the server user, @conduit:servername, is generated first
     if services().users.count()? == 2 {
-        services().admin.make_user_admin(&user_id, displayname).await?;
+        services()
+            .admin
+            .make_user_admin(&user_id, displayname)
+            .await?;
 
         warn!("Granting {} admin privileges as the first user", user_id);
     }
@@ -272,26 +280,26 @@ pub async fn change_password_route(
     };
 
     if let Some(auth) = &body.auth {
-        let (worked, uiaainfo) = services().uiaa.try_auth(
-            sender_user,
-            sender_device,
-            auth,
-            &uiaainfo,
-        )?;
+        let (worked, uiaainfo) =
+            services()
+                .uiaa
+                .try_auth(sender_user, sender_device, auth, &uiaainfo)?;
         if !worked {
             return Err(Error::Uiaa(uiaainfo));
         }
     // Success!
     } else if let Some(json) = body.json_body {
         uiaainfo.session = Some(utils::random_string(SESSION_ID_LENGTH));
-        services().uiaa
+        services()
+            .uiaa
             .create(sender_user, sender_device, &uiaainfo, &json)?;
         return Err(Error::Uiaa(uiaainfo));
     } else {
         return Err(Error::BadRequest(ErrorKind::NotJson, "Not json."));
     }
 
-    services().users
+    services()
+        .users
         .set_password(sender_user, Some(&body.new_password))?;
 
     if body.logout_devices {
@@ -307,7 +315,8 @@ pub async fn change_password_route(
     }
 
     info!("User {} changed their password.", sender_user);
-    services().admin
+    services()
+        .admin
         .send_message(RoomMessageEventContent::notice_plain(format!(
             "User {} changed their password.",
             sender_user
@@ -321,9 +330,7 @@ pub async fn change_password_route(
 /// Get user_id of the sender user.
 ///
 /// Note: Also works for Application Services
-pub async fn whoami_route(
-    body: Ruma<whoami::v3::Request>,
-) -> Result<whoami::v3::Response> {
+pub async fn whoami_route(body: Ruma<whoami::v3::Request>) -> Result<whoami::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
     let device_id = body.sender_device.as_ref().cloned();
 
@@ -361,19 +368,18 @@ pub async fn deactivate_route(
     };
 
     if let Some(auth) = &body.auth {
-        let (worked, uiaainfo) = services().uiaa.try_auth(
-            sender_user,
-            sender_device,
-            auth,
-            &uiaainfo,
-        )?;
+        let (worked, uiaainfo) =
+            services()
+                .uiaa
+                .try_auth(sender_user, sender_device, auth, &uiaainfo)?;
         if !worked {
             return Err(Error::Uiaa(uiaainfo));
         }
     // Success!
     } else if let Some(json) = body.json_body {
         uiaainfo.session = Some(utils::random_string(SESSION_ID_LENGTH));
-        services().uiaa
+        services()
+            .uiaa
             .create(sender_user, sender_device, &uiaainfo, &json)?;
         return Err(Error::Uiaa(uiaainfo));
     } else {
@@ -387,7 +393,8 @@ pub async fn deactivate_route(
     services().users.deactivate_account(sender_user)?;
 
     info!("User {} deactivated their account.", sender_user);
-    services().admin
+    services()
+        .admin
         .send_message(RoomMessageEventContent::notice_plain(format!(
             "User {} deactivated their account.",
             sender_user

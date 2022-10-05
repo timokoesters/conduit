@@ -1,5 +1,5 @@
-use ruma::{RoomId, DeviceId, UserId};
 use crate::Result;
+use ruma::{DeviceId, RoomId, UserId};
 
 pub trait Data: Send + Sync {
     fn lazy_load_was_sent_before(
@@ -15,7 +15,7 @@ pub trait Data: Send + Sync {
         user_id: &UserId,
         device_id: &DeviceId,
         room_id: &RoomId,
-        confirmed_user_ids: &mut dyn Iterator<Item=&UserId>,
+        confirmed_user_ids: &mut dyn Iterator<Item = &UserId>,
     ) -> Result<()>;
 
     fn lazy_load_reset(

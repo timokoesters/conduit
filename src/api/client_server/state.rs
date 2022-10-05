@@ -1,8 +1,6 @@
 use std::sync::Arc;
 
-use crate::{
-    Error, Result, Ruma, RumaResponse, services, service::pdu::PduBuilder,
-};
+use crate::{service::pdu::PduBuilder, services, Error, Result, Ruma, RumaResponse};
 use ruma::{
     api::client::{
         error::ErrorKind,
@@ -90,10 +88,14 @@ pub async fn get_state_events_route(
     #[allow(clippy::blocks_in_if_conditions)]
     // Users not in the room should not be able to access the state unless history_visibility is
     // WorldReadable
-    if !services().rooms.state_cache.is_joined(sender_user, &body.room_id)?
+    if !services()
+        .rooms
+        .state_cache
+        .is_joined(sender_user, &body.room_id)?
         && !matches!(
-            services().rooms
-            .state_accessor
+            services()
+                .rooms
+                .state_accessor
                 .room_state_get(&body.room_id, &StateEventType::RoomHistoryVisibility, "")?
                 .map(|event| {
                     serde_json::from_str(event.content.get())
@@ -138,10 +140,15 @@ pub async fn get_state_events_for_key_route(
     #[allow(clippy::blocks_in_if_conditions)]
     // Users not in the room should not be able to access the state unless history_visibility is
     // WorldReadable
-    if !services().rooms.state_cache.is_joined(sender_user, &body.room_id)?
+    if !services()
+        .rooms
+        .state_cache
+        .is_joined(sender_user, &body.room_id)?
         && !matches!(
-            services().rooms
-                .state_accessor.room_state_get(&body.room_id, &StateEventType::RoomHistoryVisibility, "")?
+            services()
+                .rooms
+                .state_accessor
+                .room_state_get(&body.room_id, &StateEventType::RoomHistoryVisibility, "")?
                 .map(|event| {
                     serde_json::from_str(event.content.get())
                         .map(|e: RoomHistoryVisibilityEventContent| e.history_visibility)
@@ -162,7 +169,8 @@ pub async fn get_state_events_for_key_route(
 
     let event = services()
         .rooms
-        .state_accessor.room_state_get(&body.room_id, &body.event_type, &body.state_key)?
+        .state_accessor
+        .room_state_get(&body.room_id, &body.event_type, &body.state_key)?
         .ok_or(Error::BadRequest(
             ErrorKind::NotFound,
             "State event not found.",
@@ -187,10 +195,15 @@ pub async fn get_state_events_for_empty_key_route(
     #[allow(clippy::blocks_in_if_conditions)]
     // Users not in the room should not be able to access the state unless history_visibility is
     // WorldReadable
-    if !services().rooms.state_cache.is_joined(sender_user, &body.room_id)?
+    if !services()
+        .rooms
+        .state_cache
+        .is_joined(sender_user, &body.room_id)?
         && !matches!(
-            services().rooms
-                .state_accessor.room_state_get(&body.room_id, &StateEventType::RoomHistoryVisibility, "")?
+            services()
+                .rooms
+                .state_accessor
+                .room_state_get(&body.room_id, &StateEventType::RoomHistoryVisibility, "")?
                 .map(|event| {
                     serde_json::from_str(event.content.get())
                         .map(|e: RoomHistoryVisibilityEventContent| e.history_visibility)
@@ -211,7 +224,8 @@ pub async fn get_state_events_for_empty_key_route(
 
     let event = services()
         .rooms
-        .state_accessor.room_state_get(&body.room_id, &body.event_type, "")?
+        .state_accessor
+        .room_state_get(&body.room_id, &body.event_type, "")?
         .ok_or(Error::BadRequest(
             ErrorKind::NotFound,
             "State event not found.",
@@ -248,7 +262,8 @@ async fn send_state_event_for_key_helper(
             if alias.server_name() != services().globals.server_name()
                 || services()
                     .rooms
-                    .alias.resolve_local_alias(&alias)?
+                    .alias
+                    .resolve_local_alias(&alias)?
                     .filter(|room| room == room_id) // Make sure it's the right room
                     .is_none()
             {
@@ -262,7 +277,8 @@ async fn send_state_event_for_key_helper(
     }
 
     let mutex_state = Arc::clone(
-        services().globals
+        services()
+            .globals
             .roomid_mutex_state
             .write()
             .unwrap()

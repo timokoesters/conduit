@@ -1,5 +1,5 @@
-use ruma::{UserId, RoomId};
 use crate::Result;
+use ruma::{RoomId, UserId};
 
 pub trait Data: Send + Sync {
     fn reset_notification_counts(&self, user_id: &UserId, room_id: &RoomId) -> Result<()>;

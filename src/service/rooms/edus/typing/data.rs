@@ -1,6 +1,6 @@
-use std::collections::HashSet;
 use crate::Result;
-use ruma::{UserId, RoomId};
+use ruma::{RoomId, UserId};
+use std::collections::HashSet;
 
 pub trait Data: Send + Sync {
     /// Sets a user as typing until the timeout timestamp is reached or roomtyping_remove is

@@ -78,7 +78,6 @@ pub fn calculate_hash(keys: &[&[u8]]) -> Vec<u8> {
     hash.as_ref().to_owned()
 }
 
-
 pub fn common_elements(
     mut iterators: impl Iterator<Item = impl Iterator<Item = Vec<u8>>>,
     check_order: impl Fn(&[u8], &[u8]) -> Ordering,

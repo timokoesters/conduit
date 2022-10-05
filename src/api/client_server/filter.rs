@@ -1,4 +1,4 @@
-use crate::{Error, Result, Ruma, services};
+use crate::{services, Error, Result, Ruma};
 use ruma::api::client::{
     error::ErrorKind,
     filter::{create_filter, get_filter},

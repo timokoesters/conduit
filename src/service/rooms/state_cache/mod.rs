@@ -9,8 +9,8 @@ use ruma::{
         ignored_user_list::IgnoredUserListEvent,
         room::{create::RoomCreateEventContent, member::MembershipState},
         tag::{TagEvent, TagEventContent},
-        AnyStrippedStateEvent, AnySyncStateEvent, GlobalAccountDataEventType,
-        RoomAccountDataEventType, StateEventType, RoomAccountDataEvent, RoomAccountDataEventContent,
+        AnyStrippedStateEvent, AnySyncStateEvent, GlobalAccountDataEventType, RoomAccountDataEvent,
+        RoomAccountDataEventContent, RoomAccountDataEventType, StateEventType,
     },
     serde::Raw,
     RoomId, ServerName, UserId,
@@ -97,8 +97,9 @@ impl Service {
                                 RoomAccountDataEventType::Tag,
                             )?
                             .map(|event| {
-                                serde_json::from_str(event.get())
-                                    .map_err(|_| Error::bad_database("Invalid account data event in db."))
+                                serde_json::from_str(event.get()).map_err(|_| {
+                                    Error::bad_database("Invalid account data event in db.")
+                                })
                             })
                         {
                             services()
@@ -113,16 +114,19 @@ impl Service {
                         };
 
                         // Copy direct chat flag
-                        if let Some(mut direct_event) = services().account_data.get(
-                            None,
-                            user_id,
-                            GlobalAccountDataEventType::Direct.to_string().into(),
-                        )?
+                        if let Some(mut direct_event) = services()
+                            .account_data
+                            .get(
+                                None,
+                                user_id,
+                                GlobalAccountDataEventType::Direct.to_string().into(),
+                            )?
                             .map(|event| {
-                                serde_json::from_str::<DirectEvent>(event.get())
-                                    .map_err(|_| Error::bad_database("Invalid account data event in db."))
+                                serde_json::from_str::<DirectEvent>(event.get()).map_err(|_| {
+                                    Error::bad_database("Invalid account data event in db.")
+                                })
                             })
-                         {
+                        {
                             let direct_event = direct_event?;
                             let mut room_ids_updated = false;
 
@@ -138,7 +142,8 @@ impl Service {
                                     None,
                                     user_id,
                                     GlobalAccountDataEventType::Direct.to_string().into(),
-                                    &serde_json::to_value(&direct_event).expect("to json always works"),
+                                    &serde_json::to_value(&direct_event)
+                                        .expect("to json always works"),
                                 )?;
                             }
                         };
@@ -158,10 +163,11 @@ impl Service {
                             .to_string()
                             .into(),
                     )?
-                            .map(|event| {
-                                serde_json::from_str::<IgnoredUserListEvent>(event.get())
-                                    .map_err(|_| Error::bad_database("Invalid account data event in db."))
-                            }).transpose()?
+                    .map(|event| {
+                        serde_json::from_str::<IgnoredUserListEvent>(event.get())
+                            .map_err(|_| Error::bad_database("Invalid account data event in db."))
+                    })
+                    .transpose()?
                     .map_or(false, |ignored| {
                         ignored
                             .content

@@ -1,5 +1,5 @@
 use super::SESSION_ID_LENGTH;
-use crate::{utils, Error, Result, Ruma, services};
+use crate::{services, utils, Error, Result, Ruma};
 use futures_util::{stream::FuturesUnordered, StreamExt};
 use ruma::{
     api::{
@@ -32,7 +32,8 @@ pub async fn upload_keys_route(
     let sender_device = body.sender_device.as_ref().expect("user is authenticated");
 
     for (key_key, key_value) in &body.one_time_keys {
-        services().users
+        services()
+            .users
             .add_one_time_key(sender_user, sender_device, key_key, key_value)?;
     }
 
@@ -44,16 +45,16 @@ pub async fn upload_keys_route(
             .get_device_keys(sender_user, sender_device)?
             .is_none()
         {
-            services().users.add_device_keys(
-                sender_user,
-                sender_device,
-                device_keys,
-            )?;
+            services()
+                .users
+                .add_device_keys(sender_user, sender_device, device_keys)?;
         }
     }
 
     Ok(upload_keys::v3::Response {
-        one_time_key_counts: services().users.count_one_time_keys(sender_user, sender_device)?,
+        one_time_key_counts: services()
+            .users
+            .count_one_time_keys(sender_user, sender_device)?,
     })
 }
 
@@ -69,12 +70,8 @@ pub async fn get_keys_route(
 ) -> Result<get_keys::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
-    let response = get_keys_helper(
-        Some(sender_user),
-        &body.device_keys,
-        |u| u == sender_user,
-    )
-    .await?;
+    let response =
+        get_keys_helper(Some(sender_user), &body.device_keys, |u| u == sender_user).await?;
 
     Ok(response)
 }
@@ -113,19 +110,18 @@ pub async fn upload_signing_keys_route(
     };
 
     if let Some(auth) = &body.auth {
-        let (worked, uiaainfo) = services().uiaa.try_auth(
-            sender_user,
-            sender_device,
-            auth,
-            &uiaainfo,
-        )?;
+        let (worked, uiaainfo) =
+            services()
+                .uiaa
+                .try_auth(sender_user, sender_device, auth, &uiaainfo)?;
         if !worked {
             return Err(Error::Uiaa(uiaainfo));
         }
     // Success!
     } else if let Some(json) = body.json_body {
         uiaainfo.session = Some(utils::random_string(SESSION_ID_LENGTH));
-        services().uiaa
+        services()
+            .uiaa
             .create(sender_user, sender_device, &uiaainfo, &json)?;
         return Err(Error::Uiaa(uiaainfo));
     } else {
@@ -187,12 +183,9 @@ pub async fn upload_signatures_route(
                         ))?
                         .to_owned(),
                 );
-                services().users.sign_key(
-                    user_id,
-                    key_id,
-                    signature,
-                    sender_user,
-                )?;
+                services()
+                    .users
+                    .sign_key(user_id, key_id, signature, sender_user)?;
             }
         }
     }
@@ -215,7 +208,8 @@ pub async fn get_key_changes_route(
     let mut device_list_updates = HashSet::new();
 
     device_list_updates.extend(
-        services().users
+        services()
+            .users
             .keys_changed(
                 sender_user.as_str(),
                 body.from
@@ -230,9 +224,15 @@ pub async fn get_key_changes_route(
             .filter_map(|r| r.ok()),
     );
 
-    for room_id in services().rooms.state_cache.rooms_joined(sender_user).filter_map(|r| r.ok()) {
+    for room_id in services()
+        .rooms
+        .state_cache
+        .rooms_joined(sender_user)
+        .filter_map(|r| r.ok())
+    {
         device_list_updates.extend(
-            services().users
+            services()
+                .users
                 .keys_changed(
                     &room_id.to_string(),
                     body.from.parse().map_err(|_| {
@@ -296,12 +296,13 @@ pub(crate) async fn get_keys_helper<F: Fn(&UserId) -> bool>(
             for device_id in device_ids {
                 let mut container = BTreeMap::new();
                 if let Some(mut keys) = services().users.get_device_keys(user_id, device_id)? {
-                    let metadata = services().users.get_device_metadata(user_id, device_id)?.ok_or(
-                        Error::BadRequest(
+                    let metadata = services()
+                        .users
+                        .get_device_metadata(user_id, device_id)?
+                        .ok_or(Error::BadRequest(
                             ErrorKind::InvalidParam,
                             "Tried to get keys for nonexistent device.",
-                        ),
-                    )?;
+                        ))?;
 
                     add_unsigned_device_display_name(&mut keys, metadata)
                         .map_err(|_| Error::bad_database("invalid device keys in database"))?;
@@ -311,7 +312,10 @@ pub(crate) async fn get_keys_helper<F: Fn(&UserId) -> bool>(
             }
         }
 
-        if let Some(master_key) = services().users.get_master_key(user_id, &allowed_signatures)? {
+        if let Some(master_key) = services()
+            .users
+            .get_master_key(user_id, &allowed_signatures)?
+        {
             master_keys.insert(user_id.to_owned(), master_key);
         }
         if let Some(self_signing_key) = services()
@@ -338,7 +342,8 @@ pub(crate) async fn get_keys_helper<F: Fn(&UserId) -> bool>(
             }
             (
                 server,
-                services().sending
+                services()
+                    .sending
                     .send_federation_request(
                         server,
                         federation::keys::get_keys::v1::Request {
@@ -408,7 +413,8 @@ pub(crate) async fn claim_keys_helper(
         let mut container = BTreeMap::new();
         for (device_id, key_algorithm) in map {
             if let Some(one_time_keys) =
-                services().users
+                services()
+                    .users
                     .take_one_time_key(user_id, device_id, key_algorithm)?
             {
                 let mut c = BTreeMap::new();

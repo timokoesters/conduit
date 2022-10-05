@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
-use ruma::{signatures::CanonicalJsonObject, EventId, UserId, RoomId};
+use ruma::{signatures::CanonicalJsonObject, EventId, RoomId, UserId};
 
-use crate::{Result, PduEvent};
+use crate::{PduEvent, Result};
 
 pub trait Data: Send + Sync {
     fn first_pdu_in_room(&self, room_id: &RoomId) -> Result<Option<Arc<PduEvent>>>;
@@ -15,10 +15,7 @@ pub trait Data: Send + Sync {
     fn get_pdu_json(&self, event_id: &EventId) -> Result<Option<CanonicalJsonObject>>;
 
     /// Returns the json of a pdu.
-    fn get_non_outlier_pdu_json(
-        &self,
-        event_id: &EventId,
-    ) -> Result<Option<CanonicalJsonObject>>;
+    fn get_non_outlier_pdu_json(&self, event_id: &EventId) -> Result<Option<CanonicalJsonObject>>;
 
     /// Returns the pdu's id.
     fn get_pdu_id(&self, event_id: &EventId) -> Result<Option<Vec<u8>>>;
@@ -45,7 +42,13 @@ pub trait Data: Send + Sync {
     fn pdu_count(&self, pdu_id: &[u8]) -> Result<u64>;
 
     /// Adds a new pdu to the timeline
-    fn append_pdu(&self, pdu_id: &[u8], pdu: &PduEvent, json: &CanonicalJsonObject, count: u64) -> Result<()>;
+    fn append_pdu(
+        &self,
+        pdu_id: &[u8],
+        pdu: &PduEvent,
+        json: &CanonicalJsonObject,
+        count: u64,
+    ) -> Result<()>;
 
     /// Removes a pdu and creates a new one with the same id.
     fn replace_pdu(&self, pdu_id: &[u8], pdu: &PduEvent) -> Result<()>;
@@ -75,5 +78,10 @@ pub trait Data: Send + Sync {
         from: u64,
     ) -> Result<Box<dyn Iterator<Item = Result<(Vec<u8>, PduEvent)>>>>;
 
-    fn increment_notification_counts(&self, room_id: &RoomId, notifies: Vec<Box<UserId>>, highlights: Vec<Box<UserId>>) -> Result<()>;
+    fn increment_notification_counts(
+        &self,
+        room_id: &RoomId,
+        notifies: Vec<Box<UserId>>,
+        highlights: Vec<Box<UserId>>,
+    ) -> Result<()>;
 }

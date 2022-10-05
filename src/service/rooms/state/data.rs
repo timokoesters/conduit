@@ -1,7 +1,7 @@
-use std::sync::Arc;
-use std::collections::HashSet;
 use crate::Result;
 use ruma::{EventId, RoomId};
+use std::collections::HashSet;
+use std::sync::Arc;
 use tokio::sync::MutexGuard;
 
 pub trait Data: Send + Sync {
@@ -9,7 +9,10 @@ pub trait Data: Send + Sync {
     fn get_room_shortstatehash(&self, room_id: &RoomId) -> Result<Option<u64>>;
 
     /// Update the current state of the room.
-    fn set_room_state(&self, room_id: &RoomId, new_shortstatehash: u64,
+    fn set_room_state(
+        &self,
+        room_id: &RoomId,
+        new_shortstatehash: u64,
         _mutex_lock: &MutexGuard<'_, ()>, // Take mutex guard to make sure users get the room state mutex
     ) -> Result<()>;
 
@@ -20,7 +23,8 @@ pub trait Data: Send + Sync {
     fn get_forward_extremities(&self, room_id: &RoomId) -> Result<HashSet<Arc<EventId>>>;
 
     /// Replace the forward extremities of the room.
-    fn set_forward_extremities<'a>(&self,
+    fn set_forward_extremities<'a>(
+        &self,
         room_id: &RoomId,
         event_ids: Vec<Box<EventId>>,
         _mutex_lock: &MutexGuard<'_, ()>, // Take mutex guard to make sure users get the room state mutex

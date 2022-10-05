@@ -1,4 +1,4 @@
-use crate::{utils, Error, Result, services};
+use crate::{services, utils, Error, Result};
 use bytes::BytesMut;
 use ruma::api::{IncomingResponse, MatrixVersion, OutgoingRequest, SendAccessToken};
 use std::{fmt::Debug, mem, time::Duration};
@@ -45,7 +45,11 @@ where
     *reqwest_request.timeout_mut() = Some(Duration::from_secs(30));
 
     let url = reqwest_request.url().clone();
-    let mut response = services().globals.default_client().execute(reqwest_request).await?;
+    let mut response = services()
+        .globals
+        .default_client()
+        .execute(reqwest_request)
+        .await?;
 
     // reqwest::Response -> http::Response conversion
     let status = response.status();

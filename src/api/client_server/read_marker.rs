@@ -1,4 +1,4 @@
-use crate::{Error, Result, Ruma, services};
+use crate::{services, Error, Result, Ruma};
 use ruma::{
     api::client::{error::ErrorKind, read_marker::set_read_marker, receipt::create_receipt},
     events::RoomAccountDataEventType,
@@ -34,12 +34,18 @@ pub async fn set_read_marker_route(
         services().rooms.edus.read_receipt.private_read_set(
             &body.room_id,
             sender_user,
-            services().rooms.timeline.get_pdu_count(event)?.ok_or(Error::BadRequest(
-                ErrorKind::InvalidParam,
-                "Event does not exist.",
-            ))?,
+            services()
+                .rooms
+                .timeline
+                .get_pdu_count(event)?
+                .ok_or(Error::BadRequest(
+                    ErrorKind::InvalidParam,
+                    "Event does not exist.",
+                ))?,
         )?;
-        services().rooms.user
+        services()
+            .rooms
+            .user
             .reset_notification_counts(sender_user, &body.room_id)?;
 
         let mut user_receipts = BTreeMap::new();
@@ -80,7 +86,8 @@ pub async fn create_receipt_route(
     services().rooms.edus.read_receipt.private_read_set(
         &body.room_id,
         sender_user,
-        services().rooms
+        services()
+            .rooms
             .timeline
             .get_pdu_count(&body.event_id)?
             .ok_or(Error::BadRequest(
@@ -88,7 +95,9 @@ pub async fn create_receipt_route(
                 "Event does not exist.",
             ))?,
     )?;
-    services().rooms.user
+    services()
+        .rooms
+        .user
         .reset_notification_counts(sender_user, &body.room_id)?;
 
     let mut user_receipts = BTreeMap::new();

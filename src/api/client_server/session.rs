@@ -1,5 +1,5 @@
 use super::{DEVICE_ID_LENGTH, TOKEN_LENGTH};
-use crate::{utils, Error, Result, Ruma, services};
+use crate::{services, utils, Error, Result, Ruma};
 use ruma::{
     api::client::{
         error::ErrorKind,
@@ -40,9 +40,7 @@ pub async fn get_login_types_route(
 ///
 /// Note: You can use [`GET /_matrix/client/r0/login`](fn.get_supported_versions_route.html) to see
 /// supported login types.
-pub async fn login_route(
-    body: Ruma<login::v3::IncomingRequest>,
-) -> Result<login::v3::Response> {
+pub async fn login_route(body: Ruma<login::v3::IncomingRequest>) -> Result<login::v3::Response> {
     // Validate login method
     // TODO: Other login methods
     let user_id = match &body.login_info {
@@ -55,15 +53,18 @@ pub async fn login_route(
             } else {
                 return Err(Error::BadRequest(ErrorKind::Forbidden, "Bad login type."));
             };
-            let user_id =
-                UserId::parse_with_server_name(username.to_owned(), services().globals.server_name())
-                    .map_err(|_| {
-                        Error::BadRequest(ErrorKind::InvalidUsername, "Username is invalid.")
-                    })?;
-            let hash = services().users.password_hash(&user_id)?.ok_or(Error::BadRequest(
-                ErrorKind::Forbidden,
-                "Wrong username or password.",
-            ))?;
+            let user_id = UserId::parse_with_server_name(
+                username.to_owned(),
+                services().globals.server_name(),
+            )
+            .map_err(|_| Error::BadRequest(ErrorKind::InvalidUsername, "Username is invalid."))?;
+            let hash = services()
+                .users
+                .password_hash(&user_id)?
+                .ok_or(Error::BadRequest(
+                    ErrorKind::Forbidden,
+                    "Wrong username or password.",
+                ))?;
 
             if hash.is_empty() {
                 return Err(Error::BadRequest(
@@ -121,7 +122,8 @@ pub async fn login_route(
 
     // Determine if device_id was provided and exists in the db for this user
     let device_exists = body.device_id.as_ref().map_or(false, |device_id| {
-        services().users
+        services()
+            .users
             .all_device_ids(&user_id)
             .any(|x| x.as_ref().map_or(false, |v| v == device_id))
     });
@@ -156,9 +158,7 @@ pub async fn login_route(
 /// - Deletes device metadata (device id, device display name, last seen ip, last seen ts)
 /// - Forgets to-device events
 /// - Triggers device list updates
-pub async fn logout_route(
-    body: Ruma<logout::v3::Request>,
-) -> Result<logout::v3::Response> {
+pub async fn logout_route(body: Ruma<logout::v3::Request>) -> Result<logout::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
     let sender_device = body.sender_device.as_ref().expect("user is authenticated");
 

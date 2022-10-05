@@ -1,6 +1,12 @@
-use std::collections::BTreeMap;
 use crate::Result;
-use ruma::{UserId, DeviceId, DeviceKeyAlgorithm, DeviceKeyId, serde::Raw, encryption::{OneTimeKey, DeviceKeys, CrossSigningKey}, UInt, events::AnyToDeviceEvent, api::client::{device::Device, filter::IncomingFilterDefinition}, MxcUri};
+use ruma::{
+    api::client::{device::Device, filter::IncomingFilterDefinition},
+    encryption::{CrossSigningKey, DeviceKeys, OneTimeKey},
+    events::AnyToDeviceEvent,
+    serde::Raw,
+    DeviceId, DeviceKeyAlgorithm, DeviceKeyId, MxcUri, UInt, UserId,
+};
+use std::collections::BTreeMap;
 
 pub trait Data: Send + Sync {
     /// Check if a user has an account on this homeserver.
@@ -127,10 +133,7 @@ pub trait Data: Send + Sync {
         to: Option<u64>,
     ) -> Box<dyn Iterator<Item = Result<Box<UserId>>>>;
 
-    fn mark_device_key_update(
-        &self,
-        user_id: &UserId,
-    ) -> Result<()>;
+    fn mark_device_key_update(&self, user_id: &UserId) -> Result<()>;
 
     fn get_device_keys(
         &self,
@@ -182,11 +185,8 @@ pub trait Data: Send + Sync {
     ) -> Result<()>;
 
     /// Get device metadata.
-    fn get_device_metadata(
-        &self,
-        user_id: &UserId,
-        device_id: &DeviceId,
-    ) -> Result<Option<Device>>;
+    fn get_device_metadata(&self, user_id: &UserId, device_id: &DeviceId)
+        -> Result<Option<Device>>;
 
     fn get_devicelist_version(&self, user_id: &UserId) -> Result<Option<u64>>;
 
@@ -196,11 +196,7 @@ pub trait Data: Send + Sync {
     ) -> Box<dyn Iterator<Item = Result<Device>>>;
 
     /// Creates a new sync filter. Returns the filter id.
-    fn create_filter(
-        &self,
-        user_id: &UserId,
-        filter: &IncomingFilterDefinition,
-    ) -> Result<String>;
+    fn create_filter(&self, user_id: &UserId, filter: &IncomingFilterDefinition) -> Result<String>;
 
     fn get_filter(
         &self,

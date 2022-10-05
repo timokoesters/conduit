@@ -2,9 +2,9 @@ mod data;
 use std::sync::Arc;
 
 pub use data::Data;
-use ruma::{EventId, signatures::CanonicalJsonObject};
+use ruma::{signatures::CanonicalJsonObject, EventId};
 
-use crate::{Result, PduEvent};
+use crate::{PduEvent, Result};
 
 pub struct Service {
     db: Arc<dyn Data>,

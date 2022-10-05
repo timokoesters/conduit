@@ -1,4 +1,4 @@
-use super::{super::Config, watchers::Watchers, KvTree, KeyValueDatabaseEngine};
+use super::{super::Config, watchers::Watchers, KeyValueDatabaseEngine, KvTree};
 use crate::{utils, Result};
 use std::{
     future::Future,

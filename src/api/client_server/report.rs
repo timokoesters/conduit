@@ -1,4 +1,4 @@
-use crate::{utils::HtmlEscape, Error, Result, Ruma, services};
+use crate::{services, utils::HtmlEscape, Error, Result, Ruma};
 use ruma::{
     api::client::{error::ErrorKind, room::report_content},
     events::room::message,

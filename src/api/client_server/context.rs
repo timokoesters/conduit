@@ -1,4 +1,4 @@
-use crate::{Error, Result, Ruma, services};
+use crate::{services, Error, Result, Ruma};
 use ruma::{
     api::client::{context::get_context, error::ErrorKind, filter::LazyLoadOptions},
     events::StateEventType,
@@ -49,7 +49,11 @@ pub async fn get_context_route(
 
     let room_id = base_event.room_id.clone();
 
-    if !services().rooms.state_cache.is_joined(sender_user, &room_id)? {
+    if !services()
+        .rooms
+        .state_cache
+        .is_joined(sender_user, &room_id)?
+    {
         return Err(Error::BadRequest(
             ErrorKind::Forbidden,
             "You don't have permission to view this room.",
@@ -141,7 +145,11 @@ pub async fn get_context_route(
             .expect("All rooms have state"),
     };
 
-    let state_ids = services().rooms.state_accessor.state_full_ids(shortstatehash).await?;
+    let state_ids = services()
+        .rooms
+        .state_accessor
+        .state_full_ids(shortstatehash)
+        .await?;
 
     let end_token = events_after
         .last()
@@ -156,7 +164,10 @@ pub async fn get_context_route(
     let mut state = Vec::new();
 
     for (shortstatekey, id) in state_ids {
-        let (event_type, state_key) = services().rooms.short.get_statekey_from_short(shortstatekey)?;
+        let (event_type, state_key) = services()
+            .rooms
+            .short
+            .get_statekey_from_short(shortstatekey)?;
 
         if event_type != StateEventType::RoomMember {
             let pdu = match services().rooms.timeline.get_pdu(&id)? {

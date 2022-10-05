@@ -79,7 +79,11 @@ impl Service {
         //*reqwest_request.timeout_mut() = Some(Duration::from_secs(5));
 
         let url = reqwest_request.url().clone();
-        let response = services().globals.default_client().execute(reqwest_request).await;
+        let response = services()
+            .globals
+            .default_client()
+            .execute(reqwest_request)
+            .await;
 
         match response {
             Ok(mut response) => {
@@ -196,7 +200,8 @@ impl Service {
         let ctx = PushConditionRoomCtx {
             room_id: room_id.to_owned(),
             member_count: 10_u32.into(), // TODO: get member count efficiently
-            user_display_name: services().users
+            user_display_name: services()
+                .users
                 .displayname(user)?
                 .unwrap_or_else(|| user.localpart().to_owned()),
             users_power_levels: power_levels.users.clone(),
@@ -276,10 +281,10 @@ impl Service {
             let user_name = services().users.displayname(&event.sender)?;
             notifi.sender_display_name = user_name.as_deref();
 
-            let room_name = if let Some(room_name_pdu) =
-                services().rooms
+            let room_name = if let Some(room_name_pdu) = services()
+                .rooms
                 .state_accessor
-                    .room_state_get(&event.room_id, &StateEventType::RoomName, "")?
+                .room_state_get(&event.room_id, &StateEventType::RoomName, "")?
             {
                 serde_json::from_str::<RoomNameEventContent>(room_name_pdu.content.get())
                     .map_err(|_| Error::bad_database("Invalid room name event in database."))?
@@ -290,11 +295,8 @@ impl Service {
 
             notifi.room_name = room_name.as_deref();
 
-            self.send_request(
-                url,
-                send_event_notification::v1::Request::new(notifi),
-            )
-            .await?;
+            self.send_request(url, send_event_notification::v1::Request::new(notifi))
+                .await?;
         }
 
         // TODO: email

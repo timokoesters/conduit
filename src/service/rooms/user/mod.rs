@@ -29,7 +29,8 @@ impl Service {
         token: u64,
         shortstatehash: u64,
     ) -> Result<()> {
-        self.db.associate_token_shortstatehash(room_id, token, shortstatehash)
+        self.db
+            .associate_token_shortstatehash(room_id, token, shortstatehash)
     }
 
     pub fn get_token_shortstatehash(&self, room_id: &RoomId, token: u64) -> Result<Option<u64>> {

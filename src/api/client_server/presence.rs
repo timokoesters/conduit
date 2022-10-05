@@ -1,4 +1,4 @@
-use crate::{utils, Result, Ruma, services};
+use crate::{services, utils, Result, Ruma};
 use ruma::api::client::presence::{get_presence, set_presence};
 use std::time::Duration;
 
@@ -51,7 +51,8 @@ pub async fn get_presence_route(
 
     for room_id in services()
         .rooms
-        .user.get_shared_rooms(vec![sender_user.clone(), body.user_id.clone()])?
+        .user
+        .get_shared_rooms(vec![sender_user.clone(), body.user_id.clone()])?
     {
         let room_id = room_id?;
 

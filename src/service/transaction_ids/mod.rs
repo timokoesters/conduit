@@ -3,8 +3,8 @@ use std::sync::Arc;
 
 pub use data::Data;
 
-use ruma::{UserId, DeviceId, TransactionId};
 use crate::Result;
+use ruma::{DeviceId, TransactionId, UserId};
 
 pub struct Service {
     db: Arc<dyn Data>,

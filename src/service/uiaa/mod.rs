@@ -3,10 +3,17 @@ use std::sync::Arc;
 
 pub use data::Data;
 
-use ruma::{api::client::{uiaa::{UiaaInfo, IncomingAuthData, IncomingPassword, AuthType, IncomingUserIdentifier}, error::ErrorKind}, DeviceId, UserId, signatures::CanonicalJsonValue};
+use ruma::{
+    api::client::{
+        error::ErrorKind,
+        uiaa::{AuthType, IncomingAuthData, IncomingPassword, IncomingUserIdentifier, UiaaInfo},
+    },
+    signatures::CanonicalJsonValue,
+    DeviceId, UserId,
+};
 use tracing::error;
 
-use crate::{Result, utils, Error, services, api::client_server::SESSION_ID_LENGTH};
+use crate::{api::client_server::SESSION_ID_LENGTH, services, utils, Error, Result};
 
 pub struct Service {
     db: Arc<dyn Data>,
@@ -68,11 +75,11 @@ impl Service {
                     }
                 };
 
-                let user_id =
-                    UserId::parse_with_server_name(username.clone(), services().globals.server_name())
-                        .map_err(|_| {
-                            Error::BadRequest(ErrorKind::InvalidParam, "User ID is invalid.")
-                        })?;
+                let user_id = UserId::parse_with_server_name(
+                    username.clone(),
+                    services().globals.server_name(),
+                )
+                .map_err(|_| Error::BadRequest(ErrorKind::InvalidParam, "User ID is invalid."))?;
 
                 // Check if password is correct
                 if let Some(hash) = services().users.password_hash(&user_id)? {

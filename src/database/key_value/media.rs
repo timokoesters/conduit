@@ -1,9 +1,16 @@
 use ruma::api::client::error::ErrorKind;
 
-use crate::{database::KeyValueDatabase, service, Error, utils, Result};
+use crate::{database::KeyValueDatabase, service, utils, Error, Result};
 
 impl service::media::Data for KeyValueDatabase {
-    fn create_file_metadata(&self, mxc: String, width: u32, height: u32, content_disposition: Option<&str>, content_type: Option<&str>) -> Result<Vec<u8>> {
+    fn create_file_metadata(
+        &self,
+        mxc: String,
+        width: u32,
+        height: u32,
+        content_disposition: Option<&str>,
+        content_type: Option<&str>,
+    ) -> Result<Vec<u8>> {
         let mut key = mxc.as_bytes().to_vec();
         key.push(0xff);
         key.extend_from_slice(&width.to_be_bytes());
@@ -28,14 +35,23 @@ impl service::media::Data for KeyValueDatabase {
         Ok(key)
     }
 
-    fn search_file_metadata(&self, mxc: String, width: u32, height: u32) -> Result<(Option<String>, Option<String>, Vec<u8>)> {
+    fn search_file_metadata(
+        &self,
+        mxc: String,
+        width: u32,
+        height: u32,
+    ) -> Result<(Option<String>, Option<String>, Vec<u8>)> {
         let mut prefix = mxc.as_bytes().to_vec();
         prefix.push(0xff);
         prefix.extend_from_slice(&0_u32.to_be_bytes()); // Width = 0 if it's not a thumbnail
         prefix.extend_from_slice(&0_u32.to_be_bytes()); // Height = 0 if it's not a thumbnail
         prefix.push(0xff);
 
-        let (key, _) = self.mediaid_file.scan_prefix(prefix).next().ok_or(Error::BadRequest(ErrorKind::NotFound, "Media not found"))?;
+        let (key, _) = self
+            .mediaid_file
+            .scan_prefix(prefix)
+            .next()
+            .ok_or(Error::BadRequest(ErrorKind::NotFound, "Media not found"))?;
 
         let mut parts = key.rsplit(|&b| b == 0xff);
 
@@ -57,9 +73,7 @@ impl service::media::Data for KeyValueDatabase {
         } else {
             Some(
                 utils::string_from_bytes(content_disposition_bytes).map_err(|_| {
-                    Error::bad_database(
-                        "Content Disposition in mediaid_file is invalid unicode.",
-                    )
+                    Error::bad_database("Content Disposition in mediaid_file is invalid unicode.")
                 })?,
             )
         };

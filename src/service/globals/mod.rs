@@ -4,7 +4,7 @@ pub use data::Data;
 use crate::api::server_server::FedDest;
 use crate::service::*;
 
-use crate::{Config, utils, Error, Result};
+use crate::{utils, Config, Error, Result};
 use ruma::{
     api::{
         client::sync::sync_events,
@@ -89,12 +89,8 @@ impl Default for RotationHandler {
     }
 }
 
-
 impl Service {
-    pub fn load(
-        db: Arc<dyn Data>,
-        config: Config,
-    ) -> Result<Self> {
+    pub fn load(db: Arc<dyn Data>, config: Config) -> Result<Self> {
         let keypair = db.load_keypair();
 
         let keypair = match keypair {

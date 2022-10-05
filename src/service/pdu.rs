@@ -1,4 +1,4 @@
-use crate::{Error, services};
+use crate::{services, Error};
 use ruma::{
     events::{
         room::member::RoomMemberEventContent, AnyEphemeralRoomEvent, AnyRoomEvent, AnyStateEvent,

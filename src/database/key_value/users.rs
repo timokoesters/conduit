@@ -1,9 +1,20 @@
-use std::{mem::size_of, collections::BTreeMap};
+use std::{collections::BTreeMap, mem::size_of};
 
-use ruma::{api::client::{filter::IncomingFilterDefinition, error::ErrorKind, device::Device}, UserId, RoomAliasId, MxcUri, DeviceId, MilliSecondsSinceUnixEpoch, DeviceKeyId, encryption::{OneTimeKey, CrossSigningKey, DeviceKeys}, serde::Raw, events::{AnyToDeviceEvent, StateEventType}, DeviceKeyAlgorithm, UInt};
+use ruma::{
+    api::client::{device::Device, error::ErrorKind, filter::IncomingFilterDefinition},
+    encryption::{CrossSigningKey, DeviceKeys, OneTimeKey},
+    events::{AnyToDeviceEvent, StateEventType},
+    serde::Raw,
+    DeviceId, DeviceKeyAlgorithm, DeviceKeyId, MilliSecondsSinceUnixEpoch, MxcUri, RoomAliasId,
+    UInt, UserId,
+};
 use tracing::warn;
 
-use crate::{service::{self, users::clean_signatures}, database::KeyValueDatabase, Error, utils, services, Result};
+use crate::{
+    database::KeyValueDatabase,
+    service::{self, users::clean_signatures},
+    services, utils, Error, Result,
+};
 
 impl service::users::Data for KeyValueDatabase {
     /// Check if a user has an account on this homeserver.
@@ -274,18 +285,21 @@ impl service::users::Data for KeyValueDatabase {
         let mut prefix = user_id.as_bytes().to_vec();
         prefix.push(0xff);
         // All devices have metadata
-        Box::new(self.userdeviceid_metadata
-            .scan_prefix(prefix)
-            .map(|(bytes, _)| {
-                Ok(utils::string_from_bytes(
-                    bytes
-                        .rsplit(|&b| b == 0xff)
-                        .next()
-                        .ok_or_else(|| Error::bad_database("UserDevice ID in db is invalid."))?,
-                )
-                .map_err(|_| Error::bad_database("Device ID in userdeviceid_metadata is invalid."))?
-                .into())
-            }))
+        Box::new(
+            self.userdeviceid_metadata
+                .scan_prefix(prefix)
+                .map(|(bytes, _)| {
+                    Ok(utils::string_from_bytes(
+                        bytes.rsplit(|&b| b == 0xff).next().ok_or_else(|| {
+                            Error::bad_database("UserDevice ID in db is invalid.")
+                        })?,
+                    )
+                    .map_err(|_| {
+                        Error::bad_database("Device ID in userdeviceid_metadata is invalid.")
+                    })?
+                    .into())
+                }),
+        )
     }
 
     /// Replaces the access token of one device.
@@ -341,8 +355,10 @@ impl service::users::Data for KeyValueDatabase {
             &serde_json::to_vec(&one_time_key_value).expect("OneTimeKey::to_vec always works"),
         )?;
 
-        self.userid_lastonetimekeyupdate
-            .insert(user_id.as_bytes(), &services().globals.next_count()?.to_be_bytes())?;
+        self.userid_lastonetimekeyupdate.insert(
+            user_id.as_bytes(),
+            &services().globals.next_count()?.to_be_bytes(),
+        )?;
 
         Ok(())
     }
@@ -372,8 +388,10 @@ impl service::users::Data for KeyValueDatabase {
         prefix.extend_from_slice(key_algorithm.as_ref().as_bytes());
         prefix.push(b':');
 
-        self.userid_lastonetimekeyupdate
-            .insert(user_id.as_bytes(), &services().globals.next_count()?.to_be_bytes())?;
+        self.userid_lastonetimekeyupdate.insert(
+            user_id.as_bytes(),
+            &services().globals.next_count()?.to_be_bytes(),
+        )?;
 
         self.onetimekeyid_onetimekeys
             .scan_prefix(prefix)
@@ -617,38 +635,47 @@ impl service::users::Data for KeyValueDatabase {
 
         let to = to.unwrap_or(u64::MAX);
 
-        Box::new(self.keychangeid_userid
-            .iter_from(&start, false)
-            .take_while(move |(k, _)| {
-                k.starts_with(&prefix)
-                    && if let Some(current) = k.splitn(2, |&b| b == 0xff).nth(1) {
-                        if let Ok(c) = utils::u64_from_bytes(current) {
-                            c <= to
+        Box::new(
+            self.keychangeid_userid
+                .iter_from(&start, false)
+                .take_while(move |(k, _)| {
+                    k.starts_with(&prefix)
+                        && if let Some(current) = k.splitn(2, |&b| b == 0xff).nth(1) {
+                            if let Ok(c) = utils::u64_from_bytes(current) {
+                                c <= to
+                            } else {
+                                warn!("BadDatabase: Could not parse keychangeid_userid bytes");
+                                false
+                            }
                         } else {
-                            warn!("BadDatabase: Could not parse keychangeid_userid bytes");
+                            warn!("BadDatabase: Could not parse keychangeid_userid");
                             false
                         }
-                    } else {
-                        warn!("BadDatabase: Could not parse keychangeid_userid");
-                        false
-                    }
-            })
-            .map(|(_, bytes)| {
-                UserId::parse(utils::string_from_bytes(&bytes).map_err(|_| {
-                    Error::bad_database("User ID in devicekeychangeid_userid is invalid unicode.")
-                })?)
-                .map_err(|_| Error::bad_database("User ID in devicekeychangeid_userid is invalid."))
-            }))
+                })
+                .map(|(_, bytes)| {
+                    UserId::parse(utils::string_from_bytes(&bytes).map_err(|_| {
+                        Error::bad_database(
+                            "User ID in devicekeychangeid_userid is invalid unicode.",
+                        )
+                    })?)
+                    .map_err(|_| {
+                        Error::bad_database("User ID in devicekeychangeid_userid is invalid.")
+                    })
+                }),
+        )
     }
 
-    fn mark_device_key_update(
-        &self,
-        user_id: &UserId,
-    ) -> Result<()> {
+    fn mark_device_key_update(&self, user_id: &UserId) -> Result<()> {
         let count = services().globals.next_count()?.to_be_bytes();
-        for room_id in services().rooms.state_cache.rooms_joined(user_id).filter_map(|r| r.ok()) {
+        for room_id in services()
+            .rooms
+            .state_cache
+            .rooms_joined(user_id)
+            .filter_map(|r| r.ok())
+        {
             // Don't send key updates to unencrypted rooms
-            if services().rooms
+            if services()
+                .rooms
                 .state_accessor
                 .room_state_get(&room_id, &StateEventType::RoomEncryption, "")?
                 .is_none()
@@ -883,20 +910,19 @@ impl service::users::Data for KeyValueDatabase {
         let mut key = user_id.as_bytes().to_vec();
         key.push(0xff);
 
-        Box::new(self.userdeviceid_metadata
-            .scan_prefix(key)
-            .map(|(_, bytes)| {
-                serde_json::from_slice::<Device>(&bytes)
-                    .map_err(|_| Error::bad_database("Device in userdeviceid_metadata is invalid."))
-            }))
+        Box::new(
+            self.userdeviceid_metadata
+                .scan_prefix(key)
+                .map(|(_, bytes)| {
+                    serde_json::from_slice::<Device>(&bytes).map_err(|_| {
+                        Error::bad_database("Device in userdeviceid_metadata is invalid.")
+                    })
+                }),
+        )
     }
 
     /// Creates a new sync filter. Returns the filter id.
-    fn create_filter(
-        &self,
-        user_id: &UserId,
-        filter: &IncomingFilterDefinition,
-    ) -> Result<String> {
+    fn create_filter(&self, user_id: &UserId, filter: &IncomingFilterDefinition) -> Result<String> {
         let filter_id = utils::random_string(4);
 
         let mut key = user_id.as_bytes().to_vec();

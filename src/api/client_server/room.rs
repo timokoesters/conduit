@@ -1,5 +1,5 @@
 use crate::{
-    Error, Result, Ruma, service::pdu::PduBuilder, services, api::client_server::invite_helper,
+    api::client_server::invite_helper, service::pdu::PduBuilder, services, Error, Result, Ruma,
 };
 use ruma::{
     api::client::{
@@ -57,7 +57,8 @@ pub async fn create_room_route(
     services().rooms.short.get_or_create_shortroomid(&room_id)?;
 
     let mutex_state = Arc::clone(
-        services().globals
+        services()
+            .globals
             .roomid_mutex_state
             .write()
             .unwrap()
@@ -81,13 +82,19 @@ pub async fn create_room_route(
             .as_ref()
             .map_or(Ok(None), |localpart| {
                 // TODO: Check for invalid characters and maximum length
-                let alias =
-                    RoomAliasId::parse(format!("#{}:{}", localpart, services().globals.server_name()))
-                        .map_err(|_| {
-                            Error::BadRequest(ErrorKind::InvalidParam, "Invalid alias.")
-                        })?;
+                let alias = RoomAliasId::parse(format!(
+                    "#{}:{}",
+                    localpart,
+                    services().globals.server_name()
+                ))
+                .map_err(|_| Error::BadRequest(ErrorKind::InvalidParam, "Invalid alias."))?;
 
-                if services().rooms.alias.resolve_local_alias(&alias)?.is_some() {
+                if services()
+                    .rooms
+                    .alias
+                    .resolve_local_alias(&alias)?
+                    .is_some()
+                {
                     Err(Error::BadRequest(
                         ErrorKind::RoomInUse,
                         "Room alias already exists.",
@@ -99,7 +106,11 @@ pub async fn create_room_route(
 
     let room_version = match body.room_version.clone() {
         Some(room_version) => {
-            if services().globals.supported_room_versions().contains(&room_version) {
+            if services()
+                .globals
+                .supported_room_versions()
+                .contains(&room_version)
+            {
                 room_version
             } else {
                 return Err(Error::BadRequest(
@@ -338,13 +349,18 @@ pub async fn create_room_route(
         pdu_builder.state_key.get_or_insert_with(|| "".to_owned());
 
         // Silently skip encryption events if they are not allowed
-        if pdu_builder.event_type == RoomEventType::RoomEncryption && !services().globals.allow_encryption()
+        if pdu_builder.event_type == RoomEventType::RoomEncryption
+            && !services().globals.allow_encryption()
         {
             continue;
         }
 
-        services().rooms
-            .timeline.build_and_append_pdu(pdu_builder, sender_user, &room_id, &state_lock)?;
+        services().rooms.timeline.build_and_append_pdu(
+            pdu_builder,
+            sender_user,
+            &room_id,
+            &state_lock,
+        )?;
     }
 
     // 7. Events implied by name and topic
@@ -412,7 +428,11 @@ pub async fn get_room_event_route(
 ) -> Result<get_room_event::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
-    if !services().rooms.state_cache.is_joined(sender_user, &body.room_id)? {
+    if !services()
+        .rooms
+        .state_cache
+        .is_joined(sender_user, &body.room_id)?
+    {
         return Err(Error::BadRequest(
             ErrorKind::Forbidden,
             "You don't have permission to view this room.",
@@ -439,7 +459,11 @@ pub async fn get_room_aliases_route(
 ) -> Result<aliases::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
-    if !services().rooms.state_cache.is_joined(sender_user, &body.room_id)? {
+    if !services()
+        .rooms
+        .state_cache
+        .is_joined(sender_user, &body.room_id)?
+    {
         return Err(Error::BadRequest(
             ErrorKind::Forbidden,
             "You don't have permission to view this room.",
@@ -449,7 +473,8 @@ pub async fn get_room_aliases_route(
     Ok(aliases::v3::Response {
         aliases: services()
             .rooms
-            .alias.local_aliases_for_room(&body.room_id)
+            .alias
+            .local_aliases_for_room(&body.room_id)
             .filter_map(|a| a.ok())
             .collect(),
     })
@@ -470,7 +495,11 @@ pub async fn upgrade_room_route(
 ) -> Result<upgrade_room::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
-    if !services().globals.supported_room_versions().contains(&body.new_version) {
+    if !services()
+        .globals
+        .supported_room_versions()
+        .contains(&body.new_version)
+    {
         return Err(Error::BadRequest(
             ErrorKind::UnsupportedRoomVersion,
             "This server does not support that room version.",
@@ -479,11 +508,14 @@ pub async fn upgrade_room_route(
 
     // Create a replacement room
     let replacement_room = RoomId::new(services().globals.server_name());
-    services().rooms
-        .short.get_or_create_shortroomid(&replacement_room)?;
+    services()
+        .rooms
+        .short
+        .get_or_create_shortroomid(&replacement_room)?;
 
     let mutex_state = Arc::clone(
-        services().globals
+        services()
+            .globals
             .roomid_mutex_state
             .write()
             .unwrap()
@@ -514,7 +546,8 @@ pub async fn upgrade_room_route(
     // Change lock to replacement room
     drop(state_lock);
     let mutex_state = Arc::clone(
-        services().globals
+        services()
+            .globals
             .roomid_mutex_state
             .write()
             .unwrap()
@@ -525,7 +558,8 @@ pub async fn upgrade_room_route(
 
     // Get the old room creation event
     let mut create_event_content = serde_json::from_str::<CanonicalJsonObject>(
-        services().rooms
+        services()
+            .rooms
             .state_accessor
             .room_state_get(&body.room_id, &StateEventType::RoomCreate, "")?
             .ok_or_else(|| Error::bad_database("Found room without m.room.create event."))?
@@ -627,10 +661,15 @@ pub async fn upgrade_room_route(
 
     // Replicate transferable state events to the new room
     for event_type in transferable_state_events {
-        let event_content = match services().rooms.state_accessor.room_state_get(&body.room_id, &event_type, "")? {
-            Some(v) => v.content.clone(),
-            None => continue, // Skipping missing events.
-        };
+        let event_content =
+            match services()
+                .rooms
+                .state_accessor
+                .room_state_get(&body.room_id, &event_type, "")?
+            {
+                Some(v) => v.content.clone(),
+                None => continue, // Skipping missing events.
+            };
 
         services().rooms.timeline.build_and_append_pdu(
             PduBuilder {
@@ -647,14 +686,22 @@ pub async fn upgrade_room_route(
     }
 
     // Moves any local aliases to the new room
-    for alias in services().rooms.alias.local_aliases_for_room(&body.room_id).filter_map(|r| r.ok()) {
-        services().rooms
-            .alias.set_alias(&alias, &replacement_room)?;
+    for alias in services()
+        .rooms
+        .alias
+        .local_aliases_for_room(&body.room_id)
+        .filter_map(|r| r.ok())
+    {
+        services()
+            .rooms
+            .alias
+            .set_alias(&alias, &replacement_room)?;
     }
 
     // Get the old room power levels
     let mut power_levels_event_content: RoomPowerLevelsEventContent = serde_json::from_str(
-        services().rooms
+        services()
+            .rooms
             .state_accessor
             .room_state_get(&body.room_id, &StateEventType::RoomPowerLevels, "")?
             .ok_or_else(|| Error::bad_database("Found room without m.room.create event."))?
@@ -688,4 +735,3 @@ pub async fn upgrade_room_route(
     // Return the replacement room id
     Ok(upgrade_room::v3::Response { replacement_room })
 }
-

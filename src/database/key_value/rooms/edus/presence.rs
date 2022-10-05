@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
-use ruma::{UserId, RoomId, events::presence::PresenceEvent, presence::PresenceState, UInt};
+use ruma::{events::presence::PresenceEvent, presence::PresenceState, RoomId, UInt, UserId};
 
-use crate::{service, database::KeyValueDatabase, utils, Error, services, Result};
+use crate::{database::KeyValueDatabase, service, services, utils, Error, Result};
 
 impl service::rooms::edus::presence::Data for KeyValueDatabase {
     fn update_presence(

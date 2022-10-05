@@ -1,22 +1,33 @@
 /// An async function that can recursively call itself.
 type AsyncRecursiveType<'a, T> = Pin<Box<dyn Future<Output = T> + 'a + Send>>;
 
-use ruma::{RoomVersionId, signatures::CanonicalJsonObject, api::federation::discovery::{get_server_keys, get_remote_server_keys}};
-use tokio::sync::Semaphore;
+use ruma::{
+    api::federation::discovery::{get_remote_server_keys, get_server_keys},
+    signatures::CanonicalJsonObject,
+    RoomVersionId,
+};
 use std::{
     collections::{btree_map, hash_map, BTreeMap, HashMap, HashSet},
     pin::Pin,
     sync::{Arc, RwLock, RwLockWriteGuard},
     time::{Duration, Instant, SystemTime},
 };
+use tokio::sync::Semaphore;
 
-use futures_util::{Future, stream::FuturesUnordered, StreamExt};
+use futures_util::{stream::FuturesUnordered, Future, StreamExt};
 use ruma::{
     api::{
         client::error::ErrorKind,
-        federation::{event::{get_event, get_room_state_ids}, membership::create_join_event, discovery::get_remote_server_keys_batch::{v2::QueryCriteria, self}},
+        federation::{
+            discovery::get_remote_server_keys_batch::{self, v2::QueryCriteria},
+            event::{get_event, get_room_state_ids},
+            membership::create_join_event,
+        },
     },
-    events::{room::{create::RoomCreateEventContent, server_acl::RoomServerAclEventContent}, StateEventType},
+    events::{
+        room::{create::RoomCreateEventContent, server_acl::RoomServerAclEventContent},
+        StateEventType,
+    },
     int,
     serde::Base64,
     signatures::CanonicalJsonValue,
@@ -24,9 +35,9 @@ use ruma::{
     uint, EventId, MilliSecondsSinceUnixEpoch, RoomId, ServerName, ServerSigningKeyId,
 };
 use serde_json::value::{to_raw_value, RawValue as RawJsonValue};
-use tracing::{error, info, trace, warn, debug};
+use tracing::{debug, error, info, trace, warn};
 
-use crate::{service::*, services, Result, Error, PduEvent};
+use crate::{service::*, services, Error, PduEvent, Result};
 
 pub struct Service;
 
@@ -72,10 +83,7 @@ impl Service {
             ));
         }
 
-        if services()
-            .rooms
-            .metadata
-            .is_disabled(room_id)? {
+        if services().rooms.metadata.is_disabled(room_id)? {
             return Err(Error::BadRequest(
                 ErrorKind::Forbidden,
                 "Federation of this room is currently disabled on this server.",
@@ -94,7 +102,8 @@ impl Service {
             .ok_or_else(|| Error::bad_database("Failed to find create event in db."))?;
 
         let first_pdu_in_room = services()
-            .rooms.timeline
+            .rooms
+            .timeline
             .first_pdu_in_room(room_id)?
             .ok_or_else(|| Error::bad_database("Failed to find first pdu in db."))?;
 
@@ -113,21 +122,20 @@ impl Service {
         }
 
         // 9. Fetch any missing prev events doing all checks listed here starting at 1. These are timeline events
-        let (sorted_prev_events, mut eventid_info) = self.fetch_unknown_prev_events(
-            origin,
-            &create_event,
-            room_id,
-            pub_key_map,
-            incoming_pdu.prev_events.clone(),
-        ).await?;
+        let (sorted_prev_events, mut eventid_info) = self
+            .fetch_unknown_prev_events(
+                origin,
+                &create_event,
+                room_id,
+                pub_key_map,
+                incoming_pdu.prev_events.clone(),
+            )
+            .await?;
 
         let mut errors = 0;
         for prev_id in dbg!(sorted_prev_events) {
             // Check for disabled again because it might have changed
-            if services()
-                .rooms
-                .metadata
-                .is_disabled(room_id)? {
+            if services().rooms.metadata.is_disabled(room_id)? {
                 return Err(Error::BadRequest(
                     ErrorKind::Forbidden,
                     "Federation of this room is currently disabled on this server.",
@@ -224,15 +232,18 @@ impl Service {
             .write()
             .unwrap()
             .insert(room_id.to_owned(), (event_id.to_owned(), start_time));
-        let r = services().rooms.event_handler.upgrade_outlier_to_timeline_pdu(
-            incoming_pdu,
-            val,
-            &create_event,
-            origin,
-            room_id,
-            pub_key_map,
-        )
-        .await;
+        let r = services()
+            .rooms
+            .event_handler
+            .upgrade_outlier_to_timeline_pdu(
+                incoming_pdu,
+                val,
+                &create_event,
+                origin,
+                room_id,
+                pub_key_map,
+            )
+            .await;
         services()
             .globals
             .roomid_federationhandletime
@@ -252,8 +263,7 @@ impl Service {
         room_id: &'a RoomId,
         value: BTreeMap<String, CanonicalJsonValue>,
         pub_key_map: &'a RwLock<BTreeMap<String, BTreeMap<String, Base64>>>,
-    ) -> AsyncRecursiveType<'a, Result<(Arc<PduEvent>, BTreeMap<String, CanonicalJsonValue>)>>
-    {
+    ) -> AsyncRecursiveType<'a, Result<(Arc<PduEvent>, BTreeMap<String, CanonicalJsonValue>)>> {
         Box::pin(async move {
             // TODO: For RoomVersion6 we must check that Raw<..> is canonical do we anywhere?: https://matrix.org/docs/spec/rooms/v6#canonical-json
 
@@ -282,14 +292,22 @@ impl Service {
                 Err(e) => {
                     // Drop
                     warn!("Dropping bad event {}: {}", event_id, e);
-                    return Err(Error::BadRequest(ErrorKind::InvalidParam, "Signature verification failed"));
+                    return Err(Error::BadRequest(
+                        ErrorKind::InvalidParam,
+                        "Signature verification failed",
+                    ));
                 }
                 Ok(ruma::signatures::Verified::Signatures) => {
                     // Redact
                     warn!("Calculated hash does not match: {}", event_id);
                     match ruma::signatures::redact(&value, room_version_id) {
                         Ok(obj) => obj,
-                        Err(_) => return Err(Error::BadRequest(ErrorKind::InvalidParam, "Redaction failed")),
+                        Err(_) => {
+                            return Err(Error::BadRequest(
+                                ErrorKind::InvalidParam,
+                                "Redaction failed",
+                            ))
+                        }
                     }
                 }
                 Ok(ruma::signatures::Verified::All) => value,
@@ -376,7 +394,8 @@ impl Service {
                 &incoming_pdu,
                 None::<PduEvent>, // TODO: third party invite
                 |k, s| auth_events.get(&(k.to_string().into(), s.to_owned())),
-            ).map_err(|_e| Error::BadRequest(ErrorKind::InvalidParam, "Auth check failed"))?
+            )
+            .map_err(|_e| Error::BadRequest(ErrorKind::InvalidParam, "Auth check failed"))?
             {
                 return Err(Error::BadRequest(
                     ErrorKind::InvalidParam,
@@ -415,9 +434,13 @@ impl Service {
 
         if services()
             .rooms
-            .pdu_metadata.is_event_soft_failed(&incoming_pdu.event_id)?
+            .pdu_metadata
+            .is_event_soft_failed(&incoming_pdu.event_id)?
         {
-            return Err(Error::BadRequest(ErrorKind::InvalidParam, "Event has been soft failed"));
+            return Err(Error::BadRequest(
+                ErrorKind::InvalidParam,
+                "Event has been soft failed",
+            ));
         }
 
         info!("Upgrading {} to timeline pdu", incoming_pdu.event_id);
@@ -448,7 +471,13 @@ impl Service {
                 .pdu_shortstatehash(prev_event)?;
 
             let state = if let Some(shortstatehash) = prev_event_sstatehash {
-                Some(services().rooms.state_accessor.state_full_ids(shortstatehash).await)
+                Some(
+                    services()
+                        .rooms
+                        .state_accessor
+                        .state_full_ids(shortstatehash)
+                        .await,
+                )
             } else {
                 None
             };
@@ -466,10 +495,10 @@ impl Service {
                     })?;
 
                 if let Some(state_key) = &prev_pdu.state_key {
-                    let shortstatekey = services()
-                        .rooms
-                        .short
-                        .get_or_create_shortstatekey(&prev_pdu.kind.to_string().into(), state_key)?;
+                    let shortstatekey = services().rooms.short.get_or_create_shortstatekey(
+                        &prev_pdu.kind.to_string().into(),
+                        state_key,
+                    )?;
 
                     state.insert(shortstatekey, Arc::from(prev_event));
                     // Now it's the state after the pdu
@@ -483,20 +512,24 @@ impl Service {
 
             let mut okay = true;
             for prev_eventid in &incoming_pdu.prev_events {
-                let prev_event = if let Ok(Some(pdu)) = services().rooms.timeline.get_pdu(prev_eventid) {
-                    pdu
-                } else {
-                    okay = false;
-                    break;
-                };
-
-                let sstatehash =
-                    if let Ok(Some(s)) = services().rooms.state_accessor.pdu_shortstatehash(prev_eventid) {
-                        s
+                let prev_event =
+                    if let Ok(Some(pdu)) = services().rooms.timeline.get_pdu(prev_eventid) {
+                        pdu
                     } else {
                         okay = false;
                         break;
                     };
+
+                let sstatehash = if let Ok(Some(s)) = services()
+                    .rooms
+                    .state_accessor
+                    .pdu_shortstatehash(prev_eventid)
+                {
+                    s
+                } else {
+                    okay = false;
+                    break;
+                };
 
                 extremity_sstatehashes.insert(sstatehash, prev_event);
             }
@@ -513,13 +546,10 @@ impl Service {
                         .await?;
 
                     if let Some(state_key) = &prev_event.state_key {
-                        let shortstatekey = services()
-                            .rooms
-                            .short
-                            .get_or_create_shortstatekey(
-                                &prev_event.kind.to_string().into(),
-                                state_key,
-                            )?;
+                        let shortstatekey = services().rooms.short.get_or_create_shortstatekey(
+                            &prev_event.kind.to_string().into(),
+                            state_key,
+                        )?;
                         leaf_state.insert(shortstatekey, Arc::from(&*prev_event.event_id));
                         // Now it's the state after the pdu
                     }
@@ -528,7 +558,8 @@ impl Service {
                     let mut starting_events = Vec::with_capacity(leaf_state.len());
 
                     for (k, id) in leaf_state {
-                        if let Ok((ty, st_key)) = services().rooms.short.get_statekey_from_short(k) {
+                        if let Ok((ty, st_key)) = services().rooms.short.get_statekey_from_short(k)
+                        {
                             // FIXME: Undo .to_string().into() when StateMap
                             //        is updated to use StateEventType
                             state.insert((ty.to_string().into(), st_key), id.clone());
@@ -567,10 +598,8 @@ impl Service {
                         new_state
                             .into_iter()
                             .map(|((event_type, state_key), event_id)| {
-                                let shortstatekey = services()
-                                    .rooms
-                                    .short
-                                    .get_or_create_shortstatekey(
+                                let shortstatekey =
+                                    services().rooms.short.get_or_create_shortstatekey(
                                         &event_type.to_string().into(),
                                         &state_key,
                                     )?;
@@ -618,15 +647,14 @@ impl Service {
 
                     let mut state: BTreeMap<_, Arc<EventId>> = BTreeMap::new();
                     for (pdu, _) in state_vec {
-                        let state_key = pdu
-                            .state_key
-                            .clone()
-                            .ok_or_else(|| Error::bad_database("Found non-state pdu in state events."))?;
+                        let state_key = pdu.state_key.clone().ok_or_else(|| {
+                            Error::bad_database("Found non-state pdu in state events.")
+                        })?;
 
-                        let shortstatekey = services()
-                            .rooms
-                            .short
-                            .get_or_create_shortstatekey(&pdu.kind.to_string().into(), &state_key)?;
+                        let shortstatekey = services().rooms.short.get_or_create_shortstatekey(
+                            &pdu.kind.to_string().into(),
+                            &state_key,
+                        )?;
 
                         match state.entry(shortstatekey) {
                             btree_map::Entry::Vacant(v) => {
@@ -648,7 +676,9 @@ impl Service {
                     if state.get(&create_shortstatekey).map(|id| id.as_ref())
                         != Some(&create_event.event_id)
                     {
-                        return Err(Error::bad_database("Incoming event refers to wrong create event."));
+                        return Err(Error::bad_database(
+                            "Incoming event refers to wrong create event.",
+                        ));
                     }
 
                     state_at_incoming_event = Some(state);
@@ -683,7 +713,9 @@ impl Service {
         .map_err(|_e| Error::BadRequest(ErrorKind::InvalidParam, "Auth check failed."))?;
 
         if !check_result {
-            return Err(Error::bad_database("Event has failed auth check with state at the event."));
+            return Err(Error::bad_database(
+                "Event has failed auth check with state at the event.",
+            ));
         }
         info!("Auth check succeeded");
 
@@ -703,10 +735,7 @@ impl Service {
         // Now we calculate the set of extremities this room has after the incoming event has been
         // applied. We start with the previous extremities (aka leaves)
         info!("Calculating extremities");
-        let mut extremities = services()
-            .rooms
-            .state
-            .get_forward_extremities(room_id)?;
+        let mut extremities = services().rooms.state.get_forward_extremities(room_id)?;
 
         // Remove any forward extremities that are referenced by this incoming event's prev_events
         for prev_event in &incoming_pdu.prev_events {
@@ -716,8 +745,15 @@ impl Service {
         }
 
         // Only keep those extremities were not referenced yet
-        extremities
-            .retain(|id| !matches!(services().rooms.pdu_metadata.is_event_referenced(room_id, id), Ok(true)));
+        extremities.retain(|id| {
+            !matches!(
+                services()
+                    .rooms
+                    .pdu_metadata
+                    .is_event_referenced(room_id, id),
+                Ok(true)
+            )
+        });
 
         info!("Compressing state at event");
         let state_ids_compressed = state_at_incoming_event
@@ -733,23 +769,21 @@ impl Service {
         // 13. Check if the event passes auth based on the "current state" of the room, if not "soft fail" it
         info!("Starting soft fail auth check");
 
-        let auth_events = services()
-            .rooms
-            .state
-            .get_auth_events(
-                room_id,
-                &incoming_pdu.kind,
-                &incoming_pdu.sender,
-                incoming_pdu.state_key.as_deref(),
-                &incoming_pdu.content,
-            )?;
+        let auth_events = services().rooms.state.get_auth_events(
+            room_id,
+            &incoming_pdu.kind,
+            &incoming_pdu.sender,
+            incoming_pdu.state_key.as_deref(),
+            &incoming_pdu.content,
+        )?;
 
         let soft_fail = !state_res::event_auth::auth_check(
             &room_version,
             &incoming_pdu,
             None::<PduEvent>,
             |k, s| auth_events.get(&(k.clone(), s.to_owned())),
-        ).map_err(|_e| Error::BadRequest(ErrorKind::InvalidParam, "Auth check failed."))?;
+        )
+        .map_err(|_e| Error::BadRequest(ErrorKind::InvalidParam, "Auth check failed."))?;
 
         if soft_fail {
             services().rooms.timeline.append_incoming_pdu(
@@ -767,7 +801,10 @@ impl Service {
                 .rooms
                 .pdu_metadata
                 .mark_event_soft_failed(&incoming_pdu.event_id)?;
-            return Err(Error::BadRequest(ErrorKind::InvalidParam, "Event has been soft failed"));
+            return Err(Error::BadRequest(
+                ErrorKind::InvalidParam,
+                "Event has been soft failed",
+            ));
         }
 
         if incoming_pdu.state_key.is_some() {
@@ -789,15 +826,12 @@ impl Service {
 
             info!("Loading extremities");
             for id in dbg!(&extremities) {
-                match services()
-                    .rooms
-                    .timeline
-                    .get_pdu(id)?
-                {
+                match services().rooms.timeline.get_pdu(id)? {
                     Some(leaf_pdu) => {
                         extremity_sstatehashes.insert(
                             services()
-                                .rooms.state_accessor
+                                .rooms
+                                .state_accessor
                                 .pdu_shortstatehash(&leaf_pdu.event_id)?
                                 .ok_or_else(|| {
                                     error!(
@@ -829,10 +863,10 @@ impl Service {
             // We also add state after incoming event to the fork states
             let mut state_after = state_at_incoming_event.clone();
             if let Some(state_key) = &incoming_pdu.state_key {
-                let shortstatekey = services()
-                    .rooms
-                    .short
-                    .get_or_create_shortstatekey(&incoming_pdu.kind.to_string().into(), state_key)?;
+                let shortstatekey = services().rooms.short.get_or_create_shortstatekey(
+                    &incoming_pdu.kind.to_string().into(),
+                    state_key,
+                )?;
 
                 state_after.insert(shortstatekey, Arc::from(&*incoming_pdu.event_id));
             }
@@ -921,10 +955,10 @@ impl Service {
                 state
                     .into_iter()
                     .map(|((event_type, state_key), event_id)| {
-                        let shortstatekey = services()
-                            .rooms
-                            .short
-                            .get_or_create_shortstatekey(&event_type.to_string().into(), &state_key)?;
+                        let shortstatekey = services().rooms.short.get_or_create_shortstatekey(
+                            &event_type.to_string().into(),
+                            &state_key,
+                        )?;
                         services()
                             .rooms
                             .state_compressor
@@ -936,7 +970,10 @@ impl Service {
             // Set the new room state to the resolved state
             if update_state {
                 info!("Forcing new room state");
-                let sstatehash = services().rooms.state_compressor.save_state(room_id, new_room_state)?;
+                let sstatehash = services()
+                    .rooms
+                    .state_compressor
+                    .save_state(room_id, new_room_state)?;
                 services()
                     .rooms
                     .state
@@ -951,15 +988,14 @@ impl Service {
         // We use the `state_at_event` instead of `state_after` so we accurately
         // represent the state for this event.
 
-        let pdu_id = services().rooms.timeline
-            .append_incoming_pdu(
-                &incoming_pdu,
-                val,
-                extremities.iter().map(|e| (**e).to_owned()).collect(),
-                state_ids_compressed,
-                soft_fail,
-                &state_lock,
-            )?;
+        let pdu_id = services().rooms.timeline.append_incoming_pdu(
+            &incoming_pdu,
+            val,
+            extremities.iter().map(|e| (**e).to_owned()).collect(),
+            state_ids_compressed,
+            soft_fail,
+            &state_lock,
+        )?;
 
         info!("Appended incoming pdu");
 
@@ -1141,8 +1177,10 @@ impl Service {
         room_id: &RoomId,
         pub_key_map: &RwLock<BTreeMap<String, BTreeMap<String, Base64>>>,
         initial_set: Vec<Arc<EventId>>,
-    ) -> Result<(Vec<Arc<EventId>>, HashMap<Arc<EventId>,
-(Arc<PduEvent>, BTreeMap<String, CanonicalJsonValue>)>)> {
+    ) -> Result<(
+        Vec<Arc<EventId>>,
+        HashMap<Arc<EventId>, (Arc<PduEvent>, BTreeMap<String, CanonicalJsonValue>)>,
+    )> {
         let mut graph: HashMap<Arc<EventId>, _> = HashMap::new();
         let mut eventid_info = HashMap::new();
         let mut todo_outlier_stack: Vec<Arc<EventId>> = initial_set;
@@ -1223,7 +1261,8 @@ impl Service {
                         .map_or_else(|| uint!(0), |info| info.0.origin_server_ts),
                 ),
             ))
-        }).map_err(|_| Error::bad_database("Error sorting prev events"))?;
+        })
+        .map_err(|_| Error::bad_database("Error sorting prev events"))?;
 
         Ok((sorted, eventid_info))
     }
@@ -1253,13 +1292,16 @@ impl Service {
 
             let signature_ids = signature_object.keys().cloned().collect::<Vec<_>>();
 
-            let fetch_res = self.fetch_signing_keys(
-                signature_server.as_str().try_into().map_err(|_| {
-                    Error::BadServerResponse("Invalid servername in signatures of server response pdu.")
-                })?,
-                signature_ids,
-            )
-            .await;
+            let fetch_res = self
+                .fetch_signing_keys(
+                    signature_server.as_str().try_into().map_err(|_| {
+                        Error::BadServerResponse(
+                            "Invalid servername in signatures of server response pdu.",
+                        )
+                    })?,
+                    signature_ids,
+                )
+                .await;
 
             let keys = match fetch_res {
                 Ok(keys) => keys,
@@ -1336,8 +1378,9 @@ impl Service {
 
             let signature_ids = signature_object.keys().cloned().collect::<Vec<_>>();
 
-            let contains_all_ids =
-                |keys: &BTreeMap<String, Base64>| signature_ids.iter().all(|id| keys.contains_key(id));
+            let contains_all_ids = |keys: &BTreeMap<String, Base64>| {
+                signature_ids.iter().all(|id| keys.contains_key(id))
+            };
 
             let origin = <&ServerName>::try_from(signature_server.as_str()).map_err(|_| {
                 Error::BadServerResponse("Invalid servername in signatures of server response pdu.")
@@ -1373,8 +1416,10 @@ impl Service {
         room_version: &RoomVersionId,
         pub_key_map: &RwLock<BTreeMap<String, BTreeMap<String, Base64>>>,
     ) -> Result<()> {
-        let mut servers: BTreeMap<Box<ServerName>, BTreeMap<Box<ServerSigningKeyId>, QueryCriteria>> =
-            BTreeMap::new();
+        let mut servers: BTreeMap<
+            Box<ServerName>,
+            BTreeMap<Box<ServerSigningKeyId>, QueryCriteria>,
+        > = BTreeMap::new();
 
         {
             let mut pkm = pub_key_map
@@ -1440,11 +1485,9 @@ impl Service {
             .into_iter()
             .map(|(server, _)| async move {
                 (
-                    services().sending
-                        .send_federation_request(
-                            &server,
-                            get_server_keys::v2::Request::new(),
-                        )
+                    services()
+                        .sending
+                        .send_federation_request(&server, get_server_keys::v2::Request::new())
                         .await,
                     server,
                 )
@@ -1472,10 +1515,11 @@ impl Service {
 
     /// Returns Ok if the acl allows the server
     pub fn acl_check(&self, server_name: &ServerName, room_id: &RoomId) -> Result<()> {
-        let acl_event = match services()
-            .rooms.state_accessor
-            .room_state_get(room_id, &StateEventType::RoomServerAcl, "")?
-        {
+        let acl_event = match services().rooms.state_accessor.room_state_get(
+            room_id,
+            &StateEventType::RoomServerAcl,
+            "",
+        )? {
             Some(acl) => acl,
             None => return Ok(()),
         };
@@ -1587,7 +1631,9 @@ impl Service {
             .ok()
             .and_then(|resp| resp.server_key.deserialize().ok())
         {
-            services().globals.add_signing_key(origin, server_key.clone())?;
+            services()
+                .globals
+                .add_signing_key(origin, server_key.clone())?;
 
             result.extend(
                 server_key

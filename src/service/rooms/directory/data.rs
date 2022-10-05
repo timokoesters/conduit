@@ -1,5 +1,5 @@
-use ruma::RoomId;
 use crate::Result;
+use ruma::RoomId;
 
 pub trait Data: Send + Sync {
     /// Adds the room to the public room directory

@@ -1,11 +1,14 @@
 mod data;
-use std::{sync::Arc, collections::{HashSet, BTreeSet}};
+use std::{
+    collections::{BTreeSet, HashSet},
+    sync::Arc,
+};
 
 pub use data::Data;
-use ruma::{RoomId, EventId, api::client::error::ErrorKind};
+use ruma::{api::client::error::ErrorKind, EventId, RoomId};
 use tracing::log::warn;
 
-use crate::{Result, services, Error};
+use crate::{services, Error, Result};
 
 pub struct Service {
     db: Arc<dyn Data>,
@@ -56,7 +59,11 @@ impl Service {
             }
 
             let chunk_key: Vec<u64> = chunk.iter().map(|(short, _)| short).copied().collect();
-            if let Some(cached) = services().rooms.auth_chain.get_cached_eventid_authchain(&chunk_key)? {
+            if let Some(cached) = services()
+                .rooms
+                .auth_chain
+                .get_cached_eventid_authchain(&chunk_key)?
+            {
                 hits += 1;
                 full_auth_chain.extend(cached.iter().copied());
                 continue;
@@ -68,13 +75,18 @@ impl Service {
             let mut misses2 = 0;
             let mut i = 0;
             for (sevent_id, event_id) in chunk {
-                if let Some(cached) = services().rooms.auth_chain.get_cached_eventid_authchain(&[sevent_id])? {
+                if let Some(cached) = services()
+                    .rooms
+                    .auth_chain
+                    .get_cached_eventid_authchain(&[sevent_id])?
+                {
                     hits2 += 1;
                     chunk_cache.extend(cached.iter().copied());
                 } else {
                     misses2 += 1;
                     let auth_chain = Arc::new(self.get_auth_chain_inner(room_id, &event_id)?);
-                    services().rooms
+                    services()
+                        .rooms
                         .auth_chain
                         .cache_auth_chain(vec![sevent_id], Arc::clone(&auth_chain))?;
                     println!(
@@ -97,8 +109,10 @@ impl Service {
                 misses2
             );
             let chunk_cache = Arc::new(chunk_cache);
-            services().rooms
-                .auth_chain.cache_auth_chain(chunk_key, Arc::clone(&chunk_cache))?;
+            services()
+                .rooms
+                .auth_chain
+                .cache_auth_chain(chunk_key, Arc::clone(&chunk_cache))?;
             full_auth_chain.extend(chunk_cache.iter());
         }
 
@@ -115,11 +129,7 @@ impl Service {
     }
 
     #[tracing::instrument(skip(self, event_id))]
-    fn get_auth_chain_inner(
-        &self,
-        room_id: &RoomId,
-        event_id: &EventId,
-    ) -> Result<HashSet<u64>> {
+    fn get_auth_chain_inner(&self, room_id: &RoomId, event_id: &EventId) -> Result<HashSet<u64>> {
         let mut todo = vec![Arc::from(event_id)];
         let mut found = HashSet::new();
 
@@ -131,7 +141,8 @@ impl Service {
                     }
                     for auth_event in &pdu.auth_events {
                         let sauthevent = services()
-                            .rooms.short
+                            .rooms
+                            .short
                             .get_or_create_shorteventid(auth_event)?;
 
                         if !found.contains(&sauthevent) {

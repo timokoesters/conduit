@@ -1,9 +1,9 @@
 mod data;
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
-use std::{iter, collections::HashSet};
 use std::fmt::Debug;
+use std::sync::{Arc, Mutex};
+use std::{collections::HashSet, iter};
 
 pub use data::Data;
 use regex::Regex;
@@ -11,13 +11,27 @@ use ruma::events::room::power_levels::RoomPowerLevelsEventContent;
 use ruma::push::Ruleset;
 use ruma::signatures::CanonicalJsonValue;
 use ruma::state_res::RoomVersion;
-use ruma::{EventId, signatures::CanonicalJsonObject, push::{Action, Tweak}, events::{push_rules::PushRulesEvent, GlobalAccountDataEventType, RoomEventType, room::{member::MembershipState, create::RoomCreateEventContent}, StateEventType}, UserId, RoomAliasId, RoomId, uint, state_res, api::client::error::ErrorKind, serde::to_canonical_value, ServerName};
+use ruma::{
+    api::client::error::ErrorKind,
+    events::{
+        push_rules::PushRulesEvent,
+        room::{create::RoomCreateEventContent, member::MembershipState},
+        GlobalAccountDataEventType, RoomEventType, StateEventType,
+    },
+    push::{Action, Tweak},
+    serde::to_canonical_value,
+    signatures::CanonicalJsonObject,
+    state_res, uint, EventId, RoomAliasId, RoomId, ServerName, UserId,
+};
 use serde::Deserialize;
 use serde_json::value::to_raw_value;
 use tokio::sync::MutexGuard;
-use tracing::{warn, error};
+use tracing::{error, warn};
 
-use crate::{services, Result, service::pdu::{PduBuilder, EventHash}, Error, PduEvent, utils};
+use crate::{
+    service::pdu::{EventHash, PduBuilder},
+    services, utils, Error, PduEvent, Result,
+};
 
 use super::state_compressor::CompressedStateEvent;
 
@@ -135,7 +149,11 @@ impl Service {
         leaves: Vec<Box<EventId>>,
         state_lock: &MutexGuard<'_, ()>, // Take mutex guard to make sure users get the room state mutex
     ) -> Result<Vec<u8>> {
-        let shortroomid = services().rooms.short.get_shortroomid(&pdu.room_id)?.expect("room exists");
+        let shortroomid = services()
+            .rooms
+            .short
+            .get_shortroomid(&pdu.room_id)?
+            .expect("room exists");
 
         // Make unsigned fields correct. This is not properly documented in the spec, but state
         // events need to have previous content in the unsigned field, so clients can easily
@@ -145,8 +163,15 @@ impl Service {
                 .entry("unsigned".to_owned())
                 .or_insert_with(|| CanonicalJsonValue::Object(Default::default()))
             {
-                if let Some(shortstatehash) = services().rooms.state_accessor.pdu_shortstatehash(&pdu.event_id).unwrap() {
-                    if let Some(prev_state) = services().rooms.state_accessor
+                if let Some(shortstatehash) = services()
+                    .rooms
+                    .state_accessor
+                    .pdu_shortstatehash(&pdu.event_id)
+                    .unwrap()
+                {
+                    if let Some(prev_state) = services()
+                        .rooms
+                        .state_accessor
                         .state_get(shortstatehash, &pdu.kind.to_string().into(), state_key)
                         .unwrap()
                     {
@@ -165,11 +190,18 @@ impl Service {
         }
 
         // We must keep track of all events that have been referenced.
-        services().rooms.pdu_metadata.mark_as_referenced(&pdu.room_id, &pdu.prev_events)?;
-        services().rooms.state.set_forward_extremities(&pdu.room_id, leaves, state_lock)?;
+        services()
+            .rooms
+            .pdu_metadata
+            .mark_as_referenced(&pdu.room_id, &pdu.prev_events)?;
+        services()
+            .rooms
+            .state
+            .set_forward_extremities(&pdu.room_id, leaves, state_lock)?;
 
         let mutex_insert = Arc::clone(
-            services().globals
+            services()
+                .globals
                 .roomid_mutex_insert
                 .write()
                 .unwrap()
@@ -181,9 +213,15 @@ impl Service {
         let count1 = services().globals.next_count()?;
         // Mark as read first so the sending client doesn't get a notification even if appending
         // fails
-        services().rooms.edus.read_receipt
+        services()
+            .rooms
+            .edus
+            .read_receipt
             .private_read_set(&pdu.room_id, &pdu.sender, count1)?;
-        services().rooms.user.reset_notification_counts(&pdu.sender, &pdu.room_id)?;
+        services()
+            .rooms
+            .user
+            .reset_notification_counts(&pdu.sender, &pdu.room_id)?;
 
         let count2 = services().globals.next_count()?;
         let mut pdu_id = shortroomid.to_be_bytes().to_vec();
@@ -211,7 +249,12 @@ impl Service {
         let mut notifies = Vec::new();
         let mut highlights = Vec::new();
 
-        for user in services().rooms.state_cache.get_our_real_users(&pdu.room_id)?.into_iter() {
+        for user in services()
+            .rooms
+            .state_cache
+            .get_our_real_users(&pdu.room_id)?
+            .into_iter()
+        {
             // Don't notify the user of their own events
             if &user == &pdu.sender {
                 continue;
@@ -224,8 +267,11 @@ impl Service {
                     &user,
                     GlobalAccountDataEventType::PushRules.to_string().into(),
                 )?
-                .map(|event| serde_json::from_str::<PushRulesEvent>(event.get())
-                .map_err(|_| Error::bad_database("Invalid push rules event in db."))).transpose()?
+                .map(|event| {
+                    serde_json::from_str::<PushRulesEvent>(event.get())
+                        .map_err(|_| Error::bad_database("Invalid push rules event in db."))
+                })
+                .transpose()?
                 .map(|ev: PushRulesEvent| ev.content.global)
                 .unwrap_or_else(|| Ruleset::server_default(&user));
 
@@ -263,7 +309,8 @@ impl Service {
             }
         }
 
-        self.db.increment_notification_counts(&pdu.room_id, notifies, highlights);
+        self.db
+            .increment_notification_counts(&pdu.room_id, notifies, highlights);
 
         match pdu.kind {
             RoomEventType::RoomRedaction => {
@@ -315,7 +362,10 @@ impl Service {
                     .map_err(|_| Error::bad_database("Invalid content in pdu."))?;
 
                 if let Some(body) = content.body {
-                    services().rooms.search.index_pdu(shortroomid, &pdu_id, body)?;
+                    services()
+                        .rooms
+                        .search
+                        .index_pdu(shortroomid, &pdu_id, body)?;
 
                     let admin_room = services().rooms.alias.resolve_local_alias(
                         <&RoomAliasId>::try_from(
@@ -329,8 +379,8 @@ impl Service {
 
                     // This will evaluate to false if the emergency password is set up so that
                     // the administrator can execute commands as conduit
-                    let from_conduit =
-                        pdu.sender == server_user && services().globals.emergency_password().is_none();
+                    let from_conduit = pdu.sender == server_user
+                        && services().globals.emergency_password().is_none();
 
                     if to_conduit && !from_conduit && admin_room.as_ref() == Some(&pdu.room_id) {
                         services().admin.process_message(body.to_string());
@@ -341,8 +391,14 @@ impl Service {
         }
 
         for appservice in services().appservice.all()? {
-            if services().rooms.state_cache.appservice_in_room(&pdu.room_id, &appservice)? {
-                services().sending.send_pdu_appservice(&appservice.0, &pdu_id)?;
+            if services()
+                .rooms
+                .state_cache
+                .appservice_in_room(&pdu.room_id, &appservice)?
+            {
+                services()
+                    .sending
+                    .send_pdu_appservice(&appservice.0, &pdu_id)?;
                 continue;
             }
 
@@ -359,11 +415,14 @@ impl Service {
                         .get("sender_localpart")
                         .and_then(|string| string.as_str())
                         .and_then(|string| {
-                            UserId::parse_with_server_name(string, services().globals.server_name()).ok()
+                            UserId::parse_with_server_name(string, services().globals.server_name())
+                                .ok()
                         })
                     {
                         if state_key_uid == &appservice_uid {
-                            services().sending.send_pdu_appservice(&appservice.0, &pdu_id)?;
+                            services()
+                                .sending
+                                .send_pdu_appservice(&appservice.0, &pdu_id)?;
                             continue;
                         }
                     }
@@ -402,7 +461,10 @@ impl Service {
                                 .map_or(false, |state_key| users.is_match(state_key))
                 };
                 let matching_aliases = |aliases: &Regex| {
-                    services().rooms.alias.local_aliases_for_room(&pdu.room_id)
+                    services()
+                        .rooms
+                        .alias
+                        .local_aliases_for_room(&pdu.room_id)
                         .filter_map(|r| r.ok())
                         .any(|room_alias| aliases.is_match(room_alias.as_str()))
                 };
@@ -411,21 +473,22 @@ impl Service {
                     || rooms.map_or(false, |rooms| rooms.contains(&pdu.room_id.as_str().into()))
                     || users.iter().any(matching_users)
                 {
-                    services().sending.send_pdu_appservice(&appservice.0, &pdu_id)?;
+                    services()
+                        .sending
+                        .send_pdu_appservice(&appservice.0, &pdu_id)?;
                 }
             }
         }
-
 
         Ok(pdu_id)
     }
 
     pub fn create_hash_and_sign_event(
-            &self,
-            pdu_builder: PduBuilder,
-            sender: &UserId,
-            room_id: &RoomId,
-            _mutex_lock: &MutexGuard<'_, ()>, // Take mutex guard to make sure users get the room state mutex
+        &self,
+        pdu_builder: PduBuilder,
+        sender: &UserId,
+        room_id: &RoomId,
+        _mutex_lock: &MutexGuard<'_, ()>, // Take mutex guard to make sure users get the room state mutex
     ) -> Result<(PduEvent, CanonicalJsonObject)> {
         let PduBuilder {
             event_type,
@@ -443,10 +506,11 @@ impl Service {
             .take(20)
             .collect();
 
-        let create_event = services()
-            .rooms
-            .state_accessor
-            .room_state_get(room_id, &StateEventType::RoomCreate, "")?;
+        let create_event = services().rooms.state_accessor.room_state_get(
+            room_id,
+            &StateEventType::RoomCreate,
+            "",
+        )?;
 
         let create_event_content: Option<RoomCreateEventContent> = create_event
             .as_ref()
@@ -464,11 +528,15 @@ impl Service {
             .map_or(services().globals.default_room_version(), |create_event| {
                 create_event.room_version
             });
-        let room_version =
-            RoomVersion::new(&room_version_id).expect("room version is supported");
+        let room_version = RoomVersion::new(&room_version_id).expect("room version is supported");
 
-        let auth_events =
-            services().rooms.state.get_auth_events(room_id, &event_type, sender, state_key.as_deref(), &content)?;
+        let auth_events = services().rooms.state.get_auth_events(
+            room_id,
+            &event_type,
+            sender,
+            state_key.as_deref(),
+            &content,
+        )?;
 
         // Our depth is the maximum depth of prev_events + 1
         let depth = prev_events
@@ -481,9 +549,11 @@ impl Service {
         let mut unsigned = unsigned.unwrap_or_default();
 
         if let Some(state_key) = &state_key {
-            if let Some(prev_pdu) =
-                services().rooms.state_accessor.room_state_get(room_id, &event_type.to_string().into(), state_key)?
-            {
+            if let Some(prev_pdu) = services().rooms.state_accessor.room_state_get(
+                room_id,
+                &event_type.to_string().into(),
+                state_key,
+            )? {
                 unsigned.insert(
                     "prev_content".to_owned(),
                     serde_json::from_str(prev_pdu.content.get()).expect("string is valid json"),
@@ -589,7 +659,10 @@ impl Service {
         );
 
         // Generate short event id
-        let _shorteventid = services().rooms.short.get_or_create_shorteventid(&pdu.event_id)?;
+        let _shorteventid = services()
+            .rooms
+            .short
+            .get_or_create_shorteventid(&pdu.event_id)?;
 
         Ok((pdu, pdu_json))
     }
@@ -604,7 +677,8 @@ impl Service {
         room_id: &RoomId,
         state_lock: &MutexGuard<'_, ()>, // Take mutex guard to make sure users get the room state mutex
     ) -> Result<Arc<EventId>> {
-        let (pdu, pdu_json) = self.create_hash_and_sign_event(pdu_builder, sender, room_id, &state_lock)?;
+        let (pdu, pdu_json) =
+            self.create_hash_and_sign_event(pdu_builder, sender, room_id, &state_lock)?;
 
         // We append to state before appending the pdu, so we don't have a moment in time with the
         // pdu without it's state. This is okay because append_pdu can't fail.
@@ -621,10 +695,17 @@ impl Service {
 
         // We set the room state after inserting the pdu, so that we never have a moment in time
         // where events in the current room state do not exist
-        services().rooms.state.set_room_state(room_id, statehashid, state_lock)?;
+        services()
+            .rooms
+            .state
+            .set_room_state(room_id, statehashid, state_lock)?;
 
-        let mut servers: HashSet<Box<ServerName>> =
-            services().rooms.state_cache.room_servers(room_id).filter_map(|r| r.ok()).collect();
+        let mut servers: HashSet<Box<ServerName>> = services()
+            .rooms
+            .state_cache
+            .room_servers(room_id)
+            .filter_map(|r| r.ok())
+            .collect();
 
         // In case we are kicking or banning a user, we need to inform their server of the change
         if pdu.kind == RoomEventType::RoomMember {
@@ -666,13 +747,23 @@ impl Service {
         )?;
 
         if soft_fail {
-            services().rooms.pdu_metadata
+            services()
+                .rooms
+                .pdu_metadata
                 .mark_as_referenced(&pdu.room_id, &pdu.prev_events)?;
-            services().rooms.state.set_forward_extremities(&pdu.room_id, new_room_leaves, state_lock)?;
+            services().rooms.state.set_forward_extremities(
+                &pdu.room_id,
+                new_room_leaves,
+                state_lock,
+            )?;
             return Ok(None);
         }
 
-        let pdu_id = services().rooms.timeline.append_pdu(pdu, pdu_json, new_room_leaves, state_lock)?;
+        let pdu_id =
+            services()
+                .rooms
+                .timeline
+                .append_pdu(pdu, pdu_json, new_room_leaves, state_lock)?;
 
         Ok(Some(pdu_id))
     }

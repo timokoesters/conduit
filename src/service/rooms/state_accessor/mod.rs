@@ -1,10 +1,13 @@
 mod data;
-use std::{sync::Arc, collections::{HashMap, BTreeMap}};
+use std::{
+    collections::{BTreeMap, HashMap},
+    sync::Arc,
+};
 
 pub use data::Data;
-use ruma::{events::StateEventType, RoomId, EventId};
+use ruma::{events::StateEventType, EventId, RoomId};
 
-use crate::{Result, PduEvent};
+use crate::{PduEvent, Result};
 
 pub struct Service {
     db: Arc<dyn Data>,

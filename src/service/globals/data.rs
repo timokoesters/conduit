@@ -1,7 +1,11 @@
 use std::collections::BTreeMap;
 
 use async_trait::async_trait;
-use ruma::{signatures::Ed25519KeyPair, DeviceId, UserId, ServerName, api::federation::discovery::{ServerSigningKeys, VerifyKey}, ServerSigningKeyId};
+use ruma::{
+    api::federation::discovery::{ServerSigningKeys, VerifyKey},
+    signatures::Ed25519KeyPair,
+    DeviceId, ServerName, ServerSigningKeyId, UserId,
+};
 
 use crate::Result;
 

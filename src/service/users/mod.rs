@@ -2,9 +2,15 @@ mod data;
 use std::{collections::BTreeMap, mem, sync::Arc};
 
 pub use data::Data;
-use ruma::{UserId, MxcUri, DeviceId, DeviceKeyId, serde::Raw, encryption::{OneTimeKey, CrossSigningKey, DeviceKeys}, DeviceKeyAlgorithm, UInt, events::AnyToDeviceEvent, api::client::{device::Device, filter::IncomingFilterDefinition, error::ErrorKind}, RoomAliasId};
+use ruma::{
+    api::client::{device::Device, error::ErrorKind, filter::IncomingFilterDefinition},
+    encryption::{CrossSigningKey, DeviceKeys, OneTimeKey},
+    events::AnyToDeviceEvent,
+    serde::Raw,
+    DeviceId, DeviceKeyAlgorithm, DeviceKeyId, MxcUri, RoomAliasId, UInt, UserId,
+};
 
-use crate::{Result, Error, services};
+use crate::{services, Error, Result};
 
 pub struct Service {
     db: Arc<dyn Data>,
@@ -22,15 +28,20 @@ impl Service {
     }
 
     /// Check if a user is an admin
-    pub fn is_admin(
-        &self,
-        user_id: &UserId,
-    ) -> Result<bool> {
-        let admin_room_alias_id = RoomAliasId::parse(format!("#admins:{}", services().globals.server_name()))
-            .map_err(|_| Error::BadRequest(ErrorKind::InvalidParam, "Invalid alias."))?;
-        let admin_room_id = services().rooms.alias.resolve_local_alias(&admin_room_alias_id)?.unwrap();
+    pub fn is_admin(&self, user_id: &UserId) -> Result<bool> {
+        let admin_room_alias_id =
+            RoomAliasId::parse(format!("#admins:{}", services().globals.server_name()))
+                .map_err(|_| Error::BadRequest(ErrorKind::InvalidParam, "Invalid alias."))?;
+        let admin_room_id = services()
+            .rooms
+            .alias
+            .resolve_local_alias(&admin_room_alias_id)?
+            .unwrap();
 
-        services().rooms.state_cache.is_joined(user_id, &admin_room_id)
+        services()
+            .rooms
+            .state_cache
+            .is_joined(user_id, &admin_room_id)
     }
 
     /// Create a new user account on this homeserver.
@@ -38,7 +49,6 @@ impl Service {
         self.db.set_password(user_id, password)?;
         Ok(())
     }
-
 
     /// Returns the number of users registered on this server.
     pub fn count(&self) -> Result<usize> {
@@ -118,7 +128,8 @@ impl Service {
         token: &str,
         initial_device_display_name: Option<String>,
     ) -> Result<()> {
-        self.db.create_device(user_id, device_id, token, initial_device_display_name)
+        self.db
+            .create_device(user_id, device_id, token, initial_device_display_name)
     }
 
     /// Removes a device from a user.
@@ -146,7 +157,8 @@ impl Service {
         one_time_key_key: &DeviceKeyId,
         one_time_key_value: &Raw<OneTimeKey>,
     ) -> Result<()> {
-        self.db.add_one_time_key(user_id, device_id, one_time_key_key, one_time_key_value)
+        self.db
+            .add_one_time_key(user_id, device_id, one_time_key_key, one_time_key_value)
     }
 
     pub fn last_one_time_keys_update(&self, user_id: &UserId) -> Result<u64> {
@@ -186,7 +198,8 @@ impl Service {
         self_signing_key: &Option<Raw<CrossSigningKey>>,
         user_signing_key: &Option<Raw<CrossSigningKey>>,
     ) -> Result<()> {
-        self.db.add_cross_signing_keys(user_id, master_key, self_signing_key, user_signing_key)
+        self.db
+            .add_cross_signing_keys(user_id, master_key, self_signing_key, user_signing_key)
     }
 
     pub fn sign_key(
@@ -208,10 +221,7 @@ impl Service {
         self.db.keys_changed(user_or_room_id, from, to)
     }
 
-    pub fn mark_device_key_update(
-        &self,
-        user_id: &UserId,
-    ) -> Result<()> {
+    pub fn mark_device_key_update(&self, user_id: &UserId) -> Result<()> {
         self.db.mark_device_key_update(user_id)
     }
 
@@ -251,7 +261,13 @@ impl Service {
         event_type: &str,
         content: serde_json::Value,
     ) -> Result<()> {
-        self.db.add_to_device_event(sender, target_user_id, target_device_id, event_type, content)
+        self.db.add_to_device_event(
+            sender,
+            target_user_id,
+            target_device_id,
+            event_type,
+            content,
+        )
     }
 
     pub fn get_to_device_events(

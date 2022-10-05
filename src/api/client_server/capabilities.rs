@@ -1,4 +1,4 @@
-use crate::{Result, Ruma, services};
+use crate::{services, Result, Ruma};
 use ruma::api::client::discovery::get_capabilities::{
     self, Capabilities, RoomVersionStability, RoomVersionsCapability,
 };

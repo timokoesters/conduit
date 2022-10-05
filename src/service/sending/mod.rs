@@ -6,7 +6,10 @@ use std::{
 };
 
 use crate::{
-    utils::{self, calculate_hash}, Error, PduEvent, Result, services, api::{server_server, appservice_server},
+    api::{appservice_server, server_server},
+    services,
+    utils::{self, calculate_hash},
+    Error, PduEvent, Result,
 };
 use federation::transactions::send_transaction_message;
 use futures_util::{stream::FuturesUnordered, StreamExt};
@@ -88,10 +91,7 @@ enum TransactionStatus {
 }
 
 impl Service {
-    pub fn start_handler(
-        &self,
-        mut receiver: mpsc::UnboundedReceiver<(Vec<u8>, Vec<u8>)>,
-    ) {
+    pub fn start_handler(&self, mut receiver: mpsc::UnboundedReceiver<(Vec<u8>, Vec<u8>)>) {
         tokio::spawn(async move {
             let mut futures = FuturesUnordered::new();
 
@@ -119,7 +119,11 @@ impl Service {
                         "Dropping some current events: {:?} {:?} {:?}",
                         key, outgoing_kind, event
                     );
-                    services().sending.servercurrentevent_data.remove(&key).unwrap();
+                    services()
+                        .sending
+                        .servercurrentevent_data
+                        .remove(&key)
+                        .unwrap();
                     continue;
                 }
 
@@ -129,10 +133,7 @@ impl Service {
             for (outgoing_kind, events) in initial_transactions {
                 current_transaction_status
                     .insert(outgoing_kind.get_prefix(), TransactionStatus::Running);
-                futures.push(Self::handle_events(
-                    outgoing_kind.clone(),
-                    events,
-                ));
+                futures.push(Self::handle_events(outgoing_kind.clone(), events));
             }
 
             loop {
@@ -246,7 +247,11 @@ impl Service {
 
         if retry {
             // We retry the previous transaction
-            for (key, value) in services().sending.servercurrentevent_data.scan_prefix(prefix) {
+            for (key, value) in services()
+                .sending
+                .servercurrentevent_data
+                .scan_prefix(prefix)
+            {
                 if let Ok((_, e)) = Self::parse_servercurrentevent(&key, value) {
                     events.push(e);
                 }
@@ -258,7 +263,8 @@ impl Service {
                 } else {
                     &[][..]
                 };
-                services().sending
+                services()
+                    .sending
                     .servercurrentevent_data
                     .insert(&full_key, value)?;
 
@@ -273,7 +279,8 @@ impl Service {
                 if let Ok((select_edus, last_count)) = Self::select_edus(server_name) {
                     events.extend(select_edus.into_iter().map(SendingEventType::Edu));
 
-                    services().sending
+                    services()
+                        .sending
                         .servername_educount
                         .insert(server_name.as_bytes(), &last_count.to_be_bytes())?;
                 }
@@ -302,7 +309,8 @@ impl Service {
             let room_id = room_id?;
             // Look for device list updates in this room
             device_list_changes.extend(
-                services().users
+                services()
+                    .users
                     .keys_changed(&room_id.to_string(), since, None)
                     .filter_map(|r| r.ok())
                     .filter(|user_id| user_id.server_name() == services().globals.server_name()),
@@ -502,7 +510,8 @@ impl Service {
                 let permit = services().sending.maximum_requests.acquire().await;
 
                 let response = appservice_server::send_request(
-                    services().appservice
+                    services()
+                        .appservice
                         .get_registration(&id)
                         .map_err(|e| (kind.clone(), e))?
                         .ok_or_else(|| {
@@ -621,16 +630,12 @@ impl Service {
 
                     let permit = services().sending.maximum_requests.acquire().await;
 
-                    let _response = services().pusher.send_push_notice(
-                        &userid,
-                        unread,
-                        &pusher,
-                        rules_for_user,
-                        &pdu,
-                    )
-                    .await
-                    .map(|_response| kind.clone())
-                    .map_err(|e| (kind.clone(), e));
+                    let _response = services()
+                        .pusher
+                        .send_push_notice(&userid, unread, &pusher, rules_for_user, &pdu)
+                        .await
+                        .map(|_response| kind.clone())
+                        .map_err(|e| (kind.clone(), e));
 
                     drop(permit);
                 }

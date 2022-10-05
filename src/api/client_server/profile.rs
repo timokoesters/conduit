@@ -1,4 +1,4 @@
-use crate::{utils, Error, Result, Ruma, services, service::pdu::PduBuilder};
+use crate::{service::pdu::PduBuilder, services, utils, Error, Result, Ruma};
 use ruma::{
     api::{
         client::{
@@ -24,7 +24,8 @@ pub async fn set_displayname_route(
 ) -> Result<set_display_name::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
-    services().users
+    services()
+        .users
         .set_displayname(sender_user, body.displayname.clone())?;
 
     // Send a new membership event and presence update into all joined rooms
@@ -40,8 +41,9 @@ pub async fn set_displayname_route(
                     content: to_raw_value(&RoomMemberEventContent {
                         displayname: body.displayname.clone(),
                         ..serde_json::from_str(
-                            services().rooms
-                            .state_accessor
+                            services()
+                                .rooms
+                                .state_accessor
                                 .room_state_get(
                                     &room_id,
                                     &StateEventType::RoomMember,
@@ -71,7 +73,8 @@ pub async fn set_displayname_route(
 
     for (pdu_builder, room_id) in all_rooms_joined {
         let mutex_state = Arc::clone(
-            services().globals
+            services()
+                .globals
                 .roomid_mutex_state
                 .write()
                 .unwrap()
@@ -80,10 +83,12 @@ pub async fn set_displayname_route(
         );
         let state_lock = mutex_state.lock().await;
 
-        let _ = services()
-            .rooms
-            .timeline
-            .build_and_append_pdu(pdu_builder, sender_user, &room_id, &state_lock);
+        let _ = services().rooms.timeline.build_and_append_pdu(
+            pdu_builder,
+            sender_user,
+            &room_id,
+            &state_lock,
+        );
 
         // Presence update
         services().rooms.edus.presence.update_presence(
@@ -150,10 +155,13 @@ pub async fn set_avatar_url_route(
 ) -> Result<set_avatar_url::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
-    services().users
+    services()
+        .users
         .set_avatar_url(sender_user, body.avatar_url.clone())?;
 
-    services().users.set_blurhash(sender_user, body.blurhash.clone())?;
+    services()
+        .users
+        .set_blurhash(sender_user, body.blurhash.clone())?;
 
     // Send a new membership event and presence update into all joined rooms
     let all_joined_rooms: Vec<_> = services()
@@ -168,8 +176,9 @@ pub async fn set_avatar_url_route(
                     content: to_raw_value(&RoomMemberEventContent {
                         avatar_url: body.avatar_url.clone(),
                         ..serde_json::from_str(
-                            services().rooms
-                            .state_accessor
+                            services()
+                                .rooms
+                                .state_accessor
                                 .room_state_get(
                                     &room_id,
                                     &StateEventType::RoomMember,
@@ -199,7 +208,8 @@ pub async fn set_avatar_url_route(
 
     for (pdu_builder, room_id) in all_joined_rooms {
         let mutex_state = Arc::clone(
-            services().globals
+            services()
+                .globals
                 .roomid_mutex_state
                 .write()
                 .unwrap()
@@ -208,10 +218,12 @@ pub async fn set_avatar_url_route(
         );
         let state_lock = mutex_state.lock().await;
 
-        let _ = services()
-            .rooms
-            .timeline
-            .build_and_append_pdu(pdu_builder, sender_user, &room_id, &state_lock);
+        let _ = services().rooms.timeline.build_and_append_pdu(
+            pdu_builder,
+            sender_user,
+            &room_id,
+            &state_lock,
+        );
 
         // Presence update
         services().rooms.edus.presence.update_presence(

@@ -1,4 +1,4 @@
-use crate::{Error, Result, Ruma, services};
+use crate::{services, Error, Result, Ruma};
 use ruma::api::client::{
     error::ErrorKind,
     search::search_events::{
@@ -23,7 +23,8 @@ pub async fn search_events_route(
     let filter = &search_criteria.filter;
 
     let room_ids = filter.rooms.clone().unwrap_or_else(|| {
-        services().rooms
+        services()
+            .rooms
             .state_cache
             .rooms_joined(sender_user)
             .filter_map(|r| r.ok())
@@ -35,7 +36,11 @@ pub async fn search_events_route(
     let mut searches = Vec::new();
 
     for room_id in room_ids {
-        if !services().rooms.state_cache.is_joined(sender_user, &room_id)? {
+        if !services()
+            .rooms
+            .state_cache
+            .is_joined(sender_user, &room_id)?
+        {
             return Err(Error::BadRequest(
                 ErrorKind::Forbidden,
                 "You don't have permission to view this room.",

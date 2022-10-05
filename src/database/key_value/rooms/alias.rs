@@ -1,13 +1,9 @@
-use ruma::{RoomId, RoomAliasId, api::client::error::ErrorKind};
+use ruma::{api::client::error::ErrorKind, RoomAliasId, RoomId};
 
-use crate::{service, database::KeyValueDatabase, utils, Error, services, Result};
+use crate::{database::KeyValueDatabase, service, services, utils, Error, Result};
 
 impl service::rooms::alias::Data for KeyValueDatabase {
-    fn set_alias(
-        &self,
-        alias: &RoomAliasId,
-        room_id: &RoomId
-    ) -> Result<()> {
+    fn set_alias(&self, alias: &RoomAliasId, room_id: &RoomId) -> Result<()> {
         self.alias_roomid
             .insert(alias.alias().as_bytes(), room_id.as_bytes())?;
         let mut aliasid = room_id.as_bytes().to_vec();
@@ -17,10 +13,7 @@ impl service::rooms::alias::Data for KeyValueDatabase {
         Ok(())
     }
 
-    fn remove_alias(
-        &self,
-        alias: &RoomAliasId,
-    ) -> Result<()> {
+    fn remove_alias(&self, alias: &RoomAliasId) -> Result<()> {
         if let Some(room_id) = self.alias_roomid.get(alias.alias().as_bytes())? {
             let mut prefix = room_id.to_vec();
             prefix.push(0xff);
@@ -38,10 +31,7 @@ impl service::rooms::alias::Data for KeyValueDatabase {
         Ok(())
     }
 
-    fn resolve_local_alias(
-        &self,
-        alias: &RoomAliasId
-    ) -> Result<Option<Box<RoomId>>> {
+    fn resolve_local_alias(&self, alias: &RoomAliasId) -> Result<Option<Box<RoomId>>> {
         self.alias_roomid
             .get(alias.alias().as_bytes())?
             .map(|bytes| {

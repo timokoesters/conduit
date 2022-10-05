@@ -1,6 +1,6 @@
-use ruma::{UserId, RoomId};
+use ruma::{RoomId, UserId};
 
-use crate::{service, database::KeyValueDatabase, utils, Error, Result, services};
+use crate::{database::KeyValueDatabase, service, services, utils, Error, Result};
 
 impl service::rooms::user::Data for KeyValueDatabase {
     fn reset_notification_counts(&self, user_id: &UserId, room_id: &RoomId) -> Result<()> {
@@ -50,7 +50,11 @@ impl service::rooms::user::Data for KeyValueDatabase {
         token: u64,
         shortstatehash: u64,
     ) -> Result<()> {
-        let shortroomid = services().rooms.short.get_shortroomid(room_id)?.expect("room exists");
+        let shortroomid = services()
+            .rooms
+            .short
+            .get_shortroomid(room_id)?
+            .expect("room exists");
 
         let mut key = shortroomid.to_be_bytes().to_vec();
         key.extend_from_slice(&token.to_be_bytes());
@@ -60,7 +64,11 @@ impl service::rooms::user::Data for KeyValueDatabase {
     }
 
     fn get_token_shortstatehash(&self, room_id: &RoomId, token: u64) -> Result<Option<u64>> {
-        let shortroomid = services().rooms.short.get_shortroomid(room_id)?.expect("room exists");
+        let shortroomid = services()
+            .rooms
+            .short
+            .get_shortroomid(room_id)?
+            .expect("room exists");
 
         let mut key = shortroomid.to_be_bytes().to_vec();
         key.extend_from_slice(&token.to_be_bytes());
@@ -102,13 +110,15 @@ impl service::rooms::user::Data for KeyValueDatabase {
         });
 
         // We use the default compare function because keys are sorted correctly (not reversed)
-        Ok(Box::new(Box::new(utils::common_elements(iterators, Ord::cmp)
-            .expect("users is not empty")
-            .map(|bytes| {
-                RoomId::parse(utils::string_from_bytes(&*bytes).map_err(|_| {
-                    Error::bad_database("Invalid RoomId bytes in userroomid_joined")
-                })?)
-                .map_err(|_| Error::bad_database("Invalid RoomId in userroomid_joined."))
-            }))))
+        Ok(Box::new(Box::new(
+            utils::common_elements(iterators, Ord::cmp)
+                .expect("users is not empty")
+                .map(|bytes| {
+                    RoomId::parse(utils::string_from_bytes(&*bytes).map_err(|_| {
+                        Error::bad_database("Invalid RoomId bytes in userroomid_joined")
+                    })?)
+                    .map_err(|_| Error::bad_database("Invalid RoomId in userroomid_joined."))
+                }),
+        )))
     }
 }

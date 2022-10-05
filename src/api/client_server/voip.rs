@@ -1,4 +1,4 @@
-use crate::{Result, Ruma, services};
+use crate::{services, Result, Ruma};
 use hmac::{Hmac, Mac, NewMac};
 use ruma::{api::client::voip::get_turn_server_info, SecondsSinceUnixEpoch};
 use sha1::Sha1;

@@ -1,9 +1,12 @@
-use std::{sync::Arc, collections::{HashMap, BTreeMap}};
+use std::{
+    collections::{BTreeMap, HashMap},
+    sync::Arc,
+};
 
 use async_trait::async_trait;
-use ruma::{EventId, events::StateEventType, RoomId};
+use ruma::{events::StateEventType, EventId, RoomId};
 
-use crate::{Result, PduEvent};
+use crate::{PduEvent, Result};
 
 #[async_trait]
 pub trait Data: Send + Sync {

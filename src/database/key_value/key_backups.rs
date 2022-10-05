@@ -1,8 +1,15 @@
 use std::collections::BTreeMap;
 
-use ruma::{UserId, serde::Raw, api::client::{backup::{BackupAlgorithm, KeyBackupData, RoomKeyBackup}, error::ErrorKind}, RoomId};
+use ruma::{
+    api::client::{
+        backup::{BackupAlgorithm, KeyBackupData, RoomKeyBackup},
+        error::ErrorKind,
+    },
+    serde::Raw,
+    RoomId, UserId,
+};
 
-use crate::{Result, service, database::KeyValueDatabase, services, Error, utils};
+use crate::{database::KeyValueDatabase, service, services, utils, Error, Result};
 
 impl service::key_backups::Data for KeyValueDatabase {
     fn create_backup(
@@ -118,11 +125,7 @@ impl service::key_backups::Data for KeyValueDatabase {
             .transpose()
     }
 
-    fn get_backup(
-        &self,
-        user_id: &UserId,
-        version: &str,
-    ) -> Result<Option<Raw<BackupAlgorithm>>> {
+    fn get_backup(&self, user_id: &UserId, version: &str) -> Result<Option<Raw<BackupAlgorithm>>> {
         let mut key = user_id.as_bytes().to_vec();
         key.push(0xff);
         key.extend_from_slice(version.as_bytes());
@@ -322,12 +325,7 @@ impl service::key_backups::Data for KeyValueDatabase {
         Ok(())
     }
 
-    fn delete_room_keys(
-        &self,
-        user_id: &UserId,
-        version: &str,
-        room_id: &RoomId,
-    ) -> Result<()> {
+    fn delete_room_keys(&self, user_id: &UserId, version: &str, room_id: &RoomId) -> Result<()> {
         let mut key = user_id.as_bytes().to_vec();
         key.push(0xff);
         key.extend_from_slice(version.as_bytes());

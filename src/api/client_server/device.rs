@@ -1,4 +1,4 @@
-use crate::{utils, Error, Result, Ruma, services};
+use crate::{services, utils, Error, Result, Ruma};
 use ruma::api::client::{
     device::{self, delete_device, delete_devices, get_device, get_devices, update_device},
     error::ErrorKind,
@@ -55,7 +55,8 @@ pub async fn update_device_route(
 
     device.display_name = body.display_name.clone();
 
-    services().users
+    services()
+        .users
         .update_device_metadata(sender_user, &body.device_id, &device)?;
 
     Ok(update_device::v3::Response {})
@@ -88,26 +89,27 @@ pub async fn delete_device_route(
     };
 
     if let Some(auth) = &body.auth {
-        let (worked, uiaainfo) = services().uiaa.try_auth(
-            sender_user,
-            sender_device,
-            auth,
-            &uiaainfo,
-        )?;
+        let (worked, uiaainfo) =
+            services()
+                .uiaa
+                .try_auth(sender_user, sender_device, auth, &uiaainfo)?;
         if !worked {
             return Err(Error::Uiaa(uiaainfo));
         }
     // Success!
     } else if let Some(json) = body.json_body {
         uiaainfo.session = Some(utils::random_string(SESSION_ID_LENGTH));
-        services().uiaa
+        services()
+            .uiaa
             .create(sender_user, sender_device, &uiaainfo, &json)?;
         return Err(Error::Uiaa(uiaainfo));
     } else {
         return Err(Error::BadRequest(ErrorKind::NotJson, "Not json."));
     }
 
-    services().users.remove_device(sender_user, &body.device_id)?;
+    services()
+        .users
+        .remove_device(sender_user, &body.device_id)?;
 
     Ok(delete_device::v3::Response {})
 }
@@ -141,19 +143,18 @@ pub async fn delete_devices_route(
     };
 
     if let Some(auth) = &body.auth {
-        let (worked, uiaainfo) = services().uiaa.try_auth(
-            sender_user,
-            sender_device,
-            auth,
-            &uiaainfo,
-        )?;
+        let (worked, uiaainfo) =
+            services()
+                .uiaa
+                .try_auth(sender_user, sender_device, auth, &uiaainfo)?;
         if !worked {
             return Err(Error::Uiaa(uiaainfo));
         }
     // Success!
     } else if let Some(json) = body.json_body {
         uiaainfo.session = Some(utils::random_string(SESSION_ID_LENGTH));
-        services().uiaa
+        services()
+            .uiaa
             .create(sender_user, sender_device, &uiaainfo, &json)?;
         return Err(Error::Uiaa(uiaainfo));
     } else {

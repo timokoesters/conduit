@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use ruma::{EventId, RoomId};
 use crate::Result;
+use ruma::{EventId, RoomId};
 
 pub trait Data: Send + Sync {
     fn mark_as_referenced(&self, room_id: &RoomId, event_ids: &[Arc<EventId>]) -> Result<()>;

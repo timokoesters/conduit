@@ -1,13 +1,10 @@
 use std::sync::Arc;
 
-use ruma::{EventId, events::StateEventType, RoomId};
 use crate::Result;
+use ruma::{events::StateEventType, EventId, RoomId};
 
 pub trait Data: Send + Sync {
-    fn get_or_create_shorteventid(
-        &self,
-        event_id: &EventId,
-    ) -> Result<u64>;
+    fn get_or_create_shorteventid(&self, event_id: &EventId) -> Result<u64>;
 
     fn get_shortstatekey(
         &self,
@@ -26,15 +23,9 @@ pub trait Data: Send + Sync {
     fn get_statekey_from_short(&self, shortstatekey: u64) -> Result<(StateEventType, String)>;
 
     /// Returns (shortstatehash, already_existed)
-    fn get_or_create_shortstatehash(
-        &self,
-        state_hash: &[u8],
-    ) -> Result<(u64, bool)>;
+    fn get_or_create_shortstatehash(&self, state_hash: &[u8]) -> Result<(u64, bool)>;
 
     fn get_shortroomid(&self, room_id: &RoomId) -> Result<Option<u64>>;
 
-    fn get_or_create_shortroomid(
-        &self,
-        room_id: &RoomId,
-    ) -> Result<u64>;
+    fn get_or_create_shortroomid(&self, room_id: &RoomId) -> Result<u64>;
 }

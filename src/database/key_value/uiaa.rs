@@ -1,4 +1,8 @@
-use ruma::{UserId, DeviceId, signatures::CanonicalJsonValue, api::client::{uiaa::UiaaInfo, error::ErrorKind}};
+use ruma::{
+    api::client::{error::ErrorKind, uiaa::UiaaInfo},
+    signatures::CanonicalJsonValue,
+    DeviceId, UserId,
+};
 
 use crate::{database::KeyValueDatabase, service, Error, Result};
 

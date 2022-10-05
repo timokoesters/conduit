@@ -2,19 +2,16 @@ mod data;
 use std::sync::Arc;
 
 pub use data::Data;
-use ruma::{EventId, events::StateEventType, RoomId};
+use ruma::{events::StateEventType, EventId, RoomId};
 
-use crate::{Result, Error, utils, services};
+use crate::{services, utils, Error, Result};
 
 pub struct Service {
     db: Arc<dyn Data>,
 }
 
 impl Service {
-    pub fn get_or_create_shorteventid(
-        &self,
-        event_id: &EventId,
-    ) -> Result<u64> {
+    pub fn get_or_create_shorteventid(&self, event_id: &EventId) -> Result<u64> {
         self.db.get_or_create_shorteventid(event_id)
     }
 
@@ -43,10 +40,7 @@ impl Service {
     }
 
     /// Returns (shortstatehash, already_existed)
-    pub fn get_or_create_shortstatehash(
-        &self,
-        state_hash: &[u8],
-    ) -> Result<(u64, bool)> {
+    pub fn get_or_create_shortstatehash(&self, state_hash: &[u8]) -> Result<(u64, bool)> {
         self.db.get_or_create_shortstatehash(state_hash)
     }
 
@@ -54,10 +48,7 @@ impl Service {
         self.db.get_shortroomid(room_id)
     }
 
-    pub fn get_or_create_shortroomid(
-        &self,
-        room_id: &RoomId,
-    ) -> Result<u64> {
+    pub fn get_or_create_shortroomid(&self, room_id: &RoomId) -> Result<u64> {
         self.db.get_or_create_shortroomid(room_id)
     }
 }

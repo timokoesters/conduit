@@ -1,4 +1,4 @@
-use crate::{Result, Ruma, services};
+use crate::{services, Result, Ruma};
 use ruma::{
     api::client::user_directory::search_users,
     events::{
@@ -48,22 +48,25 @@ pub async fn search_users_route(
             return None;
         }
 
-        let user_is_in_public_rooms =
-            services().rooms
-                .state_cache.rooms_joined(&user_id)
-                .filter_map(|r| r.ok())
-                .any(|room| {
-                    services().rooms
-                        .state_accessor.room_state_get(&room, &StateEventType::RoomJoinRules, "")
-                        .map_or(false, |event| {
-                            event.map_or(false, |event| {
-                                serde_json::from_str(event.content.get())
-                                    .map_or(false, |r: RoomJoinRulesEventContent| {
-                                        r.join_rule == JoinRule::Public
-                                    })
-                            })
+        let user_is_in_public_rooms = services()
+            .rooms
+            .state_cache
+            .rooms_joined(&user_id)
+            .filter_map(|r| r.ok())
+            .any(|room| {
+                services()
+                    .rooms
+                    .state_accessor
+                    .room_state_get(&room, &StateEventType::RoomJoinRules, "")
+                    .map_or(false, |event| {
+                        event.map_or(false, |event| {
+                            serde_json::from_str(event.content.get())
+                                .map_or(false, |r: RoomJoinRulesEventContent| {
+                                    r.join_rule == JoinRule::Public
+                                })
                         })
-                });
+                    })
+            });
 
         if user_is_in_public_rooms {
             return Some(user);
@@ -71,7 +74,8 @@ pub async fn search_users_route(
 
         let user_is_in_shared_rooms = services()
             .rooms
-            .user.get_shared_rooms(vec![sender_user.clone(), user_id.clone()])
+            .user
+            .get_shared_rooms(vec![sender_user.clone(), user_id.clone()])
             .ok()?
             .next()
             .is_some();

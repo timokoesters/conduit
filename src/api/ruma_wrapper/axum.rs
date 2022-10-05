@@ -24,7 +24,7 @@ use serde::Deserialize;
 use tracing::{debug, error, warn};
 
 use super::{Ruma, RumaResponse};
-use crate::{Error, Result, api::server_server, services};
+use crate::{api::server_server, services, Error, Result};
 
 #[async_trait]
 impl<T, B> FromRequest<B> for Ruma<T>
@@ -197,11 +197,11 @@ where
                             request_map.insert("content".to_owned(), json_body.clone());
                         };
 
-                        let keys_result = services().rooms.event_handler.fetch_signing_keys(
-                            &x_matrix.origin,
-                            vec![x_matrix.key.to_owned()],
-                        )
-                        .await;
+                        let keys_result = services()
+                            .rooms
+                            .event_handler
+                            .fetch_signing_keys(&x_matrix.origin, vec![x_matrix.key.to_owned()])
+                            .await;
 
                         let keys = match keys_result {
                             Ok(b) => b,

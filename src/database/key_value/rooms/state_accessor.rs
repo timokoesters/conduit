@@ -1,13 +1,18 @@
-use std::{collections::{BTreeMap, HashMap}, sync::Arc};
+use std::{
+    collections::{BTreeMap, HashMap},
+    sync::Arc,
+};
 
-use crate::{database::KeyValueDatabase, service, PduEvent, Error, utils, Result, services};
+use crate::{database::KeyValueDatabase, service, services, utils, Error, PduEvent, Result};
 use async_trait::async_trait;
-use ruma::{EventId, events::StateEventType, RoomId};
+use ruma::{events::StateEventType, EventId, RoomId};
 
 #[async_trait]
 impl service::rooms::state_accessor::Data for KeyValueDatabase {
     async fn state_full_ids(&self, shortstatehash: u64) -> Result<BTreeMap<u64, Arc<EventId>>> {
-        let full_state = services().rooms.state_compressor
+        let full_state = services()
+            .rooms
+            .state_compressor
             .load_shortstatehash_info(shortstatehash)?
             .pop()
             .expect("there is always one layer")
@@ -15,7 +20,10 @@ impl service::rooms::state_accessor::Data for KeyValueDatabase {
         let mut result = BTreeMap::new();
         let mut i = 0;
         for compressed in full_state.into_iter() {
-            let parsed = services().rooms.state_compressor.parse_compressed_state_event(compressed)?;
+            let parsed = services()
+                .rooms
+                .state_compressor
+                .parse_compressed_state_event(compressed)?;
             result.insert(parsed.0, parsed.1);
 
             i += 1;
@@ -30,7 +38,9 @@ impl service::rooms::state_accessor::Data for KeyValueDatabase {
         &self,
         shortstatehash: u64,
     ) -> Result<HashMap<(StateEventType, String), Arc<PduEvent>>> {
-        let full_state = services().rooms.state_compressor
+        let full_state = services()
+            .rooms
+            .state_compressor
             .load_shortstatehash_info(shortstatehash)?
             .pop()
             .expect("there is always one layer")
@@ -39,7 +49,10 @@ impl service::rooms::state_accessor::Data for KeyValueDatabase {
         let mut result = HashMap::new();
         let mut i = 0;
         for compressed in full_state {
-            let (_, eventid) = services().rooms.state_compressor.parse_compressed_state_event(compressed)?;
+            let (_, eventid) = services()
+                .rooms
+                .state_compressor
+                .parse_compressed_state_event(compressed)?;
             if let Some(pdu) = services().rooms.timeline.get_pdu(&eventid)? {
                 result.insert(
                     (
@@ -69,11 +82,17 @@ impl service::rooms::state_accessor::Data for KeyValueDatabase {
         event_type: &StateEventType,
         state_key: &str,
     ) -> Result<Option<Arc<EventId>>> {
-        let shortstatekey = match services().rooms.short.get_shortstatekey(event_type, state_key)? {
+        let shortstatekey = match services()
+            .rooms
+            .short
+            .get_shortstatekey(event_type, state_key)?
+        {
             Some(s) => s,
             None => return Ok(None),
         };
-        let full_state = services().rooms.state_compressor
+        let full_state = services()
+            .rooms
+            .state_compressor
             .load_shortstatehash_info(shortstatehash)?
             .pop()
             .expect("there is always one layer")
@@ -82,7 +101,10 @@ impl service::rooms::state_accessor::Data for KeyValueDatabase {
             .into_iter()
             .find(|bytes| bytes.starts_with(&shortstatekey.to_be_bytes()))
             .and_then(|compressed| {
-                services().rooms.state_compressor.parse_compressed_state_event(compressed)
+                services()
+                    .rooms
+                    .state_compressor
+                    .parse_compressed_state_event(compressed)
                     .ok()
                     .map(|(_, id)| id)
             }))
@@ -96,7 +118,9 @@ impl service::rooms::state_accessor::Data for KeyValueDatabase {
         state_key: &str,
     ) -> Result<Option<Arc<PduEvent>>> {
         self.state_get_id(shortstatehash, event_type, state_key)?
-            .map_or(Ok(None), |event_id| services().rooms.timeline.get_pdu(&event_id))
+            .map_or(Ok(None), |event_id| {
+                services().rooms.timeline.get_pdu(&event_id)
+            })
     }
 
     /// Returns the state hash for this pdu.
@@ -122,7 +146,9 @@ impl service::rooms::state_accessor::Data for KeyValueDatabase {
         &self,
         room_id: &RoomId,
     ) -> Result<HashMap<(StateEventType, String), Arc<PduEvent>>> {
-        if let Some(current_shortstatehash) = services().rooms.state.get_room_shortstatehash(room_id)? {
+        if let Some(current_shortstatehash) =
+            services().rooms.state.get_room_shortstatehash(room_id)?
+        {
             self.state_full(current_shortstatehash).await
         } else {
             Ok(HashMap::new())
@@ -136,7 +162,9 @@ impl service::rooms::state_accessor::Data for KeyValueDatabase {
         event_type: &StateEventType,
         state_key: &str,
     ) -> Result<Option<Arc<EventId>>> {
-        if let Some(current_shortstatehash) = services().rooms.state.get_room_shortstatehash(room_id)? {
+        if let Some(current_shortstatehash) =
+            services().rooms.state.get_room_shortstatehash(room_id)?
+        {
             self.state_get_id(current_shortstatehash, event_type, state_key)
         } else {
             Ok(None)
@@ -150,7 +178,9 @@ impl service::rooms::state_accessor::Data for KeyValueDatabase {
         event_type: &StateEventType,
         state_key: &str,
     ) -> Result<Option<Arc<PduEvent>>> {
-        if let Some(current_shortstatehash) = services().rooms.state.get_room_shortstatehash(room_id)? {
+        if let Some(current_shortstatehash) =
+            services().rooms.state.get_room_shortstatehash(room_id)?
+        {
             self.state_get(current_shortstatehash, event_type, state_key)
         } else {
             Ok(None)

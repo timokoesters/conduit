@@ -5,7 +5,7 @@ use std::{
 
 use lru_cache::LruCache;
 
-use crate::{Result, Config};
+use crate::{Config, Result};
 
 pub mod account_data;
 pub mod admin;
@@ -49,7 +49,8 @@ impl Services {
             + key_backups::Data
             + media::Data,
     >(
-        db: Arc<D>, config: Config
+        db: Arc<D>,
+        config: Config,
     ) -> Result<Self> {
         Ok(Self {
             appservice: appservice::Service { db: db.clone() },
@@ -76,30 +77,26 @@ impl Services {
                 state: rooms::state::Service { db: db.clone() },
                 state_accessor: rooms::state_accessor::Service { db: db.clone() },
                 state_cache: rooms::state_cache::Service { db: db.clone() },
-                state_compressor: rooms::state_compressor::Service { db: db.clone(), stateinfo_cache: Mutex::new(LruCache::new((100.0 * config.conduit_cache_capacity_modifier) as usize,)) },
-                timeline: rooms::timeline::Service { db: db.clone(), lasttimelinecount_cache: Mutex::new(HashMap::new()) },
+                state_compressor: rooms::state_compressor::Service {
+                    db: db.clone(),
+                    stateinfo_cache: Mutex::new(LruCache::new(
+                        (100.0 * config.conduit_cache_capacity_modifier) as usize,
+                    )),
+                },
+                timeline: rooms::timeline::Service {
+                    db: db.clone(),
+                    lasttimelinecount_cache: Mutex::new(HashMap::new()),
+                },
                 user: rooms::user::Service { db: db.clone() },
             },
-            transaction_ids: transaction_ids::Service {
-                db: db.clone()
-            },
-            uiaa: uiaa::Service {
-                db: db.clone()
-            },
-            users: users::Service {
-                db: db.clone()
-            },
-            account_data: account_data::Service {
-                db: db.clone()
-            },
+            transaction_ids: transaction_ids::Service { db: db.clone() },
+            uiaa: uiaa::Service { db: db.clone() },
+            users: users::Service { db: db.clone() },
+            account_data: account_data::Service { db: db.clone() },
             admin: admin::Service { sender: todo!() },
             globals: globals::Service::load(db.clone(), config)?,
-            key_backups: key_backups::Service {
-                db: db.clone()
-            },
-            media: media::Service {
-                db: db.clone()
-            },
+            key_backups: key_backups::Service { db: db.clone() },
+            media: media::Service { db: db.clone() },
             sending: sending::Service {
                 maximum_requests: todo!(),
                 sender: todo!(),

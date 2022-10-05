@@ -1,7 +1,7 @@
 mod data;
 pub use data::Data;
 
-use crate::{utils, Error, Result, services};
+use crate::{services, utils, Error, Result};
 use ruma::{
     api::client::{
         backup::{BackupAlgorithm, KeyBackupData, RoomKeyBackup},
@@ -65,7 +65,8 @@ impl Service {
         session_id: &str,
         key_data: &Raw<KeyBackupData>,
     ) -> Result<()> {
-        self.db.add_key(user_id, version, room_id, session_id, key_data)
+        self.db
+            .add_key(user_id, version, room_id, session_id, key_data)
     }
 
     pub fn count_keys(&self, user_id: &UserId, version: &str) -> Result<usize> {
@@ -123,6 +124,7 @@ impl Service {
         room_id: &RoomId,
         session_id: &str,
     ) -> Result<()> {
-        self.db.delete_room_key(user_id, version, room_id, session_id)
+        self.db
+            .delete_room_key(user_id, version, room_id, session_id)
     }
 }
