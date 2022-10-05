@@ -26,8 +26,6 @@ use tokio::sync::{broadcast, watch::Receiver, Mutex as TokioMutex, Semaphore};
 use tracing::error;
 use trust_dns_resolver::TokioAsyncResolver;
 
-pub const COUNTER: &[u8] = b"c";
-
 type WellKnownMap = HashMap<Box<ServerName>, (FedDest, String)>;
 type TlsNameMap = HashMap<String, (Vec<IpAddr>, u16)>;
 type RateLimitState = (Instant, u32); // Time if last failed try, number of failed tries
@@ -198,16 +196,24 @@ impl Service {
 
     #[tracing::instrument(skip(self))]
     pub fn next_count(&self) -> Result<u64> {
-        utils::u64_from_bytes(&self.globals.increment(COUNTER)?)
-            .map_err(|_| Error::bad_database("Count has invalid bytes."))
+        self.db.next_count()
     }
 
     #[tracing::instrument(skip(self))]
     pub fn current_count(&self) -> Result<u64> {
-        self.globals.get(COUNTER)?.map_or(Ok(0_u64), |bytes| {
-            utils::u64_from_bytes(&bytes)
-                .map_err(|_| Error::bad_database("Count has invalid bytes."))
-        })
+        self.db.current_count()
+    }
+
+    pub async fn watch(&self, user_id: &UserId, device_id: &DeviceId) -> Result<()> {
+        self.db.watch(user_id, device_id).await
+    }
+
+    pub fn cleanup(&self) -> Result<()> {
+        self.db.cleanup()
+    }
+
+    pub fn memory_usage(&self) -> Result<String> {
+        self.db.memory_usage()
     }
 
     pub fn server_name(&self) -> &ServerName {
@@ -296,38 +302,7 @@ impl Service {
         origin: &ServerName,
         new_keys: ServerSigningKeys,
     ) -> Result<BTreeMap<Box<ServerSigningKeyId>, VerifyKey>> {
-        // Not atomic, but this is not critical
-        let signingkeys = self.server_signingkeys.get(origin.as_bytes())?;
-
-        let mut keys = signingkeys
-            .and_then(|keys| serde_json::from_slice(&keys).ok())
-            .unwrap_or_else(|| {
-                // Just insert "now", it doesn't matter
-                ServerSigningKeys::new(origin.to_owned(), MilliSecondsSinceUnixEpoch::now())
-            });
-
-        let ServerSigningKeys {
-            verify_keys,
-            old_verify_keys,
-            ..
-        } = new_keys;
-
-        keys.verify_keys.extend(verify_keys.into_iter());
-        keys.old_verify_keys.extend(old_verify_keys.into_iter());
-
-        self.server_signingkeys.insert(
-            origin.as_bytes(),
-            &serde_json::to_vec(&keys).expect("serversigningkeys can be serialized"),
-        )?;
-
-        let mut tree = keys.verify_keys;
-        tree.extend(
-            keys.old_verify_keys
-                .into_iter()
-                .map(|old| (old.0, VerifyKey::new(old.1.key))),
-        );
-
-        Ok(tree)
+        self.db.add_signing_key(origin, new_keys)
     }
 
     /// This returns an empty `Ok(BTreeMap<..>)` when there are no keys found for the server.
@@ -335,35 +310,15 @@ impl Service {
         &self,
         origin: &ServerName,
     ) -> Result<BTreeMap<Box<ServerSigningKeyId>, VerifyKey>> {
-        let signingkeys = self
-            .server_signingkeys
-            .get(origin.as_bytes())?
-            .and_then(|bytes| serde_json::from_slice(&bytes).ok())
-            .map(|keys: ServerSigningKeys| {
-                let mut tree = keys.verify_keys;
-                tree.extend(
-                    keys.old_verify_keys
-                        .into_iter()
-                        .map(|old| (old.0, VerifyKey::new(old.1.key))),
-                );
-                tree
-            })
-            .unwrap_or_else(BTreeMap::new);
-
-        Ok(signingkeys)
+        self.db.signing_keys_for(origin)
     }
 
     pub fn database_version(&self) -> Result<u64> {
-        self.globals.get(b"version")?.map_or(Ok(0), |version| {
-            utils::u64_from_bytes(&version)
-                .map_err(|_| Error::bad_database("Database version id is invalid."))
-        })
+        self.db.database_version()
     }
 
     pub fn bump_database_version(&self, new_version: u64) -> Result<()> {
-        self.globals
-            .insert(b"version", &new_version.to_be_bytes())?;
-        Ok(())
+        self.db.bump_database_version(new_version)
     }
 
     pub fn get_media_folder(&self) -> PathBuf {

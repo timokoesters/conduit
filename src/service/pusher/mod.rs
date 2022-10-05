@@ -3,6 +3,7 @@ pub use data::Data;
 
 use crate::{services, Error, PduEvent, Result};
 use bytes::BytesMut;
+use ruma::api::IncomingResponse;
 use ruma::{
     api::{
         client::push::{get_pushers, set_pusher, PusherKind},
@@ -20,11 +21,12 @@ use ruma::{
     serde::Raw,
     uint, RoomId, UInt, UserId,
 };
+use std::sync::Arc;
 use std::{fmt::Debug, mem};
 use tracing::{error, info, warn};
 
 pub struct Service {
-    db: Box<dyn Data>,
+    db: Arc<dyn Data>,
 }
 
 impl Service {
@@ -47,8 +49,9 @@ impl Service {
         self.db.get_pusher_senderkeys(sender)
     }
 
-    #[tracing::instrument(skip(destination, request))]
+    #[tracing::instrument(skip(self, destination, request))]
     pub async fn send_request<T: OutgoingRequest>(
+        &self,
         destination: &str,
         request: T,
     ) -> Result<T::IncomingResponse>
@@ -124,7 +127,7 @@ impl Service {
         }
     }
 
-    #[tracing::instrument(skip(user, unread, pusher, ruleset, pdu))]
+    #[tracing::instrument(skip(self, user, unread, pusher, ruleset, pdu))]
     pub async fn send_push_notice(
         &self,
         user: &UserId,
@@ -181,7 +184,7 @@ impl Service {
         Ok(())
     }
 
-    #[tracing::instrument(skip(user, ruleset, pdu))]
+    #[tracing::instrument(skip(self, user, ruleset, pdu))]
     pub fn get_actions<'a>(
         &self,
         user: &UserId,
@@ -204,7 +207,7 @@ impl Service {
         Ok(ruleset.get_actions(pdu, &ctx))
     }
 
-    #[tracing::instrument(skip(unread, pusher, tweaks, event))]
+    #[tracing::instrument(skip(self, unread, pusher, tweaks, event))]
     async fn send_notice(
         &self,
         unread: UInt,

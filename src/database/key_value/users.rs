@@ -1,11 +1,11 @@
-use std::{mem::size_of, collections::BTreeMap};
+use std::{mem::size_of, collections::BTreeMap, sync::Arc};
 
 use ruma::{api::client::{filter::IncomingFilterDefinition, error::ErrorKind, device::Device}, UserId, RoomAliasId, MxcUri, DeviceId, MilliSecondsSinceUnixEpoch, DeviceKeyId, encryption::{OneTimeKey, CrossSigningKey, DeviceKeys}, serde::Raw, events::{AnyToDeviceEvent, StateEventType}, DeviceKeyAlgorithm, UInt};
 use tracing::warn;
 
 use crate::{service::{self, users::clean_signatures}, database::KeyValueDatabase, Error, utils, services, Result};
 
-impl service::users::Data for KeyValueDatabase {
+impl service::users::Data for Arc<KeyValueDatabase> {
     /// Check if a user has an account on this homeserver.
     fn exists(&self, user_id: &UserId) -> Result<bool> {
         Ok(self.userid_password.get(user_id.as_bytes())?.is_some())
@@ -687,10 +687,10 @@ impl service::users::Data for KeyValueDatabase {
         })
     }
 
-    fn get_master_key<F: Fn(&UserId) -> bool>(
+    fn get_master_key(
         &self,
         user_id: &UserId,
-        allowed_signatures: F,
+        allowed_signatures: &dyn Fn(&UserId) -> bool,
     ) -> Result<Option<Raw<CrossSigningKey>>> {
         self.userid_masterkeyid
             .get(user_id.as_bytes())?
@@ -708,10 +708,10 @@ impl service::users::Data for KeyValueDatabase {
             })
     }
 
-    fn get_self_signing_key<F: Fn(&UserId) -> bool>(
+    fn get_self_signing_key(
         &self,
         user_id: &UserId,
-        allowed_signatures: F,
+        allowed_signatures: &dyn Fn(&UserId) -> bool,
     ) -> Result<Option<Raw<CrossSigningKey>>> {
         self.userid_selfsigningkeyid
             .get(user_id.as_bytes())?

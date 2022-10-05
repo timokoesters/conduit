@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use crate::{database::KeyValueDatabase, service, utils, Error, Result};
 
 impl service::appservice::Data for KeyValueDatabase {

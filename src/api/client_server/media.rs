@@ -40,12 +40,12 @@ pub async fn create_content_route(
     services().media
         .create(
             mxc.clone(),
-            &body
+            body
                 .filename
                 .as_ref()
                 .map(|filename| "inline; filename=".to_owned() + filename)
                 .as_deref(),
-            &body.content_type.as_deref(),
+            body.content_type.as_deref(),
             &body.file,
         )
         .await?;
@@ -76,8 +76,8 @@ pub async fn get_remote_content(
     services().media
         .create(
             mxc.to_string(),
-            &content_response.content_disposition.as_deref(),
-            &content_response.content_type.as_deref(),
+            content_response.content_disposition.as_deref(),
+            content_response.content_type.as_deref(),
             &content_response.file,
         )
         .await?;
@@ -195,8 +195,8 @@ pub async fn get_content_thumbnail_route(
         services().media
             .upload_thumbnail(
                 mxc,
-                &None,
-                &get_thumbnail_response.content_type.as_deref(),
+                None,
+                get_thumbnail_response.content_type.as_deref(),
                 body.width.try_into().expect("all UInts are valid u32s"),
                 body.height.try_into().expect("all UInts are valid u32s"),
                 &get_thumbnail_response.file,

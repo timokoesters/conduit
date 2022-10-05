@@ -27,7 +27,7 @@ pub async fn set_read_marker_route(
         Some(&body.room_id),
         sender_user,
         RoomAccountDataEventType::FullyRead,
-        &fully_read_event,
+        &serde_json::to_value(fully_read_event).expect("to json value always works"),
     )?;
 
     if let Some(event) = &body.read_receipt {

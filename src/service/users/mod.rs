@@ -223,18 +223,18 @@ impl Service {
         self.db.get_device_keys(user_id, device_id)
     }
 
-    pub fn get_master_key<F: Fn(&UserId) -> bool>(
+    pub fn get_master_key(
         &self,
         user_id: &UserId,
-        allowed_signatures: F,
+        allowed_signatures: &dyn Fn(&UserId) -> bool,
     ) -> Result<Option<Raw<CrossSigningKey>>> {
         self.db.get_master_key(user_id, allowed_signatures)
     }
 
-    pub fn get_self_signing_key<F: Fn(&UserId) -> bool>(
+    pub fn get_self_signing_key(
         &self,
         user_id: &UserId,
-        allowed_signatures: F,
+        allowed_signatures: &dyn Fn(&UserId) -> bool,
     ) -> Result<Option<Raw<CrossSigningKey>>> {
         self.db.get_self_signing_key(user_id, allowed_signatures)
     }

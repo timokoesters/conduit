@@ -5,7 +5,7 @@ use tracing::error;
 
 use crate::{service, database::KeyValueDatabase, utils, Error, PduEvent, Result, services};
 
-impl service::rooms::timeline::Data for KeyValueDatabase {
+impl service::rooms::timeline::Data for Arc<KeyValueDatabase> {
     fn last_timeline_count(&self, sender_user: &UserId, room_id: &RoomId) -> Result<u64> {
         match self
             .lasttimelinecount_cache

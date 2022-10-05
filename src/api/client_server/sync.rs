@@ -175,7 +175,7 @@ async fn sync_helper(
     services().rooms.edus.presence.ping_presence(&sender_user)?;
 
     // Setup watchers, so if there's no response, we can wait for them
-    let watcher = services().globals.db.watch(&sender_user, &sender_device);
+    let watcher = services().globals.watch(&sender_user, &sender_device);
 
     let next_batch = services().globals.current_count()?;
     let next_batch_string = next_batch.to_string();

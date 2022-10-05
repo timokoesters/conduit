@@ -1,8 +1,10 @@
+use std::sync::Arc;
+
 use ruma::{RoomId, RoomAliasId, api::client::error::ErrorKind};
 
 use crate::{service, database::KeyValueDatabase, utils, Error, services, Result};
 
-impl service::rooms::alias::Data for KeyValueDatabase {
+impl service::rooms::alias::Data for Arc<KeyValueDatabase> {
     fn set_alias(
         &self,
         alias: &RoomAliasId,

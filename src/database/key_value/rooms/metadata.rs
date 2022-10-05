@@ -1,8 +1,10 @@
+use std::sync::Arc;
+
 use ruma::RoomId;
 
 use crate::{service, database::KeyValueDatabase, Result, services};
 
-impl service::rooms::metadata::Data for KeyValueDatabase {
+impl service::rooms::metadata::Data for Arc<KeyValueDatabase> {
     fn exists(&self, room_id: &RoomId) -> Result<bool> {
         let prefix = match services().rooms.short.get_shortroomid(room_id)? {
             Some(b) => b.to_be_bytes().to_vec(),

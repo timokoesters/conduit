@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use ruma::{api::client::backup::{BackupAlgorithm, RoomKeyBackup, KeyBackupData}, serde::Raw, UserId, RoomId};
 use crate::Result;
 
-pub trait Data {
+pub trait Data: Send + Sync {
     fn create_backup(
         &self,
         user_id: &UserId,

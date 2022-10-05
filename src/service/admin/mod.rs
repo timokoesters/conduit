@@ -28,7 +28,7 @@ use ruma::{
 use serde_json::value::to_raw_value;
 use tokio::sync::{mpsc, MutexGuard, RwLock, RwLockReadGuard};
 
-use crate::{Result, services, Error, api::{server_server, client_server::AUTO_GEN_PASSWORD_LENGTH}, PduEvent, utils::{HtmlEscape, self}};
+use crate::{Result, services, Error, api::{server_server, client_server::{AUTO_GEN_PASSWORD_LENGTH, leave_all_rooms}}, PduEvent, utils::{HtmlEscape, self}};
 
 use super::pdu::PduBuilder;
 
@@ -179,7 +179,8 @@ impl Service {
 
             let conduit_room = services()
                 .rooms
-                .id_from_alias(
+                .alias
+                .resolve_local_alias(
                     format!("#admins:{}", services().globals.server_name())
                         .as_str()
                         .try_into()
@@ -221,7 +222,7 @@ impl Service {
                                 .roomid_mutex_state
                                 .write()
                                 .unwrap()
-                                .entry(conduit_room.clone())
+                                .entry(conduit_room.to_owned())
                                 .or_default(),
                         );
 
@@ -599,11 +600,11 @@ impl Service {
                     ruma::events::GlobalAccountDataEventType::PushRules
                         .to_string()
                         .into(),
-                    &ruma::events::push_rules::PushRulesEvent {
+                    &serde_json::to_value(ruma::events::push_rules::PushRulesEvent {
                         content: ruma::events::push_rules::PushRulesEventContent {
                             global: ruma::push::Ruleset::server_default(&user_id),
                         },
-                    },
+                    }).expect("to json value always works"),
                 )?;
 
                 // we dont add a device since we're not the user, just the creator
@@ -614,12 +615,14 @@ impl Service {
                 ))
             }
             AdminCommand::DisableRoom { room_id } => {
-                services().rooms.disabledroomids.insert(room_id.as_bytes(), &[])?;
-                RoomMessageEventContent::text_plain("Room disabled.")
+                todo!();
+                //services().rooms.disabledroomids.insert(room_id.as_bytes(), &[])?;
+                //RoomMessageEventContent::text_plain("Room disabled.")
             }
             AdminCommand::EnableRoom { room_id } => {
-                services().rooms.disabledroomids.remove(room_id.as_bytes())?;
-                RoomMessageEventContent::text_plain("Room enabled.")
+                todo!();
+                //services().rooms.disabledroomids.remove(room_id.as_bytes())?;
+                //RoomMessageEventContent::text_plain("Room enabled.")
             }
             AdminCommand::DeactivateUser {
                 leave_rooms,
@@ -635,7 +638,7 @@ impl Service {
                     services().users.deactivate_account(&user_id)?;
 
                     if leave_rooms {
-                        services().rooms.leave_all_rooms(&user_id).await?;
+                        leave_all_rooms(&user_id).await?;
                     }
 
                     RoomMessageEventContent::text_plain(format!(
@@ -694,7 +697,7 @@ impl Service {
 
                     if leave_rooms {
                         for &user_id in &user_ids {
-                            let _ = services().rooms.leave_all_rooms(user_id).await;
+                            let _ = leave_all_rooms(user_id).await;
                         }
                     }
 
@@ -804,7 +807,7 @@ impl Service {
     pub(crate) async fn create_admin_room(&self) -> Result<()> {
         let room_id = RoomId::new(services().globals.server_name());
 
-        services().rooms.get_or_create_shortroomid(&room_id)?;
+        services().rooms.short.get_or_create_shortroomid(&room_id)?;
 
         let mutex_state = Arc::clone(
             services().globals

@@ -1,10 +1,10 @@
-use std::mem;
+use std::{mem, sync::Arc};
 
 use ruma::{UserId, RoomId, events::receipt::ReceiptEvent, serde::Raw, signatures::CanonicalJsonObject};
 
 use crate::{database::KeyValueDatabase, service, utils, Error, services, Result};
 
-impl service::rooms::edus::read_receipt::Data for KeyValueDatabase {
+impl service::rooms::edus::read_receipt::Data for Arc<KeyValueDatabase> {
     fn readreceipt_update(
         &self,
         user_id: &UserId,

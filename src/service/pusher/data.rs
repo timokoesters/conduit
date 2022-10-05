@@ -1,7 +1,7 @@
 use ruma::{UserId, api::client::push::{set_pusher, get_pushers}};
 use crate::Result;
 
-pub trait Data {
+pub trait Data: Send + Sync {
     fn set_pusher(&self, sender: &UserId, pusher: set_pusher::v3::Pusher) -> Result<()>;
 
     fn get_pusher(&self, senderkey: &[u8]) -> Result<Option<get_pushers::v3::Pusher>>;

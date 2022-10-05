@@ -117,7 +117,7 @@ impl Service {
             room_id,
             pub_key_map,
             incoming_pdu.prev_events.clone(),
-        ).await;
+        ).await?;
 
         let mut errors = 0;
         for prev_id in dbg!(sorted_prev_events) {
@@ -240,7 +240,7 @@ impl Service {
         r
     }
 
-    #[tracing::instrument(skip(create_event, value, pub_key_map))]
+    #[tracing::instrument(skip(self, create_event, value, pub_key_map))]
     fn handle_outlier_pdu<'a>(
         &self,
         origin: &'a ServerName,
@@ -272,7 +272,7 @@ impl Service {
                 RoomVersion::new(room_version_id).expect("room version is supported");
 
             let mut val = match ruma::signatures::verify_event(
-                &*pub_key_map.read().map_err(|_| "RwLock is poisoned.")?,
+                &*pub_key_map.read().expect("RwLock is poisoned."),
                 &value,
                 room_version_id,
             ) {
@@ -301,7 +301,7 @@ impl Service {
             let incoming_pdu = serde_json::from_value::<PduEvent>(
                 serde_json::to_value(&val).expect("CanonicalJsonObj is a valid JsonValue"),
             )
-            .map_err(|_| "Event is not a valid PDU.".to_owned())?;
+            .map_err(|_| Error::bad_database("Event is not a valid PDU."))?;
 
             // 4. fetch any missing auth events doing all checks listed here starting at 1. These are not timeline events
             // 5. Reject "due to auth events" if can't get all the auth events or some of the auth events are also rejected "due to auth events"
@@ -329,7 +329,7 @@ impl Service {
             // Build map of auth events
             let mut auth_events = HashMap::new();
             for id in &incoming_pdu.auth_events {
-                let auth_event = match services().rooms.get_pdu(id)? {
+                let auth_event = match services().rooms.timeline.get_pdu(id)? {
                     Some(e) => e,
                     None => {
                         warn!("Could not find auth event {}", id);
@@ -373,7 +373,8 @@ impl Service {
                 &incoming_pdu,
                 None::<PduEvent>, // TODO: third party invite
                 |k, s| auth_events.get(&(k.to_string().into(), s.to_owned())),
-            )? {
+            ).map_err(|_e| Error::BadRequest(ErrorKind::InvalidParam, "Auth check failed"))?
+            {
                 return Err(Error::BadRequest(
                     ErrorKind::InvalidParam,
                     "Auth check failed",
@@ -385,6 +386,7 @@ impl Service {
             // 7. Persist the event as an outlier.
             services()
                 .rooms
+                .outlier
                 .add_pdu_outlier(&incoming_pdu.event_id, &val)?;
 
             info!("Added pdu as outlier.");
@@ -393,7 +395,7 @@ impl Service {
         })
     }
 
-    #[tracing::instrument(skip(incoming_pdu, val, create_event, pub_key_map))]
+    #[tracing::instrument(skip(self, incoming_pdu, val, create_event, pub_key_map))]
     pub async fn upgrade_outlier_to_timeline_pdu(
         &self,
         incoming_pdu: Arc<PduEvent>,
@@ -412,7 +414,7 @@ impl Service {
             .rooms
             .pdu_metadata.is_event_soft_failed(&incoming_pdu.event_id)?
         {
-            return Err("Event has been soft failed".into());
+            return Err(Error::BadRequest(ErrorKind::InvalidParam, "Event has been soft failed"));
         }
 
         info!("Upgrading {} to timeline pdu", incoming_pdu.event_id);
@@ -1130,7 +1132,8 @@ impl Service {
         room_id: &RoomId,
         pub_key_map: &RwLock<BTreeMap<String, BTreeMap<String, Base64>>>,
         initial_set: Vec<Arc<EventId>>,
-    ) -> Vec<(Arc<EventId>, HashMap<Arc<EventId>, (Arc<PduEvent>, BTreeMap<String, CanonicalJsonValue>)>)> {
+    ) -> Result<(Vec<Arc<EventId>>, HashMap<Arc<EventId>,
+(Arc<PduEvent>, BTreeMap<String, CanonicalJsonValue>)>)> {
         let mut graph: HashMap<Arc<EventId>, _> = HashMap::new();
         let mut eventid_info = HashMap::new();
         let mut todo_outlier_stack: Vec<Arc<EventId>> = initial_set;
@@ -1164,6 +1167,7 @@ impl Service {
                 if let Some(json) = json_opt.or_else(|| {
                     services()
                         .rooms
+                        .outlier
                         .get_outlier_pdu_json(&prev_event_id)
                         .ok()
                         .flatten()
@@ -1209,9 +1213,9 @@ impl Service {
                         .map_or_else(|| uint!(0), |info| info.0.origin_server_ts),
                 ),
             ))
-        })?;
+        }).map_err(|_| Error::bad_database("Error sorting prev events"))?;
 
-        (sorted, eventid_info)
+        Ok((sorted, eventid_info))
     }
 
     #[tracing::instrument(skip_all)]

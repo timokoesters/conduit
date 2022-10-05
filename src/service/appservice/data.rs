@@ -1,6 +1,6 @@
 use crate::Result;
 
-pub trait Data {
+pub trait Data: Send + Sync {
     /// Registers an appservice and returns the ID to the caller
     fn register_appservice(&self, yaml: serde_yaml::Value) -> Result<String>;
 

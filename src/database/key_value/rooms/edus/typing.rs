@@ -1,10 +1,10 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, sync::Arc};
 
 use ruma::{UserId, RoomId};
 
 use crate::{database::KeyValueDatabase, service, utils, Error, services, Result};
 
-impl service::rooms::edus::typing::Data for KeyValueDatabase {
+impl service::rooms::edus::typing::Data for Arc<KeyValueDatabase> {
     fn typing_add(
         &self,
         user_id: &UserId,

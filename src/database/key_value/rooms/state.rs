@@ -1,11 +1,12 @@
 use ruma::{RoomId, EventId};
+use tokio::sync::MutexGuard;
 use std::sync::Arc;
-use std::{sync::MutexGuard, collections::HashSet};
+use std::collections::HashSet;
 use std::fmt::Debug;
 
 use crate::{service, database::KeyValueDatabase, utils, Error, Result};
 
-impl service::rooms::state::Data for KeyValueDatabase {
+impl service::rooms::state::Data for Arc<KeyValueDatabase> {
     fn get_room_shortstatehash(&self, room_id: &RoomId) -> Result<Option<u64>> {
         self.roomid_shortstatehash
             .get(room_id.as_bytes())?
@@ -48,7 +49,7 @@ impl service::rooms::state::Data for KeyValueDatabase {
     fn set_forward_extremities<'a>(
         &self,
         room_id: &RoomId,
-        event_ids: impl IntoIterator<Item = &'a EventId> + Debug,
+        event_ids: &mut dyn Iterator<Item = &'a EventId>,
         _mutex_lock: &MutexGuard<'_, ()>, // Take mutex guard to make sure users get the room state mutex
     ) -> Result<()> {
         let mut prefix = room_id.as_bytes().to_vec();

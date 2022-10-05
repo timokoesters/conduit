@@ -24,8 +24,8 @@ impl Service {
     pub async fn create(
         &self,
         mxc: String,
-        content_disposition: &Option<&str>,
-        content_type: &Option<&str>,
+        content_disposition: Option<&str>,
+        content_type: Option<&str>,
         file: &[u8],
     ) -> Result<()> {
         // Width, Height = 0 if it's not a thumbnail
@@ -42,8 +42,8 @@ impl Service {
     pub async fn upload_thumbnail(
         &self,
         mxc: String,
-        content_disposition: &Option<&str>,
-        content_type: &Option<&str>,
+        content_disposition: Option<&str>,
+        content_type: Option<&str>,
         width: u32,
         height: u32,
         file: &[u8],
@@ -108,7 +108,7 @@ impl Service {
             .thumbnail_properties(width, height)
             .unwrap_or((0, 0, false)); // 0, 0 because that's the original file
 
-        if let Ok((content_disposition, content_type, key)) = self.db.search_file_metadata(mxc, width, height) {
+        if let Ok((content_disposition, content_type, key)) = self.db.search_file_metadata(mxc.clone(), width, height) {
             // Using saved thumbnail
             let path = services().globals.get_media_file(&key);
             let mut file = Vec::new();
@@ -119,7 +119,7 @@ impl Service {
                 content_type,
                 file: file.to_vec(),
             }))
-        } else if let Ok((content_disposition, content_type, key)) = self.db.search_file_metadata(mxc, 0, 0) {
+        } else if let Ok((content_disposition, content_type, key)) = self.db.search_file_metadata(mxc.clone(), 0, 0) {
             // Generate a thumbnail
             let path = services().globals.get_media_file(&key);
             let mut file = Vec::new();
@@ -180,7 +180,7 @@ impl Service {
                 thumbnail.write_to(&mut thumbnail_bytes, image::ImageOutputFormat::Png)?;
 
                 // Save thumbnail in database so we don't have to generate it again next time
-                let thumbnail_key = self.db.create_file_metadata(mxc, width, height, content_disposition, content_type)?;
+                let thumbnail_key = self.db.create_file_metadata(mxc, width, height, content_disposition.as_deref(), content_type.as_deref())?;
 
                 let path = services().globals.get_media_file(&thumbnail_key);
                 let mut f = File::create(path).await?;

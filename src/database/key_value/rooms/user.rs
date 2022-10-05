@@ -1,8 +1,10 @@
+use std::sync::Arc;
+
 use ruma::{UserId, RoomId};
 
 use crate::{service, database::KeyValueDatabase, utils, Error, Result, services};
 
-impl service::rooms::user::Data for KeyValueDatabase {
+impl service::rooms::user::Data for Arc<KeyValueDatabase> {
     fn reset_notification_counts(&self, user_id: &UserId, room_id: &RoomId) -> Result<()> {
         let mut userroom_id = user_id.as_bytes().to_vec();
         userroom_id.push(0xff);

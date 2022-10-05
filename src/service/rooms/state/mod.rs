@@ -16,7 +16,7 @@ pub struct Service {
 
 impl Service {
     /// Set the room to the given statehash and update caches.
-    pub fn force_state(
+    pub async fn force_state(
         &self,
         room_id: &RoomId,
         shortstatehash: u64,
@@ -28,7 +28,7 @@ impl Service {
                 .roomid_mutex_state
                 .write()
                 .unwrap()
-                .entry(body.room_id.to_owned())
+                .entry(room_id.to_owned())
                 .or_default(),
         );
         let state_lock = mutex_state.lock().await;
@@ -74,10 +74,10 @@ impl Service {
                 Err(_) => continue,
             };
 
-            services().room.state_cache.update_membership(room_id, &user_id, membership, &pdu.sender, None, false)?;
+            services().rooms.state_cache.update_membership(room_id, &user_id, membership, &pdu.sender, None, false)?;
         }
 
-        services().room.state_cache.update_joined_count(room_id)?;
+        services().rooms.state_cache.update_joined_count(room_id)?;
 
         self.db.set_room_state(room_id, shortstatehash, &state_lock);
 

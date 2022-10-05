@@ -1,8 +1,10 @@
+use std::sync::Arc;
+
 use ruma::RoomId;
 
 use crate::{service, database::KeyValueDatabase, utils, Error, Result};
 
-impl service::rooms::directory::Data for KeyValueDatabase {
+impl service::rooms::directory::Data for Arc<KeyValueDatabase> {
     fn set_public(&self, room_id: &RoomId) -> Result<()> {
         self.publicroomids.insert(room_id.as_bytes(), &[])
     }

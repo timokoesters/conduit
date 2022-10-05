@@ -9,7 +9,7 @@ pub struct StateDiff {
     pub removed: HashSet<CompressedStateEvent>,
 }
 
-pub trait Data {
+pub trait Data: Send + Sync {
     fn get_statediff(&self, shortstatehash: u64) -> Result<StateDiff>;
     fn save_statediff(&self, shortstatehash: u64, diff: StateDiff) -> Result<()>;
 }

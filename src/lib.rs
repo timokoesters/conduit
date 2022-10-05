@@ -20,9 +20,9 @@ pub use utils::error::{Error, Result};
 pub use service::{Services, pdu::PduEvent};
 pub use api::ruma_wrapper::{Ruma, RumaResponse};
 
-pub static SERVICES: RwLock<Option<Arc<Services>>> = RwLock::new(None);
+pub static SERVICES: RwLock<Option<&'static Services>> = RwLock::new(None);
 
-pub fn services<'a>() -> Arc<Services> {
-    Arc::clone(&SERVICES.read().unwrap())
+pub fn services<'a>() -> &'static Services {
+    &SERVICES.read().unwrap().expect("SERVICES should be initialized when this is called")
 }
 

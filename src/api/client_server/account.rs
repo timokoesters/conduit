@@ -184,11 +184,11 @@ pub async fn register_route(
         None,
         &user_id,
         GlobalAccountDataEventType::PushRules.to_string().into(),
-        &ruma::events::push_rules::PushRulesEvent {
+        &serde_json::to_value(ruma::events::push_rules::PushRulesEvent {
             content: ruma::events::push_rules::PushRulesEventContent {
                 global: push::Ruleset::server_default(&user_id),
             },
-        },
+        }).expect("to json always works"),
     )?;
 
     // Inhibit login does not work for guests

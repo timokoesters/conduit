@@ -1,26 +1,25 @@
 use std::collections::HashMap;
 
 use ruma::{UserId, RoomId, events::{RoomAccountDataEventType, AnyEphemeralRoomEvent}, serde::Raw};
-use serde::{Serialize, de::DeserializeOwned};
 use crate::Result;
 
-pub trait Data {
+pub trait Data: Send + Sync {
     /// Places one event in the account data of the user and removes the previous entry.
-    fn update<T: Serialize>(
+    fn update(
         &self,
         room_id: Option<&RoomId>,
         user_id: &UserId,
         event_type: RoomAccountDataEventType,
-        data: &T,
+        data: &serde_json::Value,
     ) -> Result<()>;
 
     /// Searches the account data for a specific kind.
-    fn get<T: DeserializeOwned>(
+    fn get(
         &self,
         room_id: Option<&RoomId>,
         user_id: &UserId,
         kind: RoomAccountDataEventType,
-    ) -> Result<Option<T>>;
+    ) -> Result<Option<Box<serde_json::value::RawValue>>>;
 
     /// Returns all changes to the account data that happened after `since`.
     fn changes_since(

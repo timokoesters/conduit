@@ -6,7 +6,7 @@ use ruma::{EventId, events::StateEventType, RoomId};
 use crate::{Result, PduEvent};
 
 #[async_trait]
-pub trait Data {
+pub trait Data: Send + Sync {
     /// Builds a StateMap by iterating over all keys that start
     /// with state_hash, this gives the full state for the given state_hash.
     async fn state_full_ids(&self, shortstatehash: u64) -> Result<BTreeMap<u64, Arc<EventId>>>;

@@ -1,19 +1,19 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use ruma::{UserId, DeviceId, signatures::CanonicalJsonValue, api::client::{uiaa::UiaaInfo, error::ErrorKind}, events::{RoomAccountDataEventType, AnyEphemeralRoomEvent}, serde::Raw, RoomId};
 use serde::{Serialize, de::DeserializeOwned};
 
 use crate::{Result, database::KeyValueDatabase, service, Error, utils, services};
 
-impl service::account_data::Data for KeyValueDatabase {
+impl service::account_data::Data for Arc<KeyValueDatabase> {
     /// Places one event in the account data of the user and removes the previous entry.
     #[tracing::instrument(skip(self, room_id, user_id, event_type, data))]
-    fn update<T: Serialize>(
+    fn update(
         &self,
         room_id: Option<&RoomId>,
         user_id: &UserId,
         event_type: RoomAccountDataEventType,
-        data: &T,
+        data: &serde_json::Value,
     ) -> Result<()> {
         let mut prefix = room_id
             .map(|r| r.to_string())
@@ -32,8 +32,7 @@ impl service::account_data::Data for KeyValueDatabase {
         let mut key = prefix;
         key.extend_from_slice(event_type.to_string().as_bytes());
 
-        let json = serde_json::to_value(data).expect("all types here can be serialized"); // TODO: maybe add error handling
-        if json.get("type").is_none() || json.get("content").is_none() {
+        if data.get("type").is_none() || data.get("content").is_none() {
             return Err(Error::BadRequest(
                 ErrorKind::InvalidParam,
                 "Account data doesn't have all required fields.",
@@ -42,7 +41,7 @@ impl service::account_data::Data for KeyValueDatabase {
 
         self.roomuserdataid_accountdata.insert(
             &roomuserdataid,
-            &serde_json::to_vec(&json).expect("to_vec always works on json values"),
+            &serde_json::to_vec(&data).expect("to_vec always works on json values"),
         )?;
 
         let prev = self.roomusertype_roomuserdataid.get(&key)?;
@@ -60,12 +59,12 @@ impl service::account_data::Data for KeyValueDatabase {
 
     /// Searches the account data for a specific kind.
     #[tracing::instrument(skip(self, room_id, user_id, kind))]
-    fn get<T: DeserializeOwned>(
+    fn get(
         &self,
         room_id: Option<&RoomId>,
         user_id: &UserId,
         kind: RoomAccountDataEventType,
-    ) -> Result<Option<T>> {
+    ) -> Result<Option<Box<serde_json::value::RawValue>>> {
         let mut key = room_id
             .map(|r| r.to_string())
             .unwrap_or_default()

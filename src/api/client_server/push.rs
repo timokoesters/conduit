@@ -20,7 +20,7 @@ pub async fn get_pushrules_all_route(
 ) -> Result<get_pushrules_all::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
-    let event: PushRulesEvent = services()
+    let event = services()
         .account_data
         .get(
             None,
@@ -32,8 +32,12 @@ pub async fn get_pushrules_all_route(
             "PushRules event not found.",
         ))?;
 
+    let account_data = serde_json::from_str::<PushRulesEvent>(event.get())
+        .map_err(|_| Error::bad_database("Invalid account data event in db."))?
+        .content;
+
     Ok(get_pushrules_all::v3::Response {
-        global: event.content.global,
+        global: account_data.global,
     })
 }
 
@@ -45,7 +49,7 @@ pub async fn get_pushrule_route(
 ) -> Result<get_pushrule::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
-    let event: PushRulesEvent = services()
+    let event = services()
         .account_data
         .get(
             None,
@@ -57,7 +61,11 @@ pub async fn get_pushrule_route(
             "PushRules event not found.",
         ))?;
 
-    let global = event.content.global;
+    let account_data = serde_json::from_str::<PushRulesEvent>(event.get())
+        .map_err(|_| Error::bad_database("Invalid account data event in db."))?
+        .content;
+
+    let global = account_data.global;
     let rule = match body.kind {
         RuleKind::Override => global
             .override_
@@ -108,7 +116,7 @@ pub async fn set_pushrule_route(
         ));
     }
 
-    let mut event: PushRulesEvent = services()
+    let event = services()
         .account_data
         .get(
             None,
@@ -120,7 +128,10 @@ pub async fn set_pushrule_route(
             "PushRules event not found.",
         ))?;
 
-    let global = &mut event.content.global;
+    let mut account_data = serde_json::from_str::<PushRulesEvent>(event.get())
+        .map_err(|_| Error::bad_database("Invalid account data event in db."))?;
+
+    let global = &mut account_data.content.global;
     match body.kind {
         RuleKind::Override => {
             global.override_.replace(
@@ -187,7 +198,7 @@ pub async fn set_pushrule_route(
         None,
         sender_user,
         GlobalAccountDataEventType::PushRules.to_string().into(),
-        &event,
+        &serde_json::to_value(account_data).expect("to json value always works"),
     )?;
 
     Ok(set_pushrule::v3::Response {})
@@ -208,7 +219,7 @@ pub async fn get_pushrule_actions_route(
         ));
     }
 
-    let mut event: PushRulesEvent = services()
+    let event = services()
         .account_data
         .get(
             None,
@@ -220,7 +231,11 @@ pub async fn get_pushrule_actions_route(
             "PushRules event not found.",
         ))?;
 
-    let global = &mut event.content.global;
+    let account_data = serde_json::from_str::<PushRulesEvent>(event.get())
+        .map_err(|_| Error::bad_database("Invalid account data event in db."))?
+        .content;
+
+    let global = account_data.global;
     let actions = match body.kind {
         RuleKind::Override => global
             .override_
@@ -265,7 +280,7 @@ pub async fn set_pushrule_actions_route(
         ));
     }
 
-    let mut event: PushRulesEvent = services()
+    let event = services()
         .account_data
         .get(
             None,
@@ -277,7 +292,10 @@ pub async fn set_pushrule_actions_route(
             "PushRules event not found.",
         ))?;
 
-    let global = &mut event.content.global;
+    let mut account_data = serde_json::from_str::<PushRulesEvent>(event.get())
+        .map_err(|_| Error::bad_database("Invalid account data event in db."))?;
+
+    let global = &mut account_data.content.global;
     match body.kind {
         RuleKind::Override => {
             if let Some(mut rule) = global.override_.get(body.rule_id.as_str()).cloned() {
@@ -316,7 +334,7 @@ pub async fn set_pushrule_actions_route(
         None,
         sender_user,
         GlobalAccountDataEventType::PushRules.to_string().into(),
-        &event,
+        &serde_json::to_value(account_data).expect("to json value always works"),
     )?;
 
     Ok(set_pushrule_actions::v3::Response {})
@@ -337,7 +355,7 @@ pub async fn get_pushrule_enabled_route(
         ));
     }
 
-    let mut event: PushRulesEvent = services()
+    let event = services()
         .account_data
         .get(
             None,
@@ -349,7 +367,10 @@ pub async fn get_pushrule_enabled_route(
             "PushRules event not found.",
         ))?;
 
-    let global = &mut event.content.global;
+    let account_data = serde_json::from_str::<PushRulesEvent>(event.get())
+        .map_err(|_| Error::bad_database("Invalid account data event in db."))?;
+
+    let global = account_data.content.global;
     let enabled = match body.kind {
         RuleKind::Override => global
             .override_
@@ -397,7 +418,7 @@ pub async fn set_pushrule_enabled_route(
         ));
     }
 
-    let mut event: PushRulesEvent = services()
+    let event = services()
         .account_data
         .get(
             None,
@@ -409,7 +430,10 @@ pub async fn set_pushrule_enabled_route(
             "PushRules event not found.",
         ))?;
 
-    let global = &mut event.content.global;
+    let mut account_data = serde_json::from_str::<PushRulesEvent>(event.get())
+        .map_err(|_| Error::bad_database("Invalid account data event in db."))?;
+
+    let global = &mut account_data.content.global;
     match body.kind {
         RuleKind::Override => {
             if let Some(mut rule) = global.override_.get(body.rule_id.as_str()).cloned() {
@@ -453,7 +477,7 @@ pub async fn set_pushrule_enabled_route(
         None,
         sender_user,
         GlobalAccountDataEventType::PushRules.to_string().into(),
-        &event,
+        &serde_json::to_value(account_data).expect("to json value always works"),
     )?;
 
     Ok(set_pushrule_enabled::v3::Response {})
@@ -474,7 +498,7 @@ pub async fn delete_pushrule_route(
         ));
     }
 
-    let mut event: PushRulesEvent = services()
+    let event = services()
         .account_data
         .get(
             None,
@@ -486,7 +510,10 @@ pub async fn delete_pushrule_route(
             "PushRules event not found.",
         ))?;
 
-    let global = &mut event.content.global;
+    let mut account_data = serde_json::from_str::<PushRulesEvent>(event.get())
+        .map_err(|_| Error::bad_database("Invalid account data event in db."))?;
+
+    let global = &mut account_data.content.global;
     match body.kind {
         RuleKind::Override => {
             if let Some(rule) = global.override_.get(body.rule_id.as_str()).cloned() {
@@ -520,7 +547,7 @@ pub async fn delete_pushrule_route(
         None,
         sender_user,
         GlobalAccountDataEventType::PushRules.to_string().into(),
-        &event,
+        &serde_json::to_value(account_data).expect("to json value always works"),
     )?;
 
     Ok(delete_pushrule::v3::Response {})

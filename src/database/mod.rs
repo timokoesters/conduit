@@ -402,10 +402,10 @@ impl KeyValueDatabase {
 
         });
 
-        let services_raw = Services::build(Arc::clone(&db));
+        let services_raw = Box::new(Services::build(Arc::clone(&db)));
 
         // This is the first and only time we initialize the SERVICE static
-        *SERVICES.write().unwrap() = Some(services_raw);
+        *SERVICES.write().unwrap() = Some(Box::leak(services_raw));
 
 
         // Matrix resource ownership is based on the server name; changing it
@@ -877,105 +877,6 @@ impl KeyValueDatabase {
         services().globals.rotate.fire();
     }
 
-    pub async fn watch(&self, user_id: &UserId, device_id: &DeviceId) {
-        let userid_bytes = user_id.as_bytes().to_vec();
-        let mut userid_prefix = userid_bytes.clone();
-        userid_prefix.push(0xff);
-
-        let mut userdeviceid_prefix = userid_prefix.clone();
-        userdeviceid_prefix.extend_from_slice(device_id.as_bytes());
-        userdeviceid_prefix.push(0xff);
-
-        let mut futures = FuturesUnordered::new();
-
-        // Return when *any* user changed his key
-        // TODO: only send for user they share a room with
-        futures.push(
-            self.todeviceid_events
-                .watch_prefix(&userdeviceid_prefix),
-        );
-
-        futures.push(self.userroomid_joined.watch_prefix(&userid_prefix));
-        futures.push(
-            self.userroomid_invitestate
-                .watch_prefix(&userid_prefix),
-        );
-        futures.push(self.userroomid_leftstate.watch_prefix(&userid_prefix));
-        futures.push(
-            self.userroomid_notificationcount
-                .watch_prefix(&userid_prefix),
-        );
-        futures.push(
-            self.userroomid_highlightcount
-                .watch_prefix(&userid_prefix),
-        );
-
-        // Events for rooms we are in
-        for room_id in services().rooms.state_cache.rooms_joined(user_id).filter_map(|r| r.ok()) {
-            let short_roomid = services()
-                .rooms
-                .short
-                .get_shortroomid(&room_id)
-                .ok()
-                .flatten()
-                .expect("room exists")
-                .to_be_bytes()
-                .to_vec();
-
-            let roomid_bytes = room_id.as_bytes().to_vec();
-            let mut roomid_prefix = roomid_bytes.clone();
-            roomid_prefix.push(0xff);
-
-            // PDUs
-            futures.push(self.pduid_pdu.watch_prefix(&short_roomid));
-
-            // EDUs
-            futures.push(
-                self.roomid_lasttypingupdate
-                    .watch_prefix(&roomid_bytes),
-            );
-
-            futures.push(
-                self.readreceiptid_readreceipt
-                    .watch_prefix(&roomid_prefix),
-            );
-
-            // Key changes
-            futures.push(self.keychangeid_userid.watch_prefix(&roomid_prefix));
-
-            // Room account data
-            let mut roomuser_prefix = roomid_prefix.clone();
-            roomuser_prefix.extend_from_slice(&userid_prefix);
-
-            futures.push(
-                self.roomusertype_roomuserdataid
-                    .watch_prefix(&roomuser_prefix),
-            );
-        }
-
-        let mut globaluserdata_prefix = vec![0xff];
-        globaluserdata_prefix.extend_from_slice(&userid_prefix);
-
-        futures.push(
-            self.roomusertype_roomuserdataid
-                .watch_prefix(&globaluserdata_prefix),
-        );
-
-        // More key changes (used when user is not joined to any rooms)
-        futures.push(self.keychangeid_userid.watch_prefix(&userid_prefix));
-
-        // One time keys
-        futures.push(
-            self.userid_lastonetimekeyupdate
-                .watch_prefix(&userid_bytes),
-        );
-
-        futures.push(Box::pin(services().globals.rotate.watch()));
-
-        // Wait until one of them finds something
-        futures.next().await;
-    }
-
     #[tracing::instrument(skip(self))]
     pub fn flush(&self) -> Result<()> {
         let start = std::time::Instant::now();
@@ -1021,7 +922,7 @@ impl KeyValueDatabase {
                 }
 
                 let start = Instant::now();
-                if let Err(e) = services().globals.db._db.cleanup() {
+                if let Err(e) = services().globals.cleanup() {
                     error!("cleanup: Errored: {}", e);
                 } else {
                     info!("cleanup: Finished in {:?}", start.elapsed());
@@ -1048,9 +949,9 @@ fn set_emergency_access() -> Result<bool> {
         None,
         &conduit_user,
         GlobalAccountDataEventType::PushRules.to_string().into(),
-        &GlobalAccountDataEvent {
+        &serde_json::to_value(&GlobalAccountDataEvent {
             content: PushRulesEventContent { global: ruleset },
-        },
+        }).expect("to json value always works"),
     )?;
 
     res

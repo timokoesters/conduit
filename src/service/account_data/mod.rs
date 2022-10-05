@@ -24,24 +24,24 @@ pub struct Service {
 impl Service {
     /// Places one event in the account data of the user and removes the previous entry.
     #[tracing::instrument(skip(self, room_id, user_id, event_type, data))]
-    pub fn update<T: Serialize>(
+    pub fn update(
         &self,
         room_id: Option<&RoomId>,
         user_id: &UserId,
         event_type: RoomAccountDataEventType,
-        data: &T,
+        data: &serde_json::Value,
     ) -> Result<()> {
         self.db.update(room_id, user_id, event_type, data)
     }
 
     /// Searches the account data for a specific kind.
     #[tracing::instrument(skip(self, room_id, user_id, event_type))]
-    pub fn get<T: DeserializeOwned>(
+    pub fn get(
         &self,
         room_id: Option<&RoomId>,
         user_id: &UserId,
         event_type: RoomAccountDataEventType,
-    ) -> Result<Option<T>> {
+    ) -> Result<Option<Box<serde_json::value::RawValue>>> {
         self.db.get(room_id, user_id, event_type)
     }
 

@@ -1,8 +1,10 @@
+use std::sync::Arc;
+
 use ruma::{EventId, signatures::CanonicalJsonObject};
 
 use crate::{service, database::KeyValueDatabase, PduEvent, Error, Result};
 
-impl service::rooms::outlier::Data for KeyValueDatabase {
+impl service::rooms::outlier::Data for Arc<KeyValueDatabase> {
     fn get_outlier_pdu_json(&self, event_id: &EventId) -> Result<Option<CanonicalJsonObject>> {
         self.eventid_outlierpdu
             .get(event_id.as_bytes())?

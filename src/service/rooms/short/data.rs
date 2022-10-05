@@ -1,2 +1,2 @@
-pub trait Data {
+pub trait Data: Send + Sync {
 }

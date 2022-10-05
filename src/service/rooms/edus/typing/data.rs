@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use crate::Result;
 use ruma::{UserId, RoomId};
 
-pub trait Data {
+pub trait Data: Send + Sync {
     /// Sets a user as typing until the timeout timestamp is reached or roomtyping_remove is
     /// called.
     fn typing_add(&self, user_id: &UserId, room_id: &RoomId, timeout: u64) -> Result<()>;

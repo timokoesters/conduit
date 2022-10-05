@@ -1,9 +1,10 @@
 use std::sync::Arc;
-use std::{sync::MutexGuard, collections::HashSet};
+use std::collections::HashSet;
 use crate::Result;
 use ruma::{EventId, RoomId};
+use tokio::sync::MutexGuard;
 
-pub trait Data {
+pub trait Data: Send + Sync {
     /// Returns the last state hash key added to the db for the given room.
     fn get_room_shortstatehash(&self, room_id: &RoomId) -> Result<Option<u64>>;
 
@@ -21,7 +22,7 @@ pub trait Data {
     /// Replace the forward extremities of the room.
     fn set_forward_extremities<'a>(&self,
         room_id: &RoomId,
-        event_ids: &dyn Iterator<Item = &'a EventId>,
+        event_ids: &mut dyn Iterator<Item = &'a EventId>,
         _mutex_lock: &MutexGuard<'_, ()>, // Take mutex guard to make sure users get the room state mutex
     ) -> Result<()>;
 }
