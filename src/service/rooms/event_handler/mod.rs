@@ -8,22 +8,23 @@ use std::{
     time::{Duration, Instant},
 };
 
-use futures_util::Future;
+use futures_util::{Future, stream::FuturesUnordered};
 use ruma::{
     api::{
         client::error::ErrorKind,
-        federation::event::{get_event, get_room_state_ids},
+        federation::{event::{get_event, get_room_state_ids}, membership::create_join_event, discovery::get_remote_server_keys_batch::{v2::QueryCriteria, self}},
     },
-    events::{room::create::RoomCreateEventContent, StateEventType},
+    events::{room::{create::RoomCreateEventContent, server_acl::RoomServerAclEventContent}, StateEventType},
     int,
     serde::Base64,
     signatures::CanonicalJsonValue,
     state_res::{self, RoomVersion, StateMap},
-    uint, EventId, MilliSecondsSinceUnixEpoch, RoomId, ServerName,
+    uint, EventId, MilliSecondsSinceUnixEpoch, RoomId, ServerName, ServerSigningKeyId,
 };
+use serde_json::value::{to_raw_value, RawValue as RawJsonValue};
 use tracing::{error, info, trace, warn};
 
-use crate::{service::*, services, Error, PduEvent};
+use crate::{service::*, services, Result, Error, PduEvent};
 
 pub struct Service;
 
@@ -62,10 +63,11 @@ impl Service {
         is_timeline_event: bool,
         pub_key_map: &'a RwLock<BTreeMap<String, BTreeMap<String, Base64>>>,
     ) -> Result<Option<Vec<u8>>> {
-        services().rooms.exists(room_id)?.ok_or(Error::BadRequest(
-            ErrorKind::NotFound,
-            "Room is unknown to this server",
-        ))?;
+        if !services().rooms.metadata.exists(room_id)? {
+            return Error::BadRequest(
+                ErrorKind::NotFound,
+                "Room is unknown to this server",
+        )};
 
         services()
             .rooms
@@ -76,17 +78,18 @@ impl Service {
             ))?;
 
         // 1. Skip the PDU if we already have it as a timeline event
-        if let Some(pdu_id) = services().rooms.get_pdu_id(event_id)? {
+        if let Some(pdu_id) = services().rooms.timeline.get_pdu_id(event_id)? {
             return Ok(Some(pdu_id.to_vec()));
         }
 
         let create_event = services()
             .rooms
+            .state_accessor
             .room_state_get(room_id, &StateEventType::RoomCreate, "")?
             .ok_or_else(|| Error::bad_database("Failed to find create event in db."))?;
 
         let first_pdu_in_room = services()
-            .rooms
+            .rooms.timeline
             .first_pdu_in_room(room_id)?
             .ok_or_else(|| Error::bad_database("Failed to find first pdu in db."))?;
 
@@ -111,7 +114,7 @@ impl Service {
             room_id,
             pub_key_map,
             incoming_pdu.prev_events.clone(),
-        );
+        ).await;
 
         let mut errors = 0;
         for prev_id in dbg!(sorted_prev_events) {
@@ -243,7 +246,7 @@ impl Service {
         room_id: &'a RoomId,
         value: BTreeMap<String, CanonicalJsonValue>,
         pub_key_map: &'a RwLock<BTreeMap<String, BTreeMap<String, Base64>>>,
-    ) -> AsyncRecursiveType<'a, Result<(Arc<PduEvent>, BTreeMap<String, CanonicalJsonValue>), String>>
+    ) -> AsyncRecursiveType<'a, Result<(Arc<PduEvent>, BTreeMap<String, CanonicalJsonValue>)>>
     {
         Box::pin(async move {
             // TODO: For RoomVersion6 we must check that Raw<..> is canonical do we anywhere?: https://matrix.org/docs/spec/rooms/v6#canonical-json
@@ -367,11 +370,7 @@ impl Service {
                 &incoming_pdu,
                 None::<PduEvent>, // TODO: third party invite
                 |k, s| auth_events.get(&(k.to_string().into(), s.to_owned())),
-            )
-            .map_err(|e| {
-                error!(e);
-                Error::BadRequest(ErrorKind::InvalidParam, "Auth check failed")
-            })? {
+            )? {
                 return Err(Error::BadRequest(
                     ErrorKind::InvalidParam,
                     "Auth check failed",
@@ -400,16 +399,15 @@ impl Service {
         origin: &ServerName,
         room_id: &RoomId,
         pub_key_map: &RwLock<BTreeMap<String, BTreeMap<String, Base64>>>,
-    ) -> Result<Option<Vec<u8>>, String> {
+    ) -> Result<Option<Vec<u8>>> {
         // Skip the PDU if we already have it as a timeline event
-        if let Ok(Some(pduid)) = services().rooms.get_pdu_id(&incoming_pdu.event_id) {
+        if let Ok(Some(pduid)) = services().rooms.timeline.get_pdu_id(&incoming_pdu.event_id) {
             return Ok(Some(pduid));
         }
 
         if services()
             .rooms
-            .is_event_soft_failed(&incoming_pdu.event_id)
-            .map_err(|_| "Failed to ask db for soft fail".to_owned())?
+            .pdu_metadata.is_event_soft_failed(&incoming_pdu.event_id)?
         {
             return Err("Event has been soft failed".into());
         }
@@ -438,11 +436,11 @@ impl Service {
             let prev_event = &*incoming_pdu.prev_events[0];
             let prev_event_sstatehash = services()
                 .rooms
-                .pdu_shortstatehash(prev_event)
-                .map_err(|_| "Failed talking to db".to_owned())?;
+                .state_accessor
+                .pdu_shortstatehash(prev_event)?;
 
             let state = if let Some(shortstatehash) = prev_event_sstatehash {
-                Some(services().rooms.state_full_ids(shortstatehash).await)
+                Some(services().rooms.state_accessor.state_full_ids(shortstatehash).await)
             } else {
                 None
             };
@@ -451,18 +449,19 @@ impl Service {
                 info!("Using cached state");
                 let prev_pdu = services()
                     .rooms
+                    .timeline
                     .get_pdu(prev_event)
                     .ok()
                     .flatten()
                     .ok_or_else(|| {
-                        "Could not find prev event, but we know the state.".to_owned()
+                        Error::bad_database("Could not find prev event, but we know the state.")
                     })?;
 
                 if let Some(state_key) = &prev_pdu.state_key {
                     let shortstatekey = services()
                         .rooms
-                        .get_or_create_shortstatekey(&prev_pdu.kind.to_string().into(), state_key)
-                        .map_err(|_| "Failed to create shortstatekey.".to_owned())?;
+                        .short
+                        .get_or_create_shortstatekey(&prev_pdu.kind.to_string().into(), state_key)?;
 
                     state.insert(shortstatekey, Arc::from(prev_event));
                     // Now it's the state after the pdu
@@ -501,18 +500,18 @@ impl Service {
                 for (sstatehash, prev_event) in extremity_sstatehashes {
                     let mut leaf_state: BTreeMap<_, _> = services()
                         .rooms
+                        .state_accessor
                         .state_full_ids(sstatehash)
-                        .await
-                        .map_err(|_| "Failed to ask db for room state.".to_owned())?;
+                        .await?;
 
                     if let Some(state_key) = &prev_event.state_key {
                         let shortstatekey = services()
                             .rooms
+                            .short
                             .get_or_create_shortstatekey(
                                 &prev_event.kind.to_string().into(),
                                 state_key,
-                            )
-                            .map_err(|_| "Failed to create shortstatekey.".to_owned())?;
+                            )?;
                         leaf_state.insert(shortstatekey, Arc::from(&*prev_event.event_id));
                         // Now it's the state after the pdu
                     }
@@ -536,8 +535,7 @@ impl Service {
                             .rooms
                             .auth_chain
                             .get_auth_chain(room_id, starting_events, services())
-                            .await
-                            .map_err(|_| "Failed to load auth chain.".to_owned())?
+                            .await?
                             .collect(),
                     );
 
@@ -563,16 +561,14 @@ impl Service {
                             .map(|((event_type, state_key), event_id)| {
                                 let shortstatekey = services()
                                     .rooms
+                                    .short
                                     .get_or_create_shortstatekey(
                                         &event_type.to_string().into(),
                                         &state_key,
-                                    )
-                                    .map_err(|_| {
-                                        "Failed to get_or_create_shortstatekey".to_owned()
-                                    })?;
+                                    )?;
                                 Ok((shortstatekey, event_id))
                             })
-                            .collect::<Result<_, String>>()?,
+                            .collect::<Result<_>>()?,
                     ),
                     Err(e) => {
                         warn!("State resolution on prev events failed, either an event could not be found or deserialization: {}", e);
@@ -617,20 +613,19 @@ impl Service {
                         let state_key = pdu
                             .state_key
                             .clone()
-                            .ok_or_else(|| "Found non-state pdu in state events.".to_owned())?;
+                            .ok_or_else(|| Error::bad_database("Found non-state pdu in state events."))?;
 
                         let shortstatekey = services()
                             .rooms
-                            .get_or_create_shortstatekey(&pdu.kind.to_string().into(), &state_key)
-                            .map_err(|_| "Failed to create shortstatekey.".to_owned())?;
+                            .short
+                            .get_or_create_shortstatekey(&pdu.kind.to_string().into(), &state_key)?;
 
                         match state.entry(shortstatekey) {
                             btree_map::Entry::Vacant(v) => {
                                 v.insert(Arc::from(&*pdu.event_id));
                             }
                             btree_map::Entry::Occupied(_) => return Err(
-                                "State event's type and state_key combination exists multiple times."
-                                    .to_owned(),
+                                Error::bad_database("State event's type and state_key combination exists multiple times."),
                             ),
                         }
                     }
@@ -638,21 +633,21 @@ impl Service {
                     // The original create event must still be in the state
                     let create_shortstatekey = services()
                         .rooms
-                        .get_shortstatekey(&StateEventType::RoomCreate, "")
-                        .map_err(|_| "Failed to talk to db.")?
+                        .short
+                        .get_shortstatekey(&StateEventType::RoomCreate, "")?
                         .expect("Room exists");
 
                     if state.get(&create_shortstatekey).map(|id| id.as_ref())
                         != Some(&create_event.event_id)
                     {
-                        return Err("Incoming event refers to wrong create event.".to_owned());
+                        return Err(Error::bad_database("Incoming event refers to wrong create event."));
                     }
 
                     state_at_incoming_event = Some(state);
                 }
                 Err(e) => {
                     warn!("Fetching state for event failed: {}", e);
-                    return Err("Fetching state for event failed".into());
+                    return Err(e);
                 }
             };
         }
@@ -669,17 +664,18 @@ impl Service {
             |k, s| {
                 services()
                     .rooms
+                    .short
                     .get_shortstatekey(&k.to_string().into(), s)
                     .ok()
                     .flatten()
                     .and_then(|shortstatekey| state_at_incoming_event.get(&shortstatekey))
-                    .and_then(|event_id| services().rooms.get_pdu(event_id).ok().flatten())
+                    .and_then(|event_id| services().rooms.timeline.get_pdu(event_id).ok().flatten())
             },
         )
         .map_err(|_e| "Auth check failed.".to_owned())?;
 
         if !check_result {
-            return Err("Event has failed auth check with state at the event.".into());
+            return Err(Error::bad_database("Event has failed auth check with state at the event."));
         }
         info!("Auth check succeeded");
 
@@ -701,8 +697,8 @@ impl Service {
         info!("Calculating extremities");
         let mut extremities = services()
             .rooms
-            .get_pdu_leaves(room_id)
-            .map_err(|_| "Failed to load room leaves".to_owned())?;
+            .state
+            .get_forward_extremities(room_id)?;
 
         // Remove any forward extremities that are referenced by this incoming event's prev_events
         for prev_event in &incoming_pdu.prev_events {
@@ -721,10 +717,9 @@ impl Service {
             .map(|(shortstatekey, id)| {
                 services()
                     .rooms
-                    .compress_state_event(*shortstatekey, id)
-                    .map_err(|_| "Failed to compress_state_event".to_owned())
+                    .compress_state_event(*shortstatekey, id)?
             })
-            .collect::<Result<_, _>>()?;
+            .collect::<Result<_>>()?;
 
         // 13. Check if the event passes auth based on the "current state" of the room, if not "soft fail" it
         info!("Starting soft fail auth check");
@@ -737,16 +732,14 @@ impl Service {
                 &incoming_pdu.sender,
                 incoming_pdu.state_key.as_deref(),
                 &incoming_pdu.content,
-            )
-            .map_err(|_| "Failed to get_auth_events.".to_owned())?;
+            )?
 
         let soft_fail = !state_res::event_auth::auth_check(
             &room_version,
             &incoming_pdu,
             None::<PduEvent>,
             |k, s| auth_events.get(&(k.clone(), s.to_owned())),
-        )
-        .map_err(|_e| "Auth check failed.".to_owned())?;
+        )?;
 
         if soft_fail {
             self.append_incoming_pdu(
@@ -756,18 +749,13 @@ impl Service {
                 state_ids_compressed,
                 soft_fail,
                 &state_lock,
-            )
-            .map_err(|e| {
-                warn!("Failed to add pdu to db: {}", e);
-                "Failed to add pdu to db.".to_owned()
-            })?;
+            )?;
 
             // Soft fail, we keep the event as an outlier but don't add it to the timeline
             warn!("Event was soft failed: {:?}", incoming_pdu);
             services()
                 .rooms
-                .mark_event_soft_failed(&incoming_pdu.event_id)
-                .map_err(|_| "Failed to set soft failed flag".to_owned())?;
+                .mark_event_soft_failed(&incoming_pdu.event_id)?;
             return Err("Event has been soft failed".into());
         }
 
@@ -775,15 +763,15 @@ impl Service {
             info!("Loading current room state ids");
             let current_sstatehash = services()
                 .rooms
-                .current_shortstatehash(room_id)
-                .map_err(|_| "Failed to load current state hash.".to_owned())?
+                .state
+                .get_room_shortstatehash(room_id)?
                 .expect("every room has state");
 
             let current_state_ids = services()
                 .rooms
+                .state_accessor
                 .state_full_ids(current_sstatehash)
-                .await
-                .map_err(|_| "Failed to load room state.")?;
+                .await?;
 
             info!("Preparing for stateres to derive new room state");
             let mut extremity_sstatehashes = HashMap::new();
@@ -792,14 +780,14 @@ impl Service {
             for id in dbg!(&extremities) {
                 match services()
                     .rooms
-                    .get_pdu(id)
-                    .map_err(|_| "Failed to ask db for pdu.".to_owned())?
+                    .timeline
+                    .get_pdu(id)?
                 {
                     Some(leaf_pdu) => {
                         extremity_sstatehashes.insert(
                             services()
-                                .pdu_shortstatehash(&leaf_pdu.event_id)
-                                .map_err(|_| "Failed to ask db for pdu state hash.".to_owned())?
+                                .rooms.state_accessor
+                                .pdu_shortstatehash(&leaf_pdu.event_id)?
                                 .ok_or_else(|| {
                                     error!(
                                         "Found extremity pdu with no statehash in db: {:?}",
@@ -832,8 +820,8 @@ impl Service {
             if let Some(state_key) = &incoming_pdu.state_key {
                 let shortstatekey = services()
                     .rooms
-                    .get_or_create_shortstatekey(&incoming_pdu.kind.to_string().into(), state_key)
-                    .map_err(|_| "Failed to create shortstatekey.".to_owned())?;
+                    .short
+                    .get_or_create_shortstatekey(&incoming_pdu.kind.to_string().into(), state_key)?
 
                 state_after.insert(shortstatekey, Arc::from(&*incoming_pdu.event_id));
             }
@@ -852,10 +840,9 @@ impl Service {
                     .map(|(k, id)| {
                         services()
                             .rooms
-                            .compress_state_event(*k, id)
-                            .map_err(|_| "Failed to compress_state_event.".to_owned())
+                            .compress_state_event(*k, id)?
                     })
-                    .collect::<Result<_, _>>()?
+                    .collect::<Result<_>>()?
             } else {
                 info!("Loading auth chains");
                 // We do need to force an update to this room's state
@@ -871,8 +858,7 @@ impl Service {
                                 room_id,
                                 state.iter().map(|(_, id)| id.clone()).collect(),
                             )
-                            .await
-                            .map_err(|_| "Failed to load auth chain.".to_owned())?
+                            .await?
                             .collect(),
                     );
                 }
@@ -886,11 +872,10 @@ impl Service {
                             .filter_map(|(k, id)| {
                                 services()
                                     .rooms
-                                    .get_statekey_from_short(k)
+                                    .get_statekey_from_short(k)?
                                     // FIXME: Undo .to_string().into() when StateMap
                                     //        is updated to use StateEventType
                                     .map(|(ty, st_key)| ((ty.to_string().into(), st_key), id))
-                                    .map_err(|e| warn!("Failed to get_statekey_from_short: {}", e))
                                     .ok()
                             })
                             .collect::<StateMap<_>>()
@@ -927,14 +912,13 @@ impl Service {
                     .map(|((event_type, state_key), event_id)| {
                         let shortstatekey = services()
                             .rooms
-                            .get_or_create_shortstatekey(&event_type.to_string().into(), &state_key)
-                            .map_err(|_| "Failed to get_or_create_shortstatekey".to_owned())?;
+                            .short
+                            .get_or_create_shortstatekey(&event_type.to_string().into(), &state_key)?;
                         services()
                             .rooms
                             .compress_state_event(shortstatekey, &event_id)
-                            .map_err(|_| "Failed to compress state event".to_owned())
                     })
-                    .collect::<Result<_, _>>()?
+                    .collect::<Result<_>>()?
             };
 
             // Set the new room state to the resolved state
@@ -942,8 +926,7 @@ impl Service {
                 info!("Forcing new room state");
                 services()
                     .rooms
-                    .force_state(room_id, new_room_state)
-                    .map_err(|_| "Failed to set new room state.".to_owned())?;
+                    .force_state(room_id, new_room_state)?;
             }
         }
 
@@ -962,11 +945,7 @@ impl Service {
                 state_ids_compressed,
                 soft_fail,
                 &state_lock,
-            )
-            .map_err(|e| {
-                warn!("Failed to add pdu to db: {}", e);
-                "Failed to add pdu to db.".to_owned()
-            })?;
+            )?;
 
         info!("Appended incoming pdu");
 
@@ -1227,9 +1206,279 @@ impl Service {
                         .map_or_else(|| uint!(0), |info| info.0.origin_server_ts),
                 ),
             ))
-        })
-        .map_err(|_| "Error sorting prev events".to_owned())?;
+        })?;
 
         (sorted, eventid_info)
+    }
+
+    #[tracing::instrument(skip_all)]
+    pub(crate) async fn fetch_required_signing_keys(
+        &self,
+        event: &BTreeMap<String, CanonicalJsonValue>,
+        pub_key_map: &RwLock<BTreeMap<String, BTreeMap<String, Base64>>>,
+    ) -> Result<()> {
+        let signatures = event
+            .get("signatures")
+            .ok_or(Error::BadServerResponse(
+                "No signatures in server response pdu.",
+            ))?
+            .as_object()
+            .ok_or(Error::BadServerResponse(
+                "Invalid signatures object in server response pdu.",
+            ))?;
+
+        // We go through all the signatures we see on the value and fetch the corresponding signing
+        // keys
+        for (signature_server, signature) in signatures {
+            let signature_object = signature.as_object().ok_or(Error::BadServerResponse(
+                "Invalid signatures content object in server response pdu.",
+            ))?;
+
+            let signature_ids = signature_object.keys().cloned().collect::<Vec<_>>();
+
+            let fetch_res = fetch_signing_keys(
+                signature_server.as_str().try_into().map_err(|_| {
+                    Error::BadServerResponse("Invalid servername in signatures of server response pdu.")
+                })?,
+                signature_ids,
+            )
+            .await;
+
+            let keys = match fetch_res {
+                Ok(keys) => keys,
+                Err(_) => {
+                    warn!("Signature verification failed: Could not fetch signing key.",);
+                    continue;
+                }
+            };
+
+            pub_key_map
+                .write()
+                .map_err(|_| Error::bad_database("RwLock is poisoned."))?
+                .insert(signature_server.clone(), keys);
+        }
+
+        Ok(())
+    }
+
+    // Gets a list of servers for which we don't have the signing key yet. We go over
+    // the PDUs and either cache the key or add it to the list that needs to be retrieved.
+    fn get_server_keys_from_cache(
+        &self,
+        pdu: &RawJsonValue,
+        servers: &mut BTreeMap<Box<ServerName>, BTreeMap<Box<ServerSigningKeyId>, QueryCriteria>>,
+        room_version: &RoomVersionId,
+        pub_key_map: &mut RwLockWriteGuard<'_, BTreeMap<String, BTreeMap<String, Base64>>>,
+    ) -> Result<()> {
+        let value: CanonicalJsonObject = serde_json::from_str(pdu.get()).map_err(|e| {
+            error!("Invalid PDU in server response: {:?}: {:?}", pdu, e);
+            Error::BadServerResponse("Invalid PDU in server response")
+        })?;
+
+        let event_id = format!(
+            "${}",
+            ruma::signatures::reference_hash(&value, room_version)
+                .expect("ruma can calculate reference hashes")
+        );
+        let event_id = <&EventId>::try_from(event_id.as_str())
+            .expect("ruma's reference hashes are valid event ids");
+
+        if let Some((time, tries)) = services()
+            .globals
+            .bad_event_ratelimiter
+            .read()
+            .unwrap()
+            .get(event_id)
+        {
+            // Exponential backoff
+            let mut min_elapsed_duration = Duration::from_secs(30) * (*tries) * (*tries);
+            if min_elapsed_duration > Duration::from_secs(60 * 60 * 24) {
+                min_elapsed_duration = Duration::from_secs(60 * 60 * 24);
+            }
+
+            if time.elapsed() < min_elapsed_duration {
+                debug!("Backing off from {}", event_id);
+                return Err(Error::BadServerResponse("bad event, still backing off"));
+            }
+        }
+
+        let signatures = value
+            .get("signatures")
+            .ok_or(Error::BadServerResponse(
+                "No signatures in server response pdu.",
+            ))?
+            .as_object()
+            .ok_or(Error::BadServerResponse(
+                "Invalid signatures object in server response pdu.",
+            ))?;
+
+        for (signature_server, signature) in signatures {
+            let signature_object = signature.as_object().ok_or(Error::BadServerResponse(
+                "Invalid signatures content object in server response pdu.",
+            ))?;
+
+            let signature_ids = signature_object.keys().cloned().collect::<Vec<_>>();
+
+            let contains_all_ids =
+                |keys: &BTreeMap<String, Base64>| signature_ids.iter().all(|id| keys.contains_key(id));
+
+            let origin = <&ServerName>::try_from(signature_server.as_str()).map_err(|_| {
+                Error::BadServerResponse("Invalid servername in signatures of server response pdu.")
+            })?;
+
+            if servers.contains_key(origin) || pub_key_map.contains_key(origin.as_str()) {
+                continue;
+            }
+
+            trace!("Loading signing keys for {}", origin);
+
+            let result: BTreeMap<_, _> = services()
+                .globals
+                .signing_keys_for(origin)?
+                .into_iter()
+                .map(|(k, v)| (k.to_string(), v.key))
+                .collect();
+
+            if !contains_all_ids(&result) {
+                trace!("Signing key not loaded for {}", origin);
+                servers.insert(origin.to_owned(), BTreeMap::new());
+            }
+
+            pub_key_map.insert(origin.to_string(), result);
+        }
+
+        Ok(())
+    }
+
+    pub(crate) async fn fetch_join_signing_keys(
+        &self,
+        event: &create_join_event::v2::Response,
+        room_version: &RoomVersionId,
+        pub_key_map: &RwLock<BTreeMap<String, BTreeMap<String, Base64>>>,
+    ) -> Result<()> {
+        let mut servers: BTreeMap<Box<ServerName>, BTreeMap<Box<ServerSigningKeyId>, QueryCriteria>> =
+            BTreeMap::new();
+
+        {
+            let mut pkm = pub_key_map
+                .write()
+                .map_err(|_| Error::bad_database("RwLock is poisoned."))?;
+
+            // Try to fetch keys, failure is okay
+            // Servers we couldn't find in the cache will be added to `servers`
+            for pdu in &event.room_state.state {
+                let _ = self.get_server_keys_from_cache(pdu, &mut servers, room_version, &mut pkm);
+            }
+            for pdu in &event.room_state.auth_chain {
+                let _ = self.get_server_keys_from_cache(pdu, &mut servers, room_version, &mut pkm);
+            }
+
+            drop(pkm);
+        }
+
+        if servers.is_empty() {
+            // We had all keys locally
+            return Ok(());
+        }
+
+        for server in services().globals.trusted_servers() {
+            trace!("Asking batch signing keys from trusted server {}", server);
+            if let Ok(keys) = services()
+                .sending
+                .send_federation_request(
+                    server,
+                    get_remote_server_keys_batch::v2::Request {
+                        server_keys: servers.clone(),
+                    },
+                )
+                .await
+            {
+                trace!("Got signing keys: {:?}", keys);
+                let mut pkm = pub_key_map
+                    .write()
+                    .map_err(|_| Error::bad_database("RwLock is poisoned."))?;
+                for k in keys.server_keys {
+                    let k = k.deserialize().unwrap();
+
+                    // TODO: Check signature from trusted server?
+                    servers.remove(&k.server_name);
+
+                    let result = services()
+                        .globals
+                        .add_signing_key(&k.server_name, k.clone())?
+                        .into_iter()
+                        .map(|(k, v)| (k.to_string(), v.key))
+                        .collect::<BTreeMap<_, _>>();
+
+                    pkm.insert(k.server_name.to_string(), result);
+                }
+            }
+
+            if servers.is_empty() {
+                return Ok(());
+            }
+        }
+
+        let mut futures: FuturesUnordered<_> = servers
+            .into_iter()
+            .map(|(server, _)| async move {
+                (
+                    services().sending
+                        .send_federation_request(
+                            &server,
+                            get_server_keys::v2::Request::new(),
+                        )
+                        .await,
+                    server,
+                )
+            })
+            .collect();
+
+        while let Some(result) = futures.next().await {
+            if let (Ok(get_keys_response), origin) = result {
+                let result: BTreeMap<_, _> = services()
+                    .globals
+                    .add_signing_key(&origin, get_keys_response.server_key.deserialize().unwrap())?
+                    .into_iter()
+                    .map(|(k, v)| (k.to_string(), v.key))
+                    .collect();
+
+                pub_key_map
+                    .write()
+                    .map_err(|_| Error::bad_database("RwLock is poisoned."))?
+                    .insert(origin.to_string(), result);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Returns Ok if the acl allows the server
+    pub fn acl_check(&self, server_name: &ServerName, room_id: &RoomId) -> Result<()> {
+        let acl_event = match services()
+            .rooms.state_accessor
+            .room_state_get(room_id, &StateEventType::RoomServerAcl, "")?
+        {
+            Some(acl) => acl,
+            None => return Ok(()),
+        };
+
+        let acl_event_content: RoomServerAclEventContent =
+            match serde_json::from_str(acl_event.content.get()) {
+                Ok(content) => content,
+                Err(_) => {
+                    warn!("Invalid ACL event");
+                    return Ok(());
+                }
+            };
+
+        if acl_event_content.is_allowed(server_name) {
+            Ok(())
+        } else {
+            Err(Error::BadRequest(
+                ErrorKind::Forbidden,
+                "Server was denied by ACL",
+            ))
+        }
     }
 }

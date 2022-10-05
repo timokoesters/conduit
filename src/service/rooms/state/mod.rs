@@ -1,5 +1,5 @@
 mod data;
-use std::collections::HashSet;
+use std::{collections::HashSet, sync::Arc};
 
 pub use data::Data;
 use ruma::{RoomId, events::{room::{member::MembershipState, create::RoomCreateEventContent}, AnyStrippedStateEvent, StateEventType}, UserId, EventId, serde::Raw, RoomVersionId};
@@ -85,7 +85,7 @@ impl<D: Data> Service<D> {
         event_id: &EventId,
         room_id: &RoomId,
         state_ids_compressed: HashSet<CompressedStateEvent>,
-    ) -> Result<()> {
+    ) -> Result<u64> {
         let shorteventid = services().short.get_or_create_shorteventid(event_id)?;
 
         let previous_shortstatehash = self.db.get_room_shortstatehash(room_id)?;
@@ -132,7 +132,7 @@ impl<D: Data> Service<D> {
 
         self.db.set_event_state(&shorteventid.to_be_bytes(), &shortstatehash.to_be_bytes())?;
 
-        Ok(())
+        Ok(shortstatehash)
     }
 
     /// Generates a new StateHash and associates it with the incoming event.
@@ -278,5 +278,9 @@ impl<D: Data> Service<D> {
 
     pub fn get_room_shortstatehash(&self, room_id: &RoomId) -> Result<Option<u64>> {
         self.db.get_room_shortstatehash(room_id)
+    }
+
+    pub fn get_forward_extremities(&self, room_id: &RoomId) -> Result<HashSet<Arc<EventId>>> {
+        self.db.get_forward_extremities(room_id)
     }
 }

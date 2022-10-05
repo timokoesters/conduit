@@ -29,7 +29,7 @@ pub async fn redact_event_route(
     );
     let state_lock = mutex_state.lock().await;
 
-    let event_id = services().rooms.build_and_append_pdu(
+    let event_id = services().rooms.timeline.build_and_append_pdu(
         PduBuilder {
             event_type: RoomEventType::RoomRedaction,
             content: to_raw_value(&RoomRedactionEventContent {

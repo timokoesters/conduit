@@ -24,6 +24,7 @@ pub async fn search_events_route(
 
     let room_ids = filter.rooms.clone().unwrap_or_else(|| {
         services().rooms
+            .state_cache
             .rooms_joined(sender_user)
             .filter_map(|r| r.ok())
             .collect()
@@ -34,7 +35,7 @@ pub async fn search_events_route(
     let mut searches = Vec::new();
 
     for room_id in room_ids {
-        if !services().rooms.is_joined(sender_user, &room_id)? {
+        if !services().rooms.state_cache.is_joined(sender_user, &room_id)? {
             return Err(Error::BadRequest(
                 ErrorKind::Forbidden,
                 "You don't have permission to view this room.",
@@ -43,6 +44,7 @@ pub async fn search_events_route(
 
         if let Some(search) = services()
             .rooms
+            .search
             .search_pdus(&room_id, &search_criteria.search_term)?
         {
             searches.push(search.0.peekable());
@@ -86,6 +88,7 @@ pub async fn search_events_route(
                 rank: None,
                 result: services()
                     .rooms
+                    .timeline
                     .get_pdu_from_id(result)?
                     .map(|pdu| pdu.to_room_event()),
             })

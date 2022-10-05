@@ -28,7 +28,7 @@ enum ServicesEnum {
     Rocksdb(Services<KeyValueDatabase>)
 }
 
-pub fn services() -> Services<KeyValueDatabase> {
-    SERVICES.read().unwrap()
+pub fn services<'a>() -> &'a Services<KeyValueDatabase> {
+    &SERVICES.read().unwrap()
 }
 

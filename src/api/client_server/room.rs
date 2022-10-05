@@ -54,7 +54,7 @@ pub async fn create_room_route(
 
     let room_id = RoomId::new(services().globals.server_name());
 
-    services().rooms.get_or_create_shortroomid(&room_id)?;
+    services().rooms.short.get_or_create_shortroomid(&room_id)?;
 
     let mutex_state = Arc::clone(
         services().globals
@@ -162,7 +162,7 @@ pub async fn create_room_route(
     }
 
     // 1. The room create event
-    services().rooms.build_and_append_pdu(
+    services().rooms.timeline.build_and_append_pdu(
         PduBuilder {
             event_type: RoomEventType::RoomCreate,
             content: to_raw_value(&content).expect("event is valid, we just created it"),
@@ -176,7 +176,7 @@ pub async fn create_room_route(
     )?;
 
     // 2. Let the room creator join
-    services().rooms.build_and_append_pdu(
+    services().rooms.timeline.build_and_append_pdu(
         PduBuilder {
             event_type: RoomEventType::RoomMember,
             content: to_raw_value(&RoomMemberEventContent {
@@ -237,7 +237,7 @@ pub async fn create_room_route(
         }
     }
 
-    services().rooms.build_and_append_pdu(
+    services().rooms.timeline.build_and_append_pdu(
         PduBuilder {
             event_type: RoomEventType::RoomPowerLevels,
             content: to_raw_value(&power_levels_content)
@@ -253,7 +253,7 @@ pub async fn create_room_route(
 
     // 4. Canonical room alias
     if let Some(room_alias_id) = &alias {
-        services().rooms.build_and_append_pdu(
+        services().rooms.timeline.build_and_append_pdu(
             PduBuilder {
                 event_type: RoomEventType::RoomCanonicalAlias,
                 content: to_raw_value(&RoomCanonicalAliasEventContent {
@@ -274,7 +274,7 @@ pub async fn create_room_route(
     // 5. Events set by preset
 
     // 5.1 Join Rules
-    services().rooms.build_and_append_pdu(
+    services().rooms.timeline.build_and_append_pdu(
         PduBuilder {
             event_type: RoomEventType::RoomJoinRules,
             content: to_raw_value(&RoomJoinRulesEventContent::new(match preset {
@@ -293,7 +293,7 @@ pub async fn create_room_route(
     )?;
 
     // 5.2 History Visibility
-    services().rooms.build_and_append_pdu(
+    services().rooms.timeline.build_and_append_pdu(
         PduBuilder {
             event_type: RoomEventType::RoomHistoryVisibility,
             content: to_raw_value(&RoomHistoryVisibilityEventContent::new(
@@ -310,7 +310,7 @@ pub async fn create_room_route(
     )?;
 
     // 5.3 Guest Access
-    services().rooms.build_and_append_pdu(
+    services().rooms.timeline.build_and_append_pdu(
         PduBuilder {
             event_type: RoomEventType::RoomGuestAccess,
             content: to_raw_value(&RoomGuestAccessEventContent::new(match preset {
@@ -344,12 +344,12 @@ pub async fn create_room_route(
         }
 
         services().rooms
-            .build_and_append_pdu(pdu_builder, sender_user, &room_id, &state_lock)?;
+            .timeline.build_and_append_pdu(pdu_builder, sender_user, &room_id, &state_lock)?;
     }
 
     // 7. Events implied by name and topic
     if let Some(name) = &body.name {
-        services().rooms.build_and_append_pdu(
+        services().rooms.timeline.build_and_append_pdu(
             PduBuilder {
                 event_type: RoomEventType::RoomName,
                 content: to_raw_value(&RoomNameEventContent::new(Some(name.clone())))
@@ -365,7 +365,7 @@ pub async fn create_room_route(
     }
 
     if let Some(topic) = &body.topic {
-        services().rooms.build_and_append_pdu(
+        services().rooms.timeline.build_and_append_pdu(
             PduBuilder {
                 event_type: RoomEventType::RoomTopic,
                 content: to_raw_value(&RoomTopicEventContent {
@@ -390,11 +390,11 @@ pub async fn create_room_route(
 
     // Homeserver specific stuff
     if let Some(alias) = alias {
-        services().rooms.set_alias(&alias, Some(&room_id))?;
+        services().rooms.alias.set_alias(&alias, &room_id)?;
     }
 
     if body.visibility == room::Visibility::Public {
-        services().rooms.set_public(&room_id, true)?;
+        services().rooms.directory.set_public(&room_id)?;
     }
 
     info!("{} created a room", sender_user);
@@ -412,7 +412,7 @@ pub async fn get_room_event_route(
 ) -> Result<get_room_event::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
-    if !services().rooms.is_joined(sender_user, &body.room_id)? {
+    if !services().rooms.state_cache.is_joined(sender_user, &body.room_id)? {
         return Err(Error::BadRequest(
             ErrorKind::Forbidden,
             "You don't have permission to view this room.",
@@ -422,6 +422,7 @@ pub async fn get_room_event_route(
     Ok(get_room_event::v3::Response {
         event: services()
             .rooms
+            .timeline
             .get_pdu(&body.event_id)?
             .ok_or(Error::BadRequest(ErrorKind::NotFound, "Event not found."))?
             .to_room_event(),
@@ -438,7 +439,7 @@ pub async fn get_room_aliases_route(
 ) -> Result<aliases::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
-    if !services().rooms.is_joined(sender_user, &body.room_id)? {
+    if !services().rooms.state_cache.is_joined(sender_user, &body.room_id)? {
         return Err(Error::BadRequest(
             ErrorKind::Forbidden,
             "You don't have permission to view this room.",
@@ -448,7 +449,7 @@ pub async fn get_room_aliases_route(
     Ok(aliases::v3::Response {
         aliases: services()
             .rooms
-            .room_aliases(&body.room_id)
+            .alias.local_aliases_for_room(&body.room_id)
             .filter_map(|a| a.ok())
             .collect(),
     })
@@ -479,7 +480,7 @@ pub async fn upgrade_room_route(
     // Create a replacement room
     let replacement_room = RoomId::new(services().globals.server_name());
     services().rooms
-        .get_or_create_shortroomid(&replacement_room)?;
+        .short.get_or_create_shortroomid(&replacement_room)?;
 
     let mutex_state = Arc::clone(
         services().globals
@@ -493,7 +494,7 @@ pub async fn upgrade_room_route(
 
     // Send a m.room.tombstone event to the old room to indicate that it is not intended to be used any further
     // Fail if the sender does not have the required permissions
-    let tombstone_event_id = services().rooms.build_and_append_pdu(
+    let tombstone_event_id = services().rooms.timeline.build_and_append_pdu(
         PduBuilder {
             event_type: RoomEventType::RoomTombstone,
             content: to_raw_value(&RoomTombstoneEventContent {
@@ -525,6 +526,7 @@ pub async fn upgrade_room_route(
     // Get the old room creation event
     let mut create_event_content = serde_json::from_str::<CanonicalJsonObject>(
         services().rooms
+            .state_accessor
             .room_state_get(&body.room_id, &StateEventType::RoomCreate, "")?
             .ok_or_else(|| Error::bad_database("Found room without m.room.create event."))?
             .content
@@ -572,7 +574,7 @@ pub async fn upgrade_room_route(
         ));
     }
 
-    services().rooms.build_and_append_pdu(
+    services().rooms.timeline.build_and_append_pdu(
         PduBuilder {
             event_type: RoomEventType::RoomCreate,
             content: to_raw_value(&create_event_content)
@@ -587,7 +589,7 @@ pub async fn upgrade_room_route(
     )?;
 
     // Join the new room
-    services().rooms.build_and_append_pdu(
+    services().rooms.timeline.build_and_append_pdu(
         PduBuilder {
             event_type: RoomEventType::RoomMember,
             content: to_raw_value(&RoomMemberEventContent {
@@ -625,12 +627,12 @@ pub async fn upgrade_room_route(
 
     // Replicate transferable state events to the new room
     for event_type in transferable_state_events {
-        let event_content = match services().rooms.room_state_get(&body.room_id, &event_type, "")? {
+        let event_content = match services().rooms.state_accessor.room_state_get(&body.room_id, &event_type, "")? {
             Some(v) => v.content.clone(),
             None => continue, // Skipping missing events.
         };
 
-        services().rooms.build_and_append_pdu(
+        services().rooms.timeline.build_and_append_pdu(
             PduBuilder {
                 event_type: event_type.to_string().into(),
                 content: event_content,
@@ -645,14 +647,15 @@ pub async fn upgrade_room_route(
     }
 
     // Moves any local aliases to the new room
-    for alias in services().rooms.room_aliases(&body.room_id).filter_map(|r| r.ok()) {
+    for alias in services().rooms.alias.local_aliases_for_room(&body.room_id).filter_map(|r| r.ok()) {
         services().rooms
-            .set_alias(&alias, Some(&replacement_room))?;
+            .alias.set_alias(&alias, &replacement_room)?;
     }
 
     // Get the old room power levels
     let mut power_levels_event_content: RoomPowerLevelsEventContent = serde_json::from_str(
         services().rooms
+            .state_accessor
             .room_state_get(&body.room_id, &StateEventType::RoomPowerLevels, "")?
             .ok_or_else(|| Error::bad_database("Found room without m.room.create event."))?
             .content
@@ -666,7 +669,7 @@ pub async fn upgrade_room_route(
     power_levels_event_content.invite = new_level;
 
     // Modify the power levels in the old room to prevent sending of events and inviting new users
-    let _ = services().rooms.build_and_append_pdu(
+    let _ = services().rooms.timeline.build_and_append_pdu(
         PduBuilder {
             event_type: RoomEventType::RoomPowerLevels,
             content: to_raw_value(&power_levels_event_content)

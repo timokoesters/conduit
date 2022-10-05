@@ -513,7 +513,7 @@ impl KeyValueDatabase {
                         let states_parents = last_roomsstatehash.map_or_else(
                             || Ok(Vec::new()),
                             |&last_roomsstatehash| {
-                                db.rooms.load_shortstatehash_info(dbg!(last_roomsstatehash))
+                                db.rooms.state_accessor.load_shortstatehash_info(dbg!(last_roomsstatehash))
                             },
                         )?;
 

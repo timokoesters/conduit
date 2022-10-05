@@ -16,13 +16,13 @@ impl service::rooms::directory::Data for KeyValueDatabase {
     }
 
     fn public_rooms(&self) -> Box<dyn Iterator<Item = Result<Box<RoomId>>>> {
-        self.publicroomids.iter().map(|(bytes, _)| {
+        Box::new(self.publicroomids.iter().map(|(bytes, _)| {
             RoomId::parse(
                 utils::string_from_bytes(&bytes).map_err(|_| {
                     Error::bad_database("Room ID in publicroomids is invalid unicode.")
                 })?,
             )
             .map_err(|_| Error::bad_database("Room ID in publicroomids is invalid."))
-        })
+        }))
     }
 }

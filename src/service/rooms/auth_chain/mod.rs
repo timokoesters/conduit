@@ -21,7 +21,7 @@ impl<D: Data> Service<D> {
         }
 
         // We only save auth chains for single events in the db
-        if key.len == 1 {
+        if key.len() == 1 {
             // Check DB cache
             if let Some(chain) = self.db.get_cached_eventid_authchain(key[0])
             {

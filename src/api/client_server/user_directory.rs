@@ -50,11 +50,11 @@ pub async fn search_users_route(
 
         let user_is_in_public_rooms =
             services().rooms
-                .rooms_joined(&user_id)
+                .state_cache.rooms_joined(&user_id)
                 .filter_map(|r| r.ok())
                 .any(|room| {
                     services().rooms
-                        .room_state_get(&room, &StateEventType::RoomJoinRules, "")
+                        .state_accessor.room_state_get(&room, &StateEventType::RoomJoinRules, "")
                         .map_or(false, |event| {
                             event.map_or(false, |event| {
                                 serde_json::from_str(event.content.get())
@@ -71,7 +71,7 @@ pub async fn search_users_route(
 
         let user_is_in_shared_rooms = services()
             .rooms
-            .get_shared_rooms(vec![sender_user.clone(), user_id.clone()])
+            .user.get_shared_rooms(vec![sender_user.clone(), user_id.clone()])
             .ok()?
             .next()
             .is_some();

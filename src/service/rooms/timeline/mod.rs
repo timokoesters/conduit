@@ -1,7 +1,7 @@
 mod data;
 use std::borrow::Cow;
 use std::sync::Arc;
-use std::{sync::MutexGuard, iter, collections::HashSet};
+use std::{iter, collections::HashSet};
 use std::fmt::Debug;
 
 pub use data::Data;
@@ -13,6 +13,7 @@ use ruma::state_res::RoomVersion;
 use ruma::{EventId, signatures::CanonicalJsonObject, push::{Action, Tweak}, events::{push_rules::PushRulesEvent, GlobalAccountDataEventType, RoomEventType, room::{member::MembershipState, create::RoomCreateEventContent}, StateEventType}, UserId, RoomAliasId, RoomId, uint, state_res, api::client::error::ErrorKind, serde::to_canonical_value, ServerName};
 use serde::Deserialize;
 use serde_json::value::to_raw_value;
+use tokio::sync::MutexGuard;
 use tracing::{warn, error};
 
 use crate::{services, Result, service::pdu::{PduBuilder, EventHash}, Error, PduEvent, utils};
@@ -460,7 +461,7 @@ impl<D: Data> Service<D> {
             sender: &UserId,
             room_id: &RoomId,
             _mutex_lock: &MutexGuard<'_, ()>, // Take mutex guard to make sure users get the room state mutex
-    ) -> (PduEvent, CanonicalJsonObject) {
+    ) -> Result<(PduEvent, CanonicalJsonObject)> {
         let PduBuilder {
             event_type,
             content,
@@ -471,7 +472,8 @@ impl<D: Data> Service<D> {
 
         let prev_events: Vec<_> = services()
             .rooms
-            .get_pdu_leaves(room_id)?
+            .state
+            .get_forward_extremities(room_id)?
             .into_iter()
             .take(20)
             .collect();
@@ -622,6 +624,8 @@ impl<D: Data> Service<D> {
 
         // Generate short event id
         let _shorteventid = self.get_or_create_shorteventid(&pdu.event_id)?;
+
+        Ok((pdu, pdu_json))
     }
 
     /// Creates a new persisted data unit and adds it to a room. This function takes a
@@ -634,7 +638,7 @@ impl<D: Data> Service<D> {
         room_id: &RoomId,
         state_lock: &MutexGuard<'_, ()>, // Take mutex guard to make sure users get the room state mutex
     ) -> Result<Arc<EventId>> {
-        let (pdu, pdu_json) = self.create_hash_and_sign_event(pdu_builder, sender, room_id, &state_lock);
+        let (pdu, pdu_json) = self.create_hash_and_sign_event(pdu_builder, sender, room_id, &state_lock)?;
 
         // We append to state before appending the pdu, so we don't have a moment in time with the
         // pdu without it's state. This is okay because append_pdu can't fail.

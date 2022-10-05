@@ -14,7 +14,7 @@ pub async fn turn_server_route(
 ) -> Result<get_turn_server_info::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
-    let turn_secret = services().globals.turn_secret();
+    let turn_secret = services().globals.turn_secret().clone();
 
     let (username, password) = if !turn_secret.is_empty() {
         let expiry = SecondsSinceUnixEpoch::from_system_time(

@@ -196,7 +196,7 @@ pub async fn get_content_thumbnail_route(
             .upload_thumbnail(
                 mxc,
                 &None,
-                &get_thumbnail_response.content_type,
+                &get_thumbnail_response.content_type.as_deref(),
                 body.width.try_into().expect("all UInts are valid u32s"),
                 body.height.try_into().expect("all UInts are valid u32s"),
                 &get_thumbnail_response.file,

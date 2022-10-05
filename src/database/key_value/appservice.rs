@@ -54,11 +54,11 @@ impl service::appservice::Data for KeyValueDatabase {
             )
     }
 
-    fn iter_ids(&self) -> Result<Box<dyn Iterator<Item = Result<String>>>> {
-        Ok(self.id_appserviceregistrations.iter().map(|(id, _)| {
+    fn iter_ids<'a>(&'a self) -> Result<Box<dyn Iterator<Item = Result<String>> + 'a>> {
+        Ok(Box::new(self.id_appserviceregistrations.iter().map(|(id, _)| {
             utils::string_from_bytes(&id)
                 .map_err(|_| Error::bad_database("Invalid id bytes in id_appserviceregistrations."))
-        }))
+        })))
     }
 
     fn all(&self) -> Result<Vec<(String, serde_yaml::Value)>> {

@@ -90,9 +90,10 @@ pub async fn get_state_events_route(
     #[allow(clippy::blocks_in_if_conditions)]
     // Users not in the room should not be able to access the state unless history_visibility is
     // WorldReadable
-    if !services().rooms.is_joined(sender_user, &body.room_id)?
+    if !services().rooms.state_cache.is_joined(sender_user, &body.room_id)?
         && !matches!(
             services().rooms
+            .state_accessor
                 .room_state_get(&body.room_id, &StateEventType::RoomHistoryVisibility, "")?
                 .map(|event| {
                     serde_json::from_str(event.content.get())
@@ -115,6 +116,7 @@ pub async fn get_state_events_route(
     Ok(get_state_events::v3::Response {
         room_state: services()
             .rooms
+            .state_accessor
             .room_state_full(&body.room_id)
             .await?
             .values()
@@ -136,10 +138,10 @@ pub async fn get_state_events_for_key_route(
     #[allow(clippy::blocks_in_if_conditions)]
     // Users not in the room should not be able to access the state unless history_visibility is
     // WorldReadable
-    if !services().rooms.is_joined(sender_user, &body.room_id)?
+    if !services().rooms.state_cache.is_joined(sender_user, &body.room_id)?
         && !matches!(
             services().rooms
-                .room_state_get(&body.room_id, &StateEventType::RoomHistoryVisibility, "")?
+                .state_accessor.room_state_get(&body.room_id, &StateEventType::RoomHistoryVisibility, "")?
                 .map(|event| {
                     serde_json::from_str(event.content.get())
                         .map(|e: RoomHistoryVisibilityEventContent| e.history_visibility)
@@ -160,7 +162,7 @@ pub async fn get_state_events_for_key_route(
 
     let event = services()
         .rooms
-        .room_state_get(&body.room_id, &body.event_type, &body.state_key)?
+        .state_accessor.room_state_get(&body.room_id, &body.event_type, &body.state_key)?
         .ok_or(Error::BadRequest(
             ErrorKind::NotFound,
             "State event not found.",
@@ -185,10 +187,10 @@ pub async fn get_state_events_for_empty_key_route(
     #[allow(clippy::blocks_in_if_conditions)]
     // Users not in the room should not be able to access the state unless history_visibility is
     // WorldReadable
-    if !services().rooms.is_joined(sender_user, &body.room_id)?
+    if !services().rooms.state_cache.is_joined(sender_user, &body.room_id)?
         && !matches!(
             services().rooms
-                .room_state_get(&body.room_id, &StateEventType::RoomHistoryVisibility, "")?
+                .state_accessor.room_state_get(&body.room_id, &StateEventType::RoomHistoryVisibility, "")?
                 .map(|event| {
                     serde_json::from_str(event.content.get())
                         .map(|e: RoomHistoryVisibilityEventContent| e.history_visibility)
@@ -209,7 +211,7 @@ pub async fn get_state_events_for_empty_key_route(
 
     let event = services()
         .rooms
-        .room_state_get(&body.room_id, &body.event_type, "")?
+        .state_accessor.room_state_get(&body.room_id, &body.event_type, "")?
         .ok_or(Error::BadRequest(
             ErrorKind::NotFound,
             "State event not found.",
@@ -269,7 +271,7 @@ async fn send_state_event_for_key_helper(
     );
     let state_lock = mutex_state.lock().await;
 
-    let event_id = services().rooms.build_and_append_pdu(
+    let event_id = services().rooms.timeline.build_and_append_pdu(
         PduBuilder {
             event_type: event_type.to_string().into(),
             content: serde_json::from_str(json.json().get()).expect("content is valid json"),

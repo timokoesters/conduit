@@ -192,7 +192,7 @@ impl Service {
                                 mutex_lock: &MutexGuard<'_, ()>| {
                 services()
                     .rooms
-                    .build_and_append_pdu(
+                    .timeline.build_and_append_pdu(
                         PduBuilder {
                             event_type: RoomEventType::RoomMessage,
                             content: to_raw_value(&message)
@@ -213,7 +213,7 @@ impl Service {
                     Some(event) = receiver.recv() => {
                         let message_content = match event {
                             AdminRoomEvent::SendMessage(content) => content,
-                            AdminRoomEvent::ProcessMessage(room_message) => process_admin_message(room_message).await
+                            AdminRoomEvent::ProcessMessage(room_message) => self.process_admin_message(room_message).await
                         };
 
                         let mutex_state = Arc::clone(
@@ -254,20 +254,20 @@ impl Service {
         let command_line = lines.next().expect("each string has at least one line");
         let body: Vec<_> = lines.collect();
 
-        let admin_command = match parse_admin_command(&command_line) {
+        let admin_command = match self.parse_admin_command(&command_line) {
             Ok(command) => command,
             Err(error) => {
                 let server_name = services().globals.server_name();
                 let message = error
                     .to_string()
                     .replace("server.name", server_name.as_str());
-                let html_message = usage_to_html(&message, server_name);
+                let html_message = self.usage_to_html(&message, server_name);
 
                 return RoomMessageEventContent::text_html(message, html_message);
             }
         };
 
-        match process_admin_command(admin_command, body).await {
+        match self.process_admin_command(admin_command, body).await {
             Ok(reply_message) => reply_message,
             Err(error) => {
                 let markdown_message = format!(
@@ -367,6 +367,8 @@ impl Service {
                 }
             }
             AdminCommand::ListRooms => {
+                todo!();
+                /*
                 let room_ids = services().rooms.iter_ids();
                 let output = format!(
                     "Rooms:\n{}",
@@ -385,6 +387,7 @@ impl Service {
                         .join("\n")
                 );
                 RoomMessageEventContent::text_plain(output)
+                */
             }
             AdminCommand::ListLocalUsers => match services().users.list_local_users() {
                 Ok(users) => {
@@ -412,7 +415,7 @@ impl Service {
             }
             AdminCommand::GetAuthChain { event_id } => {
                 let event_id = Arc::<EventId>::from(event_id);
-                if let Some(event) = services().rooms.get_pdu_json(&event_id)? {
+                if let Some(event) = services().rooms.timeline.get_pdu_json(&event_id)? {
                     let room_id_str = event
                         .get("room_id")
                         .and_then(|val| val.as_str())
@@ -473,10 +476,10 @@ impl Service {
             }
             AdminCommand::GetPdu { event_id } => {
                 let mut outlier = false;
-                let mut pdu_json = services().rooms.get_non_outlier_pdu_json(&event_id)?;
+                let mut pdu_json = services().rooms.timeline.get_non_outlier_pdu_json(&event_id)?;
                 if pdu_json.is_none() {
                     outlier = true;
-                    pdu_json = services().rooms.get_pdu_json(&event_id)?;
+                    pdu_json = services().rooms.timeline.get_pdu_json(&event_id)?;
                 }
                 match pdu_json {
                     Some(json) => {
@@ -506,7 +509,7 @@ impl Service {
                     None => RoomMessageEventContent::text_plain("PDU not found."),
                 }
             }
-            AdminCommand::DatabaseMemoryUsage => match services()._db.memory_usage() {
+            AdminCommand::DatabaseMemoryUsage => match services().globals.db.memory_usage() {
                 Ok(response) => RoomMessageEventContent::text_plain(response),
                 Err(e) => RoomMessageEventContent::text_plain(format!(
                     "Failed to get database memory usage: {}",
@@ -825,7 +828,7 @@ impl Service {
         content.room_version = RoomVersionId::V6;
 
         // 1. The room create event
-        services().rooms.build_and_append_pdu(
+        services().rooms.timeline.build_and_append_pdu(
             PduBuilder {
                 event_type: RoomEventType::RoomCreate,
                 content: to_raw_value(&content).expect("event is valid, we just created it"),
@@ -839,7 +842,7 @@ impl Service {
         )?;
 
         // 2. Make conduit bot join
-        services().rooms.build_and_append_pdu(
+        services().rooms.timeline.build_and_append_pdu(
             PduBuilder {
                 event_type: RoomEventType::RoomMember,
                 content: to_raw_value(&RoomMemberEventContent {
@@ -866,7 +869,7 @@ impl Service {
         let mut users = BTreeMap::new();
         users.insert(conduit_user.clone(), 100.into());
 
-        services().rooms.build_and_append_pdu(
+        services().rooms.timeline.build_and_append_pdu(
             PduBuilder {
                 event_type: RoomEventType::RoomPowerLevels,
                 content: to_raw_value(&RoomPowerLevelsEventContent {
@@ -884,7 +887,7 @@ impl Service {
         )?;
 
         // 4.1 Join Rules
-        services().rooms.build_and_append_pdu(
+        services().rooms.timeline.build_and_append_pdu(
             PduBuilder {
                 event_type: RoomEventType::RoomJoinRules,
                 content: to_raw_value(&RoomJoinRulesEventContent::new(JoinRule::Invite))
@@ -899,7 +902,7 @@ impl Service {
         )?;
 
         // 4.2 History Visibility
-        services().rooms.build_and_append_pdu(
+        services().rooms.timeline.build_and_append_pdu(
             PduBuilder {
                 event_type: RoomEventType::RoomHistoryVisibility,
                 content: to_raw_value(&RoomHistoryVisibilityEventContent::new(
@@ -916,7 +919,7 @@ impl Service {
         )?;
 
         // 4.3 Guest Access
-        services().rooms.build_and_append_pdu(
+        services().rooms.timeline.build_and_append_pdu(
             PduBuilder {
                 event_type: RoomEventType::RoomGuestAccess,
                 content: to_raw_value(&RoomGuestAccessEventContent::new(GuestAccess::Forbidden))
@@ -933,7 +936,7 @@ impl Service {
         // 5. Events implied by name and topic
         let room_name = RoomName::parse(format!("{} Admin Room", services().globals.server_name()))
             .expect("Room name is valid");
-        services().rooms.build_and_append_pdu(
+        services().rooms.timeline.build_and_append_pdu(
             PduBuilder {
                 event_type: RoomEventType::RoomName,
                 content: to_raw_value(&RoomNameEventContent::new(Some(room_name)))
@@ -947,7 +950,7 @@ impl Service {
             &state_lock,
         )?;
 
-        services().rooms.build_and_append_pdu(
+        services().rooms.timeline.build_and_append_pdu(
             PduBuilder {
                 event_type: RoomEventType::RoomTopic,
                 content: to_raw_value(&RoomTopicEventContent {
@@ -968,7 +971,7 @@ impl Service {
             .try_into()
             .expect("#admins:server_name is a valid alias name");
 
-        services().rooms.build_and_append_pdu(
+        services().rooms.timeline.build_and_append_pdu(
             PduBuilder {
                 event_type: RoomEventType::RoomCanonicalAlias,
                 content: to_raw_value(&RoomCanonicalAliasEventContent {
@@ -985,7 +988,7 @@ impl Service {
             &state_lock,
         )?;
 
-        services().rooms.set_alias(&alias, Some(&room_id))?;
+        services().rooms.alias.set_alias(&alias, &room_id)?;
 
         Ok(())
     }
@@ -1003,7 +1006,8 @@ impl Service {
             .expect("#admins:server_name is a valid alias name");
         let room_id = services()
             .rooms
-            .id_from_alias(&admin_room_alias)?
+            .alias
+            .resolve_local_alias(&admin_room_alias)?
             .expect("Admin room must exist");
 
         let mutex_state = Arc::clone(
@@ -1021,7 +1025,7 @@ impl Service {
             .expect("@conduit:server_name is valid");
 
         // Invite and join the real user
-        services().rooms.build_and_append_pdu(
+        services().rooms.timeline.build_and_append_pdu(
             PduBuilder {
                 event_type: RoomEventType::RoomMember,
                 content: to_raw_value(&RoomMemberEventContent {
@@ -1043,7 +1047,7 @@ impl Service {
             &room_id,
             &state_lock,
         )?;
-        services().rooms.build_and_append_pdu(
+        services().rooms.timeline.build_and_append_pdu(
             PduBuilder {
                 event_type: RoomEventType::RoomMember,
                 content: to_raw_value(&RoomMemberEventContent {
@@ -1071,7 +1075,7 @@ impl Service {
         users.insert(conduit_user.to_owned(), 100.into());
         users.insert(user_id.to_owned(), 100.into());
 
-        services().rooms.build_and_append_pdu(
+        services().rooms.timeline.build_and_append_pdu(
             PduBuilder {
                 event_type: RoomEventType::RoomPowerLevels,
                 content: to_raw_value(&RoomPowerLevelsEventContent {
@@ -1089,7 +1093,7 @@ impl Service {
         )?;
 
         // Send welcome message
-        services().rooms.build_and_append_pdu(
+        services().rooms.timeline.build_and_append_pdu(
             PduBuilder {
                 event_type: RoomEventType::RoomMessage,
                 content: to_raw_value(&RoomMessageEventContent::text_html(

@@ -11,7 +11,7 @@ pub async fn create_typing_event_route(
 
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
-    if !services().rooms.is_joined(sender_user, &body.room_id)? {
+    if !services().rooms.state_cache.is_joined(sender_user, &body.room_id)? {
         return Err(Error::BadRequest(
             ErrorKind::Forbidden,
             "You are not in this room.",
@@ -19,14 +19,14 @@ pub async fn create_typing_event_route(
     }
 
     if let Typing::Yes(duration) = body.state {
-        services().rooms.edus.typing_add(
+        services().rooms.edus.typing.typing_add(
             sender_user,
             &body.room_id,
             duration.as_millis() as u64 + utils::millis_since_unix_epoch(),
         )?;
     } else {
         services().rooms
-            .edus
+            .edus.typing
             .typing_remove(sender_user, &body.room_id)?;
     }
 

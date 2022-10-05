@@ -68,7 +68,7 @@ pub async fn send_message_event_route(
     let mut unsigned = BTreeMap::new();
     unsigned.insert("transaction_id".to_owned(), body.txn_id.to_string().into());
 
-    let event_id = services().rooms.build_and_append_pdu(
+    let event_id = services().rooms.timeline.build_and_append_pdu(
         PduBuilder {
             event_type: body.event_type.to_string().into(),
             content: serde_json::from_str(body.body.body.json().get())
@@ -108,7 +108,7 @@ pub async fn get_message_events_route(
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
     let sender_device = body.sender_device.as_ref().expect("user is authenticated");
 
-    if !services().rooms.is_joined(sender_user, &body.room_id)? {
+    if !services().rooms.state_cache.is_joined(sender_user, &body.room_id)? {
         return Err(Error::BadRequest(
             ErrorKind::Forbidden,
             "You don't have permission to view this room.",
@@ -129,7 +129,7 @@ pub async fn get_message_events_route(
     let to = body.to.as_ref().map(|t| t.parse());
 
     services().rooms
-        .lazy_load_confirm_delivery(sender_user, sender_device, &body.room_id, from)?;
+        .lazy_loading.lazy_load_confirm_delivery(sender_user, sender_device, &body.room_id, from)?;
 
     // Use limit or else 10
     let limit = body.limit.try_into().map_or(10_usize, |l: u32| l as usize);
@@ -144,12 +144,13 @@ pub async fn get_message_events_route(
         get_message_events::v3::Direction::Forward => {
             let events_after: Vec<_> = services()
                 .rooms
+                .timeline
                 .pdus_after(sender_user, &body.room_id, from)?
                 .take(limit)
                 .filter_map(|r| r.ok()) // Filter out buggy events
                 .filter_map(|(pdu_id, pdu)| {
                     services().rooms
-                        .pdu_count(&pdu_id)
+                        .timeline.pdu_count(&pdu_id)
                         .map(|pdu_count| (pdu_count, pdu))
                         .ok()
                 })
@@ -157,7 +158,7 @@ pub async fn get_message_events_route(
                 .collect();
 
             for (_, event) in &events_after {
-                if !services().rooms.lazy_load_was_sent_before(
+                if !services().rooms.lazy_loading.lazy_load_was_sent_before(
                     sender_user,
                     sender_device,
                     &body.room_id,
@@ -181,11 +182,13 @@ pub async fn get_message_events_route(
         get_message_events::v3::Direction::Backward => {
             let events_before: Vec<_> = services()
                 .rooms
+                .timeline
                 .pdus_until(sender_user, &body.room_id, from)?
                 .take(limit)
                 .filter_map(|r| r.ok()) // Filter out buggy events
                 .filter_map(|(pdu_id, pdu)| {
                     services().rooms
+                        .timeline
                         .pdu_count(&pdu_id)
                         .map(|pdu_count| (pdu_count, pdu))
                         .ok()
@@ -194,7 +197,7 @@ pub async fn get_message_events_route(
                 .collect();
 
             for (_, event) in &events_before {
-                if !services().rooms.lazy_load_was_sent_before(
+                if !services().rooms.lazy_loading.lazy_load_was_sent_before(
                     sender_user,
                     sender_device,
                     &body.room_id,
@@ -220,7 +223,7 @@ pub async fn get_message_events_route(
     resp.state = Vec::new();
     for ll_id in &lazy_loaded {
         if let Some(member_event) =
-            services().rooms
+            services().rooms.state_accessor
                 .room_state_get(&body.room_id, &StateEventType::RoomMember, ll_id.as_str())?
         {
             resp.state.push(member_event.to_state_event());
@@ -228,7 +231,7 @@ pub async fn get_message_events_route(
     }
 
     if let Some(next_token) = next_token {
-        services().rooms.lazy_load_mark_sent(
+        services().rooms.lazy_loading.lazy_load_mark_sent(
             sender_user,
             sender_device,
             &body.room_id,

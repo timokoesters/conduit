@@ -138,6 +138,7 @@ impl<D: Data> Service<D> {
 
         let power_levels: RoomPowerLevelsEventContent = services()
             .rooms
+            .state_accessor
             .room_state_get(&pdu.room_id, &StateEventType::RoomPowerLevels, "")?
             .map(|ev| {
                 serde_json::from_str(ev.content.get())
@@ -274,6 +275,7 @@ impl<D: Data> Service<D> {
 
             let room_name = if let Some(room_name_pdu) =
                 services().rooms
+                .state_accessor
                     .room_state_get(&event.room_id, &StateEventType::RoomName, "")?
             {
                 serde_json::from_str::<RoomNameEventContent>(room_name_pdu.content.get())

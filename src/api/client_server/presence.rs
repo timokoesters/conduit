@@ -10,10 +10,10 @@ pub async fn set_presence_route(
 ) -> Result<set_presence::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
-    for room_id in services().rooms.rooms_joined(sender_user) {
+    for room_id in services().rooms.state_cache.rooms_joined(sender_user) {
         let room_id = room_id?;
 
-        services().rooms.edus.update_presence(
+        services().rooms.edus.presence.update_presence(
             sender_user,
             &room_id,
             ruma::events::presence::PresenceEvent {
@@ -51,13 +51,14 @@ pub async fn get_presence_route(
 
     for room_id in services()
         .rooms
-        .get_shared_rooms(vec![sender_user.clone(), body.user_id.clone()])?
+        .user.get_shared_rooms(vec![sender_user.clone(), body.user_id.clone()])?
     {
         let room_id = room_id?;
 
         if let Some(presence) = services()
             .rooms
             .edus
+            .presence
             .get_last_presence_event(sender_user, &room_id)?
         {
             presence_event = Some(presence);

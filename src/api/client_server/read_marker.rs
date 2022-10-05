@@ -31,15 +31,15 @@ pub async fn set_read_marker_route(
     )?;
 
     if let Some(event) = &body.read_receipt {
-        services().rooms.edus.private_read_set(
+        services().rooms.edus.read_receipt.private_read_set(
             &body.room_id,
             sender_user,
-            services().rooms.get_pdu_count(event)?.ok_or(Error::BadRequest(
+            services().rooms.timeline.get_pdu_count(event)?.ok_or(Error::BadRequest(
                 ErrorKind::InvalidParam,
                 "Event does not exist.",
             ))?,
         )?;
-        services().rooms
+        services().rooms.user
             .reset_notification_counts(sender_user, &body.room_id)?;
 
         let mut user_receipts = BTreeMap::new();
@@ -56,7 +56,7 @@ pub async fn set_read_marker_route(
         let mut receipt_content = BTreeMap::new();
         receipt_content.insert(event.to_owned(), receipts);
 
-        services().rooms.edus.readreceipt_update(
+        services().rooms.edus.read_receipt.readreceipt_update(
             sender_user,
             &body.room_id,
             ruma::events::receipt::ReceiptEvent {
@@ -77,17 +77,18 @@ pub async fn create_receipt_route(
 ) -> Result<create_receipt::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
-    services().rooms.edus.private_read_set(
+    services().rooms.edus.read_receipt.private_read_set(
         &body.room_id,
         sender_user,
         services().rooms
+            .timeline
             .get_pdu_count(&body.event_id)?
             .ok_or(Error::BadRequest(
                 ErrorKind::InvalidParam,
                 "Event does not exist.",
             ))?,
     )?;
-    services().rooms
+    services().rooms.user
         .reset_notification_counts(sender_user, &body.room_id)?;
 
     let mut user_receipts = BTreeMap::new();
@@ -103,7 +104,7 @@ pub async fn create_receipt_route(
     let mut receipt_content = BTreeMap::new();
     receipt_content.insert(body.event_id.to_owned(), receipts);
 
-    services().rooms.edus.readreceipt_update(
+    services().rooms.edus.read_receipt.readreceipt_update(
         sender_user,
         &body.room_id,
         ruma::events::receipt::ReceiptEvent {
@@ -111,8 +112,6 @@ pub async fn create_receipt_route(
             room_id: body.room_id.clone(),
         },
     )?;
-
-    services().flush()?;
 
     Ok(create_receipt::v3::Response {})
 }

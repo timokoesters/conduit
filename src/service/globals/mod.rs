@@ -1,6 +1,7 @@
 mod data;
 pub use data::Data;
 
+use crate::api::server_server::FedDest;
 use crate::service::*;
 
 use crate::{Config, utils, Error, Result};
@@ -36,7 +37,7 @@ type SyncHandle = (
 );
 
 pub struct Service<D: Data> {
-    db: D,
+    pub db: D,
 
     pub actual_destination_cache: Arc<RwLock<WellKnownMap>>, // actual_destination, host
     pub tls_name_override: Arc<RwLock<TlsNameMap>>,

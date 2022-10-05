@@ -29,7 +29,7 @@ impl<D: Data> Service<D> {
         file: &[u8],
     ) -> Result<()> {
         // Width, Height = 0 if it's not a thumbnail
-        let key = self.db.create_file_metadata(mxc, 0, 0, content_disposition, content_type);
+        let key = self.db.create_file_metadata(mxc, 0, 0, content_disposition, content_type)?;
 
         let path = services().globals.get_media_file(&key);
         let mut f = File::create(path).await?;
@@ -42,13 +42,13 @@ impl<D: Data> Service<D> {
     pub async fn upload_thumbnail(
         &self,
         mxc: String,
-        content_disposition: &Option<String>,
-        content_type: &Option<String>,
+        content_disposition: &Option<&str>,
+        content_type: &Option<&str>,
         width: u32,
         height: u32,
         file: &[u8],
     ) -> Result<()> {
-        let key = self.db.create_file_metadata(mxc, width, height, content_disposition, content_type);
+        let key = self.db.create_file_metadata(mxc, width, height, content_disposition, content_type)?;
 
         let path = services().globals.get_media_file(&key);
         let mut f = File::create(path).await?;

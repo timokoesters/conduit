@@ -13,7 +13,7 @@ pub trait Data {
 
     fn get_registration(&self, id: &str) -> Result<Option<serde_yaml::Value>>;
 
-    fn iter_ids(&self) -> Result<Box<dyn Iterator<Item = Result<String>>>>;
+    fn iter_ids<'a>(&'a self) -> Result<Box<dyn Iterator<Item = Result<String>> + 'a>>;
 
     fn all(&self) -> Result<Vec<(String, serde_yaml::Value)>>;
 }

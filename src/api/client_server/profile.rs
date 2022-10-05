@@ -30,6 +30,7 @@ pub async fn set_displayname_route(
     // Send a new membership event and presence update into all joined rooms
     let all_rooms_joined: Vec<_> = services()
         .rooms
+        .state_cache
         .rooms_joined(sender_user)
         .filter_map(|r| r.ok())
         .map(|room_id| {
@@ -40,6 +41,7 @@ pub async fn set_displayname_route(
                         displayname: body.displayname.clone(),
                         ..serde_json::from_str(
                             services().rooms
+                            .state_accessor
                                 .room_state_get(
                                     &room_id,
                                     &StateEventType::RoomMember,
@@ -80,10 +82,11 @@ pub async fn set_displayname_route(
 
         let _ = services()
             .rooms
+            .timeline
             .build_and_append_pdu(pdu_builder, sender_user, &room_id, &state_lock);
 
         // Presence update
-        services().rooms.edus.update_presence(
+        services().rooms.edus.presence.update_presence(
             sender_user,
             &room_id,
             ruma::events::presence::PresenceEvent {
@@ -155,6 +158,7 @@ pub async fn set_avatar_url_route(
     // Send a new membership event and presence update into all joined rooms
     let all_joined_rooms: Vec<_> = services()
         .rooms
+        .state_cache
         .rooms_joined(sender_user)
         .filter_map(|r| r.ok())
         .map(|room_id| {
@@ -165,6 +169,7 @@ pub async fn set_avatar_url_route(
                         avatar_url: body.avatar_url.clone(),
                         ..serde_json::from_str(
                             services().rooms
+                            .state_accessor
                                 .room_state_get(
                                     &room_id,
                                     &StateEventType::RoomMember,
@@ -205,10 +210,11 @@ pub async fn set_avatar_url_route(
 
         let _ = services()
             .rooms
+            .timeline
             .build_and_append_pdu(pdu_builder, sender_user, &room_id, &state_lock);
 
         // Presence update
-        services().rooms.edus.update_presence(
+        services().rooms.edus.presence.update_presence(
             sender_user,
             &room_id,
             ruma::events::presence::PresenceEvent {
@@ -226,7 +232,6 @@ pub async fn set_avatar_url_route(
                 },
                 sender: sender_user.clone(),
             },
-            &services().globals,
         )?;
     }
 
