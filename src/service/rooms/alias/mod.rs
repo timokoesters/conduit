@@ -4,11 +4,11 @@ pub use data::Data;
 use ruma::{RoomAliasId, RoomId};
 use crate::Result;
 
-pub struct Service<D: Data> {
-    db: D,
+pub struct Service {
+    db: Box<dyn Data>,
 }
 
-impl<D: Data> Service<D> {
+impl Service {
     #[tracing::instrument(skip(self))]
     pub fn set_alias(
         &self,

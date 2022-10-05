@@ -15,11 +15,11 @@ pub struct FileMeta {
     pub file: Vec<u8>,
 }
 
-pub struct Service<D: Data> {
-    db: D,
+pub struct Service {
+    db: Box<dyn Data>,
 }
 
-impl<D: Data> Service<D> {
+impl Service {
     /// Uploads a file.
     pub async fn create(
         &self,

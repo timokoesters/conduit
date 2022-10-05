@@ -6,11 +6,11 @@ use ruma::{RoomId, EventId};
 
 use crate::Result;
 
-pub struct Service<D: Data> {
-    db: D,
+pub struct Service {
+    db: Box<dyn Data>,
 }
 
-impl<D: Data> Service<D> {
+impl Service {
     #[tracing::instrument(skip(self, room_id, event_ids))]
     pub fn mark_as_referenced(&self, room_id: &RoomId, event_ids: &[Arc<EventId>]) -> Result<()> {
         self.db.mark_as_referenced(room_id, event_ids)

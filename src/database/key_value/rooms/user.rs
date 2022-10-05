@@ -1,6 +1,6 @@
 use ruma::{UserId, RoomId};
 
-use crate::{service, database::KeyValueDatabase, utils, Error, Result};
+use crate::{service, database::KeyValueDatabase, utils, Error, Result, services};
 
 impl service::rooms::user::Data for KeyValueDatabase {
     fn reset_notification_counts(&self, user_id: &UserId, room_id: &RoomId) -> Result<()> {
@@ -50,7 +50,7 @@ impl service::rooms::user::Data for KeyValueDatabase {
         token: u64,
         shortstatehash: u64,
     ) -> Result<()> {
-        let shortroomid = self.get_shortroomid(room_id)?.expect("room exists");
+        let shortroomid = services().rooms.short.get_shortroomid(room_id)?.expect("room exists");
 
         let mut key = shortroomid.to_be_bytes().to_vec();
         key.extend_from_slice(&token.to_be_bytes());
@@ -60,7 +60,7 @@ impl service::rooms::user::Data for KeyValueDatabase {
     }
 
     fn get_token_shortstatehash(&self, room_id: &RoomId, token: u64) -> Result<Option<u64>> {
-        let shortroomid = self.get_shortroomid(room_id)?.expect("room exists");
+        let shortroomid = services().rooms.short.get_shortroomid(room_id)?.expect("room exists");
 
         let mut key = shortroomid.to_be_bytes().to_vec();
         key.extend_from_slice(&token.to_be_bytes());

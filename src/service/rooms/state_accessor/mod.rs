@@ -6,11 +6,11 @@ use ruma::{events::StateEventType, RoomId, EventId};
 
 use crate::{Result, PduEvent};
 
-pub struct Service<D: Data> {
-    db: D,
+pub struct Service {
+    db: Box<dyn Data>,
 }
 
-impl<D: Data> Service<D> {
+impl Service {
     /// Builds a StateMap by iterating over all keys that start
     /// with state_hash, this gives the full state for the given state_hash.
     #[tracing::instrument(skip(self))]

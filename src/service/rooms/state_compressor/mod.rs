@@ -8,13 +8,13 @@ use crate::{Result, utils, services};
 
 use self::data::StateDiff;
 
-pub struct Service<D: Data> {
-    db: D,
+pub struct Service {
+    db: Box<dyn Data>,
 }
 
 pub type CompressedStateEvent = [u8; 2 * size_of::<u64>()];
 
-impl<D: Data> Service<D> {
+impl Service {
     /// Returns a stack with info on shortstatehash, full state, added diff and removed diff for the selected shortstatehash and each parent layer.
     #[tracing::instrument(skip(self))]
     pub fn load_shortstatehash_info(

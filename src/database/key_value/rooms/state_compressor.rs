@@ -39,8 +39,8 @@ impl service::rooms::state_compressor::Data for KeyValueDatabase {
     }
 
     fn save_statediff(&self, shortstatehash: u64, diff: StateDiff) -> Result<()> {
-        let mut value = diff.parent.to_be_bytes().to_vec();
-        for new in &diff.new {
+        let mut value = diff.parent.unwrap_or(0).to_be_bytes().to_vec();
+        for new in &diff.added {
             value.extend_from_slice(&new[..]);
         }
 

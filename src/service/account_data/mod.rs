@@ -17,11 +17,11 @@ use tracing::error;
 
 use crate::{service::*, services, utils, Error, Result};
 
-pub struct Service<D: Data> {
-    db: D,
+pub struct Service {
+    db: Box<dyn Data>,
 }
 
-impl<D: Data> Service<D> {
+impl Service {
     /// Places one event in the account data of the user and removes the previous entry.
     #[tracing::instrument(skip(self, room_id, user_id, event_type, data))]
     pub fn update<T: Serialize>(

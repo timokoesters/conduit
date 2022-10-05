@@ -69,18 +69,13 @@ async fn main() {
 
     config.warn_deprecated();
 
-    let db = match KeyValueDatabase::load_or_create(&config).await {
-        Ok(db) => db,
-        Err(e) => {
-            eprintln!(
-                "The database couldn't be loaded or created. The following error occured: {}",
-                e
-            );
-            std::process::exit(1);
-        }
+    if let Err(e) = KeyValueDatabase::load_or_create(&config).await {
+        eprintln!(
+            "The database couldn't be loaded or created. The following error occured: {}",
+            e
+        );
+        std::process::exit(1);
     };
-
-    SERVICES.set(db).expect("this is the first and only time we initialize the SERVICE static");
 
     let start = async {
         run_server().await.unwrap();

@@ -56,15 +56,15 @@ impl service::rooms::alias::Data for KeyValueDatabase {
     fn local_aliases_for_room(
         &self,
         room_id: &RoomId,
-    ) -> Result<Box<dyn Iterator<Item=String>>> {
+    ) -> Box<dyn Iterator<Item = Result<Box<RoomAliasId>>>> {
         let mut prefix = room_id.as_bytes().to_vec();
         prefix.push(0xff);
 
-        self.aliasid_alias.scan_prefix(prefix).map(|(_, bytes)| {
+        Box::new(self.aliasid_alias.scan_prefix(prefix).map(|(_, bytes)| {
             utils::string_from_bytes(&bytes)
                 .map_err(|_| Error::bad_database("Invalid alias bytes in aliasid_alias."))?
                 .try_into()
                 .map_err(|_| Error::bad_database("Invalid alias in aliasid_alias."))
-        })
+        }))
     }
 }

@@ -1,7 +1,7 @@
 pub mod abstraction;
 pub mod key_value;
 
-use crate::{utils, Config, Error, Result, service::{users, globals, uiaa, rooms, account_data, media, key_backups, transaction_ids, sending, appservice, pusher}};
+use crate::{utils, Config, Error, Result, service::{users, globals, uiaa, rooms::{self, state_compressor::CompressedStateEvent}, account_data, media, key_backups, transaction_ids, sending, appservice, pusher}, services, PduEvent, Services, SERVICES};
 use abstraction::KeyValueDatabaseEngine;
 use directories::ProjectDirs;
 use futures_util::{stream::FuturesUnordered, StreamExt};
@@ -9,7 +9,7 @@ use lru_cache::LruCache;
 use ruma::{
     events::{
         push_rules::PushRulesEventContent, room::message::RoomMessageEventContent,
-        GlobalAccountDataEvent, GlobalAccountDataEventType,
+        GlobalAccountDataEvent, GlobalAccountDataEventType, StateEventType,
     },
     push::Ruleset,
     DeviceId, EventId, RoomId, UserId, signatures::CanonicalJsonValue,
@@ -151,6 +151,30 @@ pub struct KeyValueDatabase {
 
     //pub pusher: pusher::PushData,
     pub(super) senderkey_pusher: Arc<dyn KvTree>,
+
+    pub(super) cached_registrations: Arc<RwLock<HashMap<String, serde_yaml::Value>>>,
+    pub(super) pdu_cache: Mutex<LruCache<Box<EventId>, Arc<PduEvent>>>,
+    pub(super) shorteventid_cache: Mutex<LruCache<u64, Arc<EventId>>>,
+    pub(super) auth_chain_cache: Mutex<LruCache<Vec<u64>, Arc<HashSet<u64>>>>,
+    pub(super) eventidshort_cache: Mutex<LruCache<Box<EventId>, u64>>,
+    pub(super) statekeyshort_cache: Mutex<LruCache<(StateEventType, String), u64>>,
+    pub(super) shortstatekey_cache: Mutex<LruCache<u64, (StateEventType, String)>>,
+    pub(super) our_real_users_cache: RwLock<HashMap<Box<RoomId>, Arc<HashSet<Box<UserId>>>>>,
+    pub(super) appservice_in_room_cache: RwLock<HashMap<Box<RoomId>, HashMap<String, bool>>>,
+    pub(super) lazy_load_waiting:
+        Mutex<HashMap<(Box<UserId>, Box<DeviceId>, Box<RoomId>, u64), HashSet<Box<UserId>>>>,
+    pub(super) stateinfo_cache: Mutex<
+        LruCache<
+            u64,
+            Vec<(
+                u64,                           // sstatehash
+                HashSet<CompressedStateEvent>, // full state
+                HashSet<CompressedStateEvent>, // added
+                HashSet<CompressedStateEvent>, // removed
+            )>,
+        >,
+    >,
+    pub(super) lasttimelinecount_cache: Mutex<HashMap<Box<RoomId>, u64>>,
 }
 
 impl KeyValueDatabase {
@@ -214,7 +238,7 @@ impl KeyValueDatabase {
     }
 
     /// Load an existing database or create a new one.
-    pub async fn load_or_create(config: &Config) -> Result<Arc<TokioRwLock<Self>>> {
+    pub async fn load_or_create(config: &Config) -> Result<()> {
         Self::check_db_setup(config)?;
 
         if !Path::new(&config.database_path).exists() {
@@ -253,7 +277,7 @@ impl KeyValueDatabase {
         let (admin_sender, admin_receiver) = mpsc::unbounded_channel();
         let (sending_sender, sending_receiver) = mpsc::unbounded_channel();
 
-        let db = Self {
+        let db = Arc::new(Self {
             _db: builder.clone(),
                 userid_password: builder.open_tree("userid_password")?,
                 userid_displayname: builder.open_tree("userid_displayname")?,
@@ -345,18 +369,53 @@ impl KeyValueDatabase {
                 senderkey_pusher: builder.open_tree("senderkey_pusher")?,
                 global: builder.open_tree("global")?,
                 server_signingkeys: builder.open_tree("server_signingkeys")?,
-        };
 
-        // TODO: do this after constructing the db
+                cached_registrations: Arc::new(RwLock::new(HashMap::new())),
+                pdu_cache: Mutex::new(LruCache::new(
+                    config
+                        .pdu_cache_capacity
+                        .try_into()
+                        .expect("pdu cache capacity fits into usize"),
+                )),
+                auth_chain_cache: Mutex::new(LruCache::new(
+                    (100_000.0 * config.conduit_cache_capacity_modifier) as usize,
+                )),
+                shorteventid_cache: Mutex::new(LruCache::new(
+                    (100_000.0 * config.conduit_cache_capacity_modifier) as usize,
+                )),
+                eventidshort_cache: Mutex::new(LruCache::new(
+                    (100_000.0 * config.conduit_cache_capacity_modifier) as usize,
+                )),
+                shortstatekey_cache: Mutex::new(LruCache::new(
+                    (100_000.0 * config.conduit_cache_capacity_modifier) as usize,
+                )),
+                statekeyshort_cache: Mutex::new(LruCache::new(
+                    (100_000.0 * config.conduit_cache_capacity_modifier) as usize,
+                )),
+                our_real_users_cache: RwLock::new(HashMap::new()),
+                appservice_in_room_cache: RwLock::new(HashMap::new()),
+                lazy_load_waiting: Mutex::new(HashMap::new()),
+                stateinfo_cache: Mutex::new(LruCache::new(
+                    (100.0 * config.conduit_cache_capacity_modifier) as usize,
+                )),
+                lasttimelinecount_cache: Mutex::new(HashMap::new()),
+
+        });
+
+        let services_raw = Services::build(Arc::clone(&db));
+
+        // This is the first and only time we initialize the SERVICE static
+        *SERVICES.write().unwrap() = Some(services_raw);
+
 
         // Matrix resource ownership is based on the server name; changing it
         // requires recreating the database from scratch.
-        if guard.users.count()? > 0 {
+        if services().users.count()? > 0 {
             let conduit_user =
-                UserId::parse_with_server_name("conduit", guard.globals.server_name())
+                UserId::parse_with_server_name("conduit", services().globals.server_name())
                     .expect("@conduit:server_name is valid");
 
-            if !guard.users.exists(&conduit_user)? {
+            if !services().users.exists(&conduit_user)? {
                 error!(
                     "The {} server user does not exist, and the database is not new.",
                     conduit_user
@@ -370,11 +429,10 @@ impl KeyValueDatabase {
         // If the database has any data, perform data migrations before starting
         let latest_database_version = 11;
 
-        if guard.users.count()? > 0 {
-            let db = &*guard;
+        if services().users.count()? > 0 {
             // MIGRATIONS
-            if db.globals.database_version()? < 1 {
-                for (roomserverid, _) in db.rooms.roomserverids.iter() {
+            if services().globals.database_version()? < 1 {
+                for (roomserverid, _) in db.roomserverids.iter() {
                     let mut parts = roomserverid.split(|&b| b == 0xff);
                     let room_id = parts.next().expect("split always returns one element");
                     let servername = match parts.next() {
@@ -388,17 +446,17 @@ impl KeyValueDatabase {
                     serverroomid.push(0xff);
                     serverroomid.extend_from_slice(room_id);
 
-                    db.rooms.serverroomids.insert(&serverroomid, &[])?;
+                    db.serverroomids.insert(&serverroomid, &[])?;
                 }
 
-                db.globals.bump_database_version(1)?;
+                services().globals.bump_database_version(1)?;
 
                 warn!("Migration: 0 -> 1 finished");
             }
 
-            if db.globals.database_version()? < 2 {
+            if services().globals.database_version()? < 2 {
                 // We accidentally inserted hashed versions of "" into the db instead of just ""
-                for (userid, password) in db.users.userid_password.iter() {
+                for (userid, password) in db.userid_password.iter() {
                     let password = utils::string_from_bytes(&password);
 
                     let empty_hashed_password = password.map_or(false, |password| {
@@ -406,59 +464,59 @@ impl KeyValueDatabase {
                     });
 
                     if empty_hashed_password {
-                        db.users.userid_password.insert(&userid, b"")?;
+                        db.userid_password.insert(&userid, b"")?;
                     }
                 }
 
-                db.globals.bump_database_version(2)?;
+                services().globals.bump_database_version(2)?;
 
                 warn!("Migration: 1 -> 2 finished");
             }
 
-            if db.globals.database_version()? < 3 {
+            if services().globals.database_version()? < 3 {
                 // Move media to filesystem
-                for (key, content) in db.media.mediaid_file.iter() {
+                for (key, content) in db.mediaid_file.iter() {
                     if content.is_empty() {
                         continue;
                     }
 
-                    let path = db.globals.get_media_file(&key);
+                    let path = services().globals.get_media_file(&key);
                     let mut file = fs::File::create(path)?;
                     file.write_all(&content)?;
-                    db.media.mediaid_file.insert(&key, &[])?;
+                    db.mediaid_file.insert(&key, &[])?;
                 }
 
-                db.globals.bump_database_version(3)?;
+                services().globals.bump_database_version(3)?;
 
                 warn!("Migration: 2 -> 3 finished");
             }
 
-            if db.globals.database_version()? < 4 {
-                // Add federated users to db as deactivated
-                for our_user in db.users.iter() {
+            if services().globals.database_version()? < 4 {
+                // Add federated users to services() as deactivated
+                for our_user in services().users.iter() {
                     let our_user = our_user?;
-                    if db.users.is_deactivated(&our_user)? {
+                    if services().users.is_deactivated(&our_user)? {
                         continue;
                     }
-                    for room in db.rooms.rooms_joined(&our_user) {
-                        for user in db.rooms.room_members(&room?) {
+                    for room in services().rooms.state_cache.rooms_joined(&our_user) {
+                        for user in services().rooms.state_cache.room_members(&room?) {
                             let user = user?;
-                            if user.server_name() != db.globals.server_name() {
+                            if user.server_name() != services().globals.server_name() {
                                 println!("Migration: Creating user {}", user);
-                                db.users.create(&user, None)?;
+                                services().users.create(&user, None)?;
                             }
                         }
                     }
                 }
 
-                db.globals.bump_database_version(4)?;
+                services().globals.bump_database_version(4)?;
 
                 warn!("Migration: 3 -> 4 finished");
             }
 
-            if db.globals.database_version()? < 5 {
+            if services().globals.database_version()? < 5 {
                 // Upgrade user data store
-                for (roomuserdataid, _) in db.account_data.roomuserdataid_accountdata.iter() {
+                for (roomuserdataid, _) in db.roomuserdataid_accountdata.iter() {
                     let mut parts = roomuserdataid.split(|&b| b == 0xff);
                     let room_id = parts.next().unwrap();
                     let user_id = parts.next().unwrap();
@@ -470,30 +528,29 @@ impl KeyValueDatabase {
                     key.push(0xff);
                     key.extend_from_slice(event_type);
 
-                    db.account_data
-                        .roomusertype_roomuserdataid
+                    db.roomusertype_roomuserdataid
                         .insert(&key, &roomuserdataid)?;
                 }
 
-                db.globals.bump_database_version(5)?;
+                services().globals.bump_database_version(5)?;
 
                 warn!("Migration: 4 -> 5 finished");
             }
 
-            if db.globals.database_version()? < 6 {
+            if services().globals.database_version()? < 6 {
                 // Set room member count
-                for (roomid, _) in db.rooms.roomid_shortstatehash.iter() {
+                for (roomid, _) in db.roomid_shortstatehash.iter() {
                     let string = utils::string_from_bytes(&roomid).unwrap();
                     let room_id = <&RoomId>::try_from(string.as_str()).unwrap();
-                    db.rooms.update_joined_count(room_id, &db)?;
+                    services().rooms.state_cache.update_joined_count(room_id)?;
                 }
 
-                db.globals.bump_database_version(6)?;
+                services().globals.bump_database_version(6)?;
 
                 warn!("Migration: 5 -> 6 finished");
             }
 
-            if db.globals.database_version()? < 7 {
+            if services().globals.database_version()? < 7 {
                 // Upgrade state store
                 let mut last_roomstates: HashMap<Box<RoomId>, u64> = HashMap::new();
                 let mut current_sstatehash: Option<u64> = None;
@@ -513,7 +570,7 @@ impl KeyValueDatabase {
                         let states_parents = last_roomsstatehash.map_or_else(
                             || Ok(Vec::new()),
                             |&last_roomsstatehash| {
-                                db.rooms.state_accessor.load_shortstatehash_info(dbg!(last_roomsstatehash))
+                                services().rooms.state_compressor.load_shortstatehash_info(dbg!(last_roomsstatehash))
                             },
                         )?;
 
@@ -535,7 +592,7 @@ impl KeyValueDatabase {
                                 (current_state, HashSet::new())
                             };
 
-                        db.rooms.save_state_from_diff(
+                        services().rooms.state_compressor.save_state_from_diff(
                             dbg!(current_sstatehash),
                             statediffnew,
                             statediffremoved,
@@ -544,7 +601,7 @@ impl KeyValueDatabase {
                         )?;
 
                         /*
-                        let mut tmp = db.rooms.load_shortstatehash_info(&current_sstatehash, &db)?;
+                        let mut tmp = services().rooms.load_shortstatehash_info(&current_sstatehash)?;
                         let state = tmp.pop().unwrap();
                         println!(
                             "{}\t{}{:?}: {:?} + {:?} - {:?}",
@@ -587,14 +644,13 @@ impl KeyValueDatabase {
                         current_sstatehash = Some(sstatehash);
 
                         let event_id = db
-                            .rooms
                             .shorteventid_eventid
                             .get(&seventid)
                             .unwrap()
                             .unwrap();
                         let string = utils::string_from_bytes(&event_id).unwrap();
                         let event_id = <&EventId>::try_from(string.as_str()).unwrap();
-                        let pdu = db.rooms.get_pdu(event_id).unwrap().unwrap();
+                        let pdu = services().rooms.timeline.get_pdu(event_id).unwrap().unwrap();
 
                         if Some(&pdu.room_id) != current_room.as_ref() {
                             current_room = Some(pdu.room_id.clone());
@@ -615,20 +671,20 @@ impl KeyValueDatabase {
                     )?;
                 }
 
-                db.globals.bump_database_version(7)?;
+                services().globals.bump_database_version(7)?;
 
                 warn!("Migration: 6 -> 7 finished");
             }
 
-            if db.globals.database_version()? < 8 {
+            if services().globals.database_version()? < 8 {
                 // Generate short room ids for all rooms
-                for (room_id, _) in db.rooms.roomid_shortstatehash.iter() {
-                    let shortroomid = db.globals.next_count()?.to_be_bytes();
-                    db.rooms.roomid_shortroomid.insert(&room_id, &shortroomid)?;
+                for (room_id, _) in db.roomid_shortstatehash.iter() {
+                    let shortroomid = services().globals.next_count()?.to_be_bytes();
+                    db.roomid_shortroomid.insert(&room_id, &shortroomid)?;
                     info!("Migration: 8");
                 }
                 // Update pduids db layout
-                let mut batch = db.rooms.pduid_pdu.iter().filter_map(|(key, v)| {
+                let mut batch = db.pduid_pdu.iter().filter_map(|(key, v)| {
                     if !key.starts_with(b"!") {
                         return None;
                     }
@@ -637,7 +693,6 @@ impl KeyValueDatabase {
                     let count = parts.next().unwrap();
 
                     let short_room_id = db
-                        .rooms
                         .roomid_shortroomid
                         .get(room_id)
                         .unwrap()
@@ -649,9 +704,9 @@ impl KeyValueDatabase {
                     Some((new_key, v))
                 });
 
-                db.rooms.pduid_pdu.insert_batch(&mut batch)?;
+                db.pduid_pdu.insert_batch(&mut batch)?;
 
-                let mut batch2 = db.rooms.eventid_pduid.iter().filter_map(|(k, value)| {
+                let mut batch2 = db.eventid_pduid.iter().filter_map(|(k, value)| {
                     if !value.starts_with(b"!") {
                         return None;
                     }
@@ -660,7 +715,6 @@ impl KeyValueDatabase {
                     let count = parts.next().unwrap();
 
                     let short_room_id = db
-                        .rooms
                         .roomid_shortroomid
                         .get(room_id)
                         .unwrap()
@@ -672,17 +726,16 @@ impl KeyValueDatabase {
                     Some((k, new_value))
                 });
 
-                db.rooms.eventid_pduid.insert_batch(&mut batch2)?;
+                db.eventid_pduid.insert_batch(&mut batch2)?;
 
-                db.globals.bump_database_version(8)?;
+                services().globals.bump_database_version(8)?;
 
                 warn!("Migration: 7 -> 8 finished");
             }
 
-            if db.globals.database_version()? < 9 {
+            if services().globals.database_version()? < 9 {
                 // Update tokenids db layout
                 let mut iter = db
-                    .rooms
                     .tokenids
                     .iter()
                     .filter_map(|(key, _)| {
@@ -696,7 +749,6 @@ impl KeyValueDatabase {
                         let pdu_id_count = parts.next().unwrap();
 
                         let short_room_id = db
-                            .rooms
                             .roomid_shortroomid
                             .get(room_id)
                             .unwrap()
@@ -712,8 +764,7 @@ impl KeyValueDatabase {
                     .peekable();
 
                 while iter.peek().is_some() {
-                    db.rooms
-                        .tokenids
+                    db.tokenids
                         .insert_batch(&mut iter.by_ref().take(1000))?;
                     println!("smaller batch done");
                 }
@@ -721,7 +772,6 @@ impl KeyValueDatabase {
                 info!("Deleting starts");
 
                 let batch2: Vec<_> = db
-                    .rooms
                     .tokenids
                     .iter()
                     .filter_map(|(key, _)| {
@@ -736,38 +786,37 @@ impl KeyValueDatabase {
 
                 for key in batch2 {
                     println!("del");
-                    db.rooms.tokenids.remove(&key)?;
+                    db.tokenids.remove(&key)?;
                 }
 
-                db.globals.bump_database_version(9)?;
+                services().globals.bump_database_version(9)?;
 
                 warn!("Migration: 8 -> 9 finished");
             }
 
-            if db.globals.database_version()? < 10 {
+            if services().globals.database_version()? < 10 {
                 // Add other direction for shortstatekeys
-                for (statekey, shortstatekey) in db.rooms.statekey_shortstatekey.iter() {
-                    db.rooms
-                        .shortstatekey_statekey
+                for (statekey, shortstatekey) in db.statekey_shortstatekey.iter() {
+                    db.shortstatekey_statekey
                         .insert(&shortstatekey, &statekey)?;
                 }
 
                 // Force E2EE device list updates so we can send them over federation
-                for user_id in db.users.iter().filter_map(|r| r.ok()) {
-                    db.users
-                        .mark_device_key_update(&user_id, &db.rooms, &db.globals)?;
+                for user_id in services().users.iter().filter_map(|r| r.ok()) {
+                    services().users
+                        .mark_device_key_update(&user_id)?;
                 }
 
-                db.globals.bump_database_version(10)?;
+                services().globals.bump_database_version(10)?;
 
                 warn!("Migration: 9 -> 10 finished");
             }
 
-            if db.globals.database_version()? < 11 {
+            if services().globals.database_version()? < 11 {
                 db._db
                     .open_tree("userdevicesessionid_uiaarequest")?
                     .clear()?;
-                db.globals.bump_database_version(11)?;
+                services().globals.bump_database_version(11)?;
 
                 warn!("Migration: 10 -> 11 finished");
             }
@@ -779,12 +828,12 @@ impl KeyValueDatabase {
                 config.database_backend, latest_database_version
             );
         } else {
-            guard
+            services()
                 .globals
                 .bump_database_version(latest_database_version)?;
 
             // Create the admin room and server user on first run
-            create_admin_room().await?;
+            services().admin.create_admin_room().await?;
 
             warn!(
                 "Created new {} database with version {}",
@@ -793,16 +842,16 @@ impl KeyValueDatabase {
         }
 
         // This data is probably outdated
-        guard.rooms.edus.presenceid_presence.clear()?;
+        db.presenceid_presence.clear()?;
 
-        guard.admin.start_handler(Arc::clone(&db), admin_receiver);
+        services().admin.start_handler(admin_receiver);
 
         // Set emergency access for the conduit user
-        match set_emergency_access(&guard) {
+        match set_emergency_access() {
             Ok(pwd_set) => {
                 if pwd_set {
                     warn!("The Conduit account emergency password is set! Please unset it as soon as you finish admin account recovery!");
-                    guard.admin.send_message(RoomMessageEventContent::text_plain("The Conduit account emergency password is set! Please unset it as soon as you finish admin account recovery!"));
+                    services().admin.send_message(RoomMessageEventContent::text_plain("The Conduit account emergency password is set! Please unset it as soon as you finish admin account recovery!"));
                 }
             }
             Err(e) => {
@@ -813,21 +862,19 @@ impl KeyValueDatabase {
             }
         };
 
-        guard
+        services()
             .sending
-            .start_handler(Arc::clone(&db), sending_receiver);
+            .start_handler(sending_receiver);
 
-        drop(guard);
+        Self::start_cleanup_task(config).await;
 
-        Self::start_cleanup_task(Arc::clone(&db), config).await;
-
-        Ok(db)
+        Ok(())
     }
 
     #[cfg(feature = "conduit_bin")]
-    pub async fn on_shutdown(db: Arc<TokioRwLock<Self>>) {
+    pub async fn on_shutdown() {
         info!(target: "shutdown-sync", "Received shutdown notification, notifying sync helpers...");
-        db.read().await.globals.rotate.fire();
+        services().globals.rotate.fire();
     }
 
     pub async fn watch(&self, user_id: &UserId, device_id: &DeviceId) {
@@ -844,33 +891,30 @@ impl KeyValueDatabase {
         // Return when *any* user changed his key
         // TODO: only send for user they share a room with
         futures.push(
-            self.users
-                .todeviceid_events
+            self.todeviceid_events
                 .watch_prefix(&userdeviceid_prefix),
         );
 
-        futures.push(self.rooms.userroomid_joined.watch_prefix(&userid_prefix));
+        futures.push(self.userroomid_joined.watch_prefix(&userid_prefix));
         futures.push(
-            self.rooms
-                .userroomid_invitestate
+            self.userroomid_invitestate
                 .watch_prefix(&userid_prefix),
         );
-        futures.push(self.rooms.userroomid_leftstate.watch_prefix(&userid_prefix));
+        futures.push(self.userroomid_leftstate.watch_prefix(&userid_prefix));
         futures.push(
-            self.rooms
-                .userroomid_notificationcount
+            self.userroomid_notificationcount
                 .watch_prefix(&userid_prefix),
         );
         futures.push(
-            self.rooms
-                .userroomid_highlightcount
+            self.userroomid_highlightcount
                 .watch_prefix(&userid_prefix),
         );
 
         // Events for rooms we are in
-        for room_id in self.rooms.rooms_joined(user_id).filter_map(|r| r.ok()) {
-            let short_roomid = self
+        for room_id in services().rooms.state_cache.rooms_joined(user_id).filter_map(|r| r.ok()) {
+            let short_roomid = services()
                 .rooms
+                .short
                 .get_shortroomid(&room_id)
                 .ok()
                 .flatten()
@@ -883,33 +927,28 @@ impl KeyValueDatabase {
             roomid_prefix.push(0xff);
 
             // PDUs
-            futures.push(self.rooms.pduid_pdu.watch_prefix(&short_roomid));
+            futures.push(self.pduid_pdu.watch_prefix(&short_roomid));
 
             // EDUs
             futures.push(
-                self.rooms
-                    .edus
-                    .roomid_lasttypingupdate
+                self.roomid_lasttypingupdate
                     .watch_prefix(&roomid_bytes),
             );
 
             futures.push(
-                self.rooms
-                    .edus
-                    .readreceiptid_readreceipt
+                self.readreceiptid_readreceipt
                     .watch_prefix(&roomid_prefix),
             );
 
             // Key changes
-            futures.push(self.users.keychangeid_userid.watch_prefix(&roomid_prefix));
+            futures.push(self.keychangeid_userid.watch_prefix(&roomid_prefix));
 
             // Room account data
             let mut roomuser_prefix = roomid_prefix.clone();
             roomuser_prefix.extend_from_slice(&userid_prefix);
 
             futures.push(
-                self.account_data
-                    .roomusertype_roomuserdataid
+                self.roomusertype_roomuserdataid
                     .watch_prefix(&roomuser_prefix),
             );
         }
@@ -918,22 +957,20 @@ impl KeyValueDatabase {
         globaluserdata_prefix.extend_from_slice(&userid_prefix);
 
         futures.push(
-            self.account_data
-                .roomusertype_roomuserdataid
+            self.roomusertype_roomuserdataid
                 .watch_prefix(&globaluserdata_prefix),
         );
 
         // More key changes (used when user is not joined to any rooms)
-        futures.push(self.users.keychangeid_userid.watch_prefix(&userid_prefix));
+        futures.push(self.keychangeid_userid.watch_prefix(&userid_prefix));
 
         // One time keys
         futures.push(
-            self.users
-                .userid_lastonetimekeyupdate
+            self.userid_lastonetimekeyupdate
                 .watch_prefix(&userid_bytes),
         );
 
-        futures.push(Box::pin(self.globals.rotate.watch()));
+        futures.push(Box::pin(services().globals.rotate.watch()));
 
         // Wait until one of them finds something
         futures.next().await;
@@ -950,8 +987,8 @@ impl KeyValueDatabase {
         res
     }
 
-    #[tracing::instrument(skip(db, config))]
-    pub async fn start_cleanup_task(db: Arc<TokioRwLock<Self>>, config: &Config) {
+    #[tracing::instrument(skip(config))]
+    pub async fn start_cleanup_task(config: &Config) {
         use tokio::time::interval;
 
         #[cfg(unix)]
@@ -984,7 +1021,7 @@ impl KeyValueDatabase {
                 }
 
                 let start = Instant::now();
-                if let Err(e) = db.read().await._db.cleanup() {
+                if let Err(e) = services().globals.db._db.cleanup() {
                     error!("cleanup: Errored: {}", e);
                 } else {
                     info!("cleanup: Finished in {:?}", start.elapsed());
@@ -995,26 +1032,25 @@ impl KeyValueDatabase {
 }
 
 /// Sets the emergency password and push rules for the @conduit account in case emergency password is set
-fn set_emergency_access(db: &KeyValueDatabase) -> Result<bool> {
-    let conduit_user = UserId::parse_with_server_name("conduit", db.globals.server_name())
+fn set_emergency_access() -> Result<bool> {
+    let conduit_user = UserId::parse_with_server_name("conduit", services().globals.server_name())
         .expect("@conduit:server_name is a valid UserId");
 
-    db.users
-        .set_password(&conduit_user, db.globals.emergency_password().as_deref())?;
+    services().users
+        .set_password(&conduit_user, services().globals.emergency_password().as_deref())?;
 
-    let (ruleset, res) = match db.globals.emergency_password() {
+    let (ruleset, res) = match services().globals.emergency_password() {
         Some(_) => (Ruleset::server_default(&conduit_user), Ok(true)),
         None => (Ruleset::new(), Ok(false)),
     };
 
-    db.account_data.update(
+    services().account_data.update(
         None,
         &conduit_user,
         GlobalAccountDataEventType::PushRules.to_string().into(),
         &GlobalAccountDataEvent {
             content: PushRulesEventContent { global: ruleset },
         },
-        &db.globals,
     )?;
 
     res

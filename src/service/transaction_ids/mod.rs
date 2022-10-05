@@ -4,11 +4,11 @@ pub use data::Data;
 use ruma::{UserId, DeviceId, TransactionId};
 use crate::Result;
 
-pub struct Service<D: Data> {
-    db: D,
+pub struct Service {
+    db: Box<dyn Data>,
 }
 
-impl<D: Data> Service<D> {
+impl Service {
     pub fn add_txnid(
         &self,
         user_id: &UserId,

@@ -12,11 +12,11 @@ use ruma::{
 };
 use std::{collections::BTreeMap, sync::Arc};
 
-pub struct Service<D: Data> {
-    db: D,
+pub struct Service {
+    db: Box<dyn Data>,
 }
 
-impl<D: Data> Service<D> {
+impl Service {
     pub fn create_backup(
         &self,
         user_id: &UserId,

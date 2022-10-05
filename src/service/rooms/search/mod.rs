@@ -4,11 +4,16 @@ pub use data::Data;
 use crate::Result;
 use ruma::RoomId;
 
-pub struct Service<D: Data> {
-    db: D,
+pub struct Service {
+    db: Box<dyn Data>,
 }
 
-impl<D: Data> Service<D> {
+impl Service {
+    #[tracing::instrument(skip(self))]
+    pub fn index_pdu<'a>(&self, shortroomid: u64, pdu_id: &[u8], message_body: String) -> Result<()> {
+        self.db.index_pdu(shortroomid, pdu_id, message_body)
+    }
+
     #[tracing::instrument(skip(self))]
     pub fn search_pdus<'a>(
         &'a self,

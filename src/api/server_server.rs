@@ -664,7 +664,7 @@ pub async fn send_transaction_message_route(
             Some(id) => id,
             None => {
                 // Event is invalid
-                resolved_map.insert(event_id, Err("Event needs a valid RoomId.".to_owned()));
+                resolved_map.insert(event_id, Err(Error::bad_database("Event needs a valid RoomId.")));
                 continue;
             }
         };
@@ -707,7 +707,7 @@ pub async fn send_transaction_message_route(
 
     for pdu in &resolved_map {
         if let Err(e) = pdu.1 {
-            if e != "Room is unknown to this server." {
+            if matches!(e, Error::BadRequest(ErrorKind::NotFound, _)) {
                 warn!("Incoming PDU failed {:?}", pdu);
             }
         }
@@ -854,170 +854,7 @@ pub async fn send_transaction_message_route(
         }
     }
 
-    Ok(send_transaction_message::v1::Response { pdus: resolved_map })
-}
-
-/// Search the DB for the signing keys of the given server, if we don't have them
-/// fetch them from the server and save to our DB.
-#[tracing::instrument(skip_all)]
-pub(crate) async fn fetch_signing_keys(
-    origin: &ServerName,
-    signature_ids: Vec<String>,
-) -> Result<BTreeMap<String, Base64>> {
-    let contains_all_ids =
-        |keys: &BTreeMap<String, Base64>| signature_ids.iter().all(|id| keys.contains_key(id));
-
-    let permit = services()
-        .globals
-        .servername_ratelimiter
-        .read()
-        .unwrap()
-        .get(origin)
-        .map(|s| Arc::clone(s).acquire_owned());
-
-    let permit = match permit {
-        Some(p) => p,
-        None => {
-            let mut write = services().globals.servername_ratelimiter.write().unwrap();
-            let s = Arc::clone(
-                write
-                    .entry(origin.to_owned())
-                    .or_insert_with(|| Arc::new(Semaphore::new(1))),
-            );
-
-            s.acquire_owned()
-        }
-    }
-    .await;
-
-    let back_off = |id| match services()
-        .globals
-        .bad_signature_ratelimiter
-        .write()
-        .unwrap()
-        .entry(id)
-    {
-        hash_map::Entry::Vacant(e) => {
-            e.insert((Instant::now(), 1));
-        }
-        hash_map::Entry::Occupied(mut e) => *e.get_mut() = (Instant::now(), e.get().1 + 1),
-    };
-
-    if let Some((time, tries)) = services()
-        .globals
-        .bad_signature_ratelimiter
-        .read()
-        .unwrap()
-        .get(&signature_ids)
-    {
-        // Exponential backoff
-        let mut min_elapsed_duration = Duration::from_secs(30) * (*tries) * (*tries);
-        if min_elapsed_duration > Duration::from_secs(60 * 60 * 24) {
-            min_elapsed_duration = Duration::from_secs(60 * 60 * 24);
-        }
-
-        if time.elapsed() < min_elapsed_duration {
-            debug!("Backing off from {:?}", signature_ids);
-            return Err(Error::BadServerResponse("bad signature, still backing off"));
-        }
-    }
-
-    trace!("Loading signing keys for {}", origin);
-
-    let mut result: BTreeMap<_, _> = services()
-        .globals
-        .signing_keys_for(origin)?
-        .into_iter()
-        .map(|(k, v)| (k.to_string(), v.key))
-        .collect();
-
-    if contains_all_ids(&result) {
-        return Ok(result);
-    }
-
-    debug!("Fetching signing keys for {} over federation", origin);
-
-    if let Some(server_key) = services()
-        .sending
-        .send_federation_request(origin, get_server_keys::v2::Request::new())
-        .await
-        .ok()
-        .and_then(|resp| resp.server_key.deserialize().ok())
-    {
-        services().globals.add_signing_key(origin, server_key.clone())?;
-
-        result.extend(
-            server_key
-                .verify_keys
-                .into_iter()
-                .map(|(k, v)| (k.to_string(), v.key)),
-        );
-        result.extend(
-            server_key
-                .old_verify_keys
-                .into_iter()
-                .map(|(k, v)| (k.to_string(), v.key)),
-        );
-
-        if contains_all_ids(&result) {
-            return Ok(result);
-        }
-    }
-
-    for server in services().globals.trusted_servers() {
-        debug!("Asking {} for {}'s signing key", server, origin);
-        if let Some(server_keys) = services()
-            .sending
-            .send_federation_request(
-                server,
-                get_remote_server_keys::v2::Request::new(
-                    origin,
-                    MilliSecondsSinceUnixEpoch::from_system_time(
-                        SystemTime::now()
-                            .checked_add(Duration::from_secs(3600))
-                            .expect("SystemTime to large"),
-                    )
-                    .expect("time is valid"),
-                ),
-            )
-            .await
-            .ok()
-            .map(|resp| {
-                resp.server_keys
-                    .into_iter()
-                    .filter_map(|e| e.deserialize().ok())
-                    .collect::<Vec<_>>()
-            })
-        {
-            trace!("Got signing keys: {:?}", server_keys);
-            for k in server_keys {
-                services().globals.add_signing_key(origin, k.clone())?;
-                result.extend(
-                    k.verify_keys
-                        .into_iter()
-                        .map(|(k, v)| (k.to_string(), v.key)),
-                );
-                result.extend(
-                    k.old_verify_keys
-                        .into_iter()
-                        .map(|(k, v)| (k.to_string(), v.key)),
-                );
-            }
-
-            if contains_all_ids(&result) {
-                return Ok(result);
-            }
-        }
-    }
-
-    drop(permit);
-
-    back_off(signature_ids);
-
-    warn!("Failed to find public key for server: {}", origin);
-    Err(Error::BadServerResponse(
-        "Failed to find public key for server",
-    ))
+    Ok(send_transaction_message::v1::Response { pdus: resolved_map.into_iter().map(|(e, r)| (e, r.map_err(|e| e.to_string()))).collect() })
 }
 
 #[tracing::instrument(skip(starting_events))]
@@ -1050,7 +887,7 @@ pub(crate) async fn get_auth_chain<'a>(
         }
 
         let chunk_key: Vec<u64> = chunk.iter().map(|(short, _)| short).copied().collect();
-        if let Some(cached) = services().rooms.auth_chain.get_auth_chain_from_cache(&chunk_key)? {
+        if let Some(cached) = services().rooms.auth_chain.get_cached_eventid_authchain(&chunk_key)? {
             hits += 1;
             full_auth_chain.extend(cached.iter().copied());
             continue;
@@ -1062,7 +899,7 @@ pub(crate) async fn get_auth_chain<'a>(
         let mut misses2 = 0;
         let mut i = 0;
         for (sevent_id, event_id) in chunk {
-            if let Some(cached) = services().rooms.auth_chain.get_auth_chain_from_cache(&[sevent_id])? {
+            if let Some(cached) = services().rooms.auth_chain.get_cached_eventid_authchain(&[sevent_id])? {
                 hits2 += 1;
                 chunk_cache.extend(cached.iter().copied());
             } else {
@@ -1689,7 +1526,7 @@ pub async fn create_invite_route(
 
     services().rooms.event_handler.acl_check(&sender_servername, &body.room_id)?;
 
-    if !services().rooms.is_supported_version(&body.room_version) {
+    if !services().globals.supported_room_versions().contains(&body.room_version) {
         return Err(Error::BadRequest(
             ErrorKind::IncompatibleRoomVersion {
                 room_version: body.room_version.clone(),

@@ -13,22 +13,16 @@ mod service;
 pub mod api;
 mod utils;
 
-use std::{cell::Cell, sync::RwLock};
+use std::{cell::Cell, sync::{RwLock, Arc}};
 
 pub use config::Config;
 pub use utils::error::{Error, Result};
 pub use service::{Services, pdu::PduEvent};
 pub use api::ruma_wrapper::{Ruma, RumaResponse};
 
-use crate::database::KeyValueDatabase;
+pub static SERVICES: RwLock<Option<Arc<Services>>> = RwLock::new(None);
 
-pub static SERVICES: RwLock<Option<ServicesEnum>> = RwLock::new(None);
-
-enum ServicesEnum {
-    Rocksdb(Services<KeyValueDatabase>)
-}
-
-pub fn services<'a>() -> &'a Services<KeyValueDatabase> {
-    &SERVICES.read().unwrap()
+pub fn services<'a>() -> Arc<Services> {
+    Arc::clone(&SERVICES.read().unwrap())
 }
 

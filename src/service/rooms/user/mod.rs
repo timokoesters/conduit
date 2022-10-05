@@ -4,11 +4,11 @@ use ruma::{RoomId, UserId};
 
 use crate::Result;
 
-pub struct Service<D: Data> {
-    db: D,
+pub struct Service {
+    db: Box<dyn Data>,
 }
 
-impl<D: Data> Service<D> {
+impl Service {
     pub fn reset_notification_counts(&self, user_id: &UserId, room_id: &RoomId) -> Result<()> {
         self.db.reset_notification_counts(user_id, room_id)
     }

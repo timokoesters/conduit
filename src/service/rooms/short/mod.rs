@@ -6,11 +6,11 @@ use ruma::{EventId, events::StateEventType, RoomId};
 
 use crate::{Result, Error, utils, services};
 
-pub struct Service<D: Data> {
-    db: D,
+pub struct Service {
+    db: Box<dyn Data>,
 }
 
-impl<D: Data> Service<D> {
+impl Service {
     pub fn get_or_create_shorteventid(
         &self,
         event_id: &EventId,

@@ -6,11 +6,11 @@ use tracing::error;
 
 use crate::{Result, utils, Error, services, api::client_server::SESSION_ID_LENGTH};
 
-pub struct Service<D: Data> {
-    db: D,
+pub struct Service {
+    db: Box<dyn Data>,
 }
 
-impl<D: Data> Service<D> {
+impl Service {
     /// Creates a new Uiaa session. Make sure the session token is unique.
     pub fn create(
         &self,

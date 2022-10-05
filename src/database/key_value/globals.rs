@@ -4,10 +4,10 @@ use crate::{Result, service, database::KeyValueDatabase, Error, utils};
 
 impl service::globals::Data for KeyValueDatabase {
     fn load_keypair(&self) -> Result<Ed25519KeyPair> {
-        let keypair_bytes = self.globals.get(b"keypair")?.map_or_else(
+        let keypair_bytes = self.global.get(b"keypair")?.map_or_else(
             || {
                 let keypair = utils::generate_keypair();
-                self.globals.insert(b"keypair", &keypair)?;
+                self.global.insert(b"keypair", &keypair)?;
                 Ok::<_, Error>(keypair)
             },
             |s| Ok(s.to_vec()),
@@ -33,8 +33,10 @@ impl service::globals::Data for KeyValueDatabase {
             Ed25519KeyPair::from_der(key, version)
                 .map_err(|_| Error::bad_database("Private or public keys are invalid."))
         });
+
+        keypair
     }
     fn remove_keypair(&self) -> Result<()> {
-        self.globals.remove(b"keypair")?
+        self.global.remove(b"keypair")
     }
 }

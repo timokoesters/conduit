@@ -4,11 +4,11 @@ use ruma::{UserId, RoomId, events::SyncEphemeralRoomEvent};
 
 use crate::Result;
 
-pub struct Service<D: Data> {
-    db: D,
+pub struct Service {
+    db: Box<dyn Data>,
 }
 
-impl<D: Data> Service<D> {
+impl Service {
     /// Sets a user as typing until the timeout timestamp is reached or roomtyping_remove is
     /// called.
     pub fn typing_add(&self, user_id: &UserId, room_id: &RoomId, timeout: u64) -> Result<()> {

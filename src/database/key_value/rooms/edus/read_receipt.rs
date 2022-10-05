@@ -64,7 +64,7 @@ impl service::rooms::edus::read_receipt::Data for KeyValueDatabase {
         let mut first_possible_edu = prefix.clone();
         first_possible_edu.extend_from_slice(&(since + 1).to_be_bytes()); // +1 so we don't send the event at since
 
-        self.readreceiptid_readreceipt
+        Box::new(self.readreceiptid_readreceipt
             .iter_from(&first_possible_edu, false)
             .take_while(move |(k, _)| k.starts_with(&prefix2))
             .map(move |(k, v)| {
@@ -91,7 +91,7 @@ impl service::rooms::edus::read_receipt::Data for KeyValueDatabase {
                         serde_json::value::to_raw_value(&json).expect("json is valid raw value"),
                     ),
                 ))
-            })
+            }))
     }
 
     fn private_read_set(

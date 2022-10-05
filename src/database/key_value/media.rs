@@ -1,3 +1,5 @@
+use ruma::api::client::error::ErrorKind;
+
 use crate::{database::KeyValueDatabase, service, Error, utils, Result};
 
 impl service::media::Data for KeyValueDatabase {
@@ -33,7 +35,7 @@ impl service::media::Data for KeyValueDatabase {
         prefix.extend_from_slice(&0_u32.to_be_bytes()); // Height = 0 if it's not a thumbnail
         prefix.push(0xff);
 
-        let (key, _) = self.mediaid_file.scan_prefix(prefix).next().ok_or(Error::NotFound)?;
+        let (key, _) = self.mediaid_file.scan_prefix(prefix).next().ok_or(Error::BadRequest(ErrorKind::NotFound, "Media not found"))?;
 
         let mut parts = key.rsplit(|&b| b == 0xff);
 

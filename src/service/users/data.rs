@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use crate::Result;
 use ruma::{UserId, DeviceId, DeviceKeyAlgorithm, DeviceKeyId, serde::Raw, encryption::{OneTimeKey, DeviceKeys, CrossSigningKey}, UInt, events::AnyToDeviceEvent, api::client::{device::Device, filter::IncomingFilterDefinition}, MxcUri};
 
-pub trait Data {
+pub trait Data: Send + Sync {
     /// Check if a user has an account on this homeserver.
     fn exists(&self, user_id: &UserId) -> Result<bool>;
 
@@ -138,16 +138,16 @@ pub trait Data {
         device_id: &DeviceId,
     ) -> Result<Option<Raw<DeviceKeys>>>;
 
-    fn get_master_key<F: Fn(&UserId) -> bool>(
+    fn get_master_key(
         &self,
         user_id: &UserId,
-        allowed_signatures: F,
+        allowed_signatures: &dyn Fn(&UserId) -> bool,
     ) -> Result<Option<Raw<CrossSigningKey>>>;
 
-    fn get_self_signing_key<F: Fn(&UserId) -> bool>(
+    fn get_self_signing_key(
         &self,
         user_id: &UserId,
-        allowed_signatures: F,
+        allowed_signatures: &dyn Fn(&UserId) -> bool,
     ) -> Result<Option<Raw<CrossSigningKey>>>;
 
     fn get_user_signing_key(&self, user_id: &UserId) -> Result<Option<Raw<CrossSigningKey>>>;

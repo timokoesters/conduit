@@ -15,7 +15,7 @@ pub trait Data {
         user_id: &UserId,
         device_id: &DeviceId,
         room_id: &RoomId,
-        since: u64,
+        confirmed_user_ids: &mut dyn Iterator<Item=&UserId>,
     ) -> Result<()>;
 
     fn lazy_load_reset(

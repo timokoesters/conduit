@@ -1,6 +1,5 @@
 use std::sync::Arc;
 use std::{sync::MutexGuard, collections::HashSet};
-use std::fmt::Debug;
 use crate::Result;
 use ruma::{EventId, RoomId};
 
@@ -22,7 +21,7 @@ pub trait Data {
     /// Replace the forward extremities of the room.
     fn set_forward_extremities<'a>(&self,
         room_id: &RoomId,
-        event_ids: impl IntoIterator<Item = &'a EventId> + Debug,
+        event_ids: &dyn Iterator<Item = &'a EventId>,
         _mutex_lock: &MutexGuard<'_, ()>, // Take mutex guard to make sure users get the room state mutex
     ) -> Result<()>;
 }

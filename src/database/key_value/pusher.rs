@@ -55,6 +55,6 @@ impl service::pusher::Data for KeyValueDatabase {
         let mut prefix = sender.as_bytes().to_vec();
         prefix.push(0xff);
 
-        self.senderkey_pusher.scan_prefix(prefix).map(|(k, _)| k)
+        Box::new(self.senderkey_pusher.scan_prefix(prefix).map(|(k, _)| k))
     }
 }

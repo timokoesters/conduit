@@ -7,11 +7,11 @@ use ruma::{RoomId, UserId, events::{room::{member::MembershipState, create::Room
 
 use crate::{Result, services, utils, Error};
 
-pub struct Service<D: Data> {
-    db: D,
+pub struct Service {
+    db: Box<dyn Data>,
 }
 
-impl<D: Data> Service<D> {
+impl Service {
     /// Update current membership data.
     #[tracing::instrument(skip(self, last_state))]
     pub fn update_membership(

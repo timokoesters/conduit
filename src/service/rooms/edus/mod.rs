@@ -4,8 +4,8 @@ pub mod typing;
 
 pub trait Data: presence::Data + read_receipt::Data + typing::Data {}
 
-pub struct Service<D: Data> {
-    pub presence: presence::Service<D>,
-    pub read_receipt: read_receipt::Service<D>,
-    pub typing: typing::Service<D>,
+pub struct Service {
+    pub presence: presence::Service,
+    pub read_receipt: read_receipt::Service,
+    pub typing: typing::Service,
 }

@@ -25,5 +25,5 @@ pub trait Data {
     fn local_aliases_for_room(
         &self,
         room_id: &RoomId,
-    ) -> Result<Box<dyn Iterator<Item=String>>>;
+    ) -> Box<dyn Iterator<Item = Result<Box<RoomAliasId>>>>;
 }

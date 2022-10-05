@@ -197,7 +197,7 @@ where
                             request_map.insert("content".to_owned(), json_body.clone());
                         };
 
-                        let keys_result = server_server::fetch_signing_keys(
+                        let keys_result = services().rooms.event_handler.fetch_signing_keys(
                             &x_matrix.origin,
                             vec![x_matrix.key.to_owned()],
                         )

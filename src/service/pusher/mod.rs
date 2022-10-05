@@ -23,11 +23,11 @@ use ruma::{
 use std::{fmt::Debug, mem};
 use tracing::{error, info, warn};
 
-pub struct Service<D: Data> {
-    db: D,
+pub struct Service {
+    db: Box<dyn Data>,
 }
 
-impl<D: Data> Service<D> {
+impl Service {
     pub fn set_pusher(&self, sender: &UserId, pusher: set_pusher::v3::Pusher) -> Result<()> {
         self.db.set_pusher(sender, pusher)
     }

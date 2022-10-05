@@ -1,10 +1,12 @@
+use std::collections::HashSet;
+
 use super::CompressedStateEvent;
 use crate::Result;
 
 pub struct StateDiff {
-    parent: Option<u64>,
-    added: Vec<CompressedStateEvent>,
-    removed: Vec<CompressedStateEvent>,
+    pub parent: Option<u64>,
+    pub added: HashSet<CompressedStateEvent>,
+    pub removed: HashSet<CompressedStateEvent>,
 }
 
 pub trait Data {

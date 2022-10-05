@@ -4,11 +4,11 @@ pub use data::Data;
 use ruma::{RoomId, UserId, events::receipt::ReceiptEvent, serde::Raw};
 use crate::Result;
 
-pub struct Service<D: Data> {
-    db: D,
+pub struct Service {
+    db: Box<dyn Data>,
 }
 
-impl<D: Data> Service<D> {
+impl Service {
     /// Replaces the previous read receipt.
     pub fn readreceipt_update(
         &self,

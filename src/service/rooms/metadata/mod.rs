@@ -4,11 +4,11 @@ use ruma::RoomId;
 
 use crate::Result;
 
-pub struct Service<D: Data> {
-    db: D,
+pub struct Service {
+    db: Box<dyn Data>,
 }
 
-impl<D: Data> Service<D> {
+impl Service {
     /// Checks if a room exists.
     #[tracing::instrument(skip(self))]
     pub fn exists(&self, room_id: &RoomId) -> Result<bool> {

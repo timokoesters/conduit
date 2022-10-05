@@ -1,16 +1,18 @@
 mod data;
-use std::collections::HashSet;
+use std::{collections::{HashSet, HashMap}, sync::Mutex};
 
 pub use data::Data;
 use ruma::{DeviceId, UserId, RoomId};
 
 use crate::Result;
 
-pub struct Service<D: Data> {
-    db: D,
+pub struct Service {
+    db: Box<dyn Data>,
+
+    lazy_load_waiting: Mutex<HashMap<(Box<UserId>, Box<DeviceId>, Box<RoomId>, u64), HashSet<Box<UserId>>>>,
 }
 
-impl<D: Data> Service<D> {
+impl Service {
     #[tracing::instrument(skip(self))]
     pub fn lazy_load_was_sent_before(
         &self,
@@ -50,7 +52,18 @@ impl<D: Data> Service<D> {
         room_id: &RoomId,
         since: u64,
     ) -> Result<()> {
-        self.db.lazy_load_confirm_delivery(user_id, device_id, room_id, since)
+        if let Some(user_ids) = self.lazy_load_waiting.lock().unwrap().remove(&(
+            user_id.to_owned(),
+            device_id.to_owned(),
+            room_id.to_owned(),
+            since,
+        )) {
+            self.db.lazy_load_confirm_delivery(user_id, device_id, room_id, &mut user_ids.iter().map(|&u| &*u))?;
+        } else {
+            // Ignore
+        }
+
+        Ok(())
     }
 
     #[tracing::instrument(skip(self))]

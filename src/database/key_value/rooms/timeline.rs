@@ -3,7 +3,7 @@ use std::{collections::hash_map, mem::size_of, sync::Arc};
 use ruma::{UserId, RoomId, api::client::error::ErrorKind, EventId, signatures::CanonicalJsonObject};
 use tracing::error;
 
-use crate::{service, database::KeyValueDatabase, utils, Error, PduEvent, Result};
+use crate::{service, database::KeyValueDatabase, utils, Error, PduEvent, Result, services};
 
 impl service::rooms::timeline::Data for KeyValueDatabase {
     fn last_timeline_count(&self, sender_user: &UserId, room_id: &RoomId) -> Result<u64> {
@@ -191,7 +191,7 @@ impl service::rooms::timeline::Data for KeyValueDatabase {
         room_id: &RoomId,
         since: u64,
     ) -> Result<Box<dyn Iterator<Item = Result<(Vec<u8>, PduEvent)>>>> {
-        let prefix = self
+        let prefix = services().rooms.short
             .get_shortroomid(room_id)?
             .expect("room exists")
             .to_be_bytes()
@@ -203,7 +203,7 @@ impl service::rooms::timeline::Data for KeyValueDatabase {
 
         let user_id = user_id.to_owned();
 
-        Ok(self
+        Ok(Box::new(self
             .pduid_pdu
             .iter_from(&first_pdu_id, false)
             .take_while(move |(k, _)| k.starts_with(&prefix))
@@ -214,7 +214,7 @@ impl service::rooms::timeline::Data for KeyValueDatabase {
                     pdu.remove_transaction_id()?;
                 }
                 Ok((pdu_id, pdu))
-            }))
+            })))
     }
 
     /// Returns an iterator over all events and their tokens in a room that happened before the
@@ -226,7 +226,7 @@ impl service::rooms::timeline::Data for KeyValueDatabase {
         until: u64,
     ) -> Result<Box<dyn Iterator<Item = Result<(Vec<u8>, PduEvent)>>>> {
         // Create the first part of the full pdu id
-        let prefix = self
+        let prefix = services().rooms.short
             .get_shortroomid(room_id)?
             .expect("room exists")
             .to_be_bytes()
@@ -239,7 +239,7 @@ impl service::rooms::timeline::Data for KeyValueDatabase {
 
         let user_id = user_id.to_owned();
 
-        Ok(self
+        Ok(Box::new(self
             .pduid_pdu
             .iter_from(current, true)
             .take_while(move |(k, _)| k.starts_with(&prefix))
@@ -250,7 +250,7 @@ impl service::rooms::timeline::Data for KeyValueDatabase {
                     pdu.remove_transaction_id()?;
                 }
                 Ok((pdu_id, pdu))
-            }))
+            })))
     }
 
     fn pdus_after<'a>(
@@ -260,7 +260,7 @@ impl service::rooms::timeline::Data for KeyValueDatabase {
         from: u64,
     ) -> Result<Box<dyn Iterator<Item = Result<(Vec<u8>, PduEvent)>>>> {
         // Create the first part of the full pdu id
-        let prefix = self
+        let prefix = services().rooms.short
             .get_shortroomid(room_id)?
             .expect("room exists")
             .to_be_bytes()
@@ -273,7 +273,7 @@ impl service::rooms::timeline::Data for KeyValueDatabase {
 
         let user_id = user_id.to_owned();
 
-        Ok(self
+        Ok(Box::new(self
             .pduid_pdu
             .iter_from(current, false)
             .take_while(move |(k, _)| k.starts_with(&prefix))
@@ -284,6 +284,6 @@ impl service::rooms::timeline::Data for KeyValueDatabase {
                     pdu.remove_transaction_id()?;
                 }
                 Ok((pdu_id, pdu))
-            }))
+            })))
     }
 }

@@ -5,11 +5,11 @@ pub use data::Data;
 
 use crate::Result;
 
-pub struct Service<D: Data> {
-    db: D,
+pub struct Service {
+    db: Box<dyn Data>,
 }
 
-impl<D: Data> Service<D> {
+impl Service {
     #[tracing::instrument(skip(self))]
     pub fn get_cached_eventid_authchain<'a>(
         &'a self,

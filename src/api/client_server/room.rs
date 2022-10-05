@@ -99,7 +99,7 @@ pub async fn create_room_route(
 
     let room_version = match body.room_version.clone() {
         Some(room_version) => {
-            if services().rooms.is_supported_version(&services(), &room_version) {
+            if services().globals.supported_room_versions().contains(&room_version) {
                 room_version
             } else {
                 return Err(Error::BadRequest(
@@ -470,7 +470,7 @@ pub async fn upgrade_room_route(
 ) -> Result<upgrade_room::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
-    if !services().rooms.is_supported_version(&body.new_version) {
+    if !services().globals.supported_room_versions().contains(&body.new_version) {
         return Err(Error::BadRequest(
             ErrorKind::UnsupportedRoomVersion,
             "This server does not support that room version.",

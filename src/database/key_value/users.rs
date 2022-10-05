@@ -57,12 +57,12 @@ impl service::users::Data for KeyValueDatabase {
 
     /// Returns an iterator over all users on this homeserver.
     fn iter(&self) -> Box<dyn Iterator<Item = Result<Box<UserId>>>> {
-        self.userid_password.iter().map(|(bytes, _)| {
+        Box::new(self.userid_password.iter().map(|(bytes, _)| {
             UserId::parse(utils::string_from_bytes(&bytes).map_err(|_| {
                 Error::bad_database("User ID in userid_password is invalid unicode.")
             })?)
             .map_err(|_| Error::bad_database("User ID in userid_password is invalid."))
-        })
+        }))
     }
 
     /// Returns a list of local users as list of usernames.
@@ -274,7 +274,7 @@ impl service::users::Data for KeyValueDatabase {
         let mut prefix = user_id.as_bytes().to_vec();
         prefix.push(0xff);
         // All devices have metadata
-        self.userdeviceid_metadata
+        Box::new(self.userdeviceid_metadata
             .scan_prefix(prefix)
             .map(|(bytes, _)| {
                 Ok(utils::string_from_bytes(
@@ -285,7 +285,7 @@ impl service::users::Data for KeyValueDatabase {
                 )
                 .map_err(|_| Error::bad_database("Device ID in userdeviceid_metadata is invalid."))?
                 .into())
-            })
+            }))
     }
 
     /// Replaces the access token of one device.
@@ -617,7 +617,7 @@ impl service::users::Data for KeyValueDatabase {
 
         let to = to.unwrap_or(u64::MAX);
 
-        self.keychangeid_userid
+        Box::new(self.keychangeid_userid
             .iter_from(&start, false)
             .take_while(move |(k, _)| {
                 k.starts_with(&prefix)
@@ -638,7 +638,7 @@ impl service::users::Data for KeyValueDatabase {
                     Error::bad_database("User ID in devicekeychangeid_userid is invalid unicode.")
                 })?)
                 .map_err(|_| Error::bad_database("User ID in devicekeychangeid_userid is invalid."))
-            })
+            }))
     }
 
     fn mark_device_key_update(
@@ -646,9 +646,10 @@ impl service::users::Data for KeyValueDatabase {
         user_id: &UserId,
     ) -> Result<()> {
         let count = services().globals.next_count()?.to_be_bytes();
-        for room_id in services().rooms.rooms_joined(user_id).filter_map(|r| r.ok()) {
+        for room_id in services().rooms.state_cache.rooms_joined(user_id).filter_map(|r| r.ok()) {
             // Don't send key updates to unencrypted rooms
             if services().rooms
+                .state_accessor
                 .room_state_get(&room_id, &StateEventType::RoomEncryption, "")?
                 .is_none()
             {
@@ -882,12 +883,12 @@ impl service::users::Data for KeyValueDatabase {
         let mut key = user_id.as_bytes().to_vec();
         key.push(0xff);
 
-        self.userdeviceid_metadata
+        Box::new(self.userdeviceid_metadata
             .scan_prefix(key)
             .map(|(_, bytes)| {
                 serde_json::from_slice::<Device>(&bytes)
                     .map_err(|_| Error::bad_database("Device in userdeviceid_metadata is invalid."))
-            })
+            }))
     }
 
     /// Creates a new sync filter. Returns the filter id.

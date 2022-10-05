@@ -6,11 +6,11 @@ use ruma::{RoomId, UserId, events::presence::PresenceEvent};
 
 use crate::Result;
 
-pub struct Service<D: Data> {
-    db: D,
+pub struct Service {
+    db: Box<dyn Data>,
 }
 
-impl<D: Data> Service<D> {
+impl Service {
     /// Adds a presence event which will be saved until a new event replaces it.
     ///
     /// Note: This method takes a RoomId because presence updates are always bound to rooms to

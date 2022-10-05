@@ -25,26 +25,19 @@ impl service::rooms::lazy_loading::Data for KeyValueDatabase {
         user_id: &UserId,
         device_id: &DeviceId,
         room_id: &RoomId,
-        since: u64,
+        confirmed_user_ids: &mut dyn Iterator<Item = &UserId>,
     ) -> Result<()> {
-        if let Some(user_ids) = self.lazy_load_waiting.lock().unwrap().remove(&(
-            user_id.to_owned(),
-            device_id.to_owned(),
-            room_id.to_owned(),
-            since,
-        )) {
-            let mut prefix = user_id.as_bytes().to_vec();
-            prefix.push(0xff);
-            prefix.extend_from_slice(device_id.as_bytes());
-            prefix.push(0xff);
-            prefix.extend_from_slice(room_id.as_bytes());
-            prefix.push(0xff);
+        let mut prefix = user_id.as_bytes().to_vec();
+        prefix.push(0xff);
+        prefix.extend_from_slice(device_id.as_bytes());
+        prefix.push(0xff);
+        prefix.extend_from_slice(room_id.as_bytes());
+        prefix.push(0xff);
 
-            for ll_id in user_ids {
-                let mut key = prefix.clone();
-                key.extend_from_slice(ll_id.as_bytes());
-                self.lazyloadedids.insert(&key, &[])?;
-            }
+        for ll_id in confirmed_user_ids {
+            let mut key = prefix.clone();
+            key.extend_from_slice(ll_id.as_bytes());
+            self.lazyloadedids.insert(&key, &[])?;
         }
 
         Ok(())

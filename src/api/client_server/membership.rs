@@ -481,7 +481,7 @@ async fn join_room_by_id_helper(
         let (make_join_response, remote_server) = make_join_response_and_server?;
 
         let room_version = match make_join_response.room_version {
-            Some(room_version) if services().rooms.metadata.is_supported_version(&room_version) => room_version,
+            Some(room_version) if services().globals.supported_room_versions().contains(&room_version) => room_version,
             _ => return Err(Error::BadServerResponse("Room version is not supported")),
         };
 
@@ -568,7 +568,7 @@ async fn join_room_by_id_helper(
         let mut state = HashMap::new();
         let pub_key_map = RwLock::new(BTreeMap::new());
 
-        server_server::fetch_join_signing_keys(
+        services().rooms.event_handler.fetch_join_signing_keys(
             &send_join_response,
             &room_version,
             &pub_key_map,
@@ -1048,7 +1048,7 @@ async fn remote_leave_room(
     let (make_leave_response, remote_server) = make_leave_response_and_server?;
 
     let room_version_id = match make_leave_response.room_version {
-        Some(version) if services().rooms.is_supported_version(&version) => version,
+        Some(version) if services().globals.supported_room_versions().contains(&version) => version,
         _ => return Err(Error::BadServerResponse("Room version is not supported")),
     };
 

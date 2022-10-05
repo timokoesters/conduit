@@ -6,11 +6,11 @@ use ruma::{UserId, MxcUri, DeviceId, DeviceKeyId, serde::Raw, encryption::{OneTi
 
 use crate::{Result, Error, services};
 
-pub struct Service<D: Data> {
-    db: D,
+pub struct Service {
+    db: Box<dyn Data>,
 }
 
-impl<D: Data> Service<D> {
+impl Service {
     /// Check if a user has an account on this homeserver.
     pub fn exists(&self, user_id: &UserId) -> Result<bool> {
         self.db.exists(user_id)

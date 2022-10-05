@@ -10,11 +10,11 @@ use crate::{Result, services, PduEvent, Error, utils::calculate_hash};
 
 use super::state_compressor::CompressedStateEvent;
 
-pub struct Service<D: Data> {
-    db: D,
+pub struct Service {
+    db: Box<dyn Data>,
 }
 
-impl<D: Data> Service<D> {
+impl Service {
     /// Set the room to the given statehash and update caches.
     pub fn force_state(
         &self,
@@ -23,6 +23,15 @@ impl<D: Data> Service<D> {
         statediffnew: HashSet<CompressedStateEvent>,
         statediffremoved: HashSet<CompressedStateEvent>,
     ) -> Result<()> {
+        let mutex_state = Arc::clone(
+            services().globals
+                .roomid_mutex_state
+                .write()
+                .unwrap()
+                .entry(body.room_id.to_owned())
+                .or_default(),
+        );
+        let state_lock = mutex_state.lock().await;
 
         for event_id in statediffnew.into_iter().filter_map(|new| {
             services().rooms.state_compressor.parse_compressed_state_event(new)
@@ -70,7 +79,9 @@ impl<D: Data> Service<D> {
 
         services().room.state_cache.update_joined_count(room_id)?;
 
-        self.db.set_room_state(room_id, shortstatehash);
+        self.db.set_room_state(room_id, shortstatehash, &state_lock);
+
+        drop(state_lock);
 
         Ok(())
     }

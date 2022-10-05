@@ -145,4 +145,6 @@ fn parse_presence_event(bytes: &[u8]) -> Result<PresenceEvent> {
             .last_active_ago
             .map(|timestamp| current_timestamp - timestamp);
     }
+
+    Ok(presence)
 }
