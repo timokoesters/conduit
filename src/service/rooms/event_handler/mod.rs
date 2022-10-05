@@ -755,7 +755,7 @@ impl Service {
             services().rooms.timeline.append_incoming_pdu(
                 &incoming_pdu,
                 val,
-                extremities.iter().map(std::ops::Deref::deref),
+                extremities.iter().map(|e| (**e).to_owned()).collect(),
                 state_ids_compressed,
                 soft_fail,
                 &state_lock,
@@ -936,7 +936,7 @@ impl Service {
             // Set the new room state to the resolved state
             if update_state {
                 info!("Forcing new room state");
-                let (sstatehash, _, _) = services().rooms.state_compressor.save_state(room_id, new_room_state)?;
+                let sstatehash = services().rooms.state_compressor.save_state(room_id, new_room_state)?;
                 services()
                     .rooms
                     .state
@@ -955,7 +955,7 @@ impl Service {
             .append_incoming_pdu(
                 &incoming_pdu,
                 val,
-                extremities.iter().map(std::ops::Deref::deref),
+                extremities.iter().map(|e| (**e).to_owned()).collect(),
                 state_ids_compressed,
                 soft_fail,
                 &state_lock,

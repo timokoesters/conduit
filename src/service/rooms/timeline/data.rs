@@ -44,6 +44,9 @@ pub trait Data: Send + Sync {
     /// Returns the `count` of this pdu's id.
     fn pdu_count(&self, pdu_id: &[u8]) -> Result<u64>;
 
+    /// Adds a new pdu to the timeline
+    fn append_pdu(&self, pdu_id: &[u8], pdu: &PduEvent, json: &CanonicalJsonObject, count: u64) -> Result<()>;
+
     /// Removes a pdu and creates a new one with the same id.
     fn replace_pdu(&self, pdu_id: &[u8], pdu: &PduEvent) -> Result<()>;
 
@@ -71,4 +74,6 @@ pub trait Data: Send + Sync {
         room_id: &RoomId,
         from: u64,
     ) -> Result<Box<dyn Iterator<Item = Result<(Vec<u8>, PduEvent)>>>>;
+
+    fn increment_notification_counts(&self, room_id: &RoomId, notifies: Vec<Box<UserId>>, highlights: Vec<Box<UserId>>) -> Result<()>;
 }

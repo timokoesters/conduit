@@ -6,7 +6,7 @@ use std::{
 };
 
 use crate::{
-    utils, Error, PduEvent, Result, services, api::{server_server, appservice_server},
+    utils::{self, calculate_hash}, Error, PduEvent, Result, services, api::{server_server, appservice_server},
 };
 use federation::transactions::send_transaction_message;
 use futures_util::{stream::FuturesUnordered, StreamExt};
@@ -677,7 +677,7 @@ impl Service {
                         edus: &edu_jsons,
                         origin_server_ts: MilliSecondsSinceUnixEpoch::now(),
                         transaction_id: (&*base64::encode_config(
-                            Self::calculate_hash(
+                            calculate_hash(
                                 &events
                                     .iter()
                                     .map(|e| match e {

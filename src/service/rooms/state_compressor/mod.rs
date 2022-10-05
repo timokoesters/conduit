@@ -1,7 +1,8 @@
 pub mod data;
-use std::{mem::size_of, sync::Arc, collections::HashSet};
+use std::{mem::size_of, sync::{Arc, Mutex}, collections::HashSet};
 
 pub use data::Data;
+use lru_cache::LruCache;
 use ruma::{EventId, RoomId};
 
 use crate::{Result, utils, services};
@@ -10,6 +11,19 @@ use self::data::StateDiff;
 
 pub struct Service {
     db: Arc<dyn Data>,
+
+    pub stateinfo_cache: Mutex<
+        LruCache<
+            u64,
+            Vec<(
+                u64,                           // sstatehash
+                HashSet<CompressedStateEvent>, // full state
+                HashSet<CompressedStateEvent>, // added
+                HashSet<CompressedStateEvent>, // removed
+            )>,
+        >,
+    >,
+
 }
 
 pub type CompressedStateEvent = [u8; 2 * size_of::<u64>()];
@@ -82,7 +96,7 @@ impl Service {
         Ok((
             utils::u64_from_bytes(&compressed_event[0..size_of::<u64>()])
                 .expect("bytes have right length"),
-            self.get_eventid_from_short(
+            services().rooms.short.get_eventid_from_short(
                 utils::u64_from_bytes(&compressed_event[size_of::<u64>()..])
                     .expect("bytes have right length"),
             )?,
@@ -214,9 +228,7 @@ impl Service {
         &self,
         room_id: &RoomId,
         new_state_ids_compressed: HashSet<CompressedStateEvent>,
-    ) -> Result<(u64, 
-            HashSet<CompressedStateEvent>, // added
-            HashSet<CompressedStateEvent>)> // removed
+    ) -> Result<u64>
     {
         let previous_shortstatehash = services().rooms.state.get_room_shortstatehash(room_id)?;
 
@@ -231,7 +243,7 @@ impl Service {
             services().rooms.short.get_or_create_shortstatehash(&state_hash)?;
 
         if Some(new_shortstatehash) == previous_shortstatehash {
-            return Ok(());
+            return Ok(new_shortstatehash);
         }
 
         let states_parents = previous_shortstatehash
@@ -265,6 +277,6 @@ impl Service {
             )?;
         };
 
-        Ok((new_shortstatehash, statediffnew, statediffremoved))
+        Ok(new_shortstatehash)
     }
 }

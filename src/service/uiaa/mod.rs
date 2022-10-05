@@ -21,13 +21,13 @@ impl Service {
         uiaainfo: &UiaaInfo,
         json_body: &CanonicalJsonValue,
     ) -> Result<()> {
-        self.set_uiaa_request(
+        self.db.set_uiaa_request(
             user_id,
             device_id,
             uiaainfo.session.as_ref().expect("session should be set"), // TODO: better session error handling (why is it optional in ruma?)
             json_body,
         )?;
-        self.update_uiaa_session(
+        self.db.update_uiaa_session(
             user_id,
             device_id,
             uiaainfo.session.as_ref().expect("session should be set"),
@@ -44,7 +44,7 @@ impl Service {
     ) -> Result<(bool, UiaaInfo)> {
         let mut uiaainfo = auth
             .session()
-            .map(|session| self.get_uiaa_session(user_id, device_id, session))
+            .map(|session| self.db.get_uiaa_session(user_id, device_id, session))
             .unwrap_or_else(|| Ok(uiaainfo.clone()))?;
 
         if uiaainfo.session.is_none() {
@@ -110,7 +110,7 @@ impl Service {
         }
 
         if !completed {
-            self.update_uiaa_session(
+            self.db.update_uiaa_session(
                 user_id,
                 device_id,
                 uiaainfo.session.as_ref().expect("session is always set"),
@@ -120,7 +120,7 @@ impl Service {
         }
 
         // UIAA was successful! Remove this session and return true
-        self.update_uiaa_session(
+        self.db.update_uiaa_session(
             user_id,
             device_id,
             uiaainfo.session.as_ref().expect("session is always set"),
@@ -136,15 +136,5 @@ impl Service {
         session: &str,
     ) -> Option<CanonicalJsonValue> {
         self.db.get_uiaa_request(user_id, device_id, session)
-    }
-
-    fn update_uiaa_session(
-        &self,
-        user_id: &UserId,
-        device_id: &DeviceId,
-        session: &str,
-        uiaainfo: Option<&UiaaInfo>,
-    ) -> Result<()> {
-        self.db.update_uiaa_session(user_id, device_id, session, uiaainfo)
     }
 }

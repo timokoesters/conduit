@@ -13,17 +13,15 @@ pub struct Service {
 impl Service {
     /// Builds a StateMap by iterating over all keys that start
     /// with state_hash, this gives the full state for the given state_hash.
-    #[tracing::instrument(skip(self))]
     pub async fn state_full_ids(&self, shortstatehash: u64) -> Result<BTreeMap<u64, Arc<EventId>>> {
-        self.db.state_full_ids(shortstatehash)
+        self.db.state_full_ids(shortstatehash).await
     }
 
-    #[tracing::instrument(skip(self))]
     pub async fn state_full(
         &self,
         shortstatehash: u64,
     ) -> Result<HashMap<(StateEventType, String), Arc<PduEvent>>> {
-        self.db.state_full(shortstatehash)
+        self.db.state_full(shortstatehash).await
     }
 
     /// Returns a single PDU from `room_id` with key (`event_type`, `state_key`).
@@ -59,7 +57,7 @@ impl Service {
         &self,
         room_id: &RoomId,
     ) -> Result<HashMap<(StateEventType, String), Arc<PduEvent>>> {
-        self.db.room_state_full(room_id)
+        self.db.room_state_full(room_id).await
     }
 
     /// Returns a single PDU from `room_id` with key (`event_type`, `state_key`).

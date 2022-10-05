@@ -3,6 +3,8 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use lru_cache::LruCache;
+
 use crate::{Result, Config};
 
 pub mod account_data;
@@ -74,8 +76,8 @@ impl Services {
                 state: rooms::state::Service { db: db.clone() },
                 state_accessor: rooms::state_accessor::Service { db: db.clone() },
                 state_cache: rooms::state_cache::Service { db: db.clone() },
-                state_compressor: rooms::state_compressor::Service { db: db.clone() },
-                timeline: rooms::timeline::Service { db: db.clone() },
+                state_compressor: rooms::state_compressor::Service { db: db.clone(), stateinfo_cache: Mutex::new(LruCache::new((100.0 * config.conduit_cache_capacity_modifier) as usize,)) },
+                timeline: rooms::timeline::Service { db: db.clone(), lasttimelinecount_cache: Mutex::new(HashMap::new()) },
                 user: rooms::user::Service { db: db.clone() },
             },
             transaction_ids: transaction_ids::Service {

@@ -187,13 +187,29 @@ impl service::rooms::timeline::Data for KeyValueDatabase {
             .map_err(|_| Error::bad_database("PDU has invalid count bytes."))
     }
 
+    fn append_pdu(&self, pdu_id: &[u8], pdu: &PduEvent, json: &CanonicalJsonObject, count: u64) -> Result<()> {
+        self.pduid_pdu.insert(
+            pdu_id,
+            &serde_json::to_vec(json).expect("CanonicalJsonObject is always a valid"))?;
+
+        self.lasttimelinecount_cache
+            .lock()
+            .unwrap()
+            .insert(pdu.room_id.clone(), count);
+
+        self.eventid_pduid
+            .insert(pdu.event_id.as_bytes(), &pdu_id)?;
+        self.eventid_outlierpdu.remove(pdu.event_id.as_bytes())?;
+
+        Ok(())
+    }
+
     /// Removes a pdu and creates a new one with the same id.
     fn replace_pdu(&self, pdu_id: &[u8], pdu: &PduEvent) -> Result<()> {
         if self.pduid_pdu.get(pdu_id)?.is_some() {
             self.pduid_pdu.insert(
                 pdu_id,
-                &serde_json::to_vec(pdu).expect("PduEvent::to_vec always works"),
-            )?;
+                &serde_json::to_vec(pdu).expect("CanonicalJsonObject is always a valid"))?;
             Ok(())
         } else {
             Err(Error::BadRequest(
@@ -305,5 +321,28 @@ impl service::rooms::timeline::Data for KeyValueDatabase {
                 }
                 Ok((pdu_id, pdu))
             })))
+    }
+
+    fn increment_notification_counts(&self, room_id: &RoomId, notifies: Vec<Box<UserId>>, highlights: Vec<Box<UserId>>) -> Result<()> {
+        let notifies_batch = Vec::new();
+        let highlights_batch = Vec::new();
+        for user in notifies {
+            let mut userroom_id = user.as_bytes().to_vec();
+            userroom_id.push(0xff);
+            userroom_id.extend_from_slice(room_id.as_bytes());
+            notifies_batch.push(userroom_id);
+        }
+        for user in highlights {
+            let mut userroom_id = user.as_bytes().to_vec();
+            userroom_id.push(0xff);
+            userroom_id.extend_from_slice(room_id.as_bytes());
+            highlights_batch.push(userroom_id);
+        }
+
+        self.userroomid_notificationcount
+            .increment_batch(&mut notifies_batch.into_iter())?;
+        self.userroomid_highlightcount
+            .increment_batch(&mut highlights_batch.into_iter())?;
+        Ok(())
     }
 }

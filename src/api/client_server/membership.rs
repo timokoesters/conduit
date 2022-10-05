@@ -649,7 +649,8 @@ async fn join_room_by_id_helper(
         services().rooms.timeline.append_pdu(
             &parsed_pdu,
             join_event,
-            iter::once(&*parsed_pdu.event_id),
+            vec![(*parsed_pdu.event_id).to_owned()],
+            &state_lock
         )?;
 
         // We set the room state after inserting the pdu, so that we never have a moment in time

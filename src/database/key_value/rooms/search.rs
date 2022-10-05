@@ -54,19 +54,20 @@ impl service::rooms::search::Data for KeyValueDatabase {
                 .map(|(key, _)| key[key.len() - size_of::<u64>()..].to_vec())
         });
 
-        Ok(utils::common_elements(iterators, |a, b| {
+        let common_elements = match utils::common_elements(iterators, |a, b| {
             // We compare b with a because we reversed the iterator earlier
             b.cmp(a)
-        })
-        .map(|iter| {
-            (
-                Box::new(iter.map(move |id| {
+        }) {
+            Some(it) => it,
+            None => return Ok(None),
+        };
+
+        let mapped = common_elements.map(move |id| {
                     let mut pduid = prefix_clone.clone();
                     pduid.extend_from_slice(&id);
                     pduid
-                })),
-                words,
-            )
-        }))
+                });
+
+        Ok(Some((Box::new(mapped), words)))
     }
 }

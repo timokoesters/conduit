@@ -294,6 +294,14 @@ impl Service {
         self.db.get_forward_extremities(room_id)
     }
 
+    pub fn set_forward_extremities<'a>(&self,
+        room_id: &RoomId,
+        event_ids: Vec<Box<EventId>>,
+        state_lock: &MutexGuard<'_, ()>, // Take mutex guard to make sure users get the room state mutex
+    ) -> Result<()> {
+        self.db.set_forward_extremities(room_id, event_ids, state_lock)
+    }
+
     /// This fetches auth events from the current state.
     #[tracing::instrument(skip(self))]
     pub fn get_auth_events(
