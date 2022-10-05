@@ -1,6 +1,6 @@
 use ruma::{EventId, RoomId};
 use std::collections::HashSet;
-use std::fmt::Debug;
+
 use std::sync::Arc;
 use tokio::sync::MutexGuard;
 

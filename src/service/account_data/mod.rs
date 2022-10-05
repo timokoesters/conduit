@@ -3,17 +3,14 @@ mod data;
 pub use data::Data;
 
 use ruma::{
-    api::client::error::ErrorKind,
     events::{AnyEphemeralRoomEvent, RoomAccountDataEventType},
-    serde::Raw,
-    signatures::CanonicalJsonValue,
-    DeviceId, RoomId, UserId,
+    serde::Raw, RoomId, UserId,
 };
-use serde::{de::DeserializeOwned, Serialize};
-use std::{collections::HashMap, sync::Arc};
-use tracing::error;
 
-use crate::{service::*, services, utils, Error, Result};
+use std::{collections::HashMap, sync::Arc};
+
+
+use crate::{Result};
 
 pub struct Service {
     db: Arc<dyn Data>,

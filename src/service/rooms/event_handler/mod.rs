@@ -34,7 +34,7 @@ use ruma::{
     state_res::{self, RoomVersion, StateMap},
     uint, EventId, MilliSecondsSinceUnixEpoch, RoomId, ServerName, ServerSigningKeyId,
 };
-use serde_json::value::{to_raw_value, RawValue as RawJsonValue};
+use serde_json::value::{RawValue as RawJsonValue};
 use tracing::{debug, error, info, trace, warn};
 
 use crate::{service::*, services, Error, PduEvent, Result};

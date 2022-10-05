@@ -14,8 +14,7 @@ mod service;
 mod utils;
 
 use std::{
-    cell::Cell,
-    sync::{Arc, RwLock},
+    sync::{RwLock},
 };
 
 pub use api::ruma_wrapper::{Ruma, RumaResponse};

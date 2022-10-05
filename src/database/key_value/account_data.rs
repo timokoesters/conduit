@@ -1,13 +1,11 @@
 use std::collections::HashMap;
 
 use ruma::{
-    api::client::{error::ErrorKind, uiaa::UiaaInfo},
+    api::client::{error::ErrorKind},
     events::{AnyEphemeralRoomEvent, RoomAccountDataEventType},
-    serde::Raw,
-    signatures::CanonicalJsonValue,
-    DeviceId, RoomId, UserId,
+    serde::Raw, RoomId, UserId,
 };
-use serde::{de::DeserializeOwned, Serialize};
+
 
 use crate::{database::KeyValueDatabase, service, services, utils, Error, Result};
 

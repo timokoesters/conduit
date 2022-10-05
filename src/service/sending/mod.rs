@@ -13,7 +13,7 @@ use crate::{
 };
 use federation::transactions::send_transaction_message;
 use futures_util::{stream::FuturesUnordered, StreamExt};
-use ring::digest;
+
 use ruma::{
     api::{
         appservice,
@@ -33,7 +33,7 @@ use ruma::{
 };
 use tokio::{
     select,
-    sync::{mpsc, RwLock, Semaphore},
+    sync::{mpsc, Semaphore},
 };
 use tracing::{error, warn};
 
@@ -297,7 +297,7 @@ impl Service {
             .sending
             .servername_educount
             .get(server.as_bytes())?
-            .map_or(Ok(0), |bytes| {
+            .map_or(Ok(0), |&bytes| {
                 utils::u64_from_bytes(&bytes)
                     .map_err(|_| Error::bad_database("Invalid u64 in servername_educount."))
             })?;

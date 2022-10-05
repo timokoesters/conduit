@@ -12,26 +12,21 @@ use ruma::{
     },
     events::{
         room::{
-            create::RoomCreateEventContent,
             member::{MembershipState, RoomMemberEventContent},
         },
         RoomEventType, StateEventType,
     },
-    serde::{to_canonical_value, Base64, CanonicalJsonObject, CanonicalJsonValue},
-    state_res::{self, RoomVersion},
-    uint, EventId, RoomId, RoomVersionId, ServerName, UserId,
+    serde::{to_canonical_value, Base64, CanonicalJsonObject, CanonicalJsonValue}, EventId, RoomId, RoomVersionId, ServerName, UserId,
 };
 use serde_json::value::{to_raw_value, RawValue as RawJsonValue};
 use std::{
     collections::{hash_map::Entry, BTreeMap, HashMap, HashSet},
-    iter,
     sync::{Arc, RwLock},
     time::{Duration, Instant},
 };
 use tracing::{debug, error, warn};
 
 use crate::{
-    api::{client_server, server_server},
     service::pdu::{gen_event_id_canonical_json, PduBuilder},
     services, utils, Error, PduEvent, Result, Ruma,
 };

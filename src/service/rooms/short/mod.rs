@@ -4,7 +4,7 @@ use std::sync::Arc;
 pub use data::Data;
 use ruma::{events::StateEventType, EventId, RoomId};
 
-use crate::{services, utils, Error, Result};
+use crate::{Result};
 
 pub struct Service {
     db: Arc<dyn Data>,

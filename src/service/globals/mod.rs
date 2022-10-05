@@ -2,15 +2,15 @@ mod data;
 pub use data::Data;
 
 use crate::api::server_server::FedDest;
-use crate::service::*;
 
-use crate::{utils, Config, Error, Result};
+
+use crate::{Config, Error, Result};
 use ruma::{
     api::{
         client::sync::sync_events,
         federation::discovery::{ServerSigningKeys, VerifyKey},
     },
-    DeviceId, EventId, MilliSecondsSinceUnixEpoch, RoomId, RoomVersionId, ServerName,
+    DeviceId, EventId, RoomId, RoomVersionId, ServerName,
     ServerSigningKeyId, UserId,
 };
 use std::{

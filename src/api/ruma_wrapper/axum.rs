@@ -24,7 +24,7 @@ use serde::Deserialize;
 use tracing::{debug, error, warn};
 
 use super::{Ruma, RumaResponse};
-use crate::{api::server_server, services, Error, Result};
+use crate::{services, Error, Result};
 
 #[async_trait]
 impl<T, B> FromRequest<B> for Ruma<T>

@@ -4,10 +4,10 @@ use crate::{
     services, utils, Error, PduEvent, Result, Ruma,
 };
 use axum::{response::IntoResponse, Json};
-use futures_util::{stream::FuturesUnordered, StreamExt};
+use futures_util::{StreamExt};
 use get_profile_information::v1::ProfileField;
 use http::header::{HeaderValue, AUTHORIZATION};
-use regex::Regex;
+
 use ruma::{
     api::{
         client::error::{Error as RumaError, ErrorKind},
@@ -16,8 +16,7 @@ use ruma::{
             device::get_devices::{self, v1::UserDevice},
             directory::{get_public_rooms, get_public_rooms_filtered},
             discovery::{
-                get_remote_server_keys, get_remote_server_keys_batch,
-                get_remote_server_keys_batch::v2::QueryCriteria, get_server_keys,
+                get_server_keys,
                 get_server_version, ServerSigningKeys, VerifyKey,
             },
             event::{get_event, get_missing_events, get_room_state, get_room_state_ids},
@@ -40,36 +39,28 @@ use ruma::{
     events::{
         receipt::{ReceiptEvent, ReceiptEventContent},
         room::{
-            create::RoomCreateEventContent,
             join_rules::{JoinRule, RoomJoinRulesEventContent},
             member::{MembershipState, RoomMemberEventContent},
-            server_acl::RoomServerAclEventContent,
         },
         RoomEventType, StateEventType,
     },
-    int,
     receipt::ReceiptType,
     serde::{Base64, JsonObject, Raw},
-    signatures::{CanonicalJsonObject, CanonicalJsonValue},
-    state_res::{self, RoomVersion, StateMap},
-    to_device::DeviceIdOrAllDevices,
-    uint, EventId, MilliSecondsSinceUnixEpoch, RoomId, RoomVersionId, ServerName,
+    signatures::{CanonicalJsonValue},
+    to_device::DeviceIdOrAllDevices, EventId, MilliSecondsSinceUnixEpoch, RoomId, ServerName,
     ServerSigningKeyId,
 };
 use serde_json::value::{to_raw_value, RawValue as RawJsonValue};
 use std::{
-    collections::{btree_map, hash_map, BTreeMap, BTreeSet, HashMap, HashSet},
+    collections::{BTreeMap},
     fmt::Debug,
-    future::Future,
     mem,
     net::{IpAddr, SocketAddr},
-    ops::Deref,
-    pin::Pin,
-    sync::{Arc, RwLock, RwLockWriteGuard},
+    sync::{Arc, RwLock},
     time::{Duration, Instant, SystemTime},
 };
-use tokio::sync::{MutexGuard, Semaphore};
-use tracing::{debug, error, info, trace, warn};
+
+use tracing::{info, warn};
 
 /// Wraps either an literal IP address plus port, or a hostname plus complement
 /// (colon-plus-port if it was specified).

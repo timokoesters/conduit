@@ -62,7 +62,7 @@ pub async fn delete_tag_route(
 ) -> Result<delete_tag::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
-    let mut event = services().account_data.get(
+    let event = services().account_data.get(
         Some(&body.room_id),
         sender_user,
         RoomAccountDataEventType::Tag,
@@ -103,13 +103,13 @@ pub async fn get_tags_route(
 ) -> Result<get_tags::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
-    let mut event = services().account_data.get(
+    let event = services().account_data.get(
         Some(&body.room_id),
         sender_user,
         RoomAccountDataEventType::Tag,
     )?;
 
-    let mut tags_event = event
+    let tags_event = event
         .map(|e| {
             serde_json::from_str(e.get())
                 .map_err(|_| Error::bad_database("Invalid account data event in db."))

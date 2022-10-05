@@ -1,9 +1,9 @@
 mod data;
 pub use data::Data;
 
-use crate::{services, utils, Error, Result};
+use crate::{services, Result};
 use image::{imageops::FilterType, GenericImageView};
-use std::{mem, sync::Arc};
+use std::{sync::Arc};
 use tokio::{
     fs::File,
     io::{AsyncReadExt, AsyncWriteExt},

@@ -2,21 +2,19 @@ mod data;
 use std::{collections::HashSet, sync::Arc};
 
 pub use data::Data;
-use regex::Regex;
+
 use ruma::{
     events::{
-        direct::{DirectEvent, DirectEventContent},
+        direct::{DirectEvent},
         ignored_user_list::IgnoredUserListEvent,
         room::{create::RoomCreateEventContent, member::MembershipState},
-        tag::{TagEvent, TagEventContent},
-        AnyStrippedStateEvent, AnySyncStateEvent, GlobalAccountDataEventType, RoomAccountDataEvent,
-        RoomAccountDataEventContent, RoomAccountDataEventType, StateEventType,
+        AnyStrippedStateEvent, AnySyncStateEvent, GlobalAccountDataEventType, RoomAccountDataEventType, StateEventType,
     },
     serde::Raw,
     RoomId, ServerName, UserId,
 };
 
-use crate::{services, utils, Error, Result};
+use crate::{services, Error, Result};
 
 pub struct Service {
     db: Arc<dyn Data>,

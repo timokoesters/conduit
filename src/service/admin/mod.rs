@@ -26,12 +26,11 @@ use ruma::{
     EventId, RoomAliasId, RoomId, RoomName, RoomVersionId, ServerName, UserId,
 };
 use serde_json::value::to_raw_value;
-use tokio::sync::{mpsc, MutexGuard, RwLock, RwLockReadGuard};
+use tokio::sync::{mpsc, MutexGuard};
 
 use crate::{
     api::{
         client_server::{leave_all_rooms, AUTO_GEN_PASSWORD_LENGTH},
-        server_server,
     },
     services,
     utils::{self, HtmlEscape},

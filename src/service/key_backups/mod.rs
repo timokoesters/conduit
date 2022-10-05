@@ -1,11 +1,10 @@
 mod data;
 pub use data::Data;
 
-use crate::{services, utils, Error, Result};
+use crate::{Result};
 use ruma::{
     api::client::{
         backup::{BackupAlgorithm, KeyBackupData, RoomKeyBackup},
-        error::ErrorKind,
     },
     serde::Raw,
     RoomId, UserId,

@@ -3,16 +3,14 @@ pub mod key_value;
 
 use crate::{
     service::{
-        account_data, appservice, globals, key_backups, media, pusher,
-        rooms::{self, state_compressor::CompressedStateEvent},
-        sending, transaction_ids, uiaa, users,
+        rooms::{state_compressor::CompressedStateEvent},
     },
     services, utils, Config, Error, PduEvent, Result, Services, SERVICES,
 };
 use abstraction::KeyValueDatabaseEngine;
 use abstraction::KvTree;
 use directories::ProjectDirs;
-use futures_util::{stream::FuturesUnordered, StreamExt};
+use futures_util::{StreamExt};
 use lru_cache::LruCache;
 use ruma::{
     events::{
@@ -28,11 +26,10 @@ use std::{
     fs::{self, remove_dir_all},
     io::Write,
     mem::size_of,
-    ops::Deref,
     path::Path,
     sync::{Arc, Mutex, RwLock},
 };
-use tokio::sync::{mpsc, OwnedRwLockReadGuard, RwLock as TokioRwLock, Semaphore};
+use tokio::sync::{mpsc};
 use tracing::{debug, error, info, warn};
 
 pub struct KeyValueDatabase {

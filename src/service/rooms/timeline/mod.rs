@@ -1,9 +1,9 @@
 mod data;
-use std::borrow::Cow;
+
 use std::collections::HashMap;
-use std::fmt::Debug;
+
 use std::sync::{Arc, Mutex};
-use std::{collections::HashSet, iter};
+use std::{collections::HashSet};
 
 pub use data::Data;
 use regex::Regex;
