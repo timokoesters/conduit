@@ -1,10 +1,8 @@
-use std::sync::Arc;
-
 use ruma::{UserId, RoomId, events::{AnyStrippedStateEvent, AnySyncStateEvent}, serde::Raw};
 
 use crate::{service, database::KeyValueDatabase, services, Result};
 
-impl service::rooms::state_cache::Data for Arc<KeyValueDatabase> {
+impl service::rooms::state_cache::Data for KeyValueDatabase {
     fn mark_as_once_joined(&self, user_id: &UserId, room_id: &RoomId) -> Result<()> {
         let mut userroom_id = user_id.as_bytes().to_vec();
         userroom_id.push(0xff);

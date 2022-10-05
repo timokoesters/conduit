@@ -5,7 +5,27 @@ use tracing::error;
 
 use crate::{service, database::KeyValueDatabase, utils, Error, PduEvent, Result, services};
 
-impl service::rooms::timeline::Data for Arc<KeyValueDatabase> {
+impl service::rooms::timeline::Data for KeyValueDatabase {
+    fn first_pdu_in_room(&self, room_id: &RoomId) -> Result<Option<Arc<PduEvent>>> {
+        let prefix = services().rooms.short
+            .get_shortroomid(room_id)?
+            .expect("room exists")
+            .to_be_bytes()
+            .to_vec();
+
+        // Look for PDUs in that room.
+        self.pduid_pdu
+            .iter_from(&prefix, false)
+            .filter(|(k, _)| k.starts_with(&prefix))
+            .map(|(_, pdu)| {
+                serde_json::from_slice(&pdu)
+                    .map_err(|_| Error::bad_database("Invalid first PDU in db."))
+                    .map(Arc::new)
+            })
+            .next()
+            .transpose()
+    }
+
     fn last_timeline_count(&self, sender_user: &UserId, room_id: &RoomId) -> Result<u64> {
         match self
             .lasttimelinecount_cache

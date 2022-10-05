@@ -3,12 +3,23 @@ use std::{collections::HashSet, sync::Arc};
 
 pub use data::Data;
 use regex::Regex;
-use ruma::{RoomId, UserId, events::{room::{member::MembershipState, create::RoomCreateEventContent}, AnyStrippedStateEvent, StateEventType, tag::TagEvent, RoomAccountDataEventType, GlobalAccountDataEventType, direct::DirectEvent, ignored_user_list::IgnoredUserListEvent, AnySyncStateEvent}, serde::Raw, ServerName};
+use ruma::{
+    events::{
+        direct::{DirectEvent, DirectEventContent},
+        ignored_user_list::IgnoredUserListEvent,
+        room::{create::RoomCreateEventContent, member::MembershipState},
+        tag::{TagEvent, TagEventContent},
+        AnyStrippedStateEvent, AnySyncStateEvent, GlobalAccountDataEventType,
+        RoomAccountDataEventType, StateEventType, RoomAccountDataEvent, RoomAccountDataEventContent,
+    },
+    serde::Raw,
+    RoomId, ServerName, UserId,
+};
 
-use crate::{Result, services, utils, Error};
+use crate::{services, utils, Error, Result};
 
 pub struct Service {
-    db: Box<dyn Data>,
+    db: Arc<dyn Data>,
 }
 
 impl Service {
@@ -45,7 +56,9 @@ impl Service {
                     self.db.mark_as_once_joined(user_id, room_id)?;
 
                     // Check if the room has a predecessor
-                    if let Some(predecessor) = self
+                    if let Some(predecessor) = services()
+                        .rooms
+                        .state_accessor
                         .room_state_get(room_id, &StateEventType::RoomCreate, "")?
                         .and_then(|create| serde_json::from_str(create.content.get()).ok())
                         .and_then(|content: RoomCreateEventContent| content.predecessor)
@@ -76,27 +89,41 @@ impl Service {
                         //     .ok();
 
                         // Copy old tags to new room
-                        if let Some(tag_event) = services().account_data.get::<TagEvent>(
-                            Some(&predecessor.room_id),
-                            user_id,
-                            RoomAccountDataEventType::Tag,
-                        )? {
-                            services().account_data
+                        if let Some(tag_event) = services()
+                            .account_data
+                            .get(
+                                Some(&predecessor.room_id),
+                                user_id,
+                                RoomAccountDataEventType::Tag,
+                            )?
+                            .map(|event| {
+                                serde_json::from_str(event.get())
+                                    .map_err(|_| Error::bad_database("Invalid account data event in db."))
+                            })
+                        {
+                            services()
+                                .account_data
                                 .update(
                                     Some(room_id),
                                     user_id,
                                     RoomAccountDataEventType::Tag,
-                                    &tag_event,
+                                    &tag_event?,
                                 )
                                 .ok();
                         };
 
                         // Copy direct chat flag
-                        if let Some(mut direct_event) = services().account_data.get::<DirectEvent>(
+                        if let Some(mut direct_event) = services().account_data.get(
                             None,
                             user_id,
                             GlobalAccountDataEventType::Direct.to_string().into(),
-                        )? {
+                        )?
+                            .map(|event| {
+                                serde_json::from_str::<DirectEvent>(event.get())
+                                    .map_err(|_| Error::bad_database("Invalid account data event in db."))
+                            })
+                         {
+                            let direct_event = direct_event?;
                             let mut room_ids_updated = false;
 
                             for room_ids in direct_event.content.0.values_mut() {
@@ -111,7 +138,7 @@ impl Service {
                                     None,
                                     user_id,
                                     GlobalAccountDataEventType::Direct.to_string().into(),
-                                    &direct_event,
+                                    &serde_json::to_value(&direct_event).expect("to json always works"),
                                 )?;
                             }
                         };
@@ -124,13 +151,17 @@ impl Service {
                 // We want to know if the sender is ignored by the receiver
                 let is_ignored = services()
                     .account_data
-                    .get::<IgnoredUserListEvent>(
+                    .get(
                         None,    // Ignored users are in global account data
                         user_id, // Receiver
                         GlobalAccountDataEventType::IgnoredUserList
                             .to_string()
                             .into(),
                     )?
+                            .map(|event| {
+                                serde_json::from_str::<IgnoredUserListEvent>(event.get())
+                                    .map_err(|_| Error::bad_database("Invalid account data event in db."))
+                            }).transpose()?
                     .map_or(false, |ignored| {
                         ignored
                             .content
@@ -200,10 +231,7 @@ impl Service {
     }
 
     #[tracing::instrument(skip(self, room_id))]
-    pub fn get_our_real_users(
-        &self,
-        room_id: &RoomId,
-    ) -> Result<Arc<HashSet<Box<UserId>>>> {
+    pub fn get_our_real_users(&self, room_id: &RoomId) -> Result<Arc<HashSet<Box<UserId>>>> {
         let maybe = self
             .our_real_users_cache
             .read()

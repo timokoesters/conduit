@@ -238,8 +238,8 @@ impl KeyValueDatabase {
     }
 
     /// Load an existing database or create a new one.
-    pub async fn load_or_create(config: &Config) -> Result<()> {
-        Self::check_db_setup(config)?;
+    pub async fn load_or_create(config: Config) -> Result<()> {
+        Self::check_db_setup(&config)?;
 
         if !Path::new(&config.database_path).exists() {
             std::fs::create_dir_all(&config.database_path)
@@ -251,19 +251,19 @@ impl KeyValueDatabase {
                 #[cfg(not(feature = "sqlite"))]
                 return Err(Error::BadConfig("Database backend not found."));
                 #[cfg(feature = "sqlite")]
-                Arc::new(Arc::<abstraction::sqlite::Engine>::open(config)?)
+                Arc::new(Arc::<abstraction::sqlite::Engine>::open(&config)?)
             }
             "rocksdb" => {
                 #[cfg(not(feature = "rocksdb"))]
                 return Err(Error::BadConfig("Database backend not found."));
                 #[cfg(feature = "rocksdb")]
-                Arc::new(Arc::<abstraction::rocksdb::Engine>::open(config)?)
+                Arc::new(Arc::<abstraction::rocksdb::Engine>::open(&config)?)
             }
             "persy" => {
                 #[cfg(not(feature = "persy"))]
                 return Err(Error::BadConfig("Database backend not found."));
                 #[cfg(feature = "persy")]
-                Arc::new(Arc::<abstraction::persy::Engine>::open(config)?)
+                Arc::new(Arc::<abstraction::persy::Engine>::open(&config)?)
             }
             _ => {
                 return Err(Error::BadConfig("Database backend not found."));
@@ -402,7 +402,7 @@ impl KeyValueDatabase {
 
         });
 
-        let services_raw = Box::new(Services::build(Arc::clone(&db)));
+        let services_raw = Box::new(Services::build(Arc::clone(&db), config)?);
 
         // This is the first and only time we initialize the SERVICE static
         *SERVICES.write().unwrap() = Some(Box::leak(services_raw));
@@ -825,7 +825,7 @@ impl KeyValueDatabase {
 
             info!(
                 "Loaded {} database with version {}",
-                config.database_backend, latest_database_version
+                services().globals.config.database_backend, latest_database_version
             );
         } else {
             services()
@@ -837,7 +837,7 @@ impl KeyValueDatabase {
 
             warn!(
                 "Created new {} database with version {}",
-                config.database_backend, latest_database_version
+                services().globals.config.database_backend, latest_database_version
             );
         }
 
@@ -866,7 +866,7 @@ impl KeyValueDatabase {
             .sending
             .start_handler(sending_receiver);
 
-        Self::start_cleanup_task(config).await;
+        Self::start_cleanup_task().await;
 
         Ok(())
     }
@@ -888,8 +888,8 @@ impl KeyValueDatabase {
         res
     }
 
-    #[tracing::instrument(skip(config))]
-    pub async fn start_cleanup_task(config: &Config) {
+    #[tracing::instrument]
+    pub async fn start_cleanup_task() {
         use tokio::time::interval;
 
         #[cfg(unix)]
@@ -898,7 +898,7 @@ impl KeyValueDatabase {
 
         use std::time::{Duration, Instant};
 
-        let timer_interval = Duration::from_secs(config.cleanup_second_interval as u64);
+        let timer_interval = Duration::from_secs(services().globals.config.cleanup_second_interval as u64);
 
         tokio::spawn(async move {
             let mut i = interval(timer_interval);

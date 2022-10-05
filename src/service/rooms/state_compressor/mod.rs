@@ -9,7 +9,7 @@ use crate::{Result, utils, services};
 use self::data::StateDiff;
 
 pub struct Service {
-    db: Box<dyn Data>,
+    db: Arc<dyn Data>,
 }
 
 pub type CompressedStateEvent = [u8; 2 * size_of::<u64>()];
@@ -67,7 +67,7 @@ impl Service {
     ) -> Result<CompressedStateEvent> {
         let mut v = shortstatekey.to_be_bytes().to_vec();
         v.extend_from_slice(
-            &self
+            &services().rooms.short
                 .get_or_create_shorteventid(event_id)?
                 .to_be_bytes(),
         );
@@ -218,7 +218,7 @@ impl Service {
             HashSet<CompressedStateEvent>, // added
             HashSet<CompressedStateEvent>)> // removed
     {
-        let previous_shortstatehash = self.db.current_shortstatehash(room_id)?;
+        let previous_shortstatehash = services().rooms.state.get_room_shortstatehash(room_id)?;
 
         let state_hash = utils::calculate_hash(
             &new_state_ids_compressed

@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use ruma::{EventId, events::StateEventType, RoomId};
 
 #[async_trait]
-impl service::rooms::state_accessor::Data for Arc<KeyValueDatabase> {
+impl service::rooms::state_accessor::Data for KeyValueDatabase {
     async fn state_full_ids(&self, shortstatehash: u64) -> Result<BTreeMap<u64, Arc<EventId>>> {
         let full_state = services().rooms.state_compressor
             .load_shortstatehash_info(shortstatehash)?

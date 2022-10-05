@@ -1,10 +1,10 @@
-use std::{mem::size_of, sync::Arc};
+use std::mem::size_of;
 
 use ruma::RoomId;
 
 use crate::{service, database::KeyValueDatabase, utils, Result, services};
 
-impl service::rooms::search::Data for Arc<KeyValueDatabase> {
+impl service::rooms::search::Data for KeyValueDatabase {
     fn index_pdu<'a>(&self, shortroomid: u64, pdu_id: &[u8], message_body: String) -> Result<()> {
         let mut batch = message_body
             .split_terminator(|c: char| !c.is_alphanumeric())

@@ -7,7 +7,7 @@ use ruma::{RoomId, EventId};
 use crate::Result;
 
 pub struct Service {
-    db: Box<dyn Data>,
+    db: Arc<dyn Data>,
 }
 
 impl Service {

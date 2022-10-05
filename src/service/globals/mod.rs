@@ -35,7 +35,7 @@ type SyncHandle = (
 );
 
 pub struct Service {
-    pub db: Box<dyn Data>,
+    pub db: Arc<dyn Data>,
 
     pub actual_destination_cache: Arc<RwLock<WellKnownMap>>, // actual_destination, host
     pub tls_name_override: Arc<RwLock<TlsNameMap>>,
@@ -92,7 +92,7 @@ impl Default for RotationHandler {
 
 impl Service {
     pub fn load(
-        db: Box<dyn Data>,
+        db: Arc<dyn Data>,
         config: Config,
     ) -> Result<Self> {
         let keypair = db.load_keypair();

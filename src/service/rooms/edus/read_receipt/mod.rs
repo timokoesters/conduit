@@ -1,11 +1,13 @@
 mod data;
+use std::sync::Arc;
+
 pub use data::Data;
 
 use ruma::{RoomId, UserId, events::receipt::ReceiptEvent, serde::Raw};
 use crate::Result;
 
 pub struct Service {
-    db: Box<dyn Data>,
+    db: Arc<dyn Data>,
 }
 
 impl Service {

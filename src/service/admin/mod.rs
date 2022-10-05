@@ -426,7 +426,7 @@ impl Service {
                         Error::bad_database("Invalid room id field in event in database")
                     })?;
                     let start = Instant::now();
-                    let count = server_server::get_auth_chain(room_id, vec![event_id])
+                    let count = services().rooms.auth_chain.get_auth_chain(room_id, vec![event_id])
                         .await?
                         .count();
                     let elapsed = start.elapsed();
@@ -615,14 +615,12 @@ impl Service {
                 ))
             }
             AdminCommand::DisableRoom { room_id } => {
-                todo!();
-                //services().rooms.disabledroomids.insert(room_id.as_bytes(), &[])?;
-                //RoomMessageEventContent::text_plain("Room disabled.")
+                services().rooms.metadata.disable_room(&room_id, true);
+                RoomMessageEventContent::text_plain("Room disabled.")
             }
             AdminCommand::EnableRoom { room_id } => {
-                todo!();
-                //services().rooms.disabledroomids.remove(room_id.as_bytes())?;
-                //RoomMessageEventContent::text_plain("Room enabled.")
+                services().rooms.metadata.disable_room(&room_id, false);
+                RoomMessageEventContent::text_plain("Room enabled.")
             }
             AdminCommand::DeactivateUser {
                 leave_rooms,

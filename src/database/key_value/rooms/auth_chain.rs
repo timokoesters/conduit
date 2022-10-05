@@ -2,7 +2,7 @@ use std::{collections::HashSet, mem::size_of, sync::Arc};
 
 use crate::{service, database::KeyValueDatabase, Result, utils};
 
-impl service::rooms::auth_chain::Data for Arc<KeyValueDatabase> {
+impl service::rooms::auth_chain::Data for KeyValueDatabase {
     fn get_cached_eventid_authchain(&self, key: &[u64]) -> Result<Option<Arc<HashSet<u64>>>> {
         // Check RAM cache
         if let Some(result) = self.auth_chain_cache.lock().unwrap().get_mut(key) {

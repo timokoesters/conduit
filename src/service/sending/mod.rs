@@ -448,14 +448,6 @@ impl Service {
         Ok(())
     }
 
-    #[tracing::instrument(skip(keys))]
-    fn calculate_hash(keys: &[&[u8]]) -> Vec<u8> {
-        // We only hash the pdu's event ids, not the whole pdu
-        let bytes = keys.join(&0xff);
-        let hash = digest::digest(&digest::SHA256, &bytes);
-        hash.as_ref().to_owned()
-    }
-
     /// Cleanup event data
     /// Used for instance after we remove an appservice registration
     ///

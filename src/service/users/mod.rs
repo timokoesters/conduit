@@ -1,5 +1,5 @@
 mod data;
-use std::{collections::BTreeMap, mem};
+use std::{collections::BTreeMap, mem, sync::Arc};
 
 pub use data::Data;
 use ruma::{UserId, MxcUri, DeviceId, DeviceKeyId, serde::Raw, encryption::{OneTimeKey, CrossSigningKey, DeviceKeys}, DeviceKeyAlgorithm, UInt, events::AnyToDeviceEvent, api::client::{device::Device, filter::IncomingFilterDefinition, error::ErrorKind}, RoomAliasId};
@@ -7,7 +7,7 @@ use ruma::{UserId, MxcUri, DeviceId, DeviceKeyId, serde::Raw, encryption::{OneTi
 use crate::{Result, Error, services};
 
 pub struct Service {
-    db: Box<dyn Data>,
+    db: Arc<dyn Data>,
 }
 
 impl Service {

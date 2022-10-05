@@ -7,7 +7,7 @@ use ruma::{events::StateEventType, RoomId, EventId};
 use crate::{Result, PduEvent};
 
 pub struct Service {
-    db: Box<dyn Data>,
+    db: Arc<dyn Data>,
 }
 
 impl Service {
@@ -45,7 +45,7 @@ impl Service {
         event_type: &StateEventType,
         state_key: &str,
     ) -> Result<Option<Arc<PduEvent>>> {
-        self.db.pdu_state_get(shortstatehash, event_type, state_key)
+        self.db.state_get(shortstatehash, event_type, state_key)
     }
 
     /// Returns the state hash for this pdu.

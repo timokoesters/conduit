@@ -6,7 +6,7 @@ use std::fmt::Debug;
 
 use crate::{service, database::KeyValueDatabase, utils, Error, Result};
 
-impl service::rooms::state::Data for Arc<KeyValueDatabase> {
+impl service::rooms::state::Data for KeyValueDatabase {
     fn get_room_shortstatehash(&self, room_id: &RoomId) -> Result<Option<u64>> {
         self.roomid_shortstatehash
             .get(room_id.as_bytes())?

@@ -1,11 +1,11 @@
-use std::{mem::size_of, collections::BTreeMap, sync::Arc};
+use std::{mem::size_of, collections::BTreeMap};
 
 use ruma::{api::client::{filter::IncomingFilterDefinition, error::ErrorKind, device::Device}, UserId, RoomAliasId, MxcUri, DeviceId, MilliSecondsSinceUnixEpoch, DeviceKeyId, encryption::{OneTimeKey, CrossSigningKey, DeviceKeys}, serde::Raw, events::{AnyToDeviceEvent, StateEventType}, DeviceKeyAlgorithm, UInt};
 use tracing::warn;
 
 use crate::{service::{self, users::clean_signatures}, database::KeyValueDatabase, Error, utils, services, Result};
 
-impl service::users::Data for Arc<KeyValueDatabase> {
+impl service::users::Data for KeyValueDatabase {
     /// Check if a user has an account on this homeserver.
     fn exists(&self, user_id: &UserId) -> Result<bool> {
         Ok(self.userid_password.get(user_id.as_bytes())?.is_some())
@@ -113,7 +113,7 @@ impl service::users::Data for Arc<KeyValueDatabase> {
     /// Hash and set the user's password to the Argon2 hash
     fn set_password(&self, user_id: &UserId, password: Option<&str>) -> Result<()> {
         if let Some(password) = password {
-            if let Ok(hash) = utils::calculate_hash(password) {
+            if let Ok(hash) = utils::calculate_password_hash(password) {
                 self.userid_password
                     .insert(user_id.as_bytes(), hash.as_bytes())?;
                 Ok(())

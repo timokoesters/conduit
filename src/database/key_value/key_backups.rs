@@ -1,10 +1,10 @@
-use std::{collections::BTreeMap, sync::Arc};
+use std::collections::BTreeMap;
 
 use ruma::{UserId, serde::Raw, api::client::{backup::{BackupAlgorithm, KeyBackupData, RoomKeyBackup}, error::ErrorKind}, RoomId};
 
 use crate::{Result, service, database::KeyValueDatabase, services, Error, utils};
 
-impl service::key_backups::Data for Arc<KeyValueDatabase> {
+impl service::key_backups::Data for KeyValueDatabase {
     fn create_backup(
         &self,
         user_id: &UserId,

@@ -1,5 +1,5 @@
 mod data;
-use std::{collections::{HashSet, HashMap}, sync::Mutex};
+use std::{collections::{HashSet, HashMap}, sync::{Mutex, Arc}};
 
 pub use data::Data;
 use ruma::{DeviceId, UserId, RoomId};
@@ -7,7 +7,7 @@ use ruma::{DeviceId, UserId, RoomId};
 use crate::Result;
 
 pub struct Service {
-    db: Box<dyn Data>,
+    db: Arc<dyn Data>,
 
     lazy_load_waiting: Mutex<HashMap<(Box<UserId>, Box<DeviceId>, Box<RoomId>, u64), HashSet<Box<UserId>>>>,
 }

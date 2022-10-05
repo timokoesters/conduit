@@ -1,5 +1,5 @@
 mod data;
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 pub use data::Data;
 use ruma::{RoomId, UserId, events::presence::PresenceEvent};
@@ -7,7 +7,7 @@ use ruma::{RoomId, UserId, events::presence::PresenceEvent};
 use crate::Result;
 
 pub struct Service {
-    db: Box<dyn Data>,
+    db: Arc<dyn Data>,
 }
 
 impl Service {

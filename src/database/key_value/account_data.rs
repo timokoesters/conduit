@@ -1,11 +1,11 @@
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 
 use ruma::{UserId, DeviceId, signatures::CanonicalJsonValue, api::client::{uiaa::UiaaInfo, error::ErrorKind}, events::{RoomAccountDataEventType, AnyEphemeralRoomEvent}, serde::Raw, RoomId};
 use serde::{Serialize, de::DeserializeOwned};
 
 use crate::{Result, database::KeyValueDatabase, service, Error, utils, services};
 
-impl service::account_data::Data for Arc<KeyValueDatabase> {
+impl service::account_data::Data for KeyValueDatabase {
     /// Places one event in the account data of the user and removes the previous entry.
     #[tracing::instrument(skip(self, room_id, user_id, event_type, data))]
     fn update(

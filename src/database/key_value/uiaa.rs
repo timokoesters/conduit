@@ -1,10 +1,8 @@
-use std::sync::Arc;
-
 use ruma::{UserId, DeviceId, signatures::CanonicalJsonValue, api::client::{uiaa::UiaaInfo, error::ErrorKind}};
 
 use crate::{database::KeyValueDatabase, service, Error, Result};
 
-impl service::uiaa::Data for Arc<KeyValueDatabase> {
+impl service::uiaa::Data for KeyValueDatabase {
     fn set_uiaa_request(
         &self,
         user_id: &UserId,

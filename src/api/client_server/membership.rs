@@ -654,7 +654,7 @@ async fn join_room_by_id_helper(
 
         // We set the room state after inserting the pdu, so that we never have a moment in time
         // where events in the current room state do not exist
-        services().rooms.state.set_room_state(room_id, shortstatehash)?;
+        services().rooms.state.set_room_state(room_id, shortstatehash, &state_lock)?;
 
         let statehashid = services().rooms.state.append_to_state(&parsed_pdu)?;
     } else {

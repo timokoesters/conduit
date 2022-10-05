@@ -1,10 +1,8 @@
-use std::sync::Arc;
-
 use ruma::{UserId, DeviceId, RoomId};
 
 use crate::{service, database::KeyValueDatabase, Result};
 
-impl service::rooms::lazy_loading::Data for Arc<KeyValueDatabase> {
+impl service::rooms::lazy_loading::Data for KeyValueDatabase {
     fn lazy_load_was_sent_before(
         &self,
         user_id: &UserId,

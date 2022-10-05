@@ -1,10 +1,10 @@
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 
 use ruma::{UserId, RoomId, events::presence::PresenceEvent, presence::PresenceState, UInt};
 
 use crate::{service, database::KeyValueDatabase, utils, Error, services, Result};
 
-impl service::rooms::edus::presence::Data for Arc<KeyValueDatabase> {
+impl service::rooms::edus::presence::Data for KeyValueDatabase {
     fn update_presence(
         &self,
         user_id: &UserId,

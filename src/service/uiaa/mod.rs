@@ -1,4 +1,6 @@
 mod data;
+use std::sync::Arc;
+
 pub use data::Data;
 
 use ruma::{api::client::{uiaa::{UiaaInfo, IncomingAuthData, IncomingPassword, AuthType, IncomingUserIdentifier}, error::ErrorKind}, DeviceId, UserId, signatures::CanonicalJsonValue};
@@ -7,7 +9,7 @@ use tracing::error;
 use crate::{Result, utils, Error, services, api::client_server::SESSION_ID_LENGTH};
 
 pub struct Service {
-    db: Box<dyn Data>,
+    db: Arc<dyn Data>,
 }
 
 impl Service {

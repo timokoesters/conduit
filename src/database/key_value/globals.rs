@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, sync::Arc};
+use std::collections::BTreeMap;
 
 use async_trait::async_trait;
 use futures_util::{stream::FuturesUnordered, StreamExt};
@@ -9,7 +9,7 @@ use crate::{Result, service, database::KeyValueDatabase, Error, utils, services}
 pub const COUNTER: &[u8] = b"c";
 
 #[async_trait]
-impl service::globals::Data for Arc<KeyValueDatabase> {
+impl service::globals::Data for KeyValueDatabase {
     fn next_count(&self) -> Result<u64> {
         utils::u64_from_bytes(&self.global.increment(COUNTER)?)
             .map_err(|_| Error::bad_database("Count has invalid bytes."))

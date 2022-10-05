@@ -1,10 +1,8 @@
-use std::sync::Arc;
-
 use ruma::{UserId, api::client::push::{set_pusher, get_pushers}};
 
 use crate::{service, database::KeyValueDatabase, Error, Result};
 
-impl service::pusher::Data for Arc<KeyValueDatabase> {
+impl service::pusher::Data for KeyValueDatabase {
     fn set_pusher(&self, sender: &UserId, pusher: set_pusher::v3::Pusher) -> Result<()> {
         let mut key = sender.as_bytes().to_vec();
         key.push(0xff);

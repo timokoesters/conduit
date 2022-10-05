@@ -1,9 +1,10 @@
 mod data;
-use std::{collections::HashSet, sync::Arc};
+use std::{collections::{HashSet, HashMap}, sync::Arc};
 
 pub use data::Data;
-use ruma::{RoomId, events::{room::{member::MembershipState, create::RoomCreateEventContent}, AnyStrippedStateEvent, StateEventType}, UserId, EventId, serde::Raw, RoomVersionId};
+use ruma::{RoomId, events::{room::{member::MembershipState, create::RoomCreateEventContent}, AnyStrippedStateEvent, StateEventType, RoomEventType}, UserId, EventId, serde::Raw, RoomVersionId, state_res::{StateMap, self}};
 use serde::Deserialize;
+use tokio::sync::MutexGuard;
 use tracing::warn;
 
 use crate::{Result, services, PduEvent, Error, utils::calculate_hash};
@@ -11,7 +12,7 @@ use crate::{Result, services, PduEvent, Error, utils::calculate_hash};
 use super::state_compressor::CompressedStateEvent;
 
 pub struct Service {
-    db: Box<dyn Data>,
+    db: Arc<dyn Data>,
 }
 
 impl Service {
@@ -97,7 +98,7 @@ impl Service {
         room_id: &RoomId,
         state_ids_compressed: HashSet<CompressedStateEvent>,
     ) -> Result<u64> {
-        let shorteventid = services().short.get_or_create_shorteventid(event_id)?;
+        let shorteventid = services().rooms.short.get_or_create_shorteventid(event_id)?;
 
         let previous_shortstatehash = self.db.get_room_shortstatehash(room_id)?;
 
@@ -109,11 +110,11 @@ impl Service {
         );
 
         let (shortstatehash, already_existed) =
-            services().short.get_or_create_shortstatehash(&state_hash)?;
+            services().rooms.short.get_or_create_shortstatehash(&state_hash)?;
 
         if !already_existed {
             let states_parents = previous_shortstatehash
-                .map_or_else(|| Ok(Vec::new()), |p| services().room.state_compressor.load_shortstatehash_info(p))?;
+                .map_or_else(|| Ok(Vec::new()), |p| services().rooms.state_compressor.load_shortstatehash_info(p))?;
 
             let (statediffnew, statediffremoved) =
                 if let Some(parent_stateinfo) = states_parents.last() {
@@ -132,7 +133,7 @@ impl Service {
                 } else {
                     (state_ids_compressed, HashSet::new())
                 };
-            services().room.state_compressor.save_state_from_diff(
+            services().rooms.state_compressor.save_state_from_diff(
                 shortstatehash,
                 statediffnew,
                 statediffremoved,
@@ -141,7 +142,7 @@ impl Service {
             )?;
         }
 
-        self.db.set_event_state(&shorteventid.to_be_bytes(), &shortstatehash.to_be_bytes())?;
+        self.db.set_event_state(shorteventid, shortstatehash)?;
 
         Ok(shortstatehash)
     }
@@ -155,25 +156,24 @@ impl Service {
         &self,
         new_pdu: &PduEvent,
     ) -> Result<u64> {
-        let shorteventid = self.get_or_create_shorteventid(&new_pdu.event_id)?;
+        let shorteventid = services().rooms.short.get_or_create_shorteventid(&new_pdu.event_id)?;
 
         let previous_shortstatehash = self.get_room_shortstatehash(&new_pdu.room_id)?;
 
         if let Some(p) = previous_shortstatehash {
-            self.shorteventid_shortstatehash
-                .insert(&shorteventid.to_be_bytes(), &p.to_be_bytes())?;
+            self.db.set_event_state(shorteventid, p)?;
         }
 
         if let Some(state_key) = &new_pdu.state_key {
             let states_parents = previous_shortstatehash
-                .map_or_else(|| Ok(Vec::new()), |p| self.load_shortstatehash_info(p))?;
+                .map_or_else(|| Ok(Vec::new()), |p| services().rooms.state_compressor.load_shortstatehash_info(p))?;
 
-            let shortstatekey = self.get_or_create_shortstatekey(
+            let shortstatekey = services().rooms.short.get_or_create_shortstatekey(
                 &new_pdu.kind.to_string().into(),
                 state_key,
             )?;
 
-            let new = self.compress_state_event(shortstatekey, &new_pdu.event_id)?;
+            let new = services().rooms.state_compressor.compress_state_event(shortstatekey, &new_pdu.event_id)?;
 
             let replaces = states_parents
                 .last()
@@ -199,7 +199,7 @@ impl Service {
                 statediffremoved.insert(*replaces);
             }
 
-            self.save_state_from_diff(
+            services().rooms.state_compressor.save_state_from_diff(
                 shortstatehash,
                 statediffnew,
                 statediffremoved,
@@ -221,16 +221,16 @@ impl Service {
         let mut state = Vec::new();
         // Add recommended events
         if let Some(e) =
-            self.room_state_get(&invite_event.room_id, &StateEventType::RoomCreate, "")?
+            services().rooms.state_accessor.room_state_get(&invite_event.room_id, &StateEventType::RoomCreate, "")?
         {
             state.push(e.to_stripped_state_event());
         }
         if let Some(e) =
-            self.room_state_get(&invite_event.room_id, &StateEventType::RoomJoinRules, "")?
+            services().rooms.state_accessor.room_state_get(&invite_event.room_id, &StateEventType::RoomJoinRules, "")?
         {
             state.push(e.to_stripped_state_event());
         }
-        if let Some(e) = self.room_state_get(
+        if let Some(e) = services().rooms.state_accessor.room_state_get(
             &invite_event.room_id,
             &StateEventType::RoomCanonicalAlias,
             "",
@@ -238,16 +238,16 @@ impl Service {
             state.push(e.to_stripped_state_event());
         }
         if let Some(e) =
-            self.room_state_get(&invite_event.room_id, &StateEventType::RoomAvatar, "")?
+            services().rooms.state_accessor.room_state_get(&invite_event.room_id, &StateEventType::RoomAvatar, "")?
         {
             state.push(e.to_stripped_state_event());
         }
         if let Some(e) =
-            self.room_state_get(&invite_event.room_id, &StateEventType::RoomName, "")?
+            services().rooms.state_accessor.room_state_get(&invite_event.room_id, &StateEventType::RoomName, "")?
         {
             state.push(e.to_stripped_state_event());
         }
-        if let Some(e) = self.room_state_get(
+        if let Some(e) = services().rooms.state_accessor.room_state_get(
             &invite_event.room_id,
             &StateEventType::RoomMember,
             invite_event.sender.as_str(),
@@ -260,17 +260,16 @@ impl Service {
     }
 
     #[tracing::instrument(skip(self))]
-    pub fn set_room_state(&self, room_id: &RoomId, shortstatehash: u64) -> Result<()> {
-        self.roomid_shortstatehash
-            .insert(room_id.as_bytes(), &shortstatehash.to_be_bytes())?;
-
-        Ok(())
+    pub fn set_room_state(&self, room_id: &RoomId, shortstatehash: u64,
+        mutex_lock: &MutexGuard<'_, ()>, // Take mutex guard to make sure users get the room state mutex
+        ) -> Result<()> {
+        self.db.set_room_state(room_id, shortstatehash, mutex_lock)
     }
 
     /// Returns the room's version.
     #[tracing::instrument(skip(self))]
     pub fn get_room_version(&self, room_id: &RoomId) -> Result<RoomVersionId> {
-        let create_event = self.room_state_get(room_id, &StateEventType::RoomCreate, "")?;
+        let create_event = services().rooms.state_accessor.room_state_get(room_id, &StateEventType::RoomCreate, "")?;
 
         let create_event_content: Option<RoomCreateEventContent> = create_event
             .as_ref()
@@ -293,5 +292,51 @@ impl Service {
 
     pub fn get_forward_extremities(&self, room_id: &RoomId) -> Result<HashSet<Arc<EventId>>> {
         self.db.get_forward_extremities(room_id)
+    }
+
+    /// This fetches auth events from the current state.
+    #[tracing::instrument(skip(self))]
+    pub fn get_auth_events(
+        &self,
+        room_id: &RoomId,
+        kind: &RoomEventType,
+        sender: &UserId,
+        state_key: Option<&str>,
+        content: &serde_json::value::RawValue,
+    ) -> Result<StateMap<Arc<PduEvent>>> {
+        let shortstatehash =
+            if let Some(current_shortstatehash) = services().rooms.state.get_room_shortstatehash(room_id)? {
+                current_shortstatehash
+            } else {
+                return Ok(HashMap::new());
+            };
+
+        let auth_events = state_res::auth_types_for_event(kind, sender, state_key, content)
+            .expect("content is a valid JSON object");
+
+        let mut sauthevents = auth_events
+            .into_iter()
+            .filter_map(|(event_type, state_key)| {
+                services().rooms.short.get_shortstatekey(&event_type.to_string().into(), &state_key)
+                    .ok()
+                    .flatten()
+                    .map(|s| (s, (event_type, state_key)))
+            })
+            .collect::<HashMap<_, _>>();
+
+        let full_state = services().rooms.state_compressor
+            .load_shortstatehash_info(shortstatehash)?
+            .pop()
+            .expect("there is always one layer")
+            .1;
+
+        Ok(full_state
+            .into_iter()
+            .filter_map(|compressed| services().rooms.state_compressor.parse_compressed_state_event(compressed).ok())
+            .filter_map(|(shortstatekey, event_id)| {
+                sauthevents.remove(&shortstatekey).map(|k| (k, event_id))
+            })
+            .filter_map(|(k, event_id)| services().rooms.timeline.get_pdu(&event_id).ok().flatten().map(|pdu| (k, pdu)))
+            .collect())
     }
 }

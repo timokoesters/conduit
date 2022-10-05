@@ -1,10 +1,8 @@
-use std::sync::Arc;
-
 use ruma::{UserId, DeviceId, TransactionId};
 
 use crate::{service, database::KeyValueDatabase, Result};
 
-impl service::transaction_ids::Data for Arc<KeyValueDatabase> {
+impl service::transaction_ids::Data for KeyValueDatabase {
     fn add_txnid(
         &self,
         user_id: &UserId,

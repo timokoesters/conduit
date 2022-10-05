@@ -1,10 +1,8 @@
-use std::sync::Arc;
-
 use ruma::api::client::error::ErrorKind;
 
 use crate::{database::KeyValueDatabase, service, Error, utils, Result};
 
-impl service::media::Data for Arc<KeyValueDatabase> {
+impl service::media::Data for KeyValueDatabase {
     fn create_file_metadata(&self, mxc: String, width: u32, height: u32, content_disposition: Option<&str>, content_type: Option<&str>) -> Result<Vec<u8>> {
         let mut key = mxc.as_bytes().to_vec();
         key.push(0xff);

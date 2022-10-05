@@ -16,7 +16,7 @@ pub struct FileMeta {
 }
 
 pub struct Service {
-    db: Box<dyn Data>,
+    db: Arc<dyn Data>,
 }
 
 impl Service {

@@ -1,11 +1,13 @@
 mod data;
+use std::sync::Arc;
+
 pub use data::Data;
 use ruma::{EventId, signatures::CanonicalJsonObject};
 
 use crate::{Result, PduEvent};
 
 pub struct Service {
-    db: Box<dyn Data>,
+    db: Arc<dyn Data>,
 }
 
 impl Service {

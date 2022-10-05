@@ -72,13 +72,15 @@ impl Service {
             ));
         }
 
-        services()
+        if services()
             .rooms
-            .is_disabled(room_id)?
-            .ok_or(Error::BadRequest(
+            .metadata
+            .is_disabled(room_id)? {
+            return Err(Error::BadRequest(
                 ErrorKind::Forbidden,
                 "Federation of this room is currently disabled on this server.",
-            ))?;
+            ));
+        }
 
         // 1. Skip the PDU if we already have it as a timeline event
         if let Some(pdu_id) = services().rooms.timeline.get_pdu_id(event_id)? {
@@ -111,7 +113,7 @@ impl Service {
         }
 
         // 9. Fetch any missing prev events doing all checks listed here starting at 1. These are timeline events
-        let (sorted_prev_events, eventid_info) = self.fetch_unknown_prev_events(
+        let (sorted_prev_events, mut eventid_info) = self.fetch_unknown_prev_events(
             origin,
             &create_event,
             room_id,
@@ -122,14 +124,15 @@ impl Service {
         let mut errors = 0;
         for prev_id in dbg!(sorted_prev_events) {
             // Check for disabled again because it might have changed
-            services()
+            if services()
                 .rooms
-                .is_disabled(room_id)?
-                .ok_or(Error::BadRequest(
+                .metadata
+                .is_disabled(room_id)? {
+                return Err(Error::BadRequest(
                     ErrorKind::Forbidden,
-                    "Federation of
-                    this room is currently disabled on this server.",
-                ))?;
+                    "Federation of this room is currently disabled on this server.",
+                ));
+            }
 
             if let Some((time, tries)) = services()
                 .globals
@@ -279,14 +282,14 @@ impl Service {
                 Err(e) => {
                     // Drop
                     warn!("Dropping bad event {}: {}", event_id, e);
-                    return Err("Signature verification failed".to_owned());
+                    return Err(Error::BadRequest(ErrorKind::InvalidParam, "Signature verification failed"));
                 }
                 Ok(ruma::signatures::Verified::Signatures) => {
                     // Redact
                     warn!("Calculated hash does not match: {}", event_id);
                     match ruma::signatures::redact(&value, room_version_id) {
                         Ok(obj) => obj,
-                        Err(_) => return Err("Redaction failed".to_owned()),
+                        Err(_) => return Err(Error::BadRequest(ErrorKind::InvalidParam, "Redaction failed")),
                     }
                 }
                 Ok(ruma::signatures::Verified::All) => value,
@@ -480,7 +483,7 @@ impl Service {
 
             let mut okay = true;
             for prev_eventid in &incoming_pdu.prev_events {
-                let prev_event = if let Ok(Some(pdu)) = services().rooms.get_pdu(prev_eventid) {
+                let prev_event = if let Ok(Some(pdu)) = services().rooms.timeline.get_pdu(prev_eventid) {
                     pdu
                 } else {
                     okay = false;
@@ -488,7 +491,7 @@ impl Service {
                 };
 
                 let sstatehash =
-                    if let Ok(Some(s)) = services().rooms.pdu_shortstatehash(prev_eventid) {
+                    if let Ok(Some(s)) = services().rooms.state_accessor.pdu_shortstatehash(prev_eventid) {
                         s
                     } else {
                         okay = false;
@@ -525,7 +528,7 @@ impl Service {
                     let mut starting_events = Vec::with_capacity(leaf_state.len());
 
                     for (k, id) in leaf_state {
-                        if let Ok((ty, st_key)) = services().rooms.get_statekey_from_short(k) {
+                        if let Ok((ty, st_key)) = services().rooms.short.get_statekey_from_short(k) {
                             // FIXME: Undo .to_string().into() when StateMap
                             //        is updated to use StateEventType
                             state.insert((ty.to_string().into(), st_key), id.clone());
@@ -539,7 +542,7 @@ impl Service {
                         services()
                             .rooms
                             .auth_chain
-                            .get_auth_chain(room_id, starting_events, services())
+                            .get_auth_chain(room_id, starting_events)
                             .await?
                             .collect(),
                     );
@@ -551,7 +554,7 @@ impl Service {
 
                 let result =
                     state_res::resolve(room_version_id, &fork_states, auth_chain_sets, |id| {
-                        let res = services().rooms.get_pdu(id);
+                        let res = services().rooms.timeline.get_pdu(id);
                         if let Err(e) = &res {
                             error!("LOOK AT ME Failed to fetch event: {}", e);
                         }
@@ -677,7 +680,7 @@ impl Service {
                     .and_then(|event_id| services().rooms.timeline.get_pdu(event_id).ok().flatten())
             },
         )
-        .map_err(|_e| "Auth check failed.".to_owned())?;
+        .map_err(|_e| Error::BadRequest(ErrorKind::InvalidParam, "Auth check failed."))?;
 
         if !check_result {
             return Err(Error::bad_database("Event has failed auth check with state at the event."));
@@ -714,7 +717,7 @@ impl Service {
 
         // Only keep those extremities were not referenced yet
         extremities
-            .retain(|id| !matches!(services().rooms.is_event_referenced(room_id, id), Ok(true)));
+            .retain(|id| !matches!(services().rooms.pdu_metadata.is_event_referenced(room_id, id), Ok(true)));
 
         info!("Compressing state at event");
         let state_ids_compressed = state_at_incoming_event
@@ -722,7 +725,8 @@ impl Service {
             .map(|(shortstatekey, id)| {
                 services()
                     .rooms
-                    .compress_state_event(*shortstatekey, id)?
+                    .state_compressor
+                    .compress_state_event(*shortstatekey, id)
             })
             .collect::<Result<_>>()?;
 
@@ -731,6 +735,7 @@ impl Service {
 
         let auth_events = services()
             .rooms
+            .state
             .get_auth_events(
                 room_id,
                 &incoming_pdu.kind,
@@ -744,10 +749,10 @@ impl Service {
             &incoming_pdu,
             None::<PduEvent>,
             |k, s| auth_events.get(&(k.clone(), s.to_owned())),
-        )?;
+        ).map_err(|_e| Error::BadRequest(ErrorKind::InvalidParam, "Auth check failed."))?;
 
         if soft_fail {
-            self.append_incoming_pdu(
+            services().rooms.timeline.append_incoming_pdu(
                 &incoming_pdu,
                 val,
                 extremities.iter().map(std::ops::Deref::deref),
@@ -760,8 +765,9 @@ impl Service {
             warn!("Event was soft failed: {:?}", incoming_pdu);
             services()
                 .rooms
+                .pdu_metadata
                 .mark_event_soft_failed(&incoming_pdu.event_id)?;
-            return Err("Event has been soft failed".into());
+            return Err(Error::BadRequest(ErrorKind::InvalidParam, "Event has been soft failed"));
         }
 
         if incoming_pdu.state_key.is_some() {
@@ -798,14 +804,14 @@ impl Service {
                                         "Found extremity pdu with no statehash in db: {:?}",
                                         leaf_pdu
                                     );
-                                    "Found pdu with no statehash in db.".to_owned()
+                                    Error::bad_database("Found pdu with no statehash in db.")
                                 })?,
                             leaf_pdu,
                         );
                     }
                     _ => {
                         error!("Missing state snapshot for {:?}", id);
-                        return Err("Missing state snapshot.".to_owned());
+                        return Err(Error::BadDatabase("Missing state snapshot."));
                     }
                 }
             }
@@ -835,7 +841,7 @@ impl Service {
             let mut update_state = false;
             // 14. Use state resolution to find new room state
             let new_room_state = if fork_states.is_empty() {
-                return Err("State is empty.".to_owned());
+                panic!("State is empty");
             } else if fork_states.iter().skip(1).all(|f| &fork_states[0] == f) {
                 info!("State resolution trivial");
                 // There was only one state, so it has to be the room's current state (because that is
@@ -845,7 +851,8 @@ impl Service {
                     .map(|(k, id)| {
                         services()
                             .rooms
-                            .compress_state_event(*k, id)?
+                            .state_compressor
+                            .compress_state_event(*k, id)
                     })
                     .collect::<Result<_>>()?
             } else {
@@ -877,9 +884,8 @@ impl Service {
                             .filter_map(|(k, id)| {
                                 services()
                                     .rooms
-                                    .get_statekey_from_short(k)?
-                                    // FIXME: Undo .to_string().into() when StateMap
-                                    //        is updated to use StateEventType
+                                    .short
+                                    .get_statekey_from_short(k)
                                     .map(|(ty, st_key)| ((ty.to_string().into(), st_key), id))
                                     .ok()
                             })
@@ -895,7 +901,7 @@ impl Service {
                     &fork_states,
                     auth_chain_sets,
                     |id| {
-                        let res = services().rooms.get_pdu(id);
+                        let res = services().rooms.timeline.get_pdu(id);
                         if let Err(e) = &res {
                             error!("LOOK AT ME Failed to fetch event: {}", e);
                         }
@@ -904,7 +910,7 @@ impl Service {
                 ) {
                     Ok(new_state) => new_state,
                     Err(_) => {
-                        return Err("State resolution failed, either an event could not be found or deserialization".into());
+                        return Err(Error::bad_database("State resolution failed, either an event could not be found or deserialization"));
                     }
                 };
 
@@ -921,6 +927,7 @@ impl Service {
                             .get_or_create_shortstatekey(&event_type.to_string().into(), &state_key)?;
                         services()
                             .rooms
+                            .state_compressor
                             .compress_state_event(shortstatekey, &event_id)
                     })
                     .collect::<Result<_>>()?
@@ -929,9 +936,11 @@ impl Service {
             // Set the new room state to the resolved state
             if update_state {
                 info!("Forcing new room state");
+                let (sstatehash, _, _) = services().rooms.state_compressor.save_state(room_id, new_room_state)?;
                 services()
                     .rooms
-                    .force_state(room_id, new_room_state)?;
+                    .state
+                    .set_room_state(room_id, sstatehash, &state_lock)?;
             }
         }
 
@@ -942,7 +951,7 @@ impl Service {
         // We use the `state_at_event` instead of `state_after` so we accurately
         // represent the state for this event.
 
-        let pdu_id = self
+        let pdu_id = services().rooms.timeline
             .append_incoming_pdu(
                 &incoming_pdu,
                 val,
@@ -1017,7 +1026,7 @@ impl Service {
                 // a. Look in the main timeline (pduid_pdu tree)
                 // b. Look at outlier pdu tree
                 // (get_pdu_json checks both)
-                if let Ok(Some(local_pdu)) = services().rooms.get_pdu(id) {
+                if let Ok(Some(local_pdu)) = services().rooms.timeline.get_pdu(id) {
                     trace!("Found {} in db", id);
                     pdus.push((local_pdu, None));
                     continue;
@@ -1040,7 +1049,7 @@ impl Service {
                         tokio::task::yield_now().await;
                     }
 
-                    if let Ok(Some(_)) = services().rooms.get_pdu(&next_id) {
+                    if let Ok(Some(_)) = services().rooms.timeline.get_pdu(&next_id) {
                         trace!("Found {} in db", id);
                         continue;
                     }
@@ -1140,6 +1149,7 @@ impl Service {
 
         let first_pdu_in_room = services()
             .rooms
+            .timeline
             .first_pdu_in_room(room_id)?
             .ok_or_else(|| Error::bad_database("Failed to find first pdu in db."))?;
 

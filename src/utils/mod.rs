@@ -3,6 +3,7 @@ pub mod error;
 use argon2::{Config, Variant};
 use cmp::Ordering;
 use rand::prelude::*;
+use ring::digest;
 use ruma::serde::{try_from_json_map, CanonicalJsonError, CanonicalJsonObject};
 use std::{
     cmp, fmt,
@@ -59,7 +60,7 @@ pub fn random_string(length: usize) -> String {
 }
 
 /// Calculate a new hash for the given password
-pub fn calculate_hash(password: &str) -> Result<String, argon2::Error> {
+pub fn calculate_password_hash(password: &str) -> Result<String, argon2::Error> {
     let hashing_config = Config {
         variant: Variant::Argon2id,
         ..Default::default()
@@ -68,6 +69,15 @@ pub fn calculate_hash(password: &str) -> Result<String, argon2::Error> {
     let salt = random_string(32);
     argon2::hash_encoded(password.as_bytes(), salt.as_bytes(), &hashing_config)
 }
+
+#[tracing::instrument(skip(keys))]
+pub fn calculate_hash(keys: &[&[u8]]) -> Vec<u8> {
+    // We only hash the pdu's event ids, not the whole pdu
+    let bytes = keys.join(&0xff);
+    let hash = digest::digest(&digest::SHA256, &bytes);
+    hash.as_ref().to_owned()
+}
+
 
 pub fn common_elements(
     mut iterators: impl Iterator<Item = impl Iterator<Item = Vec<u8>>>,

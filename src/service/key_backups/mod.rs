@@ -13,7 +13,7 @@ use ruma::{
 use std::{collections::BTreeMap, sync::Arc};
 
 pub struct Service {
-    db: Box<dyn Data>,
+    db: Arc<dyn Data>,
 }
 
 impl Service {

@@ -18,7 +18,7 @@ use tracing::error;
 use crate::{service::*, services, utils, Error, Result};
 
 pub struct Service {
-    db: Box<dyn Data>,
+    db: Arc<dyn Data>,
 }
 
 impl Service {

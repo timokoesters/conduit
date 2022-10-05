@@ -21,33 +21,14 @@ use crate::{services, Result, service::pdu::{PduBuilder, EventHash}, Error, PduE
 use super::state_compressor::CompressedStateEvent;
 
 pub struct Service {
-    db: Box<dyn Data>,
+    db: Arc<dyn Data>,
 }
 
 impl Service {
-    /*
-    /// Checks if a room exists.
     #[tracing::instrument(skip(self))]
     pub fn first_pdu_in_room(&self, room_id: &RoomId) -> Result<Option<Arc<PduEvent>>> {
-        let prefix = self
-            .get_shortroomid(room_id)?
-            .expect("room exists")
-            .to_be_bytes()
-            .to_vec();
-
-        // Look for PDUs in that room.
-        self.pduid_pdu
-            .iter_from(&prefix, false)
-            .filter(|(k, _)| k.starts_with(&prefix))
-            .map(|(_, pdu)| {
-                serde_json::from_slice(&pdu)
-                    .map_err(|_| Error::bad_database("Invalid first PDU in db."))
-                    .map(Arc::new)
-            })
-            .next()
-            .transpose()
+        self.db.first_pdu_in_room(room_id)
     }
-    */
 
     #[tracing::instrument(skip(self))]
     pub fn last_timeline_count(&self, sender_user: &UserId, room_id: &RoomId) -> Result<u64> {
@@ -681,7 +662,8 @@ impl Service {
     /// Append the incoming event setting the state snapshot to the state from the
     /// server that sent the event.
     #[tracing::instrument(skip_all)]
-    fn append_incoming_pdu<'a>(
+    pub fn append_incoming_pdu<'a>(
+        &self,
         pdu: &PduEvent,
         pdu_json: CanonicalJsonObject,
         new_room_leaves: impl IntoIterator<Item = &'a EventId> + Clone + Debug,

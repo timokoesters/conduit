@@ -1,8 +1,8 @@
-use std::{collections::HashSet, mem::size_of, sync::Arc};
+use std::{collections::HashSet, mem::size_of};
 
 use crate::{service::{self, rooms::state_compressor::data::StateDiff}, database::KeyValueDatabase, Error, utils, Result};
 
-impl service::rooms::state_compressor::Data for Arc<KeyValueDatabase> {
+impl service::rooms::state_compressor::Data for KeyValueDatabase {
     fn get_statediff(&self, shortstatehash: u64) -> Result<StateDiff> {
         let value = self
             .shortstatehash_statediff

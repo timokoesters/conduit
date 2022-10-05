@@ -5,6 +5,7 @@ use ruma::{signatures::CanonicalJsonObject, EventId, UserId, RoomId};
 use crate::{Result, PduEvent};
 
 pub trait Data: Send + Sync {
+    fn first_pdu_in_room(&self, room_id: &RoomId) -> Result<Option<Arc<PduEvent>>>;
     fn last_timeline_count(&self, sender_user: &UserId, room_id: &RoomId) -> Result<u64>;
 
     /// Returns the `count` of this pdu's id.

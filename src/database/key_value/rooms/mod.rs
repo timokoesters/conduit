@@ -15,8 +15,6 @@ mod state_compressor;
 mod timeline;
 mod user;
 
-use std::sync::Arc;
-
 use crate::{database::KeyValueDatabase, service};
 
-impl service::rooms::Data for Arc<KeyValueDatabase> {}
+impl service::rooms::Data for KeyValueDatabase {}
