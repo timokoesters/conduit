@@ -34,7 +34,11 @@ impl Service {
         self.db.set_pusher(sender, pusher)
     }
 
-    pub fn get_pusher(&self, sender: &UserId, pushkey: &str) -> Result<Option<get_pushers::v3::Pusher>> {
+    pub fn get_pusher(
+        &self,
+        sender: &UserId,
+        pushkey: &str,
+    ) -> Result<Option<get_pushers::v3::Pusher>> {
         self.db.get_pusher(sender, pushkey)
     }
 
@@ -42,10 +46,7 @@ impl Service {
         self.db.get_pushers(sender)
     }
 
-    pub fn get_pushkeys<'a>(
-        &'a self,
-        sender: &UserId,
-    ) -> Box<dyn Iterator<Item = Result<String>>> {
+    pub fn get_pushkeys<'a>(&'a self, sender: &UserId) -> Box<dyn Iterator<Item = Result<String>>> {
         self.db.get_pushkeys(sender)
     }
 

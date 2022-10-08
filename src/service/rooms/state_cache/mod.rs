@@ -5,10 +5,11 @@ pub use data::Data;
 
 use ruma::{
     events::{
-        direct::{DirectEvent},
+        direct::DirectEvent,
         ignored_user_list::IgnoredUserListEvent,
         room::{create::RoomCreateEventContent, member::MembershipState},
-        AnyStrippedStateEvent, AnySyncStateEvent, GlobalAccountDataEventType, RoomAccountDataEventType, StateEventType,
+        AnyStrippedStateEvent, AnySyncStateEvent, GlobalAccountDataEventType,
+        RoomAccountDataEventType, StateEventType,
     },
     serde::Raw,
     RoomId, ServerName, UserId,

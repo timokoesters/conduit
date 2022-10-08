@@ -1,11 +1,9 @@
 mod data;
 pub use data::Data;
 
-use crate::{Result};
+use crate::Result;
 use ruma::{
-    api::client::{
-        backup::{BackupAlgorithm, KeyBackupData, RoomKeyBackup},
-    },
+    api::client::backup::{BackupAlgorithm, KeyBackupData, RoomKeyBackup},
     serde::Raw,
     RoomId, UserId,
 };

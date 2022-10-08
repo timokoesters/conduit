@@ -3,15 +3,13 @@ pub use data::Data;
 
 use crate::api::server_server::FedDest;
 
-
 use crate::{Config, Error, Result};
 use ruma::{
     api::{
         client::sync::sync_events,
         federation::discovery::{ServerSigningKeys, VerifyKey},
     },
-    DeviceId, EventId, RoomId, RoomVersionId, ServerName,
-    ServerSigningKeyId, UserId,
+    DeviceId, EventId, RoomId, RoomVersionId, ServerName, ServerSigningKeyId, UserId,
 };
 use std::{
     collections::{BTreeMap, HashMap},

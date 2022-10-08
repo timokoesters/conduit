@@ -17,12 +17,12 @@ pub trait Data: Send + Sync {
         since: u64,
     ) -> Box<
         dyn Iterator<
-            Item = Result<(
-                Box<UserId>,
-                u64,
-                Raw<ruma::events::AnySyncEphemeralRoomEvent>,
-            )>,
-        > + 'a,
+                Item = Result<(
+                    Box<UserId>,
+                    u64,
+                    Raw<ruma::events::AnySyncEphemeralRoomEvent>,
+                )>,
+            > + 'a,
     >;
 
     /// Sets a private read marker at `count`.

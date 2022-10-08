@@ -3,7 +3,7 @@ pub use data::Data;
 
 use crate::{services, Result};
 use image::{imageops::FilterType, GenericImageView};
-use std::{sync::Arc};
+use std::sync::Arc;
 use tokio::{
     fs::File,
     io::{AsyncReadExt, AsyncWriteExt},

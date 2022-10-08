@@ -54,12 +54,12 @@ impl service::rooms::edus::read_receipt::Data for KeyValueDatabase {
         since: u64,
     ) -> Box<
         dyn Iterator<
-            Item = Result<(
-                Box<UserId>,
-                u64,
-                Raw<ruma::events::AnySyncEphemeralRoomEvent>,
-            )>,
-        > + 'a,
+                Item = Result<(
+                    Box<UserId>,
+                    u64,
+                    Raw<ruma::events::AnySyncEphemeralRoomEvent>,
+                )>,
+            > + 'a,
     > {
         let mut prefix = room_id.as_bytes().to_vec();
         prefix.push(0xff);

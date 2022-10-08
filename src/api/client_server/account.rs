@@ -1,5 +1,3 @@
-
-
 use super::{DEVICE_ID_LENGTH, SESSION_ID_LENGTH, TOKEN_LENGTH};
 use crate::{api::client_server, services, utils, Error, Result, Ruma};
 use ruma::{
@@ -11,12 +9,7 @@ use ruma::{
         error::ErrorKind,
         uiaa::{AuthFlow, AuthType, UiaaInfo},
     },
-    events::{
-        room::{
-            message::RoomMessageEventContent,
-        },
-        GlobalAccountDataEventType,
-    },
+    events::{room::message::RoomMessageEventContent, GlobalAccountDataEventType},
     push, UserId,
 };
 

@@ -2,15 +2,13 @@ pub mod abstraction;
 pub mod key_value;
 
 use crate::{
-    service::{
-        rooms::{state_compressor::CompressedStateEvent},
-    },
-    services, utils, Config, Error, PduEvent, Result, Services, SERVICES,
+    service::rooms::state_compressor::CompressedStateEvent, services, utils, Config, Error,
+    PduEvent, Result, Services, SERVICES,
 };
 use abstraction::KeyValueDatabaseEngine;
 use abstraction::KvTree;
 use directories::ProjectDirs;
-use futures_util::{StreamExt};
+use futures_util::StreamExt;
 use lru_cache::LruCache;
 use ruma::{
     events::{
@@ -29,7 +27,7 @@ use std::{
     path::Path,
     sync::{Arc, Mutex, RwLock},
 };
-use tokio::sync::{mpsc};
+use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn};
 
 pub struct KeyValueDatabase {

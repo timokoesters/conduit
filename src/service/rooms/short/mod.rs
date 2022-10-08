@@ -4,7 +4,7 @@ use std::sync::Arc;
 pub use data::Data;
 use ruma::{events::StateEventType, EventId, RoomId};
 
-use crate::{Result};
+use crate::Result;
 
 pub struct Service {
     pub db: &'static dyn Data,

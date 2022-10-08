@@ -2,8 +2,8 @@ mod data;
 
 use std::collections::HashMap;
 
+use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
-use std::{collections::HashSet};
 
 pub use data::Data;
 use regex::Regex;
@@ -305,7 +305,9 @@ impl Service {
             }
 
             for push_key in services().pusher.get_pushkeys(&user) {
-                services().sending.send_push_pdu(&*pdu_id, &user, push_key?)?;
+                services()
+                    .sending
+                    .send_push_pdu(&*pdu_id, &user, push_key?)?;
             }
         }
 

@@ -8,5 +8,5 @@ pub trait Data: Send + Sync {
         &'a self,
         room_id: &RoomId,
         search_string: &str,
-    ) -> Result<Option<(Box<dyn Iterator<Item = Vec<u8>>+ 'a>, Vec<String>)>>;
+    ) -> Result<Option<(Box<dyn Iterator<Item = Vec<u8>> + 'a>, Vec<String>)>>;
 }

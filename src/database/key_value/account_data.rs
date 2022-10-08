@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 
 use ruma::{
-    api::client::{error::ErrorKind},
+    api::client::error::ErrorKind,
     events::{AnyEphemeralRoomEvent, RoomAccountDataEventType},
-    serde::Raw, RoomId, UserId,
+    serde::Raw,
+    RoomId, UserId,
 };
-
 
 use crate::{database::KeyValueDatabase, service, services, utils, Error, Result};
 

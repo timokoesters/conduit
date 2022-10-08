@@ -5,8 +5,7 @@ use ruma::{
     encryption::{CrossSigningKey, DeviceKeys, OneTimeKey},
     events::{AnyToDeviceEvent, StateEventType},
     serde::Raw,
-    DeviceId, DeviceKeyAlgorithm, DeviceKeyId, MilliSecondsSinceUnixEpoch, MxcUri,
-    UInt, UserId,
+    DeviceId, DeviceKeyAlgorithm, DeviceKeyId, MilliSecondsSinceUnixEpoch, MxcUri, UInt, UserId,
 };
 use tracing::warn;
 
@@ -956,4 +955,3 @@ fn get_username_with_valid_password(username: &[u8], password: &[u8]) -> Option<
         }
     }
 }
-

@@ -4,13 +4,13 @@ pub use data::Data;
 
 use ruma::{
     events::{AnyEphemeralRoomEvent, RoomAccountDataEventType},
-    serde::Raw, RoomId, UserId,
+    serde::Raw,
+    RoomId, UserId,
 };
 
 use std::{collections::HashMap, sync::Arc};
 
-
-use crate::{Result};
+use crate::Result;
 
 pub struct Service {
     pub db: &'static dyn Data,

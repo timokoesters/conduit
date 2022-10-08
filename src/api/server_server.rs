@@ -4,7 +4,7 @@ use crate::{
     services, utils, Error, PduEvent, Result, Ruma,
 };
 use axum::{response::IntoResponse, Json};
-use futures_util::{StreamExt};
+use futures_util::StreamExt;
 use get_profile_information::v1::ProfileField;
 use http::header::{HeaderValue, AUTHORIZATION};
 
@@ -15,10 +15,7 @@ use ruma::{
             authorization::get_event_authorization,
             device::get_devices::{self, v1::UserDevice},
             directory::{get_public_rooms, get_public_rooms_filtered},
-            discovery::{
-                get_server_keys,
-                get_server_version, ServerSigningKeys, VerifyKey,
-            },
+            discovery::{get_server_keys, get_server_version, ServerSigningKeys, VerifyKey},
             event::{get_event, get_missing_events, get_room_state, get_room_state_ids},
             keys::{claim_keys, get_keys},
             membership::{
@@ -46,13 +43,13 @@ use ruma::{
     },
     receipt::ReceiptType,
     serde::{Base64, JsonObject, Raw},
-    signatures::{CanonicalJsonValue},
-    to_device::DeviceIdOrAllDevices, EventId, MilliSecondsSinceUnixEpoch, RoomId, ServerName,
-    ServerSigningKeyId,
+    signatures::CanonicalJsonValue,
+    to_device::DeviceIdOrAllDevices,
+    EventId, MilliSecondsSinceUnixEpoch, RoomId, ServerName, ServerSigningKeyId,
 };
 use serde_json::value::{to_raw_value, RawValue as RawJsonValue};
 use std::{
-    collections::{BTreeMap},
+    collections::BTreeMap,
     fmt::Debug,
     mem,
     net::{IpAddr, SocketAddr},

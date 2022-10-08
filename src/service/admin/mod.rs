@@ -29,9 +29,7 @@ use serde_json::value::to_raw_value;
 use tokio::sync::{mpsc, MutexGuard};
 
 use crate::{
-    api::{
-        client_server::{leave_all_rooms, AUTO_GEN_PASSWORD_LENGTH},
-    },
+    api::client_server::{leave_all_rooms, AUTO_GEN_PASSWORD_LENGTH},
     services,
     utils::{self, HtmlEscape},
     Error, PduEvent, Result,
@@ -177,7 +175,9 @@ impl Service {
         let self1 = Arc::new(Self { sender });
         let self2 = Arc::clone(&self1);
 
-        tokio::spawn(async move { self2.start_handler(receiver).await; });
+        tokio::spawn(async move {
+            self2.start_handler(receiver).await;
+        });
 
         self1
     }
@@ -186,9 +186,8 @@ impl Service {
         // TODO: Use futures when we have long admin commands
         //let mut futures = FuturesUnordered::new();
 
-        let conduit_user =
-            UserId::parse(format!("@conduit:{}", services().globals.server_name()))
-                .expect("@conduit:server_name is valid");
+        let conduit_user = UserId::parse(format!("@conduit:{}", services().globals.server_name()))
+            .expect("@conduit:server_name is valid");
 
         let conduit_room = services()
             .rooms
@@ -202,8 +201,7 @@ impl Service {
             .expect("Database data for admin room alias must be valid")
             .expect("Admin room must exist");
 
-        let send_message = |message: RoomMessageEventContent,
-                            mutex_lock: &MutexGuard<'_, ()>| {
+        let send_message = |message: RoomMessageEventContent, mutex_lock: &MutexGuard<'_, ()>| {
             services()
                 .rooms
                 .timeline

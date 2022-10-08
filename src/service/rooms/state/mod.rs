@@ -102,7 +102,8 @@ impl Service {
 
         services().rooms.state_cache.update_joined_count(room_id)?;
 
-        self.db.set_room_state(room_id, shortstatehash, &state_lock)?;
+        self.db
+            .set_room_state(room_id, shortstatehash, &state_lock)?;
 
         drop(state_lock);
 

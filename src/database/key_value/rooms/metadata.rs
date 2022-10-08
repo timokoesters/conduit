@@ -1,6 +1,6 @@
 use ruma::RoomId;
 
-use crate::{database::KeyValueDatabase, service, services, Result, utils, Error};
+use crate::{database::KeyValueDatabase, service, services, utils, Error, Result};
 
 impl service::rooms::metadata::Data for KeyValueDatabase {
     fn exists(&self, room_id: &RoomId) -> Result<bool> {
@@ -27,7 +27,6 @@ impl service::rooms::metadata::Data for KeyValueDatabase {
             )
             .map_err(|_| Error::bad_database("Room ID in roomid_shortroomid is invalid."))
         }))
-
     }
 
     fn is_disabled(&self, room_id: &RoomId) -> Result<bool> {

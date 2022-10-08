@@ -35,7 +35,7 @@ use tower_http::{
     trace::TraceLayer,
     ServiceBuilderExt as _,
 };
-use tracing::{warn, info};
+use tracing::{info, warn};
 use tracing_subscriber::{prelude::*, EnvFilter};
 
 pub use conduit::*; // Re-export everything from the library crate

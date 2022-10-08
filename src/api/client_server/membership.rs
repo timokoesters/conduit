@@ -11,12 +11,11 @@ use ruma::{
         federation::{self, membership::create_invite},
     },
     events::{
-        room::{
-            member::{MembershipState, RoomMemberEventContent},
-        },
+        room::member::{MembershipState, RoomMemberEventContent},
         RoomEventType, StateEventType,
     },
-    serde::{to_canonical_value, Base64, CanonicalJsonObject, CanonicalJsonValue}, EventId, RoomId, RoomVersionId, ServerName, UserId,
+    serde::{to_canonical_value, Base64, CanonicalJsonObject, CanonicalJsonValue},
+    EventId, RoomId, RoomVersionId, ServerName, UserId,
 };
 use serde_json::value::{to_raw_value, RawValue as RawJsonValue};
 use std::{

@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap},
+    collections::HashMap,
     sync::{Arc, Mutex},
 };
 
@@ -49,7 +49,7 @@ impl Services {
             + key_backups::Data
             + media::Data
             + sending::Data
-            + 'static
+            + 'static,
     >(
         db: &'static D,
         config: Config,
