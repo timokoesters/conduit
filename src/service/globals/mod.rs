@@ -35,7 +35,7 @@ type SyncHandle = (
 );
 
 pub struct Service {
-    pub db: Arc<dyn Data>,
+    pub db: &'static dyn Data,
 
     pub actual_destination_cache: Arc<RwLock<WellKnownMap>>, // actual_destination, host
     pub tls_name_override: Arc<RwLock<TlsNameMap>>,
@@ -90,14 +90,14 @@ impl Default for RotationHandler {
 }
 
 impl Service {
-    pub fn load(db: Arc<dyn Data>, config: Config) -> Result<Self> {
+    pub fn load(db: &'static dyn Data, config: Config) -> Result<Self> {
         let keypair = db.load_keypair();
 
         let keypair = match keypair {
             Ok(k) => k,
             Err(e) => {
                 error!("Keypair invalid. Deleting...");
-                db.remove_keypair();
+                db.remove_keypair()?;
                 return Err(e);
             }
         };

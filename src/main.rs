@@ -17,6 +17,7 @@ use axum::{
     Router,
 };
 use axum_server::{bind, bind_rustls, tls_rustls::RustlsConfig, Handle as ServerHandle};
+use conduit::api::{client_server, server_server};
 use figment::{
     providers::{Env, Format, Toml},
     Figment,
@@ -34,7 +35,7 @@ use tower_http::{
     trace::TraceLayer,
     ServiceBuilderExt as _,
 };
-use tracing::warn;
+use tracing::{warn, info};
 use tracing_subscriber::{prelude::*, EnvFilter};
 
 pub use conduit::*; // Re-export everything from the library crate
@@ -69,13 +70,15 @@ async fn main() {
 
     config.warn_deprecated();
 
-    if let Err(e) = KeyValueDatabase::load_or_create(&config).await {
+    if let Err(e) = KeyValueDatabase::load_or_create(config).await {
         eprintln!(
             "The database couldn't be loaded or created. The following error occured: {}",
             e
         );
         std::process::exit(1);
     };
+
+    let config = &services().globals.config;
 
     let start = async {
         run_server().await.unwrap();
@@ -119,7 +122,7 @@ async fn main() {
 }
 
 async fn run_server() -> io::Result<()> {
-    let config = DB.globals.config;
+    let config = &services().globals.config;
     let addr = SocketAddr::from((config.address, config.port));
 
     let x_requested_with = HeaderName::from_static("x-requested-with");
@@ -156,8 +159,7 @@ async fn run_server() -> io::Result<()> {
                     header::AUTHORIZATION,
                 ])
                 .max_age(Duration::from_secs(86400)),
-        )
-        .add_extension(db.clone());
+        );
 
     let app = routes().layer(middlewares).into_make_service();
     let handle = ServerHandle::new();
@@ -174,8 +176,9 @@ async fn run_server() -> io::Result<()> {
         }
     }
 
-    // After serve exits and before exiting, shutdown the DB
-    Database::on_shutdown(db).await;
+    // On shutdown
+    info!(target: "shutdown-sync", "Received shutdown notification, notifying sync helpers...");
+    services().globals.rotate.fire();
 
     Ok(())
 }

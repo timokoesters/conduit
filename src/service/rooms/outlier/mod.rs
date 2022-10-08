@@ -7,7 +7,7 @@ use ruma::{signatures::CanonicalJsonObject, EventId};
 use crate::{PduEvent, Result};
 
 pub struct Service {
-    db: Arc<dyn Data>,
+    pub db: &'static dyn Data,
 }
 
 impl Service {

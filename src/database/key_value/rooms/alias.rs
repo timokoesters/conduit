@@ -43,10 +43,10 @@ impl service::rooms::alias::Data for KeyValueDatabase {
             .transpose()
     }
 
-    fn local_aliases_for_room(
-        &self,
+    fn local_aliases_for_room<'a>(
+        &'a self,
         room_id: &RoomId,
-    ) -> Box<dyn Iterator<Item = Result<Box<RoomAliasId>>>> {
+    ) -> Box<dyn Iterator<Item = Result<Box<RoomAliasId>>> + 'a> {
         let mut prefix = room_id.as_bytes().to_vec();
         prefix.push(0xff);
 

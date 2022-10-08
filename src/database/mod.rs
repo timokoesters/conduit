@@ -166,19 +166,6 @@ pub struct KeyValueDatabase {
     pub(super) shortstatekey_cache: Mutex<LruCache<u64, (StateEventType, String)>>,
     pub(super) our_real_users_cache: RwLock<HashMap<Box<RoomId>, Arc<HashSet<Box<UserId>>>>>,
     pub(super) appservice_in_room_cache: RwLock<HashMap<Box<RoomId>, HashMap<String, bool>>>,
-    pub(super) lazy_load_waiting:
-        Mutex<HashMap<(Box<UserId>, Box<DeviceId>, Box<RoomId>, u64), HashSet<Box<UserId>>>>,
-    pub(super) stateinfo_cache: Mutex<
-        LruCache<
-            u64,
-            Vec<(
-                u64,                           // sstatehash
-                HashSet<CompressedStateEvent>, // full state
-                HashSet<CompressedStateEvent>, // added
-                HashSet<CompressedStateEvent>, // removed
-            )>,
-        >,
-    >,
     pub(super) lasttimelinecount_cache: Mutex<HashMap<Box<RoomId>, u64>>,
 }
 
@@ -279,10 +266,7 @@ impl KeyValueDatabase {
             eprintln!("ERROR: Max request size is less than 1KB. Please increase it.");
         }
 
-        let (admin_sender, admin_receiver) = mpsc::unbounded_channel();
-        let (sending_sender, sending_receiver) = mpsc::unbounded_channel();
-
-        let db = Arc::new(Self {
+        let db_raw = Box::new(Self {
             _db: builder.clone(),
             userid_password: builder.open_tree("userid_password")?,
             userid_displayname: builder.open_tree("userid_displayname")?,
@@ -399,14 +383,12 @@ impl KeyValueDatabase {
             )),
             our_real_users_cache: RwLock::new(HashMap::new()),
             appservice_in_room_cache: RwLock::new(HashMap::new()),
-            lazy_load_waiting: Mutex::new(HashMap::new()),
-            stateinfo_cache: Mutex::new(LruCache::new(
-                (100.0 * config.conduit_cache_capacity_modifier) as usize,
-            )),
             lasttimelinecount_cache: Mutex::new(HashMap::new()),
         });
 
-        let services_raw = Box::new(Services::build(Arc::clone(&db), config)?);
+        let db = Box::leak(db_raw);
+
+        let services_raw = Box::new(Services::build(db, config)?);
 
         // This is the first and only time we initialize the SERVICE static
         *SERVICES.write().unwrap() = Some(Box::leak(services_raw));
@@ -851,8 +833,6 @@ impl KeyValueDatabase {
         // This data is probably outdated
         db.presenceid_presence.clear()?;
 
-        services().admin.start_handler(admin_receiver);
-
         // Set emergency access for the conduit user
         match set_emergency_access() {
             Ok(pwd_set) => {
@@ -869,17 +849,9 @@ impl KeyValueDatabase {
             }
         };
 
-        services().sending.start_handler(sending_receiver);
-
         Self::start_cleanup_task().await;
 
         Ok(())
-    }
-
-    #[cfg(feature = "conduit_bin")]
-    pub async fn on_shutdown() {
-        info!(target: "shutdown-sync", "Received shutdown notification, notifying sync helpers...");
-        services().globals.rotate.fire();
     }
 
     #[tracing::instrument(skip(self))]

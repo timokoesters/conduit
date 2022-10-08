@@ -59,7 +59,7 @@ impl service::rooms::edus::read_receipt::Data for KeyValueDatabase {
                 u64,
                 Raw<ruma::events::AnySyncEphemeralRoomEvent>,
             )>,
-        >,
+        > + 'a,
     > {
         let mut prefix = room_id.as_bytes().to_vec();
         prefix.push(0xff);

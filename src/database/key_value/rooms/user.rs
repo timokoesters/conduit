@@ -86,7 +86,7 @@ impl service::rooms::user::Data for KeyValueDatabase {
     fn get_shared_rooms<'a>(
         &'a self,
         users: Vec<Box<UserId>>,
-    ) -> Result<Box<dyn Iterator<Item = Result<Box<RoomId>>>>> {
+    ) -> Result<Box<dyn Iterator<Item = Result<Box<RoomId>>> + 'a>> {
         let iterators = users.into_iter().map(move |user_id| {
             let mut prefix = user_id.as_bytes().to_vec();
             prefix.push(0xff);

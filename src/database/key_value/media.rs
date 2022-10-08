@@ -43,8 +43,8 @@ impl service::media::Data for KeyValueDatabase {
     ) -> Result<(Option<String>, Option<String>, Vec<u8>)> {
         let mut prefix = mxc.as_bytes().to_vec();
         prefix.push(0xff);
-        prefix.extend_from_slice(&0_u32.to_be_bytes()); // Width = 0 if it's not a thumbnail
-        prefix.extend_from_slice(&0_u32.to_be_bytes()); // Height = 0 if it's not a thumbnail
+        prefix.extend_from_slice(&width.to_be_bytes());
+        prefix.extend_from_slice(&height.to_be_bytes());
         prefix.push(0xff);
 
         let (key, _) = self

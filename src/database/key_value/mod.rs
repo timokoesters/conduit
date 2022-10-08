@@ -7,7 +7,7 @@ mod media;
 //mod pdu;
 mod pusher;
 mod rooms;
-//mod sending;
+mod sending;
 mod transaction_ids;
 mod uiaa;
 mod users;

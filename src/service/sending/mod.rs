@@ -1,15 +1,19 @@
+mod data;
+
+pub use data::Data;
+
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     fmt::Debug,
     sync::Arc,
-    time::{Duration, Instant},
+    time::{Duration, Instant}, iter,
 };
 
 use crate::{
     api::{appservice_server, server_server},
     services,
     utils::{self, calculate_hash},
-    Error, PduEvent, Result,
+    Error, PduEvent, Result, Config,
 };
 use federation::transactions::send_transaction_message;
 use futures_util::{stream::FuturesUnordered, StreamExt};
@@ -40,7 +44,7 @@ use tracing::{error, warn};
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum OutgoingKind {
     Appservice(String),
-    Push(Vec<u8>, Vec<u8>), // user and pushkey
+    Push(Box<UserId>, String), // user and pushkey
     Normal(Box<ServerName>),
 }
 
@@ -55,9 +59,9 @@ impl OutgoingKind {
             }
             OutgoingKind::Push(user, pushkey) => {
                 let mut p = b"$".to_vec();
-                p.extend_from_slice(user);
+                p.extend_from_slice(user.as_bytes());
                 p.push(0xff);
-                p.extend_from_slice(pushkey);
+                p.extend_from_slice(pushkey.as_bytes());
                 p
             }
             OutgoingKind::Normal(server) => {
@@ -74,14 +78,16 @@ impl OutgoingKind {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum SendingEventType {
-    Pdu(Vec<u8>),
-    Edu(Vec<u8>),
+    Pdu(Vec<u8>), // pduid
+    Edu(Vec<u8>), // pdu json
 }
 
 pub struct Service {
+    db: &'static dyn Data,
+
     /// The state for a given state hash.
     pub(super) maximum_requests: Arc<Semaphore>,
-    pub sender: mpsc::UnboundedSender<(Vec<u8>, Vec<u8>)>,
+    pub sender: mpsc::UnboundedSender<(OutgoingKind, SendingEventType, Vec<u8>)>,
 }
 
 enum TransactionStatus {
@@ -91,131 +97,113 @@ enum TransactionStatus {
 }
 
 impl Service {
-    pub fn start_handler(&self, mut receiver: mpsc::UnboundedReceiver<(Vec<u8>, Vec<u8>)>) {
+    pub fn build(db: &'static dyn Data, config: &Config) -> Arc<Self> {
+        let (sender, receiver) = mpsc::unbounded_channel();
+
+        let self1 = Arc::new(Self { db, sender, maximum_requests: Arc::new(Semaphore::new(config.max_concurrent_requests as usize)) });
+        let self2 = Arc::clone(&self1);
+
         tokio::spawn(async move {
-            let mut futures = FuturesUnordered::new();
+            self2.start_handler(receiver).await.unwrap();
+        });
 
-            let mut current_transaction_status = HashMap::<Vec<u8>, TransactionStatus>::new();
+        self1
+    }
 
-            // Retry requests we could not finish yet
-            let mut initial_transactions = HashMap::<OutgoingKind, Vec<SendingEventType>>::new();
+    async fn start_handler(&self, mut receiver: mpsc::UnboundedReceiver<(OutgoingKind, SendingEventType, Vec<u8>)>) -> Result<()> {
+        let mut futures = FuturesUnordered::new();
 
-            for (key, outgoing_kind, event) in services()
-                .sending
-                .servercurrentevent_data
-                .iter()
-                .filter_map(|(key, v)| {
-                    Self::parse_servercurrentevent(&key, v)
-                        .ok()
-                        .map(|(k, e)| (key, k, e))
-                })
-            {
-                let entry = initial_transactions
-                    .entry(outgoing_kind.clone())
-                    .or_insert_with(Vec::new);
+        let mut current_transaction_status = HashMap::<OutgoingKind, TransactionStatus>::new();
 
-                if entry.len() > 30 {
-                    warn!(
-                        "Dropping some current events: {:?} {:?} {:?}",
-                        key, outgoing_kind, event
-                    );
-                    services()
-                        .sending
-                        .servercurrentevent_data
-                        .remove(&key)
-                        .unwrap();
-                    continue;
-                }
+        // Retry requests we could not finish yet
+        let mut initial_transactions = HashMap::<OutgoingKind, Vec<SendingEventType>>::new();
 
-                entry.push(event);
+        for (key, outgoing_kind, event) in self.db.active_requests().filter_map(|r| r.ok())
+        {
+            let entry = initial_transactions
+                .entry(outgoing_kind.clone())
+                .or_insert_with(Vec::new);
+
+            if entry.len() > 30 {
+                warn!(
+                    "Dropping some current events: {:?} {:?} {:?}",
+                    key, outgoing_kind, event
+                );
+                self.db.delete_active_request(key)?;
+                continue;
             }
 
-            for (outgoing_kind, events) in initial_transactions {
-                current_transaction_status
-                    .insert(outgoing_kind.get_prefix(), TransactionStatus::Running);
-                futures.push(Self::handle_events(outgoing_kind.clone(), events));
-            }
+            entry.push(event);
+        }
 
-            loop {
-                select! {
-                    Some(response) = futures.next() => {
-                        match response {
-                            Ok(outgoing_kind) => {
-                                let prefix = outgoing_kind.get_prefix();
-                                for (key, _) in services().sending.servercurrentevent_data
-                                    .scan_prefix(prefix.clone())
-                                {
-                                    services().sending.servercurrentevent_data.remove(&key).unwrap();
-                                }
+        for (outgoing_kind, events) in initial_transactions {
+            current_transaction_status
+                .insert(outgoing_kind.clone(), TransactionStatus::Running);
+            futures.push(Self::handle_events(outgoing_kind.clone(), events));
+        }
 
-                                // Find events that have been added since starting the last request
-                                let new_events: Vec<_> = services().sending.servernameevent_data
-                                    .scan_prefix(prefix.clone())
-                                    .filter_map(|(k, v)| {
-                                        Self::parse_servercurrentevent(&k, v).ok().map(|ev| (ev, k))
-                                    })
-                                    .take(30)
-                                    .collect();
+        loop {
+            select! {
+                Some(response) = futures.next() => {
+                    match response {
+                        Ok(outgoing_kind) => {
+                            self.db.delete_all_active_requests_for(&outgoing_kind)?;
 
-                                // TODO: find edus
+                            // Find events that have been added since starting the last request
+                            let new_events = self.db.queued_requests(&outgoing_kind).filter_map(|r| r.ok()).take(30).collect::<Vec<_>>();
 
-                                if !new_events.is_empty() {
-                                    // Insert pdus we found
-                                    for (e, key) in &new_events {
-                                        let value = if let SendingEventType::Edu(value) = &e.1 { &**value } else { &[] };
-                                        services().sending.servercurrentevent_data.insert(key, value).unwrap();
-                                        services().sending.servernameevent_data.remove(key).unwrap();
-                                    }
+                            // TODO: find edus
 
-                                    futures.push(
-                                        Self::handle_events(
-                                            outgoing_kind.clone(),
-                                            new_events.into_iter().map(|(event, _)| event.1).collect(),
-                                        )
-                                    );
-                                } else {
-                                    current_transaction_status.remove(&prefix);
-                                }
-                            }
-                            Err((outgoing_kind, _)) => {
-                                current_transaction_status.entry(outgoing_kind.get_prefix()).and_modify(|e| *e = match e {
-                                    TransactionStatus::Running => TransactionStatus::Failed(1, Instant::now()),
-                                    TransactionStatus::Retrying(n) => TransactionStatus::Failed(*n+1, Instant::now()),
-                                    TransactionStatus::Failed(_, _) => {
-                                        error!("Request that was not even running failed?!");
-                                        return
-                                    },
-                                });
-                            }
-                        };
-                    },
-                    Some((key, value)) = receiver.recv() => {
-                        if let Ok((outgoing_kind, event)) = Self::parse_servercurrentevent(&key, value) {
-                            if let Ok(Some(events)) = Self::select_events(
-                                &outgoing_kind,
-                                vec![(event, key)],
-                                &mut current_transaction_status,
-                            ) {
-                                futures.push(Self::handle_events(outgoing_kind, events));
+                            if !new_events.is_empty() {
+                                // Insert pdus we found
+                                self.db.mark_as_active(&new_events)?;
+
+                                futures.push(
+                                    Self::handle_events(
+                                        outgoing_kind.clone(),
+                                        new_events.into_iter().map(|(event, _)| event).collect(),
+                                    )
+                                );
+                            } else {
+                                current_transaction_status.remove(&outgoing_kind);
                             }
                         }
+                        Err((outgoing_kind, _)) => {
+                            current_transaction_status.entry(outgoing_kind).and_modify(|e| *e = match e {
+                                TransactionStatus::Running => TransactionStatus::Failed(1, Instant::now()),
+                                TransactionStatus::Retrying(n) => TransactionStatus::Failed(*n+1, Instant::now()),
+                                TransactionStatus::Failed(_, _) => {
+                                    error!("Request that was not even running failed?!");
+                                    return
+                                },
+                            });
+                        }
+                    };
+                },
+                Some((outgoing_kind, event, key)) = receiver.recv() => {
+                    if let Ok(Some(events)) = self.select_events(
+                        &outgoing_kind,
+                        vec![(event, key)],
+                        &mut current_transaction_status,
+                    ) {
+                        futures.push(Self::handle_events(outgoing_kind, events));
                     }
                 }
             }
-        });
+        }
     }
 
-    #[tracing::instrument(skip(outgoing_kind, new_events, current_transaction_status))]
+    #[tracing::instrument(skip(self, outgoing_kind, new_events, current_transaction_status))]
     fn select_events(
+        &self,
         outgoing_kind: &OutgoingKind,
         new_events: Vec<(SendingEventType, Vec<u8>)>, // Events we want to send: event and full key
-        current_transaction_status: &mut HashMap<Vec<u8>, TransactionStatus>,
+        current_transaction_status: &mut HashMap<OutgoingKind, TransactionStatus>,
     ) -> Result<Option<Vec<SendingEventType>>> {
         let mut retry = false;
         let mut allow = true;
 
-        let prefix = outgoing_kind.get_prefix();
-        let entry = current_transaction_status.entry(prefix.clone());
+        let entry = current_transaction_status.entry(outgoing_kind.clone());
 
         entry
             .and_modify(|e| match e {
@@ -247,42 +235,20 @@ impl Service {
 
         if retry {
             // We retry the previous transaction
-            for (key, value) in services()
-                .sending
-                .servercurrentevent_data
-                .scan_prefix(prefix)
-            {
-                if let Ok((_, e)) = Self::parse_servercurrentevent(&key, value) {
-                    events.push(e);
-                }
+            for (_, e) in self.db.active_requests_for(outgoing_kind).filter_map(|r| r.ok()) {
+                events.push(e);
             }
         } else {
-            for (e, full_key) in new_events {
-                let value = if let SendingEventType::Edu(value) = &e {
-                    &**value
-                } else {
-                    &[][..]
-                };
-                services()
-                    .sending
-                    .servercurrentevent_data
-                    .insert(&full_key, value)?;
-
-                // If it was a PDU we have to unqueue it
-                // TODO: don't try to unqueue EDUs
-                services().sending.servernameevent_data.remove(&full_key)?;
-
+            self.db.mark_as_active(&new_events)?;
+            for (e, _) in new_events {
                 events.push(e);
             }
 
             if let OutgoingKind::Normal(server_name) = outgoing_kind {
-                if let Ok((select_edus, last_count)) = Self::select_edus(server_name) {
+                if let Ok((select_edus, last_count)) = self.select_edus(server_name) {
                     events.extend(select_edus.into_iter().map(SendingEventType::Edu));
 
-                    services()
-                        .sending
-                        .servername_educount
-                        .insert(server_name.as_bytes(), &last_count.to_be_bytes())?;
+                    self.db.set_latest_educount(server_name, last_count)?;
                 }
             }
         }
@@ -290,22 +256,15 @@ impl Service {
         Ok(Some(events))
     }
 
-    #[tracing::instrument(skip(server))]
-    pub fn select_edus(server: &ServerName) -> Result<(Vec<Vec<u8>>, u64)> {
+    #[tracing::instrument(skip(self, server_name))]
+    pub fn select_edus(&self, server_name: &ServerName) -> Result<(Vec<Vec<u8>>, u64)> {
         // u64: count of last edu
-        let since = services()
-            .sending
-            .servername_educount
-            .get(server.as_bytes())?
-            .map_or(Ok(0), |&bytes| {
-                utils::u64_from_bytes(&bytes)
-                    .map_err(|_| Error::bad_database("Invalid u64 in servername_educount."))
-            })?;
+        let since = self.db.get_latest_educount(server_name)?;
         let mut events = Vec::new();
         let mut max_edu_count = since;
         let mut device_list_changes = HashSet::new();
 
-        'outer: for room_id in services().rooms.server_rooms(server) {
+        'outer: for room_id in services().rooms.state_cache.server_rooms(server_name) {
             let room_id = room_id?;
             // Look for device list updates in this room
             device_list_changes.extend(
@@ -317,7 +276,7 @@ impl Service {
             );
 
             // Look for read receipts in this room
-            for r in services().rooms.edus.readreceipts_since(&room_id, since) {
+            for r in services().rooms.edus.read_receipt.readreceipts_since(&room_id, since) {
                 let (user_id, count, read_receipt) = r?;
 
                 if count > max_edu_count {
@@ -395,14 +354,12 @@ impl Service {
         Ok((events, max_edu_count))
     }
 
-    #[tracing::instrument(skip(self, pdu_id, senderkey))]
-    pub fn send_push_pdu(&self, pdu_id: &[u8], senderkey: Vec<u8>) -> Result<()> {
-        let mut key = b"$".to_vec();
-        key.extend_from_slice(&senderkey);
-        key.push(0xff);
-        key.extend_from_slice(pdu_id);
-        self.servernameevent_data.insert(&key, &[])?;
-        self.sender.send((key, vec![])).unwrap();
+    #[tracing::instrument(skip(self, pdu_id, user, pushkey))]
+    pub fn send_push_pdu(&self, pdu_id: &[u8], user: &UserId, pushkey: String) -> Result<()> {
+        let outgoing_kind = OutgoingKind::Push(user.to_owned(), pushkey);
+        let event = SendingEventType::Pdu(pdu_id.to_owned());
+        let keys = self.db.queue_requests(&[(&outgoing_kind, event.clone())])?;
+        self.sender.send((outgoing_kind, event, keys.into_iter().next().unwrap())).unwrap();
 
         Ok(())
     }
@@ -413,17 +370,11 @@ impl Service {
         servers: I,
         pdu_id: &[u8],
     ) -> Result<()> {
-        let mut batch = servers.map(|server| {
-            let mut key = server.as_bytes().to_vec();
-            key.push(0xff);
-            key.extend_from_slice(pdu_id);
-
-            self.sender.send((key.clone(), vec![])).unwrap();
-
-            (key, Vec::new())
-        });
-
-        self.servernameevent_data.insert_batch(&mut batch)?;
+        let requests = servers.into_iter().map(|server| (OutgoingKind::Normal(server), SendingEventType::Pdu(pdu_id.to_owned()))).collect::<Vec<_>>();
+        let keys = self.db.queue_requests(&requests.iter().map(|(o, e)| (o, e.clone())).collect::<Vec<_>>())?;
+        for ((outgoing_kind, event), key) in requests.into_iter().zip(keys) {
+            self.sender.send((outgoing_kind.to_owned(), event, key)).unwrap();
+        }
 
         Ok(())
     }
@@ -435,23 +386,20 @@ impl Service {
         serialized: Vec<u8>,
         id: u64,
     ) -> Result<()> {
-        let mut key = server.as_bytes().to_vec();
-        key.push(0xff);
-        key.extend_from_slice(&id.to_be_bytes());
-        self.servernameevent_data.insert(&key, &serialized)?;
-        self.sender.send((key, serialized)).unwrap();
+        let outgoing_kind = OutgoingKind::Normal(server.to_owned());
+        let event = SendingEventType::Edu(serialized);
+        let keys = self.db.queue_requests(&[(&outgoing_kind, event.clone())])?;
+        self.sender.send((outgoing_kind, event, keys.into_iter().next().unwrap())).unwrap();
 
         Ok(())
     }
 
     #[tracing::instrument(skip(self))]
-    pub fn send_pdu_appservice(&self, appservice_id: &str, pdu_id: &[u8]) -> Result<()> {
-        let mut key = b"+".to_vec();
-        key.extend_from_slice(appservice_id.as_bytes());
-        key.push(0xff);
-        key.extend_from_slice(pdu_id);
-        self.servernameevent_data.insert(&key, &[])?;
-        self.sender.send((key, vec![])).unwrap();
+    pub fn send_pdu_appservice(&self, appservice_id: String, pdu_id: Vec<u8>) -> Result<()> {
+        let outgoing_kind = OutgoingKind::Appservice(appservice_id);
+        let event = SendingEventType::Pdu(pdu_id);
+        let keys = self.db.queue_requests(&[(&outgoing_kind, event.clone())])?;
+        self.sender.send((outgoing_kind, event, keys.into_iter().next().unwrap())).unwrap();
 
         Ok(())
     }
@@ -460,18 +408,8 @@ impl Service {
     /// Used for instance after we remove an appservice registration
     ///
     #[tracing::instrument(skip(self))]
-    pub fn cleanup_events(&self, key_id: &str) -> Result<()> {
-        let mut prefix = b"+".to_vec();
-        prefix.extend_from_slice(key_id.as_bytes());
-        prefix.push(0xff);
-
-        for (key, _) in self.servercurrentevent_data.scan_prefix(prefix.clone()) {
-            self.servercurrentevent_data.remove(&key).unwrap();
-        }
-
-        for (key, _) in self.servernameevent_data.scan_prefix(prefix.clone()) {
-            self.servernameevent_data.remove(&key).unwrap();
-        }
+    pub fn cleanup_events(&self, appservice_id: String) -> Result<()> {
+        self.db.delete_all_requests_for(&OutgoingKind::Appservice(appservice_id))?;
 
         Ok(())
     }
@@ -488,7 +426,7 @@ impl Service {
                 for event in &events {
                     match event {
                         SendingEventType::Pdu(pdu_id) => {
-                            pdu_jsons.push(services().rooms
+                            pdu_jsons.push(services().rooms.timeline
                                 .get_pdu_from_id(pdu_id)
                                 .map_err(|e| (kind.clone(), e))?
                                 .ok_or_else(|| {
@@ -525,7 +463,7 @@ impl Service {
                     appservice::event::push_events::v1::Request {
                         events: &pdu_jsons,
                         txn_id: (&*base64::encode_config(
-                            Self::calculate_hash(
+                            calculate_hash(
                                 &events
                                     .iter()
                                     .map(|e| match e {
@@ -546,7 +484,7 @@ impl Service {
 
                 response
             }
-            OutgoingKind::Push(user, pushkey) => {
+            OutgoingKind::Push(userid, pushkey) => {
                 let mut pdus = Vec::new();
 
                 for event in &events {
@@ -554,6 +492,7 @@ impl Service {
                         SendingEventType::Pdu(pdu_id) => {
                             pdus.push(
                                 services().rooms
+                                    .timeline
                                     .get_pdu_from_id(pdu_id)
                                     .map_err(|e| (kind.clone(), e))?
                                     .ok_or_else(|| {
@@ -584,27 +523,10 @@ impl Service {
                         }
                     }
 
-                    let userid = UserId::parse(utils::string_from_bytes(user).map_err(|_| {
-                        (
-                            kind.clone(),
-                            Error::bad_database("Invalid push user string in db."),
-                        )
-                    })?)
-                    .map_err(|_| {
-                        (
-                            kind.clone(),
-                            Error::bad_database("Invalid push user id in db."),
-                        )
-                    })?;
-
-                    let mut senderkey = user.clone();
-                    senderkey.push(0xff);
-                    senderkey.extend_from_slice(pushkey);
-
                     let pusher = match services()
                         .pusher
-                        .get_pusher(&senderkey)
-                        .map_err(|e| (OutgoingKind::Push(user.clone(), pushkey.clone()), e))?
+                        .get_pusher(&userid, pushkey)
+                        .map_err(|e| (OutgoingKind::Push(userid.clone(), pushkey.clone()), e))?
                     {
                         Some(pusher) => pusher,
                         None => continue,
@@ -618,11 +540,13 @@ impl Service {
                             GlobalAccountDataEventType::PushRules.to_string().into(),
                         )
                         .unwrap_or_default()
+                        .and_then(|event| serde_json::from_str::<PushRulesEvent>(event.get()).ok())
                         .map(|ev: PushRulesEvent| ev.content.global)
                         .unwrap_or_else(|| push::Ruleset::server_default(&userid));
 
                     let unread: UInt = services()
                         .rooms
+                        .user
                         .notification_count(&userid, &pdu.room_id)
                         .map_err(|e| (kind.clone(), e))?
                         .try_into()
@@ -639,7 +563,7 @@ impl Service {
 
                     drop(permit);
                 }
-                Ok(OutgoingKind::Push(user.clone(), pushkey.clone()))
+                Ok(OutgoingKind::Push(userid.clone(), pushkey.clone()))
             }
             OutgoingKind::Normal(server) => {
                 let mut edu_jsons = Vec::new();
@@ -651,6 +575,7 @@ impl Service {
                             // TODO: check room version and remove event_id if needed
                             let raw = PduEvent::convert_to_outgoing_federation_event(
                                 services().rooms
+                                    .timeline
                                     .get_pdu_json_from_id(pdu_id)
                                     .map_err(|e| (OutgoingKind::Normal(server.clone()), e))?
                                     .ok_or_else(|| {
@@ -713,72 +638,6 @@ impl Service {
         }
     }
 
-    #[tracing::instrument(skip(key))]
-    fn parse_servercurrentevent(
-        key: &[u8],
-        value: Vec<u8>,
-    ) -> Result<(OutgoingKind, SendingEventType)> {
-        // Appservices start with a plus
-        Ok::<_, Error>(if key.starts_with(b"+") {
-            let mut parts = key[1..].splitn(2, |&b| b == 0xff);
-
-            let server = parts.next().expect("splitn always returns one element");
-            let event = parts
-                .next()
-                .ok_or_else(|| Error::bad_database("Invalid bytes in servercurrentpdus."))?;
-            let server = utils::string_from_bytes(server).map_err(|_| {
-                Error::bad_database("Invalid server bytes in server_currenttransaction")
-            })?;
-
-            (
-                OutgoingKind::Appservice(server),
-                if value.is_empty() {
-                    SendingEventType::Pdu(event.to_vec())
-                } else {
-                    SendingEventType::Edu(value)
-                },
-            )
-        } else if key.starts_with(b"$") {
-            let mut parts = key[1..].splitn(3, |&b| b == 0xff);
-
-            let user = parts.next().expect("splitn always returns one element");
-            let pushkey = parts
-                .next()
-                .ok_or_else(|| Error::bad_database("Invalid bytes in servercurrentpdus."))?;
-            let event = parts
-                .next()
-                .ok_or_else(|| Error::bad_database("Invalid bytes in servercurrentpdus."))?;
-            (
-                OutgoingKind::Push(user.to_vec(), pushkey.to_vec()),
-                if value.is_empty() {
-                    SendingEventType::Pdu(event.to_vec())
-                } else {
-                    SendingEventType::Edu(value)
-                },
-            )
-        } else {
-            let mut parts = key.splitn(2, |&b| b == 0xff);
-
-            let server = parts.next().expect("splitn always returns one element");
-            let event = parts
-                .next()
-                .ok_or_else(|| Error::bad_database("Invalid bytes in servercurrentpdus."))?;
-            let server = utils::string_from_bytes(server).map_err(|_| {
-                Error::bad_database("Invalid server bytes in server_currenttransaction")
-            })?;
-
-            (
-                OutgoingKind::Normal(ServerName::parse(server).map_err(|_| {
-                    Error::bad_database("Invalid server string in server_currenttransaction")
-                })?),
-                if value.is_empty() {
-                    SendingEventType::Pdu(event.to_vec())
-                } else {
-                    SendingEventType::Edu(value)
-                },
-            )
-        })
-    }
 
     #[tracing::instrument(skip(self, destination, request))]
     pub async fn send_federation_request<T: OutgoingRequest>(

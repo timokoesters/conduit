@@ -7,7 +7,7 @@ use crate::Result;
 use ruma::{events::receipt::ReceiptEvent, serde::Raw, RoomId, UserId};
 
 pub struct Service {
-    db: Arc<dyn Data>,
+    pub db: &'static dyn Data,
 }
 
 impl Service {

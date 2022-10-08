@@ -67,7 +67,7 @@ impl service::users::Data for KeyValueDatabase {
     }
 
     /// Returns an iterator over all users on this homeserver.
-    fn iter(&self) -> Box<dyn Iterator<Item = Result<Box<UserId>>>> {
+    fn iter<'a>(&'a self) -> Box<dyn Iterator<Item = Result<Box<UserId>>> + 'a> {
         Box::new(self.userid_password.iter().map(|(bytes, _)| {
             UserId::parse(utils::string_from_bytes(&bytes).map_err(|_| {
                 Error::bad_database("User ID in userid_password is invalid unicode.")
@@ -83,31 +83,9 @@ impl service::users::Data for KeyValueDatabase {
         let users: Vec<String> = self
             .userid_password
             .iter()
-            .filter_map(|(username, pw)| self.get_username_with_valid_password(&username, &pw))
+            .filter_map(|(username, pw)| get_username_with_valid_password(&username, &pw))
             .collect();
         Ok(users)
-    }
-
-    /// Will only return with Some(username) if the password was not empty and the
-    /// username could be successfully parsed.
-    /// If utils::string_from_bytes(...) returns an error that username will be skipped
-    /// and the error will be logged.
-    fn get_username_with_valid_password(&self, username: &[u8], password: &[u8]) -> Option<String> {
-        // A valid password is not empty
-        if password.is_empty() {
-            None
-        } else {
-            match utils::string_from_bytes(username) {
-                Ok(u) => Some(u),
-                Err(e) => {
-                    warn!(
-                        "Failed to parse username while calling get_local_users(): {}",
-                        e.to_string()
-                    );
-                    None
-                }
-            }
-        }
     }
 
     /// Returns the password hash for the given user.
@@ -281,7 +259,7 @@ impl service::users::Data for KeyValueDatabase {
     fn all_device_ids<'a>(
         &'a self,
         user_id: &UserId,
-    ) -> Box<dyn Iterator<Item = Result<Box<DeviceId>>>> {
+    ) -> Box<dyn Iterator<Item = Result<Box<DeviceId>>> + 'a> {
         let mut prefix = user_id.as_bytes().to_vec();
         prefix.push(0xff);
         // All devices have metadata
@@ -626,7 +604,7 @@ impl service::users::Data for KeyValueDatabase {
         user_or_room_id: &str,
         from: u64,
         to: Option<u64>,
-    ) -> Box<dyn Iterator<Item = Result<Box<UserId>>>> {
+    ) -> Box<dyn Iterator<Item = Result<Box<UserId>>> + 'a> {
         let mut prefix = user_or_room_id.as_bytes().to_vec();
         prefix.push(0xff);
 
@@ -906,7 +884,7 @@ impl service::users::Data for KeyValueDatabase {
     fn all_devices_metadata<'a>(
         &'a self,
         user_id: &UserId,
-    ) -> Box<dyn Iterator<Item = Result<Device>>> {
+    ) -> Box<dyn Iterator<Item = Result<Device>> + 'a> {
         let mut key = user_id.as_bytes().to_vec();
         key.push(0xff);
 
@@ -956,3 +934,26 @@ impl service::users::Data for KeyValueDatabase {
         }
     }
 }
+
+/// Will only return with Some(username) if the password was not empty and the
+/// username could be successfully parsed.
+/// If utils::string_from_bytes(...) returns an error that username will be skipped
+/// and the error will be logged.
+fn get_username_with_valid_password(username: &[u8], password: &[u8]) -> Option<String> {
+    // A valid password is not empty
+    if password.is_empty() {
+        None
+    } else {
+        match utils::string_from_bytes(username) {
+            Ok(u) => Some(u),
+            Err(e) => {
+                warn!(
+                    "Failed to parse username while calling get_local_users(): {}",
+                    e.to_string()
+                );
+                None
+            }
+        }
+    }
+}
+

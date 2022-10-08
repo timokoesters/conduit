@@ -11,7 +11,7 @@ use tracing::log::warn;
 use crate::{services, Error, Result};
 
 pub struct Service {
-    db: Arc<dyn Data>,
+    pub db: &'static dyn Data,
 }
 
 impl Service {

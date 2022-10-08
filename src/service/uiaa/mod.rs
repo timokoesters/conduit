@@ -16,7 +16,7 @@ use tracing::error;
 use crate::{api::client_server::SESSION_ID_LENGTH, services, utils, Error, Result};
 
 pub struct Service {
-    db: Arc<dyn Data>,
+    pub db: &'static dyn Data,
 }
 
 impl Service {

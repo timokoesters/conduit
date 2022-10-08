@@ -1,6 +1,6 @@
 use ruma::RoomId;
 
-use crate::{database::KeyValueDatabase, service, services, Result};
+use crate::{database::KeyValueDatabase, service, services, Result, utils, Error};
 
 impl service::rooms::metadata::Data for KeyValueDatabase {
     fn exists(&self, room_id: &RoomId) -> Result<bool> {
@@ -16,6 +16,18 @@ impl service::rooms::metadata::Data for KeyValueDatabase {
             .next()
             .filter(|(k, _)| k.starts_with(&prefix))
             .is_some())
+    }
+
+    fn iter_ids<'a>(&'a self) -> Box<dyn Iterator<Item = Result<Box<RoomId>>> + 'a> {
+        Box::new(self.roomid_shortroomid.iter().map(|(bytes, _)| {
+            RoomId::parse(
+                utils::string_from_bytes(&bytes).map_err(|_| {
+                    Error::bad_database("Room ID in publicroomids is invalid unicode.")
+                })?,
+            )
+            .map_err(|_| Error::bad_database("Room ID in roomid_shortroomid is invalid."))
+        }))
+
     }
 
     fn is_disabled(&self, room_id: &RoomId) -> Result<bool> {

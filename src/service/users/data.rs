@@ -22,18 +22,12 @@ pub trait Data: Send + Sync {
     fn find_from_token(&self, token: &str) -> Result<Option<(Box<UserId>, String)>>;
 
     /// Returns an iterator over all users on this homeserver.
-    fn iter(&self) -> Box<dyn Iterator<Item = Result<Box<UserId>>>>;
+    fn iter<'a>(&'a self) -> Box<dyn Iterator<Item = Result<Box<UserId>>> + 'a>;
 
     /// Returns a list of local users as list of usernames.
     ///
     /// A user account is considered `local` if the length of it's password is greater then zero.
     fn list_local_users(&self) -> Result<Vec<String>>;
-
-    /// Will only return with Some(username) if the password was not empty and the
-    /// username could be successfully parsed.
-    /// If utils::string_from_bytes(...) returns an error that username will be skipped
-    /// and the error will be logged.
-    fn get_username_with_valid_password(&self, username: &[u8], password: &[u8]) -> Option<String>;
 
     /// Returns the password hash for the given user.
     fn password_hash(&self, user_id: &UserId) -> Result<Option<String>>;
@@ -75,7 +69,7 @@ pub trait Data: Send + Sync {
     fn all_device_ids<'a>(
         &'a self,
         user_id: &UserId,
-    ) -> Box<dyn Iterator<Item = Result<Box<DeviceId>>>>;
+    ) -> Box<dyn Iterator<Item = Result<Box<DeviceId>>> + 'a>;
 
     /// Replaces the access token of one device.
     fn set_token(&self, user_id: &UserId, device_id: &DeviceId, token: &str) -> Result<()>;
@@ -131,7 +125,7 @@ pub trait Data: Send + Sync {
         user_or_room_id: &str,
         from: u64,
         to: Option<u64>,
-    ) -> Box<dyn Iterator<Item = Result<Box<UserId>>>>;
+    ) -> Box<dyn Iterator<Item = Result<Box<UserId>>> + 'a>;
 
     fn mark_device_key_update(&self, user_id: &UserId) -> Result<()>;
 
@@ -193,7 +187,7 @@ pub trait Data: Send + Sync {
     fn all_devices_metadata<'a>(
         &'a self,
         user_id: &UserId,
-    ) -> Box<dyn Iterator<Item = Result<Device>>>;
+    ) -> Box<dyn Iterator<Item = Result<Device>> + 'a>;
 
     /// Creates a new sync filter. Returns the filter id.
     fn create_filter(&self, user_id: &UserId, filter: &IncomingFilterDefinition) -> Result<String>;

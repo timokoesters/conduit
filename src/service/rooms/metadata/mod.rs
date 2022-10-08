@@ -7,7 +7,7 @@ use ruma::RoomId;
 use crate::Result;
 
 pub struct Service {
-    db: Arc<dyn Data>,
+    pub db: &'static dyn Data,
 }
 
 impl Service {
@@ -15,6 +15,10 @@ impl Service {
     #[tracing::instrument(skip(self))]
     pub fn exists(&self, room_id: &RoomId) -> Result<bool> {
         self.db.exists(room_id)
+    }
+
+    pub fn iter_ids<'a>(&'a self) -> Box<dyn Iterator<Item = Result<Box<RoomId>>> + 'a> {
+        self.db.iter_ids()
     }
 
     pub fn is_disabled(&self, room_id: &RoomId) -> Result<bool> {

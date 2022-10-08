@@ -1319,7 +1319,7 @@ pub async fn create_join_event_template_route(
     })
     .expect("member event is valid value");
 
-    let (pdu, pdu_json) = services().rooms.timeline.create_hash_and_sign_event(
+    let (_pdu, pdu_json) = services().rooms.timeline.create_hash_and_sign_event(
         PduBuilder {
             event_type: RoomEventType::RoomMember,
             content,

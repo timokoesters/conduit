@@ -15,7 +15,7 @@ impl service::rooms::directory::Data for KeyValueDatabase {
         Ok(self.publicroomids.get(room_id.as_bytes())?.is_some())
     }
 
-    fn public_rooms(&self) -> Box<dyn Iterator<Item = Result<Box<RoomId>>>> {
+    fn public_rooms<'a>(&'a self) -> Box<dyn Iterator<Item = Result<Box<RoomId>>> + 'a> {
         Box::new(self.publicroomids.iter().map(|(bytes, _)| {
             RoomId::parse(
                 utils::string_from_bytes(&bytes).map_err(|_| {

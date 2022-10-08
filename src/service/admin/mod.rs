@@ -172,74 +172,82 @@ pub struct Service {
 }
 
 impl Service {
-    pub fn start_handler(&self, mut receiver: mpsc::UnboundedReceiver<AdminRoomEvent>) {
-        tokio::spawn(async move {
-            // TODO: Use futures when we have long admin commands
-            //let mut futures = FuturesUnordered::new();
+    pub fn build() -> Arc<Self> {
+        let (sender, receiver) = mpsc::unbounded_channel();
+        let self1 = Arc::new(Self { sender });
+        let self2 = Arc::clone(&self1);
 
-            let conduit_user =
-                UserId::parse(format!("@conduit:{}", services().globals.server_name()))
-                    .expect("@conduit:server_name is valid");
+        tokio::spawn(async move { self2.start_handler(receiver).await; });
 
-            let conduit_room = services()
+        self1
+    }
+
+    async fn start_handler(&self, mut receiver: mpsc::UnboundedReceiver<AdminRoomEvent>) {
+        // TODO: Use futures when we have long admin commands
+        //let mut futures = FuturesUnordered::new();
+
+        let conduit_user =
+            UserId::parse(format!("@conduit:{}", services().globals.server_name()))
+                .expect("@conduit:server_name is valid");
+
+        let conduit_room = services()
+            .rooms
+            .alias
+            .resolve_local_alias(
+                format!("#admins:{}", services().globals.server_name())
+                    .as_str()
+                    .try_into()
+                    .expect("#admins:server_name is a valid room alias"),
+            )
+            .expect("Database data for admin room alias must be valid")
+            .expect("Admin room must exist");
+
+        let send_message = |message: RoomMessageEventContent,
+                            mutex_lock: &MutexGuard<'_, ()>| {
+            services()
                 .rooms
-                .alias
-                .resolve_local_alias(
-                    format!("#admins:{}", services().globals.server_name())
-                        .as_str()
-                        .try_into()
-                        .expect("#admins:server_name is a valid room alias"),
+                .timeline
+                .build_and_append_pdu(
+                    PduBuilder {
+                        event_type: RoomEventType::RoomMessage,
+                        content: to_raw_value(&message)
+                            .expect("event is valid, we just created it"),
+                        unsigned: None,
+                        state_key: None,
+                        redacts: None,
+                    },
+                    &conduit_user,
+                    &conduit_room,
+                    mutex_lock,
                 )
-                .expect("Database data for admin room alias must be valid")
-                .expect("Admin room must exist");
+                .unwrap();
+        };
 
-            let send_message = |message: RoomMessageEventContent,
-                                mutex_lock: &MutexGuard<'_, ()>| {
-                services()
-                    .rooms
-                    .timeline
-                    .build_and_append_pdu(
-                        PduBuilder {
-                            event_type: RoomEventType::RoomMessage,
-                            content: to_raw_value(&message)
-                                .expect("event is valid, we just created it"),
-                            unsigned: None,
-                            state_key: None,
-                            redacts: None,
-                        },
-                        &conduit_user,
-                        &conduit_room,
-                        mutex_lock,
-                    )
-                    .unwrap();
-            };
+        loop {
+            tokio::select! {
+                Some(event) = receiver.recv() => {
+                    let message_content = match event {
+                        AdminRoomEvent::SendMessage(content) => content,
+                        AdminRoomEvent::ProcessMessage(room_message) => self.process_admin_message(room_message).await
+                    };
 
-            loop {
-                tokio::select! {
-                    Some(event) = receiver.recv() => {
-                        let message_content = match event {
-                            AdminRoomEvent::SendMessage(content) => content,
-                            AdminRoomEvent::ProcessMessage(room_message) => self.process_admin_message(room_message).await
-                        };
+                    let mutex_state = Arc::clone(
+                        services().globals
+                            .roomid_mutex_state
+                            .write()
+                            .unwrap()
+                            .entry(conduit_room.to_owned())
+                            .or_default(),
+                    );
 
-                        let mutex_state = Arc::clone(
-                            services().globals
-                                .roomid_mutex_state
-                                .write()
-                                .unwrap()
-                                .entry(conduit_room.to_owned())
-                                .or_default(),
-                        );
+                    let state_lock = mutex_state.lock().await;
 
-                        let state_lock = mutex_state.lock().await;
+                    send_message(message_content, &state_lock);
 
-                        send_message(message_content, &state_lock);
-
-                        drop(state_lock);
-                    }
+                    drop(state_lock);
                 }
             }
-        });
+        }
     }
 
     pub fn process_message(&self, room_message: String) {
@@ -382,9 +390,7 @@ impl Service {
                 }
             }
             AdminCommand::ListRooms => {
-                todo!();
-                /*
-                let room_ids = services().rooms.iter_ids();
+                let room_ids = services().rooms.metadata.iter_ids();
                 let output = format!(
                     "Rooms:\n{}",
                     room_ids
@@ -393,6 +399,7 @@ impl Service {
                             + "\tMembers: "
                             + &services()
                                 .rooms
+                                .state_cache
                                 .room_joined_count(&id)
                                 .ok()
                                 .flatten()
@@ -402,7 +409,6 @@ impl Service {
                         .join("\n")
                 );
                 RoomMessageEventContent::text_plain(output)
-                */
             }
             AdminCommand::ListLocalUsers => match services().users.list_local_users() {
                 Ok(users) => {
@@ -648,11 +654,11 @@ impl Service {
                 ))
             }
             AdminCommand::DisableRoom { room_id } => {
-                services().rooms.metadata.disable_room(&room_id, true);
+                services().rooms.metadata.disable_room(&room_id, true)?;
                 RoomMessageEventContent::text_plain("Room disabled.")
             }
             AdminCommand::EnableRoom { room_id } => {
-                services().rooms.metadata.disable_room(&room_id, false);
+                services().rooms.metadata.disable_room(&room_id, false)?;
                 RoomMessageEventContent::text_plain("Room enabled.")
             }
             AdminCommand::DeactivateUser {

@@ -26,7 +26,7 @@ use std::{fmt::Debug, mem};
 use tracing::{error, info, warn};
 
 pub struct Service {
-    db: Arc<dyn Data>,
+    pub db: &'static dyn Data,
 }
 
 impl Service {
@@ -34,19 +34,19 @@ impl Service {
         self.db.set_pusher(sender, pusher)
     }
 
-    pub fn get_pusher(&self, senderkey: &[u8]) -> Result<Option<get_pushers::v3::Pusher>> {
-        self.db.get_pusher(senderkey)
+    pub fn get_pusher(&self, sender: &UserId, pushkey: &str) -> Result<Option<get_pushers::v3::Pusher>> {
+        self.db.get_pusher(sender, pushkey)
     }
 
     pub fn get_pushers(&self, sender: &UserId) -> Result<Vec<get_pushers::v3::Pusher>> {
         self.db.get_pushers(sender)
     }
 
-    pub fn get_pusher_senderkeys<'a>(
+    pub fn get_pushkeys<'a>(
         &'a self,
         sender: &UserId,
-    ) -> impl Iterator<Item = Vec<u8>> + 'a {
-        self.db.get_pusher_senderkeys(sender)
+    ) -> Box<dyn Iterator<Item = Result<String>>> {
+        self.db.get_pushkeys(sender)
     }
 
     #[tracing::instrument(skip(self, destination, request))]

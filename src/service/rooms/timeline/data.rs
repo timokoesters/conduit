@@ -60,7 +60,7 @@ pub trait Data: Send + Sync {
         user_id: &UserId,
         room_id: &RoomId,
         since: u64,
-    ) -> Result<Box<dyn Iterator<Item = Result<(Vec<u8>, PduEvent)>>>>;
+    ) -> Result<Box<dyn Iterator<Item = Result<(Vec<u8>, PduEvent)>> + 'a>>;
 
     /// Returns an iterator over all events and their tokens in a room that happened before the
     /// event with id `until` in reverse-chronological order.
@@ -69,14 +69,14 @@ pub trait Data: Send + Sync {
         user_id: &UserId,
         room_id: &RoomId,
         until: u64,
-    ) -> Result<Box<dyn Iterator<Item = Result<(Vec<u8>, PduEvent)>>>>;
+    ) -> Result<Box<dyn Iterator<Item = Result<(Vec<u8>, PduEvent)>> + 'a>>;
 
     fn pdus_after<'a>(
         &'a self,
         user_id: &UserId,
         room_id: &RoomId,
         from: u64,
-    ) -> Result<Box<dyn Iterator<Item = Result<(Vec<u8>, PduEvent)>>>>;
+    ) -> Result<Box<dyn Iterator<Item = Result<(Vec<u8>, PduEvent)>> + 'a>>;
 
     fn increment_notification_counts(
         &self,

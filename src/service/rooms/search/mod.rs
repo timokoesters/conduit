@@ -7,7 +7,7 @@ use crate::Result;
 use ruma::RoomId;
 
 pub struct Service {
-    db: Arc<dyn Data>,
+    pub db: &'static dyn Data,
 }
 
 impl Service {
@@ -16,7 +16,7 @@ impl Service {
         &self,
         shortroomid: u64,
         pdu_id: &[u8],
-        message_body: String,
+        message_body: &str,
     ) -> Result<()> {
         self.db.index_pdu(shortroomid, pdu_id, message_body)
     }

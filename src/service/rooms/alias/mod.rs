@@ -7,7 +7,7 @@ use crate::Result;
 use ruma::{RoomAliasId, RoomId};
 
 pub struct Service {
-    db: Arc<dyn Data>,
+    pub db: &'static dyn Data,
 }
 
 impl Service {
@@ -30,7 +30,7 @@ impl Service {
     pub fn local_aliases_for_room<'a>(
         &'a self,
         room_id: &RoomId,
-    ) -> impl Iterator<Item = Result<Box<RoomAliasId>>> + 'a {
+    ) -> Box<dyn Iterator<Item = Result<Box<RoomAliasId>>> + 'a> {
         self.db.local_aliases_for_room(room_id)
     }
 }

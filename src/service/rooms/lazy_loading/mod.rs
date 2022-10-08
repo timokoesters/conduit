@@ -10,9 +10,9 @@ use ruma::{DeviceId, RoomId, UserId};
 use crate::Result;
 
 pub struct Service {
-    db: Arc<dyn Data>,
+    pub db: &'static dyn Data,
 
-    lazy_load_waiting:
+    pub lazy_load_waiting:
         Mutex<HashMap<(Box<UserId>, Box<DeviceId>, Box<RoomId>, u64), HashSet<Box<UserId>>>>,
 }
 
@@ -67,7 +67,7 @@ impl Service {
                 user_id,
                 device_id,
                 room_id,
-                &mut user_ids.iter().map(|&u| &*u),
+                &mut user_ids.iter().map(|u| &**u),
             )?;
         } else {
             // Ignore

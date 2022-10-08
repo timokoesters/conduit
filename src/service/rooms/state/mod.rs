@@ -23,7 +23,7 @@ use crate::{services, utils::calculate_hash, Error, PduEvent, Result};
 use super::state_compressor::CompressedStateEvent;
 
 pub struct Service {
-    db: Arc<dyn Data>,
+    pub db: &'static dyn Data,
 }
 
 impl Service {
@@ -33,7 +33,7 @@ impl Service {
         room_id: &RoomId,
         shortstatehash: u64,
         statediffnew: HashSet<CompressedStateEvent>,
-        statediffremoved: HashSet<CompressedStateEvent>,
+        _statediffremoved: HashSet<CompressedStateEvent>,
     ) -> Result<()> {
         let mutex_state = Arc::clone(
             services()
@@ -102,7 +102,7 @@ impl Service {
 
         services().rooms.state_cache.update_joined_count(room_id)?;
 
-        self.db.set_room_state(room_id, shortstatehash, &state_lock);
+        self.db.set_room_state(room_id, shortstatehash, &state_lock)?;
 
         drop(state_lock);
 

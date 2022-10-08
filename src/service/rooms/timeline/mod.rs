@@ -36,9 +36,9 @@ use crate::{
 use super::state_compressor::CompressedStateEvent;
 
 pub struct Service {
-    db: Arc<dyn Data>,
+    pub db: &'static dyn Data,
 
-    pub(super) lasttimelinecount_cache: Mutex<HashMap<Box<RoomId>, u64>>,
+    pub lasttimelinecount_cache: Mutex<HashMap<Box<RoomId>, u64>>,
 }
 
 impl Service {
@@ -253,10 +253,10 @@ impl Service {
             .rooms
             .state_cache
             .get_our_real_users(&pdu.room_id)?
-            .into_iter()
+            .iter()
         {
             // Don't notify the user of their own events
-            if &user == &pdu.sender {
+            if user == &pdu.sender {
                 continue;
             }
 
@@ -297,20 +297,20 @@ impl Service {
             }
 
             if notify {
-                notifies.push(user);
+                notifies.push(user.clone());
             }
 
             if highlight {
-                highlights.push(user);
+                highlights.push(user.clone());
             }
 
-            for senderkey in services().pusher.get_pusher_senderkeys(&user) {
-                services().sending.send_push_pdu(&*pdu_id, senderkey)?;
+            for push_key in services().pusher.get_pushkeys(&user) {
+                services().sending.send_push_pdu(&*pdu_id, &user, push_key?)?;
             }
         }
 
         self.db
-            .increment_notification_counts(&pdu.room_id, notifies, highlights);
+            .increment_notification_counts(&pdu.room_id, notifies, highlights)?;
 
         match pdu.kind {
             RoomEventType::RoomRedaction => {
@@ -365,7 +365,7 @@ impl Service {
                     services()
                         .rooms
                         .search
-                        .index_pdu(shortroomid, &pdu_id, body)?;
+                        .index_pdu(shortroomid, &pdu_id, &body)?;
 
                     let admin_room = services().rooms.alias.resolve_local_alias(
                         <&RoomAliasId>::try_from(
@@ -398,7 +398,7 @@ impl Service {
             {
                 services()
                     .sending
-                    .send_pdu_appservice(&appservice.0, &pdu_id)?;
+                    .send_pdu_appservice(appservice.0, pdu_id.clone())?;
                 continue;
             }
 
@@ -422,7 +422,7 @@ impl Service {
                         if state_key_uid == &appservice_uid {
                             services()
                                 .sending
-                                .send_pdu_appservice(&appservice.0, &pdu_id)?;
+                                .send_pdu_appservice(appservice.0, pdu_id.clone())?;
                             continue;
                         }
                     }
@@ -475,7 +475,7 @@ impl Service {
                 {
                     services()
                         .sending
-                        .send_pdu_appservice(&appservice.0, &pdu_id)?;
+                        .send_pdu_appservice(appservice.0, pdu_id.clone())?;
                 }
             }
         }
@@ -565,7 +565,7 @@ impl Service {
             }
         }
 
-        let pdu = PduEvent {
+        let mut pdu = PduEvent {
             event_id: ruma::event_id!("$thiswillbefilledinlater").into(),
             room_id: room_id.to_owned(),
             sender: sender.to_owned(),

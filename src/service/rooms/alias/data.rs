@@ -12,8 +12,8 @@ pub trait Data: Send + Sync {
     fn resolve_local_alias(&self, alias: &RoomAliasId) -> Result<Option<Box<RoomId>>>;
 
     /// Returns all local aliases that point to the given room
-    fn local_aliases_for_room(
-        &self,
+    fn local_aliases_for_room<'a>(
+        &'a self,
         room_id: &RoomId,
-    ) -> Box<dyn Iterator<Item = Result<Box<RoomAliasId>>>>;
+    ) -> Box<dyn Iterator<Item = Result<Box<RoomAliasId>>> + 'a>;
 }

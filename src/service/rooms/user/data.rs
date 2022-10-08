@@ -20,5 +20,5 @@ pub trait Data: Send + Sync {
     fn get_shared_rooms<'a>(
         &'a self,
         users: Vec<Box<UserId>>,
-    ) -> Result<Box<dyn Iterator<Item = Result<Box<RoomId>>>>>;
+    ) -> Result<Box<dyn Iterator<Item = Result<Box<RoomId>>> + 'a>>;
 }

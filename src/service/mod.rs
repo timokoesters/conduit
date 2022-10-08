@@ -29,11 +29,11 @@ pub struct Services {
     pub uiaa: uiaa::Service,
     pub users: users::Service,
     pub account_data: account_data::Service,
-    pub admin: admin::Service,
+    pub admin: Arc<admin::Service>,
     pub globals: globals::Service,
     pub key_backups: key_backups::Service,
     pub media: media::Service,
-    pub sending: sending::Service,
+    pub sending: Arc<sending::Service>,
 }
 
 impl Services {
@@ -47,60 +47,60 @@ impl Services {
             + account_data::Data
             + globals::Data
             + key_backups::Data
-            + media::Data,
+            + media::Data
+            + sending::Data
+            + 'static
     >(
-        db: Arc<D>,
+        db: &'static D,
         config: Config,
     ) -> Result<Self> {
         Ok(Self {
-            appservice: appservice::Service { db: db.clone() },
-            pusher: pusher::Service { db: db.clone() },
+            appservice: appservice::Service { db },
+            pusher: pusher::Service { db },
             rooms: rooms::Service {
-                alias: rooms::alias::Service { db: db.clone() },
-                auth_chain: rooms::auth_chain::Service { db: db.clone() },
-                directory: rooms::directory::Service { db: db.clone() },
+                alias: rooms::alias::Service { db },
+                auth_chain: rooms::auth_chain::Service { db },
+                directory: rooms::directory::Service { db },
                 edus: rooms::edus::Service {
-                    presence: rooms::edus::presence::Service { db: db.clone() },
-                    read_receipt: rooms::edus::read_receipt::Service { db: db.clone() },
-                    typing: rooms::edus::typing::Service { db: db.clone() },
+                    presence: rooms::edus::presence::Service { db },
+                    read_receipt: rooms::edus::read_receipt::Service { db },
+                    typing: rooms::edus::typing::Service { db },
                 },
                 event_handler: rooms::event_handler::Service,
                 lazy_loading: rooms::lazy_loading::Service {
-                    db: db.clone(),
+                    db,
                     lazy_load_waiting: Mutex::new(HashMap::new()),
                 },
-                metadata: rooms::metadata::Service { db: db.clone() },
-                outlier: rooms::outlier::Service { db: db.clone() },
-                pdu_metadata: rooms::pdu_metadata::Service { db: db.clone() },
-                search: rooms::search::Service { db: db.clone() },
-                short: rooms::short::Service { db: db.clone() },
-                state: rooms::state::Service { db: db.clone() },
-                state_accessor: rooms::state_accessor::Service { db: db.clone() },
-                state_cache: rooms::state_cache::Service { db: db.clone() },
+                metadata: rooms::metadata::Service { db },
+                outlier: rooms::outlier::Service { db },
+                pdu_metadata: rooms::pdu_metadata::Service { db },
+                search: rooms::search::Service { db },
+                short: rooms::short::Service { db },
+                state: rooms::state::Service { db },
+                state_accessor: rooms::state_accessor::Service { db },
+                state_cache: rooms::state_cache::Service { db },
                 state_compressor: rooms::state_compressor::Service {
-                    db: db.clone(),
+                    db,
                     stateinfo_cache: Mutex::new(LruCache::new(
                         (100.0 * config.conduit_cache_capacity_modifier) as usize,
                     )),
                 },
                 timeline: rooms::timeline::Service {
-                    db: db.clone(),
+                    db,
                     lasttimelinecount_cache: Mutex::new(HashMap::new()),
                 },
-                user: rooms::user::Service { db: db.clone() },
+                user: rooms::user::Service { db },
             },
-            transaction_ids: transaction_ids::Service { db: db.clone() },
-            uiaa: uiaa::Service { db: db.clone() },
-            users: users::Service { db: db.clone() },
-            account_data: account_data::Service { db: db.clone() },
-            admin: admin::Service { sender: todo!() },
-            globals: globals::Service::load(db.clone(), config)?,
-            key_backups: key_backups::Service { db: db.clone() },
-            media: media::Service { db: db.clone() },
-            sending: sending::Service {
-                maximum_requests: todo!(),
-                sender: todo!(),
-            },
+            transaction_ids: transaction_ids::Service { db },
+            uiaa: uiaa::Service { db },
+            users: users::Service { db },
+            account_data: account_data::Service { db },
+            admin: admin::Service::build(),
+            key_backups: key_backups::Service { db },
+            media: media::Service { db },
+            sending: sending::Service::build(db, &config),
+
+            globals: globals::Service::load(db, config)?,
         })
     }
 }

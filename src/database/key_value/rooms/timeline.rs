@@ -235,7 +235,7 @@ impl service::rooms::timeline::Data for KeyValueDatabase {
         user_id: &UserId,
         room_id: &RoomId,
         since: u64,
-    ) -> Result<Box<dyn Iterator<Item = Result<(Vec<u8>, PduEvent)>>>> {
+    ) -> Result<Box<dyn Iterator<Item = Result<(Vec<u8>, PduEvent)>> + 'a>> {
         let prefix = services()
             .rooms
             .short
@@ -272,7 +272,7 @@ impl service::rooms::timeline::Data for KeyValueDatabase {
         user_id: &UserId,
         room_id: &RoomId,
         until: u64,
-    ) -> Result<Box<dyn Iterator<Item = Result<(Vec<u8>, PduEvent)>>>> {
+    ) -> Result<Box<dyn Iterator<Item = Result<(Vec<u8>, PduEvent)>> + 'a>> {
         // Create the first part of the full pdu id
         let prefix = services()
             .rooms
@@ -309,7 +309,7 @@ impl service::rooms::timeline::Data for KeyValueDatabase {
         user_id: &UserId,
         room_id: &RoomId,
         from: u64,
-    ) -> Result<Box<dyn Iterator<Item = Result<(Vec<u8>, PduEvent)>>>> {
+    ) -> Result<Box<dyn Iterator<Item = Result<(Vec<u8>, PduEvent)>> + 'a>> {
         // Create the first part of the full pdu id
         let prefix = services()
             .rooms
@@ -347,8 +347,8 @@ impl service::rooms::timeline::Data for KeyValueDatabase {
         notifies: Vec<Box<UserId>>,
         highlights: Vec<Box<UserId>>,
     ) -> Result<()> {
-        let notifies_batch = Vec::new();
-        let highlights_batch = Vec::new();
+        let mut notifies_batch = Vec::new();
+        let mut highlights_batch = Vec::new();
         for user in notifies {
             let mut userroom_id = user.as_bytes().to_vec();
             userroom_id.push(0xff);

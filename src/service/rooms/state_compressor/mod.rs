@@ -14,7 +14,7 @@ use crate::{services, utils, Result};
 use self::data::StateDiff;
 
 pub struct Service {
-    db: Arc<dyn Data>,
+    pub db: &'static dyn Data,
 
     pub stateinfo_cache: Mutex<
         LruCache<

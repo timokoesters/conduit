@@ -10,7 +10,7 @@ use ruma::{events::StateEventType, EventId, RoomId};
 use crate::{PduEvent, Result};
 
 pub struct Service {
-    db: Arc<dyn Data>,
+    pub db: &'static dyn Data,
 }
 
 impl Service {

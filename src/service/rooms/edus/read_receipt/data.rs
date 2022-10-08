@@ -11,8 +11,8 @@ pub trait Data: Send + Sync {
     ) -> Result<()>;
 
     /// Returns an iterator over the most recent read_receipts in a room that happened after the event with id `since`.
-    fn readreceipts_since(
-        &self,
+    fn readreceipts_since<'a>(
+        &'a self,
         room_id: &RoomId,
         since: u64,
     ) -> Box<
@@ -22,7 +22,7 @@ pub trait Data: Send + Sync {
                 u64,
                 Raw<ruma::events::AnySyncEphemeralRoomEvent>,
             )>,
-        >,
+        > + 'a,
     >;
 
     /// Sets a private read marker at `count`.

@@ -17,7 +17,7 @@ use ruma::{
 use crate::{services, Error, Result};
 
 pub struct Service {
-    db: Arc<dyn Data>,
+    pub db: &'static dyn Data,
 }
 
 impl Service {
@@ -112,7 +112,7 @@ impl Service {
                         };
 
                         // Copy direct chat flag
-                        if let Some(mut direct_event) = services()
+                        if let Some(direct_event) = services()
                             .account_data
                             .get(
                                 None,
@@ -125,7 +125,7 @@ impl Service {
                                 })
                             })
                         {
-                            let direct_event = direct_event?;
+                            let mut direct_event = direct_event?;
                             let mut room_ids_updated = false;
 
                             for room_ids in direct_event.content.0.values_mut() {

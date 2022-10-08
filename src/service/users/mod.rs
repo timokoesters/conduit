@@ -13,7 +13,7 @@ use ruma::{
 use crate::{services, Error, Result};
 
 pub struct Service {
-    db: Arc<dyn Data>,
+    pub db: &'static dyn Data,
 }
 
 impl Service {
@@ -70,14 +70,6 @@ impl Service {
     /// A user account is considered `local` if the length of it's password is greater then zero.
     pub fn list_local_users(&self) -> Result<Vec<String>> {
         self.db.list_local_users()
-    }
-
-    /// Will only return with Some(username) if the password was not empty and the
-    /// username could be successfully parsed.
-    /// If utils::string_from_bytes(...) returns an error that username will be skipped
-    /// and the error will be logged.
-    fn get_username_with_valid_password(&self, username: &[u8], password: &[u8]) -> Option<String> {
-        self.db.get_username_with_valid_password(username, password)
     }
 
     /// Returns the password hash for the given user.
@@ -275,7 +267,7 @@ impl Service {
         user_id: &UserId,
         device_id: &DeviceId,
     ) -> Result<Vec<Raw<AnyToDeviceEvent>>> {
-        self.get_to_device_events(user_id, device_id)
+        self.db.get_to_device_events(user_id, device_id)
     }
 
     pub fn remove_to_device_events(
@@ -302,7 +294,7 @@ impl Service {
         user_id: &UserId,
         device_id: &DeviceId,
     ) -> Result<Option<Device>> {
-        self.get_device_metadata(user_id, device_id)
+        self.db.get_device_metadata(user_id, device_id)
     }
 
     pub fn get_devicelist_version(&self, user_id: &UserId) -> Result<Option<u64>> {

@@ -670,7 +670,7 @@ async fn join_room_by_id_helper(
                 .add_pdu_outlier(&event_id, &value)?;
         }
 
-        let shortstatehash = services().rooms.state.set_event_state(
+        let statehash_before_join = services().rooms.state.set_event_state(
             event_id,
             room_id,
             state
@@ -684,8 +684,15 @@ async fn join_room_by_id_helper(
                 .collect::<Result<_>>()?,
         )?;
 
+        services()
+            .rooms
+            .state
+            .set_room_state(room_id, statehash_before_join, &state_lock)?;
+
         // We append to state before appending the pdu, so we don't have a moment in time with the
         // pdu without it's state. This is okay because append_pdu can't fail.
+        let statehash_after_join = services().rooms.state.append_to_state(&parsed_pdu)?;
+
         services().rooms.timeline.append_pdu(
             &parsed_pdu,
             join_event,
@@ -698,9 +705,7 @@ async fn join_room_by_id_helper(
         services()
             .rooms
             .state
-            .set_room_state(room_id, shortstatehash, &state_lock)?;
-
-        let statehashid = services().rooms.state.append_to_state(&parsed_pdu)?;
+            .set_room_state(room_id, statehash_after_join, &state_lock)?;
     } else {
         let event = RoomMemberEventContent {
             membership: MembershipState::Join,

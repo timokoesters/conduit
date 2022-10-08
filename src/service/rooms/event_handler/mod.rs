@@ -256,7 +256,7 @@ impl Service {
 
     #[tracing::instrument(skip(self, create_event, value, pub_key_map))]
     fn handle_outlier_pdu<'a>(
-        &self,
+        &'a self,
         origin: &'a ServerName,
         create_event: &'a PduEvent,
         event_id: &'a EventId,
@@ -1015,7 +1015,7 @@ impl Service {
     /// d. TODO: Ask other servers over federation?
     #[tracing::instrument(skip_all)]
     pub(crate) fn fetch_and_handle_outliers<'a>(
-        &self,
+        &'a self,
         origin: &'a ServerName,
         events: &'a [Arc<EventId>],
         create_event: &'a PduEvent,

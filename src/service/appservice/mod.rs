@@ -6,7 +6,7 @@ pub use data::Data;
 use crate::Result;
 
 pub struct Service {
-    db: Arc<dyn Data>,
+    pub db: &'static dyn Data,
 }
 
 impl Service {
