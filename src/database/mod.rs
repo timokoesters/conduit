@@ -1,10 +1,7 @@
 pub mod abstraction;
 pub mod key_value;
 
-use crate::{
-    services, utils, Config, Error,
-    PduEvent, Result, Services, SERVICES,
-};
+use crate::{services, utils, Config, Error, PduEvent, Result, Services, SERVICES};
 use abstraction::KeyValueDatabaseEngine;
 use abstraction::KvTree;
 use directories::ProjectDirs;
@@ -830,6 +827,8 @@ impl KeyValueDatabase {
         // This data is probably outdated
         db.presenceid_presence.clear()?;
 
+        services().admin.start_handler();
+
         // Set emergency access for the conduit user
         match set_emergency_access() {
             Ok(pwd_set) => {
@@ -845,6 +844,8 @@ impl KeyValueDatabase {
                 )
             }
         };
+
+        services().sending.start_handler();
 
         Self::start_cleanup_task().await;
 

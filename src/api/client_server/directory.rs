@@ -29,7 +29,7 @@ use ruma::{
     },
     ServerName, UInt,
 };
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 
 /// # `POST /_matrix/client/r0/publicRooms`
 ///
@@ -279,15 +279,14 @@ pub(crate) async fn get_public_rooms_filtered_helper(
                                 JoinRule::Knock => Some(PublicRoomJoinRule::Knock),
                                 _ => None,
                             })
-                            .map_err(|_| {
-                                Error::bad_database("Invalid room join rule event in database.")
+                            .map_err(|e| {
+                                error!("Invalid room join rule event in database: {}", e);
+                                Error::BadDatabase("Invalid room join rule event in database.")
                             })
                     })
                     .transpose()?
                     .flatten()
-                    .ok_or(Error::bad_database(
-                        "Invalid room join rule event in database.",
-                    ))?,
+                    .ok_or_else(|| Error::bad_database("Missing room join rule event for room."))?,
                 room_id,
             };
             Ok(chunk)

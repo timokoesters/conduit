@@ -7,7 +7,7 @@ use ruma::{
     serde::Raw,
     RoomId, UserId,
 };
-use std::{collections::BTreeMap};
+use std::collections::BTreeMap;
 
 pub struct Service {
     pub db: &'static dyn Data,

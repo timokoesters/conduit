@@ -1,6 +1,5 @@
 mod data;
 
-
 pub use data::Data;
 use ruma::{events::SyncEphemeralRoomEvent, RoomId, UserId};
 

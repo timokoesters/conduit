@@ -1,7 +1,7 @@
 mod data;
 use std::{
     collections::{HashMap, HashSet},
-    sync::{Mutex},
+    sync::Mutex,
 };
 
 pub use data::Data;

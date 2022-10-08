@@ -26,7 +26,7 @@ use ruma::{
     EventId, RoomAliasId, RoomId, RoomName, RoomVersionId, ServerName, UserId,
 };
 use serde_json::value::to_raw_value;
-use tokio::sync::{mpsc, MutexGuard};
+use tokio::sync::{mpsc, Mutex, MutexGuard};
 
 use crate::{
     api::client_server::{leave_all_rooms, AUTO_GEN_PASSWORD_LENGTH},
@@ -164,25 +164,29 @@ pub enum AdminRoomEvent {
     SendMessage(RoomMessageEventContent),
 }
 
-#[derive(Clone)]
 pub struct Service {
     pub sender: mpsc::UnboundedSender<AdminRoomEvent>,
+    receiver: Mutex<mpsc::UnboundedReceiver<AdminRoomEvent>>,
 }
 
 impl Service {
     pub fn build() -> Arc<Self> {
         let (sender, receiver) = mpsc::unbounded_channel();
-        let self1 = Arc::new(Self { sender });
-        let self2 = Arc::clone(&self1);
-
-        tokio::spawn(async move {
-            self2.start_handler(receiver).await;
-        });
-
-        self1
+        Arc::new(Self {
+            sender,
+            receiver: Mutex::new(receiver),
+        })
     }
 
-    async fn start_handler(&self, mut receiver: mpsc::UnboundedReceiver<AdminRoomEvent>) {
+    pub fn start_handler(self: &Arc<Self>) {
+        let self2 = Arc::clone(&self);
+        tokio::spawn(async move {
+            self2.handler().await;
+        });
+    }
+
+    async fn handler(&self) {
+        let mut receiver = self.receiver.lock().await;
         // TODO: Use futures when we have long admin commands
         //let mut futures = FuturesUnordered::new();
 

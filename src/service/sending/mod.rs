@@ -12,7 +12,7 @@ use std::{
 use crate::{
     api::{appservice_server, server_server},
     services,
-    utils::{calculate_hash},
+    utils::calculate_hash,
     Config, Error, PduEvent, Result,
 };
 use federation::transactions::send_transaction_message;
@@ -37,7 +37,7 @@ use ruma::{
 };
 use tokio::{
     select,
-    sync::{mpsc, Semaphore},
+    sync::{mpsc, Mutex, Semaphore},
 };
 use tracing::{error, warn};
 
@@ -88,6 +88,7 @@ pub struct Service {
     /// The state for a given state hash.
     pub(super) maximum_requests: Arc<Semaphore>,
     pub sender: mpsc::UnboundedSender<(OutgoingKind, SendingEventType, Vec<u8>)>,
+    receiver: Mutex<mpsc::UnboundedReceiver<(OutgoingKind, SendingEventType, Vec<u8>)>>,
 }
 
 enum TransactionStatus {
@@ -99,25 +100,24 @@ enum TransactionStatus {
 impl Service {
     pub fn build(db: &'static dyn Data, config: &Config) -> Arc<Self> {
         let (sender, receiver) = mpsc::unbounded_channel();
-
-        let self1 = Arc::new(Self {
+        Arc::new(Self {
             db,
             sender,
+            receiver: Mutex::new(receiver),
             maximum_requests: Arc::new(Semaphore::new(config.max_concurrent_requests as usize)),
-        });
-        let self2 = Arc::clone(&self1);
-
-        tokio::spawn(async move {
-            self2.start_handler(receiver).await.unwrap();
-        });
-
-        self1
+        })
     }
 
-    async fn start_handler(
-        &self,
-        mut receiver: mpsc::UnboundedReceiver<(OutgoingKind, SendingEventType, Vec<u8>)>,
-    ) -> Result<()> {
+    pub fn start_handler(self: &Arc<Self>) {
+        let self2 = Arc::clone(&self);
+        tokio::spawn(async move {
+            self2.handler().await.unwrap();
+        });
+    }
+
+    async fn handler(&self) -> Result<()> {
+        let mut receiver = self.receiver.lock().await;
+
         let mut futures = FuturesUnordered::new();
 
         let mut current_transaction_status = HashMap::<OutgoingKind, TransactionStatus>::new();

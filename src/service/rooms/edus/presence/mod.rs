@@ -1,5 +1,5 @@
 mod data;
-use std::{collections::HashMap};
+use std::collections::HashMap;
 
 pub use data::Data;
 use ruma::{events::presence::PresenceEvent, RoomId, UserId};

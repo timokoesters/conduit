@@ -28,7 +28,7 @@ use http::{
 };
 use opentelemetry::trace::{FutureExt, Tracer};
 use ruma::api::{client::error::ErrorKind, IncomingRequest};
-use tokio::{signal};
+use tokio::signal;
 use tower::ServiceBuilder;
 use tower_http::{
     cors::{self, CorsLayer},
