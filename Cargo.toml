@@ -7,7 +7,7 @@ homepage = "https://conduit.rs"
 repository = "https://gitlab.com/famedly/conduit"
 readme = "README.md"
 version = "0.3.0-next"
-rust-version = "1.56"
+rust-version = "1.63"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
