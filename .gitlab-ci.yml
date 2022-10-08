@@ -26,7 +26,7 @@ variables:
     - if: "$CI_COMMIT_TAG"
     - if: '($CI_MERGE_REQUEST_APPROVED == "true") || $BUILD_EVERYTHING' # Once MR is approved, test all builds. Or if BUILD_EVERYTHING is set.
   interruptible: true
-  image: "registry.gitlab.com/jfowl/conduit-containers/rust-with-tools@sha256:69ab327974aef4cc0daf4273579253bf7ae5e379a6c52729b83137e4caa9d093"
+  image: "registry.gitlab.com/jfowl/conduit-containers/rust-with-tools:commit-aa74ef11"
   tags: ["docker"]
   services: ["docker:dind"]
   variables:
@@ -42,8 +42,6 @@ variables:
     - "cp -r $CARGO_HOME/bin $SHARED_PATH/cargo"
     - "cp -r $RUSTUP_HOME $SHARED_PATH"
     - "export CARGO_HOME=$SHARED_PATH/cargo RUSTUP_HOME=$SHARED_PATH/rustup"
-    # If provided, bring in caching through sccache, which uses an external S3 endpoint to store compilation results.
-    - if [ -n "${SCCACHE_ENDPOINT}" ]; then export RUSTC_WRAPPER=/sccache; fi
   script:
     # cross-compile conduit for target
     - 'time cross build --target="$TARGET" --locked --release'
@@ -251,8 +249,6 @@ test:cargo:
   extends: .test-shared-settings
   before_script:
     - rustup component add clippy
-    # If provided, bring in caching through sccache, which uses an external S3 endpoint to store compilation results:
-    - if [ -n "${SCCACHE_ENDPOINT}" ]; then export RUSTC_WRAPPER=/usr/local/cargo/bin/sccache; fi
   script:
     - rustc --version && cargo --version # Print version info for debugging
     - "cargo test --color always --workspace --verbose --locked --no-fail-fast -- -Z unstable-options --format json | gitlab-report -p test > $CI_PROJECT_DIR/report.xml"
