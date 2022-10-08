@@ -1,5 +1,5 @@
 mod data;
-use std::{collections::BTreeMap, mem, sync::Arc};
+use std::{collections::BTreeMap, mem};
 
 pub use data::Data;
 use ruma::{

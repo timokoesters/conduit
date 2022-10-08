@@ -7,7 +7,7 @@
 #![allow(clippy::suspicious_else_formatting)]
 #![deny(clippy::dbg_macro)]
 
-use std::{future::Future, io, net::SocketAddr, sync::Arc, time::Duration};
+use std::{future::Future, io, net::SocketAddr, time::Duration};
 
 use axum::{
     extract::{FromRequest, MatchedPath},
@@ -28,7 +28,7 @@ use http::{
 };
 use opentelemetry::trace::{FutureExt, Tracer};
 use ruma::api::{client::error::ErrorKind, IncomingRequest};
-use tokio::{signal, sync::RwLock};
+use tokio::{signal};
 use tower::ServiceBuilder;
 use tower_http::{
     cors::{self, CorsLayer},

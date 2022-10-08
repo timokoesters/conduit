@@ -8,7 +8,7 @@ use ruma::{
     RoomId, UserId,
 };
 
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap};
 
 use crate::Result;
 

@@ -5,7 +5,6 @@ pub use data::Data;
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     fmt::Debug,
-    iter,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -13,7 +12,7 @@ use std::{
 use crate::{
     api::{appservice_server, server_server},
     services,
-    utils::{self, calculate_hash},
+    utils::{calculate_hash},
     Config, Error, PduEvent, Result,
 };
 use federation::transactions::send_transaction_message;

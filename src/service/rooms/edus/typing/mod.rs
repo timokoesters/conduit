@@ -1,5 +1,5 @@
 mod data;
-use std::sync::Arc;
+
 
 pub use data::Data;
 use ruma::{events::SyncEphemeralRoomEvent, RoomId, UserId};

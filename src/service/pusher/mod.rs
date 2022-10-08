@@ -21,7 +21,7 @@ use ruma::{
     serde::Raw,
     uint, RoomId, UInt, UserId,
 };
-use std::sync::Arc;
+
 use std::{fmt::Debug, mem};
 use tracing::{error, info, warn};
 
