@@ -117,7 +117,9 @@ pub async fn get_hierarchy_route(
         if skip == 0 {
             if rooms_chunk.len() < limit {
                 room_set.insert(room_id.clone());
-                rooms_chunk.push(get_room_chunk(room_id, suggested_only, pdus).await?);
+                if let Ok(chunk) = get_room_chunk(room_id, suggested_only, pdus).await {
+                    rooms_chunk.push(chunk)
+                };
             }
         } else {
             skip -= 1;
@@ -144,7 +146,7 @@ pub async fn get_hierarchy_route(
 async fn get_room_chunk(
     room_id: OwnedRoomId,
     suggested_only: bool,
-    phus: Vec<Arc<PduEvent>>,
+    pdus: Vec<Arc<PduEvent>>,
 ) -> Result<SpaceHierarchyRoomsChunk> {
     Ok(SpaceHierarchyRoomsChunk {
         canonical_alias: services()
@@ -251,7 +253,7 @@ async fn get_room_chunk(
             })
             .ok()
             .flatten(),
-        children_state: phus
+        children_state: pdus
             .into_iter()
             .flat_map(|pdu| {
                 Some(HierarchySpaceChildEvent {
