@@ -105,16 +105,25 @@ impl service::rooms::edus::read_receipt::Data for KeyValueDatabase {
         )
     }
 
-    fn private_read_set(&self, room_id: &RoomId, user_id: &UserId, count: u64) -> Result<()> {
+    fn private_read_set(
+        &self,
+        room_id: &RoomId,
+        user_id: &UserId,
+        shorteventid: u64,
+    ) -> Result<()> {
         let mut key = room_id.as_bytes().to_vec();
         key.push(0xff);
         key.extend_from_slice(user_id.as_bytes());
 
-        self.roomuserid_privateread
-            .insert(&key, &count.to_be_bytes())?;
+        if self.private_read_get(room_id, user_id)?.unwrap_or(0) < shorteventid {
+            self.roomuserid_privateread
+                .insert(&key, &shorteventid.to_be_bytes())?;
 
-        self.roomuserid_lastprivatereadupdate
-            .insert(&key, &services().globals.next_count()?.to_be_bytes())
+            self.roomuserid_lastprivatereadupdate
+                .insert(&key, &services().globals.next_count()?.to_be_bytes())
+        } else {
+            Ok(())
+        }
     }
 
     fn private_read_get(&self, room_id: &RoomId, user_id: &UserId) -> Result<Option<u64>> {

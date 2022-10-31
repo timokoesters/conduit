@@ -2,7 +2,7 @@ mod data;
 
 pub use data::Data;
 
-use crate::Result;
+use crate::{services, Result};
 use ruma::{events::receipt::ReceiptEvent, serde::Raw, OwnedUserId, RoomId, UserId};
 
 pub struct Service {
@@ -36,10 +36,19 @@ impl Service {
         self.db.readreceipts_since(room_id, since)
     }
 
-    /// Sets a private read marker at `count`.
+    /// Sets a private read marker at `shorteventid`.
     #[tracing::instrument(skip(self))]
-    pub fn private_read_set(&self, room_id: &RoomId, user_id: &UserId, count: u64) -> Result<()> {
-        self.db.private_read_set(room_id, user_id, count)
+    pub fn private_read_set(
+        &self,
+        room_id: &RoomId,
+        user_id: &UserId,
+        shorteventid: u64,
+    ) -> Result<()> {
+        self.db.private_read_set(room_id, user_id, shorteventid)?;
+        services()
+            .rooms
+            .user
+            .update_notification_counts(user_id, room_id)
     }
 
     /// Returns the private read marker.
