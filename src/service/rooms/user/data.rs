@@ -2,7 +2,13 @@ use crate::Result;
 use ruma::{OwnedRoomId, OwnedUserId, RoomId, UserId};
 
 pub trait Data: Send + Sync {
-    fn reset_notification_counts(&self, user_id: &UserId, room_id: &RoomId) -> Result<()>;
+    fn update_notification_counts(
+        &self,
+        user_id: &UserId,
+        room_id: &RoomId,
+        notification_count: u64,
+        highlight_count: u64,
+    ) -> Result<()>;
 
     fn notification_count(&self, user_id: &UserId, room_id: &RoomId) -> Result<u64>;
 

@@ -213,18 +213,17 @@ impl Service {
         );
         let insert_lock = mutex_insert.lock().unwrap();
 
-        let count1 = services().globals.next_count()?;
+        let _count1 = services().globals.next_count()?;
         // Mark as read first so the sending client doesn't get a notification even if appending
         // fails
-        services()
-            .rooms
-            .edus
-            .read_receipt
-            .private_read_set(&pdu.room_id, &pdu.sender, count1)?;
-        services()
-            .rooms
-            .user
-            .reset_notification_counts(&pdu.sender, &pdu.room_id)?;
+        services().rooms.edus.read_receipt.private_read_set(
+            &pdu.room_id,
+            &pdu.sender,
+            services()
+                .rooms
+                .short
+                .get_or_create_shorteventid(&pdu.event_id)?,
+        )?;
 
         let count2 = services().globals.next_count()?;
         let mut pdu_id = shortroomid.to_be_bytes().to_vec();
