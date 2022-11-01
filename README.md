@@ -25,7 +25,6 @@ from time to time.
 
 There are still a few important features missing:
 
-- E2EE verification over federation
 - Outgoing read receipts, typing, presence over federation
 
 Check out the [Conduit 1.0 Release Milestone](https://gitlab.com/famedly/conduit/-/milestones/3).
