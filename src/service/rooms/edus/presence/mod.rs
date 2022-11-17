@@ -3,14 +3,30 @@ use std::collections::HashMap;
 
 pub use data::Data;
 use ruma::{events::presence::PresenceEvent, OwnedUserId, RoomId, UserId};
+use tokio::sync::mpsc;
 
-use crate::Result;
+use crate::{Error, Result};
 
 pub struct Service {
     pub db: &'static dyn Data,
+
+    // Presence timers
+    timer_sender: mpsc::UnboundedSender<Box<UserId>>,
 }
 
 impl Service {
+    pub fn build(db: &'static dyn Data) -> Result<Self> {
+        let (sender, receiver) = mpsc::unbounded_channel();
+        let service = Self {
+            db,
+            timer_sender: sender,
+        };
+
+        service.presence_maintain(receiver)?;
+
+        Ok(service)
+    }
+
     /// Adds a presence event which will be saved until a new event replaces it.
     ///
     /// Note: This method takes a RoomId because presence updates are always bound to rooms to
@@ -21,11 +37,17 @@ impl Service {
         room_id: &RoomId,
         presence: PresenceEvent,
     ) -> Result<()> {
+        self.timer_sender
+            .send(user_id.into())
+            .map_err(|_| Error::bad_database("Sender errored out"))?;
         self.db.update_presence(user_id, room_id, presence)
     }
 
     /// Resets the presence timeout, so the user will stay in their current presence state.
     pub fn ping_presence(&self, user_id: &UserId) -> Result<()> {
+        self.timer_sender
+            .send(user_id.into())
+            .map_err(|_| Error::bad_database("Sender errored out"))?;
         self.db.ping_presence(user_id)
     }
 
@@ -40,6 +62,13 @@ impl Service {
         };
 
         self.db.get_presence_event(room_id, user_id, last_update)
+    }
+
+    pub fn presence_maintain(
+        &self,
+        timer_receiver: mpsc::UnboundedReceiver<Box<UserId>>,
+    ) -> Result<()> {
+        self.db.presence_maintain(timer_receiver)
     }
 
     /* TODO

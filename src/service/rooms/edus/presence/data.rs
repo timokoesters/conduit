@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use crate::Result;
 use ruma::{events::presence::PresenceEvent, OwnedUserId, RoomId, UserId};
+use tokio::sync::mpsc;
 
 pub trait Data: Send + Sync {
     /// Adds a presence event which will be saved until a new event replaces it.
@@ -35,4 +36,7 @@ pub trait Data: Send + Sync {
         room_id: &RoomId,
         since: u64,
     ) -> Result<HashMap<OwnedUserId, PresenceEvent>>;
+
+    fn presence_maintain(&self, timer_receiver: mpsc::UnboundedReceiver<Box<UserId>>)
+        -> Result<()>;
 }

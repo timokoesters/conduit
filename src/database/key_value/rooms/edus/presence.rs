@@ -1,8 +1,10 @@
-use std::collections::HashMap;
+use futures_util::{stream::FuturesUnordered, StreamExt};
+use std::{collections::HashMap, time::Duration};
 
 use ruma::{
     events::presence::PresenceEvent, presence::PresenceState, OwnedUserId, RoomId, UInt, UserId,
 };
+use tokio::{sync::mpsc, time::sleep};
 
 use crate::{database::KeyValueDatabase, service, services, utils, Error, Result};
 
@@ -109,24 +111,37 @@ impl service::rooms::edus::presence::Data for KeyValueDatabase {
         Ok(hashmap)
     }
 
-    /*
-    fn presence_maintain(&self, db: Arc<TokioRwLock<Database>>) {
-        // TODO @M0dEx: move this to a timed tasks module
+    fn presence_maintain(
+        &self,
+        mut timer_receiver: mpsc::UnboundedReceiver<Box<UserId>>,
+    ) -> Result<()> {
+        let mut timers = FuturesUnordered::new();
+
         tokio::spawn(async move {
             loop {
-                select! {
-                    Some(user_id) = self.presence_timers.next() {
-                        // TODO @M0dEx: would it be better to acquire the lock outside the loop?
-                        let guard = db.read().await;
+                tokio::select! {
+                    Some(_user_id) = timers.next() => {
+                        // TODO: Handle presence timeouts
+                    }
+                    Some(user_id) = timer_receiver.recv() => {
+                        // Idle timeout
+                        timers.push(create_presence_timer(Duration::from_secs(60), user_id.clone()));
 
-                        // TODO @M0dEx: add self.presence_timers
-                        // TODO @M0dEx: maintain presence
+                        // Offline timeout
+                        timers.push(create_presence_timer(Duration::from_secs(60*15) , user_id));
                     }
                 }
             }
         });
+
+        Ok(())
     }
-    */
+}
+
+async fn create_presence_timer(duration: Duration, user_id: Box<UserId>) -> Box<UserId> {
+    sleep(duration).await;
+
+    user_id
 }
 
 fn parse_presence_event(bytes: &[u8]) -> Result<PresenceEvent> {

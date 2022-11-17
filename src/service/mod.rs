@@ -62,7 +62,7 @@ impl Services {
                 auth_chain: rooms::auth_chain::Service { db },
                 directory: rooms::directory::Service { db },
                 edus: rooms::edus::Service {
-                    presence: rooms::edus::presence::Service { db },
+                    presence: rooms::edus::presence::Service::build(db)?,
                     read_receipt: rooms::edus::read_receipt::Service { db },
                     typing: rooms::edus::typing::Service { db },
                 },
