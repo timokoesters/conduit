@@ -93,35 +93,31 @@ impl service::rooms::edus::presence::Data for KeyValueDatabase {
         &self,
         room_id: &RoomId,
         since: u64,
-    ) -> Result<HashMap<OwnedUserId, PresenceEvent>> {
-        let mut prefix = room_id.as_bytes().to_vec();
-        prefix.push(0xff);
+    ) -> Result<Box<dyn Iterator<Item=(&UserId, PresenceEvent)>>> {
+        let services = &services();
+        let mut user_timestamp: HashMap<UserId, u64> = self.userid_presenceupdate
+            .iter()
+            .map(|(user_id_bytes, update_bytes)| (UserId::parse(utils::string_from_bytes(user_id_bytes)), PresenceUpdate::from_be_bytes(update_bytes)?))
+            .filter_map(|(user_id, presence_update)| {
+                if presence_update.count <= since || !services.rooms.state_cache.is_joined(user_id, room_id)? {
+                    return None
+                }
 
-        let mut first_possible_edu = prefix.clone();
-        first_possible_edu.extend_from_slice(&(since + 1).to_be_bytes()); // +1 so we don't send the event at since
-        let mut hashmap = HashMap::new();
+                Some((user_id, presence_update.timestamp))
+            })
+            .collect();
 
-        for (key, value) in self
-            .presenceid_presence
-            .iter_from(&first_possible_edu, false)
-            .take_while(|(key, _)| key.starts_with(&prefix))
-        {
-            let user_id = UserId::parse(
-                utils::string_from_bytes(
-                    key.rsplit(|&b| b == 0xff)
-                        .next()
-                        .expect("rsplit always returns an element"),
-                )
-                .map_err(|_| Error::bad_database("Invalid UserId bytes in presenceid_presence."))?,
-            )
-            .map_err(|_| Error::bad_database("Invalid UserId in presenceid_presence."))?;
+        Ok(
+            self.roomuserid_presenceevent
+                .iter()
+                .filter_map(|user_id_bytes, presence_bytes| (UserId::parse(utils::string_from_bytes(user_id_bytes)), presence_bytes))
+                .filter_map(|user_id, presence_bytes| {
+                    let timestamp = user_timestamp.get(user_id)?;
 
-            let presence = parse_presence_event(&value)?;
-
-            hashmap.insert(user_id, presence);
-        }
-
-        Ok(hashmap)
+                    Some((user_id, parse_presence_event(presence_bytes, *timestamp)?))
+                })
+                .into_iter()
+        )
     }
 
     fn presence_maintain(
@@ -161,18 +157,36 @@ fn parse_presence_event(bytes: &[u8], presence_timestamp: u64) -> Result<Presenc
     let mut presence: PresenceEvent = serde_json::from_slice(bytes)
         .map_err(|_| Error::bad_database("Invalid presence event in db."))?;
 
-    let current_timestamp: UInt = millis_since_unix_epoch().try_into()?;
-
-    if presence.content.presence == PresenceState::Online {
-        // Don't set last_active_ago when the user is online
-        presence.content.last_active_ago = None;
-    } else {
-        // Convert from timestamp to duration
-        presence.content.last_active_ago = presence
-            .content
-            .last_active_ago
-            .map(|timestamp| current_timestamp - presence_timestamp);
-    }
+    translate_active_ago(&mut presence, presence_timestamp);
 
     Ok(presence)
+}
+
+fn determine_presence_state(
+    last_active_ago: u64,
+) -> PresenceState {
+    let globals = &services().globals;
+
+    return if last_active_ago < globals.presence_idle_timeout() {
+        PresenceState::Online
+    } else if last_active_ago < globals.presence_offline_timeout() {
+        PresenceState::Unavailable
+    } else {
+        PresenceState::Offline
+    };
+}
+
+/// Translates the timestamp representing last_active_ago to a diff from now.
+fn translate_active_ago(
+    presence_event: &mut PresenceEvent,
+    last_active_ts: u64,
+) {
+    let last_active_ago = millis_since_unix_epoch().saturating_sub(last_active_ts);
+
+    presence_event.content.presence = determine_presence_state(last_active_ago);
+
+    presence_event.content.last_active_ago = match presence_event.content.presence {
+        PresenceState::Online => None,
+        _ => Some(UInt::new_saturating(last_active_ago)),
+    }
 }
