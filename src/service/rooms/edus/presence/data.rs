@@ -27,7 +27,7 @@ pub trait Data: Send + Sync {
         &self,
         room_id: &RoomId,
         user_id: &UserId,
-        count: u64,
+        presence_timestamp: u64,
     ) -> Result<Option<PresenceEvent>>;
 
     /// Returns the most recent presence updates that happened after the event with id `since`.
