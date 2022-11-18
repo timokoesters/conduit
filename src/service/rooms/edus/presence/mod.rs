@@ -21,19 +21,26 @@ impl Service {
             db,
             timer_sender: sender,
         };
-        
+
         service.presence_maintain(receiver)?;
 
         Ok(service)
     }
 
     /// Resets the presence timeout, so the user will stay in their current presence state.
-    pub fn ping_presence(&self, user_id: &UserId, update_count: bool, update_timestamp: bool, spawn_timer: bool) -> Result<()> {
+    pub fn ping_presence(
+        &self,
+        user_id: &UserId,
+        update_count: bool,
+        update_timestamp: bool,
+        spawn_timer: bool,
+    ) -> Result<()> {
         if spawn_timer {
             self.spawn_timer(user_id)?;
         }
 
-        self.db.ping_presence(user_id, update_count, update_timestamp)
+        self.db
+            .ping_presence(user_id, update_count, update_timestamp)
     }
 
     /// Adds a presence event which will be saved until a new event replaces it.
@@ -45,7 +52,7 @@ impl Service {
         user_id: &UserId,
         room_id: &RoomId,
         presence: PresenceEvent,
-        spawn_timer: bool
+        spawn_timer: bool,
     ) -> Result<()> {
         if spawn_timer {
             self.spawn_timer(user_id)?;
@@ -85,9 +92,9 @@ impl Service {
 
     /// Spawns a task maintaining presence data
     fn presence_maintain(
-            &self,
-            timer_receiver: mpsc::UnboundedReceiver<OwnedUserId>,
-            ) -> Result<()> {
+        &self,
+        timer_receiver: mpsc::UnboundedReceiver<OwnedUserId>,
+    ) -> Result<()> {
         self.db.presence_maintain(timer_receiver)
     }
 

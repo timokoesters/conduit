@@ -1,5 +1,9 @@
 use crate::{services, Result, Ruma};
-use ruma::{api::client::presence::{get_presence, set_presence}, uint, presence::PresenceState};
+use ruma::{
+    api::client::presence::{get_presence, set_presence},
+    presence::PresenceState,
+    uint,
+};
 use std::time::Duration;
 
 /// # `PUT /_matrix/client/r0/presence/{userId}/status`
@@ -27,7 +31,7 @@ pub async fn set_presence_route(
                 },
                 sender: sender_user.clone(),
             },
-            true
+            true,
         )?;
     }
 

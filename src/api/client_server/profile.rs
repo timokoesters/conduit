@@ -109,7 +109,7 @@ pub async fn set_displayname_route(
                 },
                 sender: sender_user.clone(),
             },
-            true
+            true,
         )?;
     }
 
@@ -245,7 +245,7 @@ pub async fn set_avatar_url_route(
                 },
                 sender: sender_user.clone(),
             },
-            true
+            true,
         )?;
     }
 

@@ -15,7 +15,12 @@ pub trait Data: Send + Sync {
     ) -> Result<()>;
 
     /// Resets the presence timeout, so the user will stay in their current presence state.
-    fn ping_presence(&self, user_id: &UserId, update_count: bool, update_timestamp: bool) -> Result<()>;
+    fn ping_presence(
+        &self,
+        user_id: &UserId,
+        update_count: bool,
+        update_timestamp: bool,
+    ) -> Result<()>;
 
     /// Returns the timestamp of the last presence update of this user in millis since the unix epoch.
     fn last_presence_update(&self, user_id: &UserId) -> Result<Option<(u64, u64)>>;
