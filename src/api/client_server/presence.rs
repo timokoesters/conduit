@@ -60,7 +60,7 @@ pub async fn get_presence_route(
             .rooms
             .edus
             .presence
-            .get_last_presence_event(sender_user, &room_id)?
+            .get_presence_event(sender_user, &room_id)?
         {
             presence_event = Some(presence);
             break;

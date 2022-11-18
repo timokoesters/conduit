@@ -65,7 +65,7 @@ pub struct KeyValueDatabase {
     pub(super) roomuserid_lastprivatereadupdate: Arc<dyn KvTree>, // LastPrivateReadUpdate = Count
     pub(super) typingid_userid: Arc<dyn KvTree>,        // TypingId = RoomId + TimeoutTime + Count
     pub(super) roomid_lasttypingupdate: Arc<dyn KvTree>, // LastRoomTypingUpdate = Count
-    pub(super) userid_presenceupdate: Arc<dyn KvTree>,    // PresenceUpdate = Count + Timestamp
+    pub(super) userid_presenceupdate: Arc<dyn KvTree>,  // PresenceUpdate = Count + Timestamp
     pub(super) roomuserid_presenceevent: Arc<dyn KvTree>, // PresenceEvent
 
     //pub rooms: rooms::Rooms,
@@ -824,9 +824,6 @@ impl KeyValueDatabase {
                 latest_database_version
             );
         }
-
-        // This data is probably outdated
-        db.presenceid_presence.clear()?;
 
         services().admin.start_handler();
 

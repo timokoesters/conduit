@@ -33,6 +33,7 @@ use ruma::{
     },
     directory::{IncomingFilter, IncomingRoomNetwork},
     events::{
+        presence::{PresenceEvent, PresenceEventContent},
         receipt::{ReceiptEvent, ReceiptEventContent, ReceiptType},
         room::{
             join_rules::{JoinRule, RoomJoinRulesEventContent},
@@ -746,7 +747,33 @@ pub async fn send_transaction_message_route(
         .filter_map(|edu| serde_json::from_str::<Edu>(edu.json().get()).ok())
     {
         match edu {
-            Edu::Presence(_) => {}
+            Edu::Presence(presence) => {
+                for presence_update in presence.push {
+                    let user_id = presence_update.user_id;
+                    for room_id in services()
+                        .rooms
+                        .state_cache
+                        .rooms_joined(&user_id)
+                        .filter_map(|room_id| room_id.ok())
+                    {
+                        services().rooms.edus.presence.update_presence(
+                            &user_id,
+                            &room_id,
+                            PresenceEvent {
+                                content: PresenceEventContent {
+                                    avatar_url: services().users.avatar_url(&user_id)?,
+                                    currently_active: Some(presence_update.currently_active),
+                                    displayname: services().users.displayname(&user_id)?,
+                                    last_active_ago: Some(presence_update.last_active_ago),
+                                    presence: presence_update.presence.clone(),
+                                    status_msg: presence_update.status_msg.clone(),
+                                },
+                                sender: user_id.clone(),
+                            },
+                        )?;
+                    }
+                }
+            }
             Edu::Receipt(receipt) => {
                 for (room_id, room_updates) in receipt.receipts {
                     for (user_id, user_updates) in room_updates.read {

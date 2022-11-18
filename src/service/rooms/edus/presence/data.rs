@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use crate::Result;
 use ruma::{events::presence::PresenceEvent, OwnedUserId, RoomId, UserId};
 use tokio::sync::mpsc;
@@ -31,12 +29,12 @@ pub trait Data: Send + Sync {
     ) -> Result<Option<PresenceEvent>>;
 
     /// Returns the most recent presence updates that happened after the event with id `since`.
-    fn presence_since(
-        &self,
+    fn presence_since<'a>(
+        &'a self,
         room_id: &RoomId,
         since: u64,
-    ) -> Result<HashMap<OwnedUserId, PresenceEvent>>;
+    ) -> Result<Box<dyn Iterator<Item = (OwnedUserId, PresenceEvent)> + 'a>>;
 
-    fn presence_maintain(&self, timer_receiver: mpsc::UnboundedReceiver<Box<UserId>>)
+    fn presence_maintain(&self, timer_receiver: mpsc::UnboundedReceiver<OwnedUserId>)
         -> Result<()>;
 }
