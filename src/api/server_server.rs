@@ -770,6 +770,7 @@ pub async fn send_transaction_message_route(
                                 },
                                 sender: user_id.clone(),
                             },
+                            true
                         )?;
                     }
                 }

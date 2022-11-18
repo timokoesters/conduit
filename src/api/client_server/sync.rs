@@ -166,7 +166,16 @@ async fn sync_helper(
     };
 
     // TODO: match body.set_presence {
-    services().rooms.edus.presence.ping_presence(&sender_user)?;
+    services()
+        .rooms
+        .edus
+        .presence
+        .ping_presence(
+            &sender_user,
+            false,
+            true,
+            true
+        )?;
 
     // Setup watchers, so if there's no response, we can wait for them
     let watcher = services().globals.watch(&sender_user, &sender_device);

@@ -825,6 +825,9 @@ impl KeyValueDatabase {
             );
         }
 
+        // Flush old presence data
+        db.userid_presenceupdate.clear()?;
+
         services().admin.start_handler();
 
         // Set emergency access for the conduit user

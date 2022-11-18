@@ -1,7 +1,7 @@
 use futures_util::{stream::FuturesUnordered, StreamExt};
 use ruma::user_id;
-use std::{collections::HashMap, time::Duration};
-use tracing::error;
+use std::{collections::{HashMap, hash_map::Entry}, time::Duration, mem};
+use tracing::{error, info};
 
 use ruma::{
     events::presence::PresenceEvent, presence::PresenceState, OwnedUserId, RoomId, UInt, UserId,
@@ -17,19 +17,22 @@ use crate::{
 
 pub struct PresenceUpdate {
     count: u64,
-    timestamp: u64,
+    prev_timestamp: u64,
+    curr_timestamp: u64,
 }
 
 impl PresenceUpdate {
     fn to_be_bytes(&self) -> Vec<u8> {
-        [self.count.to_be_bytes(), self.timestamp.to_be_bytes()].concat()
+        [self.count.to_be_bytes(), self.prev_timestamp.to_be_bytes(), self.curr_timestamp.to_be_bytes()].concat()
     }
 
     fn from_be_bytes(bytes: &[u8]) -> Result<Self> {
-        let (count_bytes, timestamp_bytes) = bytes.split_at(bytes.len() / 2);
+        let (count_bytes, timestamps_bytes) = bytes.split_at(mem::size_of::<u64>());
+        let (prev_timestamp_bytes, curr_timestamp_bytes) = timestamps_bytes.split_at(mem::size_of::<u64>());
         Ok(Self {
             count: u64_from_bytes(count_bytes).expect("count bytes from DB are valid"),
-            timestamp: u64_from_bytes(timestamp_bytes).expect("timestamp bytes from DB are valid"),
+            prev_timestamp: u64_from_bytes(prev_timestamp_bytes).expect("timestamp bytes from DB are valid"),
+            curr_timestamp: u64_from_bytes(curr_timestamp_bytes).expect("timestamp bytes from DB are valid"),
         })
     }
 }
@@ -48,14 +51,17 @@ impl service::rooms::edus::presence::Data for KeyValueDatabase {
             &serde_json::to_vec(&presence).expect("presence event from DB is valid"),
         )?;
 
+        let timestamp = match presence.content.last_active_ago {
+            Some(active_ago) => millis_since_unix_epoch().saturating_sub(active_ago.into()),
+            None => millis_since_unix_epoch(),
+        };
+
         self.userid_presenceupdate.insert(
             user_id.as_bytes(),
             &*PresenceUpdate {
                 count: services().globals.next_count()?,
-                timestamp: match presence.content.last_active_ago {
-                    Some(active_ago) => millis_since_unix_epoch().saturating_sub(active_ago.into()),
-                    None => millis_since_unix_epoch(),
-                },
+                prev_timestamp: timestamp,
+                curr_timestamp: timestamp,
             }
             .to_be_bytes(),
         )?;
@@ -63,23 +69,41 @@ impl service::rooms::edus::presence::Data for KeyValueDatabase {
         Ok(())
     }
 
-    fn ping_presence(&self, user_id: &UserId) -> Result<()> {
+    fn ping_presence(&self, user_id: &UserId, update_count: bool, update_timestamp: bool) -> Result<()> {
+        let now = millis_since_unix_epoch();
+
+        let presence = self.userid_presenceupdate
+            .get(user_id.as_bytes())?
+            .map(|presence_bytes| PresenceUpdate::from_be_bytes(&presence_bytes))
+            .transpose()?;
+
+        let new_presence = match presence {
+            Some(presence) => {
+                PresenceUpdate {
+                    count: if update_count { services().globals.next_count()? } else { presence.count },
+                    prev_timestamp: if update_timestamp { presence.curr_timestamp } else { presence.prev_timestamp },
+                    curr_timestamp: if update_timestamp { now } else { presence.curr_timestamp }
+                }
+            },
+            None => PresenceUpdate {
+                count: services().globals.current_count()?,
+                prev_timestamp: now,
+                curr_timestamp: now,
+            }
+        };
+
         self.userid_presenceupdate.insert(
             user_id.as_bytes(),
-            &*PresenceUpdate {
-                count: services().globals.current_count()?,
-                timestamp: millis_since_unix_epoch(),
-            }
-            .to_be_bytes(),
+            &*new_presence.to_be_bytes(),
         )?;
 
         Ok(())
     }
 
-    fn last_presence_update(&self, user_id: &UserId) -> Result<Option<u64>> {
+    fn last_presence_update(&self, user_id: &UserId) -> Result<Option<(u64, u64)>> {
         self.userid_presenceupdate
             .get(user_id.as_bytes())?
-            .map(|bytes| PresenceUpdate::from_be_bytes(&bytes).map(|update| update.timestamp))
+        .map(|bytes| PresenceUpdate::from_be_bytes(&bytes).map(|update| (update.prev_timestamp, update.curr_timestamp)))
             .transpose()
     }
 
@@ -101,21 +125,22 @@ impl service::rooms::edus::presence::Data for KeyValueDatabase {
         room_id: &RoomId,
         since: u64,
     ) -> Result<Box<dyn Iterator<Item = (OwnedUserId, PresenceEvent)> + 'a>> {
-        let services = &services();
         let user_timestamp: HashMap<OwnedUserId, u64> = self
             .userid_presenceupdate
             .iter()
             .filter_map(|(user_id_bytes, update_bytes)| {
                 Some((
-                    OwnedUserId::from(
-                        UserId::parse(utils::string_from_bytes(&user_id_bytes).ok()?).ok()?,
-                    ),
-                    PresenceUpdate::from_be_bytes(&update_bytes).ok()?,
+                    UserId::parse(
+                        utils::string_from_bytes(&user_id_bytes)
+                                .expect("UserID bytes are a valid string")
+                    ).expect("UserID bytes from database are a valid UserID"),
+                    PresenceUpdate::from_be_bytes(&update_bytes)
+                                    .expect("PresenceUpdate bytes from database are a valid PresenceUpdate"),
                 ))
             })
             .filter_map(|(user_id, presence_update)| {
                 if presence_update.count <= since
-                    || !services
+                   || !services()
                         .rooms
                         .state_cache
                         .is_joined(&user_id, room_id)
@@ -124,18 +149,20 @@ impl service::rooms::edus::presence::Data for KeyValueDatabase {
                     return None;
                 }
 
-                Some((user_id, presence_update.timestamp))
+                Some((user_id, presence_update.curr_timestamp))
             })
             .collect();
 
         Ok(Box::new(
             self.roomuserid_presenceevent
-                .iter()
-                .filter_map(|(user_id_bytes, presence_bytes)| {
+                .scan_prefix(room_id.as_bytes().to_vec())
+                .filter_map(|(roomuserid_bytes, presence_bytes)| {
+                    let user_id_bytes = roomuserid_bytes.split(|byte| *byte == 0xff as u8).last()?;
                     Some((
-                        OwnedUserId::from(
-                            UserId::parse(utils::string_from_bytes(&user_id_bytes).ok()?).ok()?,
-                        ),
+                        UserId::parse(
+                                utils::string_from_bytes(&user_id_bytes)
+                                .expect("UserID bytes are a valid string")
+                        ).expect("UserID bytes from database are a valid UserID").to_owned(),
                         presence_bytes,
                     ))
                 })
@@ -145,7 +172,8 @@ impl service::rooms::edus::presence::Data for KeyValueDatabase {
 
                         Some((
                             user_id,
-                            parse_presence_event(&presence_bytes, *timestamp).ok()?,
+                            parse_presence_event(&presence_bytes, *timestamp)
+                                .expect("PresenceEvent bytes from database are a valid PresenceEvent"),
                         ))
                     },
                 ),
@@ -157,6 +185,7 @@ impl service::rooms::edus::presence::Data for KeyValueDatabase {
         mut timer_receiver: mpsc::UnboundedReceiver<OwnedUserId>,
     ) -> Result<()> {
         let mut timers = FuturesUnordered::new();
+        let mut timers_timestamp: HashMap<OwnedUserId, u64> = HashMap::new();
 
         // TODO: Get rid of this hack
         timers.push(create_presence_timer(
@@ -168,10 +197,11 @@ impl service::rooms::edus::presence::Data for KeyValueDatabase {
             loop {
                 tokio::select! {
                     Some(user_id) = timers.next() => {
-                        let presence_timestamp = match services().rooms.edus.presence.last_presence_update(&user_id) {
-                            Ok(timestamp) => match timestamp {
-                                Some(timestamp) => timestamp,
-                                None => continue,
+                        info!("Processing timer for user '{}' ({})", user_id.clone(), timers.len());
+                        let (prev_timestamp, curr_timestamp) = match services().rooms.edus.presence.last_presence_update(&user_id) {
+                            Ok(timestamp_tuple) => match timestamp_tuple {
+                                Some(timestamp_tuple) => timestamp_tuple,
+                            None => continue,
                             },
                             Err(e) => {
                                 error!("{e}");
@@ -179,46 +209,49 @@ impl service::rooms::edus::presence::Data for KeyValueDatabase {
                             }
                         };
 
-                        let presence_state = determine_presence_state(presence_timestamp);
+                        let prev_presence_state = determine_presence_state(prev_timestamp);
+                        let curr_presence_state = determine_presence_state(curr_timestamp);
 
                         // Continue if there is no change in state
-                        if presence_state != PresenceState::Offline {
+                        if prev_presence_state == curr_presence_state {
                             continue;
                         }
 
-                        for room_id in services()
-                                        .rooms
-                                        .state_cache
-                                        .rooms_joined(&user_id)
-                                        .filter_map(|room_id| room_id.ok()) {
-                            let presence_event = match services().rooms.edus.presence.get_presence_event(&user_id, &room_id) {
-                                Ok(event) => match event {
-                                    Some(event) => event,
-                                    None => continue,
-                                },
-                                Err(e) => {
-                                    error!("{e}");
-                                    continue;
-                                }
-                            };
-
-                            match services().rooms.edus.presence.update_presence(&user_id, &room_id, presence_event) {
-                                Ok(()) => (),
-                                Err(e) => {
-                                    error!("{e}");
-                                    continue;
-                                }
-                            }
-
-                            // TODO: Send event over federation
+                        match services().rooms.edus.presence.ping_presence(&user_id, true, false, false) {
+                            Ok(_) => (),
+                            Err(e) => error!("{e}")
                         }
+
+                        // TODO: Notify federation sender
                     }
                     Some(user_id) = timer_receiver.recv() => {
+                        let now = millis_since_unix_epoch();
+                        let should_send = match timers_timestamp.entry(user_id.to_owned()) {
+                            Entry::Occupied(mut entry) => {
+                                if now - entry.get() > 15 * 1000 {
+                                    entry.insert(now);
+                                    true
+                                } else {
+                                    false
+                                }
+                            },
+                        Entry::Vacant(entry) => {
+                                entry.insert(now);
+                                true
+                            }
+                        };
+
+                        if !should_send {
+                            continue;
+                        }
+
                         // Idle timeout
                         timers.push(create_presence_timer(Duration::from_secs(60), user_id.clone()));
 
                         // Offline timeout
-                        timers.push(create_presence_timer(Duration::from_secs(60*15) , user_id));
+                        timers.push(create_presence_timer(Duration::from_secs(60*15) , user_id.clone()));
+
+                        info!("Added timers for user '{}' ({})", user_id, timers.len());
                     }
                 }
             }
