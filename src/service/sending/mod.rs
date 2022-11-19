@@ -24,7 +24,8 @@ use ruma::{
         federation::{
             self,
             transactions::edu::{
-                DeviceListUpdateContent, Edu, ReceiptContent, ReceiptData, ReceiptMap, PresenceUpdate, PresenceContent,
+                DeviceListUpdateContent, Edu, PresenceContent, PresenceUpdate, ReceiptContent,
+                ReceiptData, ReceiptMap,
             },
         },
         OutgoingRequest,
@@ -304,7 +305,7 @@ impl Service {
             };
 
             events.push(
-                    serde_json::to_vec(&Edu::Presence(presence_content))
+                serde_json::to_vec(&Edu::Presence(presence_content))
                     .expect("presence json can be serialized"),
             );
 
