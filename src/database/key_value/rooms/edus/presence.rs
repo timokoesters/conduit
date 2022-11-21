@@ -224,7 +224,7 @@ impl service::rooms::edus::presence::Data for KeyValueDatabase {
 
         // TODO: Get rid of this hack (hinting correct types to rustc)
         timers.push(create_presence_timer(
-            Duration::from_secs(1),
+            idle_timeout,
             UserId::parse_with_server_name("conduit", services().globals.server_name())
                 .expect("Conduit user always exists"),
         ));
