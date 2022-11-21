@@ -23,7 +23,8 @@ impl Service {
         };
 
         service.presence_maintain(receiver)?;
-
+        service.presence_cleanup()?;
+        
         Ok(service)
     }
 
