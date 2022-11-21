@@ -98,6 +98,10 @@ impl Service {
         self.db.presence_maintain(timer_receiver)
     }
 
+    fn presence_cleanup(&self) -> Result<()> {
+        self.db.presence_cleanup()
+    }
+
     /// Spawns a timer for the user used by the maintenance task
     fn spawn_timer(&self, user_id: &UserId) -> Result<()> {
         self.timer_sender

@@ -220,11 +220,13 @@ impl service::rooms::edus::presence::Data for KeyValueDatabase {
     ) -> Result<()> {
         let mut timers = FuturesUnordered::new();
         let mut timers_timestamp: HashMap<OwnedUserId, u64> = HashMap::new();
+        let idle_timeout = Duration::from_secs(services().globals.presence_idle_timeout());
+        let offline_timeout = Duration::from_secs(services().globals.presence_offline_timeout());
 
-        // TODO: Get rid of this hack
+        // TODO: Get rid of this hack (hinting correct types to rustc)
         timers.push(create_presence_timer(
-            Duration::from_secs(60),
-            user_id!("@test:test.com").to_owned(),
+            Duration::from_secs(1),
+            UserId::parse_with_server_name("conduit", services().globals.server_name()).expect("Conduit user always exists")
         ));
 
         tokio::spawn(async move {
@@ -260,6 +262,7 @@ impl service::rooms::edus::presence::Data for KeyValueDatabase {
                     }
                     Some(user_id) = timer_receiver.recv() => {
                         let now = millis_since_unix_epoch();
+                        // Do not create timers if we added timers recently
                         let should_send = match timers_timestamp.entry(user_id.to_owned()) {
                             Entry::Occupied(mut entry) => {
                                 if now - entry.get() > 15 * 1000 {
@@ -280,14 +283,29 @@ impl service::rooms::edus::presence::Data for KeyValueDatabase {
                         }
 
                         // Idle timeout
-                        timers.push(create_presence_timer(Duration::from_secs(60), user_id.clone()));
+                        timers.push(create_presence_timer(idle_timeout, user_id.clone()));
 
                         // Offline timeout
-                        timers.push(create_presence_timer(Duration::from_secs(60*15) , user_id.clone()));
+                        timers.push(create_presence_timer(offline_timeout, user_id.clone()));
 
                         info!("Added timers for user '{}' ({})", user_id, timers.len());
                     }
                 }
+            }
+        });
+
+        Ok(())
+    }
+
+    fn presence_cleanup(&self) -> Result<()> {
+        let period = Duration::from_secs(services().globals.presence_cleanup_period());
+        let age_limit = Duration::from_secs(services().globals.presence_cleanup_limit());
+
+        tokio::spawn(async move {
+            loop {
+                // TODO: Cleanup
+
+                sleep(period).await;
             }
         });
 

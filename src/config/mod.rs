@@ -81,6 +81,11 @@ pub struct Config {
     #[serde(default = "default_presence_offline_timeout")]
     pub presence_offline_timeout: u64,
 
+    #[serde(default = "default_presence_cleanup_period")]
+    pub presence_cleanup_period: u64,
+    #[serde(default = "default_presence_cleanup_limit")]
+    pub presence_cleanup_limit: u64,
+
     #[serde(flatten)]
     pub catchall: BTreeMap<String, IgnoredAny>,
 }
@@ -263,11 +268,19 @@ fn default_turn_ttl() -> u64 {
 }
 
 fn default_presence_idle_timeout() -> u64 {
-    1 * 60 * 1000
+    1 * 60
 }
 
 fn default_presence_offline_timeout() -> u64 {
-    15 * 60 * 1000
+    30 * 60
+}
+
+fn default_presence_cleanup_period() -> u64 {
+    24 * 60 * 60
+}
+
+fn default_presence_cleanup_limit() -> u64 {
+    24 * 60 * 60
 }
 
 // I know, it's a great name

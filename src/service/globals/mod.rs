@@ -294,6 +294,14 @@ impl Service {
         self.config.presence_offline_timeout
     }
 
+    pub fn presence_cleanup_period(&self) -> u64 {
+        self.config.presence_cleanup_period
+    }
+
+    pub fn presence_cleanup_limit(&self) -> u64 {
+        self.config.presence_cleanup_limit
+    }
+
     pub fn supported_room_versions(&self) -> Vec<RoomVersionId> {
         let mut room_versions: Vec<RoomVersionId> = vec![];
         room_versions.extend(self.stable_room_versions.clone());

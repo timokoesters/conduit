@@ -42,4 +42,6 @@ pub trait Data: Send + Sync {
 
     fn presence_maintain(&self, timer_receiver: mpsc::UnboundedReceiver<OwnedUserId>)
         -> Result<()>;
+
+    fn presence_cleanup(&self) -> Result<()>;
 }
