@@ -276,7 +276,7 @@ fn default_presence_offline_timeout() -> u64 {
 }
 
 fn default_presence_cleanup_period() -> u64 {
-    1 * 60 * 60
+    24 * 60 * 60
 }
 
 fn default_presence_cleanup_limit() -> u64 {

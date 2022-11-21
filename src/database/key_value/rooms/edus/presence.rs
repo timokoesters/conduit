@@ -219,17 +219,22 @@ impl service::rooms::edus::presence::Data for KeyValueDatabase {
     ) -> Result<()> {
         let mut timers = FuturesUnordered::new();
         let mut timers_timestamp: HashMap<OwnedUserId, u64> = HashMap::new();
-        let idle_timeout = Duration::from_secs(services().globals.presence_idle_timeout());
-        let offline_timeout = Duration::from_secs(services().globals.presence_offline_timeout());
-
-        // TODO: Get rid of this hack (hinting correct types to rustc)
-        timers.push(create_presence_timer(
-            idle_timeout,
-            UserId::parse_with_server_name("conduit", services().globals.server_name())
-                .expect("Conduit user always exists"),
-        ));
 
         tokio::spawn(async move {
+            // Wait for services to be created
+            sleep(Duration::from_secs(15)).await;
+
+            let idle_timeout = Duration::from_secs(services().globals.presence_idle_timeout());
+            let offline_timeout =
+                Duration::from_secs(services().globals.presence_offline_timeout());
+
+            // TODO: Get rid of this hack (hinting correct types to rustc)
+            timers.push(create_presence_timer(
+                idle_timeout,
+                UserId::parse_with_server_name("conduit", services().globals.server_name())
+                    .expect("Conduit user always exists"),
+            ));
+
             loop {
                 tokio::select! {
                     Some(user_id) = timers.next() => {
@@ -298,16 +303,17 @@ impl service::rooms::edus::presence::Data for KeyValueDatabase {
     }
 
     fn presence_cleanup(&self) -> Result<()> {
-        let period = Duration::from_secs(services().globals.presence_cleanup_period());
-        let age_limit = Duration::from_secs(services().globals.presence_cleanup_limit());
-
         let userid_presenceupdate = self.userid_presenceupdate.clone();
         let roomuserid_presenceevent = self.roomuserid_presenceevent.clone();
 
         tokio::spawn(async move {
-            loop {
-                sleep(period).await;
+            // Wait for services to be created
+            sleep(Duration::from_secs(15)).await;
 
+            let period = Duration::from_secs(services().globals.presence_cleanup_period());
+            let age_limit = Duration::from_secs(services().globals.presence_cleanup_limit());
+
+            loop {
                 let mut removed_events: u64 = 0;
                 let age_limit_curr =
                     millis_since_unix_epoch().saturating_sub(age_limit.as_millis() as u64);
@@ -352,6 +358,7 @@ impl service::rooms::edus::presence::Data for KeyValueDatabase {
                 }
 
                 info!("Cleaned up {removed_events} stale presence events!");
+                sleep(period).await;
             }
         });
 
