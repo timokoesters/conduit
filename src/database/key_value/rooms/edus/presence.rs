@@ -306,6 +306,8 @@ impl service::rooms::edus::presence::Data for KeyValueDatabase {
 
         tokio::spawn(async move {
             loop {
+                sleep(period).await;
+
                 let mut removed_events: u64 = 0;
                 let age_limit_curr =
                     millis_since_unix_epoch().saturating_sub(age_limit.as_millis() as u64);
@@ -350,7 +352,6 @@ impl service::rooms::edus::presence::Data for KeyValueDatabase {
                 }
 
                 info!("Cleaned up {removed_events} stale presence events!");
-                sleep(period).await;
             }
         });
 
