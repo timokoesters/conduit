@@ -225,7 +225,8 @@ impl service::rooms::edus::presence::Data for KeyValueDatabase {
         // TODO: Get rid of this hack (hinting correct types to rustc)
         timers.push(create_presence_timer(
             Duration::from_secs(1),
-            UserId::parse_with_server_name("conduit", services().globals.server_name()).expect("Conduit user always exists")
+            UserId::parse_with_server_name("conduit", services().globals.server_name())
+                .expect("Conduit user always exists"),
         ));
 
         tokio::spawn(async move {
@@ -306,19 +307,21 @@ impl service::rooms::edus::presence::Data for KeyValueDatabase {
         tokio::spawn(async move {
             loop {
                 let mut removed_events: u64 = 0;
-                let age_limit_curr = millis_since_unix_epoch().saturating_sub(age_limit.as_millis() as u64);
+                let age_limit_curr =
+                    millis_since_unix_epoch().saturating_sub(age_limit.as_millis() as u64);
 
                 for user_id in userid_presenceupdate
                     .iter()
                     .map(|(user_id_bytes, update_bytes)| {
                         (
-                                UserId::parse(
-                                        utils::string_from_bytes(&user_id_bytes)
-                                        .expect("UserID bytes are a valid string"),
-                                )
-                                .expect("UserID bytes from database are a valid UserID"),
-                        PresenceUpdate::from_be_bytes(&update_bytes)
-                        .expect("PresenceUpdate bytes from database are a valid PresenceUpdate"),
+                            UserId::parse(
+                                utils::string_from_bytes(&user_id_bytes)
+                                    .expect("UserID bytes are a valid string"),
+                            )
+                            .expect("UserID bytes from database are a valid UserID"),
+                            PresenceUpdate::from_be_bytes(&update_bytes).expect(
+                                "PresenceUpdate bytes from database are a valid PresenceUpdate",
+                            ),
                         )
                     })
                     .filter_map(|(user_id, presence_update)| {
@@ -335,9 +338,13 @@ impl service::rooms::edus::presence::Data for KeyValueDatabase {
                         .rooms_joined(&user_id)
                         .filter_map(|room_id| room_id.ok())
                     {
-                        match roomuserid_presenceevent.remove(&*[room_id.as_bytes(), &[0xff], user_id.as_bytes()].concat()) {
+                        match roomuserid_presenceevent
+                            .remove(&*[room_id.as_bytes(), &[0xff], user_id.as_bytes()].concat())
+                        {
                             Ok(_) => removed_events += 1,
-                            Err(e) => error!("An errord occured while removing a stale presence event: {e}")
+                            Err(e) => error!(
+                                "An errord occured while removing a stale presence event: {e}"
+                            ),
                         }
                     }
                 }
