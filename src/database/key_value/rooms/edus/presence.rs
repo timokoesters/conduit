@@ -340,6 +340,13 @@ impl service::rooms::edus::presence::Data for KeyValueDatabase {
                         Some(user_id)
                     })
                 {
+                    match userid_presenceupdate.remove(&*user_id.as_bytes()) {
+                        Ok(_) => (),
+                        Err(e) => {
+                            error!("An errord occured while removing a stale presence update: {e}")
+                        }
+                    }
+
                     for room_id in services()
                         .rooms
                         .state_cache
