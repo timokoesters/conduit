@@ -391,9 +391,9 @@ fn parse_presence_event(bytes: &[u8], presence_timestamp: u64) -> Result<Presenc
 fn determine_presence_state(last_active_ago: u64) -> PresenceState {
     let globals = &services().globals;
 
-    return if last_active_ago < globals.presence_idle_timeout() {
+    return if last_active_ago < globals.presence_idle_timeout() * 1000 {
         PresenceState::Online
-    } else if last_active_ago < globals.presence_offline_timeout() {
+    } else if last_active_ago < globals.presence_offline_timeout() * 1000 {
         PresenceState::Unavailable
     } else {
         PresenceState::Offline
