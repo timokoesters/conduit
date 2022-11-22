@@ -79,11 +79,6 @@ pub async fn get_presence_route(
             presence: presence.content.presence,
         })
     } else {
-        Ok(get_presence::v3::Response {
-            status_msg: None,
-            currently_active: None,
-            last_active_ago: None,
-            presence: PresenceState::Offline,
-        })
+        Ok(get_presence::v3::Response::new(PresenceState::Offline))
     }
 }

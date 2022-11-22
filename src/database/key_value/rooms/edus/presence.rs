@@ -185,31 +185,20 @@ impl service::rooms::edus::presence::Data for KeyValueDatabase {
         Ok(Box::new(
             self.roomuserid_presenceevent
                 .scan_prefix(room_id.as_bytes().to_vec())
-                .filter_map(|(roomuserid_bytes, presence_bytes)| {
-                    let user_id_bytes =
-                        roomuserid_bytes.split(|byte| *byte == 0xff as u8).last()?;
-                    Some((
-                        UserId::parse(
-                            utils::string_from_bytes(&user_id_bytes)
-                                .expect("UserID bytes are a valid string"),
-                        )
-                        .expect("UserID bytes from database are a valid UserID")
-                        .to_owned(),
-                        presence_bytes,
-                    ))
-                })
-                .filter_map(
-                    move |(user_id, presence_bytes)| -> Option<(OwnedUserId, PresenceEvent)> {
-                        let timestamp = user_timestamp.get(&user_id)?;
+                .filter_map(move |(roomuserid_bytes, presence_bytes)| {
+                    let user_id_bytes = roomuserid_bytes.split(|byte| *byte == 0xff).last()?;
+                    let user_id: OwnedUserId = UserId::parse(
+                        utils::string_from_bytes(&user_id_bytes)
+                            .expect("UserID bytes are a valid string"),
+                    )
+                    .expect("UserID bytes from database are a valid UserID");
 
-                        Some((
-                            user_id,
-                            parse_presence_event(&presence_bytes, *timestamp).expect(
-                                "PresenceEvent bytes from database are a valid PresenceEvent",
-                            ),
-                        ))
-                    },
-                ),
+                    let timestamp = user_timestamp.get(&user_id)?;
+                    let presence_event = parse_presence_event(&presence_bytes, *timestamp)
+                        .expect("PresenceEvent bytes from database are a valid PresenceEvent");
+
+                    Some((user_id, presence_event))
+                }),
         ))
     }
 
