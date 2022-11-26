@@ -234,6 +234,10 @@ impl Service {
         self.config.allow_federation
     }
 
+    pub fn allow_public_read_receipts(&self) -> bool {
+        self.config.allow_public_read_receipts
+    }
+
     pub fn allow_room_creation(&self) -> bool {
         self.config.allow_room_creation
     }

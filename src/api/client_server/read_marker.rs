@@ -61,30 +61,31 @@ pub async fn set_read_marker_route(
                 "Event does not exist.",
             ))?;
 
-        let mut user_receipts = BTreeMap::new();
-        user_receipts.insert(
-            sender_user.clone(),
-            ruma::events::receipt::Receipt {
-                ts: Some(MilliSecondsSinceUnixEpoch::now()),
-                thread: ReceiptThread::Unthreaded,
-            },
-        );
+        if services().globals.allow_public_read_receipts() {
+            let mut user_receipts = BTreeMap::new();
+            user_receipts.insert(
+                sender_user.clone(),
+                ruma::events::receipt::Receipt {
+                    ts: Some(MilliSecondsSinceUnixEpoch::now()),
+                    thread: ReceiptThread::Unthreaded,
+                },
+            );
 
-        let mut receipts = BTreeMap::new();
-        receipts.insert(ReceiptType::Read, user_receipts);
+            let mut receipts = BTreeMap::new();
+            receipts.insert(ReceiptType::Read, user_receipts);
 
-        let mut receipt_content = BTreeMap::new();
-        receipt_content.insert(event.to_owned(), receipts);
+            let mut receipt_content = BTreeMap::new();
+            receipt_content.insert(event.to_owned(), receipts);
 
-        services().rooms.edus.read_receipt.readreceipt_update(
-            sender_user,
-            &body.room_id,
-            ruma::events::receipt::ReceiptEvent {
-                content: ruma::events::receipt::ReceiptEventContent(receipt_content),
-                room_id: body.room_id.clone(),
-            },
-        )?;
-
+            services().rooms.edus.read_receipt.readreceipt_update(
+                sender_user,
+                &body.room_id,
+                ruma::events::receipt::ReceiptEvent {
+                    content: ruma::events::receipt::ReceiptEventContent(receipt_content),
+                    room_id: body.room_id.clone(),
+                },
+            )?;
+        };
         services().rooms.edus.read_receipt.private_read_set(
             &body.room_id,
             sender_user,
@@ -128,29 +129,30 @@ pub async fn create_receipt_route(
                         "Event does not exist.",
                     ))?;
 
-            let mut user_receipts = BTreeMap::new();
-            user_receipts.insert(
-                sender_user.clone(),
-                ruma::events::receipt::Receipt {
-                    ts: Some(MilliSecondsSinceUnixEpoch::now()),
-                    thread: ReceiptThread::Unthreaded,
-                },
-            );
-            let mut receipts = BTreeMap::new();
-            receipts.insert(ReceiptType::Read, user_receipts);
+            if services().globals.allow_public_read_receipts() {
+                let mut user_receipts = BTreeMap::new();
+                user_receipts.insert(
+                    sender_user.clone(),
+                    ruma::events::receipt::Receipt {
+                        ts: Some(MilliSecondsSinceUnixEpoch::now()),
+                        thread: ReceiptThread::Unthreaded,
+                    },
+                );
+                let mut receipts = BTreeMap::new();
+                receipts.insert(ReceiptType::Read, user_receipts);
 
-            let mut receipt_content = BTreeMap::new();
-            receipt_content.insert(body.event_id.to_owned(), receipts);
+                let mut receipt_content = BTreeMap::new();
+                receipt_content.insert(body.event_id.to_owned(), receipts);
 
-            services().rooms.edus.read_receipt.readreceipt_update(
-                sender_user,
-                &body.room_id,
-                ruma::events::receipt::ReceiptEvent {
-                    content: ruma::events::receipt::ReceiptEventContent(receipt_content),
-                    room_id: body.room_id.clone(),
-                },
-            )?;
-
+                services().rooms.edus.read_receipt.readreceipt_update(
+                    sender_user,
+                    &body.room_id,
+                    ruma::events::receipt::ReceiptEvent {
+                        content: ruma::events::receipt::ReceiptEventContent(receipt_content),
+                        room_id: body.room_id.clone(),
+                    },
+                )?;
+            };
             services().rooms.edus.read_receipt.private_read_set(
                 &body.room_id,
                 sender_user,
