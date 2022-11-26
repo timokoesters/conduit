@@ -112,10 +112,25 @@ impl Service {
             });
 
         let visibility = match history_visibility {
-            Some(HistoryVisibility::Joined) => {
-                // Look at all members in the room from this server; one of them
-                // triggered a backfill. Was one of them a member in the past,
-                // at this event?
+            Some(HistoryVisibility::WorldReadable) => {
+                // Allow if event was sent while world readable
+                true
+            }
+            Some(HistoryVisibility::Invited) => {
+                let mut visible = false;
+                // Allow if any member on requesting server was invited or joined, else deny
+                for member in current_server_members {
+                    if self.user_was_invited(shortstatehash, &member)?
+                        || self.user_was_joined(shortstatehash, &member)?
+                    {
+                        visible = true;
+                        break;
+                    }
+                }
+                visible
+            }
+            _ => {
+                // Allow if any member on requested server was joined, else deny
                 let mut visible = false;
                 for member in current_server_members {
                     if self.user_was_joined(shortstatehash, &member)? {
@@ -125,17 +140,6 @@ impl Service {
                 }
                 visible
             }
-            Some(HistoryVisibility::Invited) => {
-                let mut visible = false;
-                for member in current_server_members {
-                    if self.user_was_invited(shortstatehash, &member)? {
-                        visible = true;
-                        break;
-                    }
-                }
-                visible
-            }
-            _ => false,
         };
 
         self.server_visibility_cache
