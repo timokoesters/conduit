@@ -108,7 +108,7 @@ impl Service {
             .state_get_content(shortstatehash, &StateEventType::RoomHistoryVisibility, "")?
             .map(|content| match content.get("history_visibility") {
                 Some(visibility) => HistoryVisibility::from(visibility.as_str().unwrap_or("")),
-                None => HistoryVisibility::Invited,
+                None => HistoryVisibility::Shared,
             });
 
         let visibility = match history_visibility {
