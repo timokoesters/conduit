@@ -47,6 +47,8 @@ pub struct Config {
     #[serde(default = "false_fn")]
     pub allow_federation: bool,
     #[serde(default = "true_fn")]
+    pub allow_public_read_receipts: bool,
+    #[serde(default = "true_fn")]
     pub allow_room_creation: bool,
     #[serde(default = "true_fn")]
     pub allow_unstable_room_versions: bool,
