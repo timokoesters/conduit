@@ -746,43 +746,45 @@ pub async fn send_transaction_message_route(
         match edu {
             Edu::Presence(_) => {}
             Edu::Receipt(receipt) => {
-                for (room_id, room_updates) in receipt.receipts {
-                    for (user_id, user_updates) in room_updates.read {
-                        if let Some((event_id, _)) = user_updates
-                            .event_ids
-                            .iter()
-                            .filter_map(|id| {
+                if services().globals.allow_receiving_read_receipts() {
+                    for (room_id, room_updates) in receipt.receipts {
+                        for (user_id, user_updates) in room_updates.read {
+                            if let Some((event_id, _)) = user_updates
+                                .event_ids
+                                .iter()
+                                .filter_map(|id| {
+                                    services()
+                                        .rooms
+                                        .timeline
+                                        .get_pdu_count(id)
+                                        .ok()
+                                        .flatten()
+                                        .map(|r| (id, r))
+                                })
+                                .max_by_key(|(_, count)| *count)
+                            {
+                                let mut user_receipts = BTreeMap::new();
+                                user_receipts.insert(user_id.clone(), user_updates.data);
+
+                                let mut receipts = BTreeMap::new();
+                                receipts.insert(ReceiptType::Read, user_receipts);
+
+                                let mut receipt_content = BTreeMap::new();
+                                receipt_content.insert(event_id.to_owned(), receipts);
+
+                                let event = ReceiptEvent {
+                                    content: ReceiptEventContent(receipt_content),
+                                    room_id: room_id.clone(),
+                                };
                                 services()
                                     .rooms
-                                    .timeline
-                                    .get_pdu_count(id)
-                                    .ok()
-                                    .flatten()
-                                    .map(|r| (id, r))
-                            })
-                            .max_by_key(|(_, count)| *count)
-                        {
-                            let mut user_receipts = BTreeMap::new();
-                            user_receipts.insert(user_id.clone(), user_updates.data);
-
-                            let mut receipts = BTreeMap::new();
-                            receipts.insert(ReceiptType::Read, user_receipts);
-
-                            let mut receipt_content = BTreeMap::new();
-                            receipt_content.insert(event_id.to_owned(), receipts);
-
-                            let event = ReceiptEvent {
-                                content: ReceiptEventContent(receipt_content),
-                                room_id: room_id.clone(),
-                            };
-                            services()
-                                .rooms
-                                .edus
-                                .read_receipt
-                                .readreceipt_update(&user_id, &room_id, event)?;
-                        } else {
-                            // TODO fetch missing events
-                            info!("No known event ids in read receipt: {:?}", user_updates);
+                                    .edus
+                                    .read_receipt
+                                    .readreceipt_update(&user_id, &room_id, event)?;
+                            } else {
+                                // TODO fetch missing events
+                                info!("No known event ids in read receipt: {:?}", user_updates);
+                            }
                         }
                     }
                 }
