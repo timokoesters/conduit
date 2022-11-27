@@ -268,7 +268,7 @@ fn default_turn_ttl() -> u64 {
 }
 
 fn default_presence_idle_timeout() -> u64 {
-    1 * 60
+    60
 }
 
 fn default_presence_offline_timeout() -> u64 {

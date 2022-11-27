@@ -69,7 +69,7 @@ impl service::rooms::edus::presence::Data for KeyValueDatabase {
 
         self.userid_presenceupdate.insert(
             user_id.as_bytes(),
-            &*PresenceUpdate {
+            &PresenceUpdate {
                 count: services().globals.next_count()?,
                 prev_timestamp: timestamp,
                 curr_timestamp: timestamp,
@@ -120,7 +120,7 @@ impl service::rooms::edus::presence::Data for KeyValueDatabase {
         };
 
         self.userid_presenceupdate
-            .insert(user_id.as_bytes(), &*new_presence.to_be_bytes())?;
+            .insert(user_id.as_bytes(), &new_presence.to_be_bytes())?;
 
         Ok(())
     }
@@ -188,7 +188,7 @@ impl service::rooms::edus::presence::Data for KeyValueDatabase {
                 .filter_map(move |(roomuserid_bytes, presence_bytes)| {
                     let user_id_bytes = roomuserid_bytes.split(|byte| *byte == 0xff).last()?;
                     let user_id: OwnedUserId = UserId::parse(
-                        utils::string_from_bytes(&user_id_bytes)
+                        utils::string_from_bytes(user_id_bytes)
                             .expect("UserID bytes are a valid string"),
                     )
                     .expect("UserID bytes from database are a valid UserID");
@@ -329,7 +329,7 @@ impl service::rooms::edus::presence::Data for KeyValueDatabase {
                         Some(user_id)
                     })
                 {
-                    match userid_presenceupdate.remove(&*user_id.as_bytes()) {
+                    match userid_presenceupdate.remove(user_id.as_bytes()) {
                         Ok(_) => (),
                         Err(e) => {
                             error!("An errord occured while removing a stale presence update: {e}")
@@ -343,7 +343,7 @@ impl service::rooms::edus::presence::Data for KeyValueDatabase {
                         .filter_map(|room_id| room_id.ok())
                     {
                         match roomuserid_presenceevent
-                            .remove(&*[room_id.as_bytes(), &[0xff], user_id.as_bytes()].concat())
+                            .remove(&[room_id.as_bytes(), &[0xff], user_id.as_bytes()].concat())
                         {
                             Ok(_) => removed_events += 1,
                             Err(e) => error!(
@@ -380,13 +380,13 @@ fn parse_presence_event(bytes: &[u8], presence_timestamp: u64) -> Result<Presenc
 fn determine_presence_state(last_active_ago: u64) -> PresenceState {
     let globals = &services().globals;
 
-    return if last_active_ago < globals.presence_idle_timeout() * 1000 {
+    if last_active_ago < globals.presence_idle_timeout() * 1000 {
         PresenceState::Online
     } else if last_active_ago < globals.presence_offline_timeout() * 1000 {
         PresenceState::Unavailable
     } else {
         PresenceState::Offline
-    };
+    }
 }
 
 /// Translates the timestamp representing last_active_ago to a diff from now.
