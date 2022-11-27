@@ -295,7 +295,10 @@ impl Service {
                     user_id,
                     presence: presence_event.content.presence,
                     status_msg: presence_event.content.status_msg,
-                    last_active_ago: presence_event.content.last_active_ago.unwrap_or(uint!(0)),
+                    last_active_ago: presence_event
+                        .content
+                        .last_active_ago
+                        .unwrap_or_else(|| uint!(0)),
                     currently_active: presence_event.content.currently_active.unwrap_or(false),
                 })
                 .collect();
