@@ -1084,8 +1084,9 @@ fn get_missing_events(
 
             if event_room_id != room_id {
                 warn!(
-                    "Evil event detected: Event {} found while searching in room {}",
-                    queued_events[i], room_id
+                    ?room_id,
+                    evil_event = ?queued_events[i],
+                    "Evil event detected while searching in room"
                 );
                 return Err(Error::BadRequest(
                     ErrorKind::InvalidParam,
@@ -1093,9 +1094,26 @@ fn get_missing_events(
                 ));
             }
 
+            let (room_members, room_errors): (Vec<_>, Vec<_>) = services()
+                .rooms
+                .state_cache
+                .room_members(room_id)
+                .partition(Result::is_ok);
+
+            // Just log errors and continue with correct users
+            if !room_errors.is_empty() {
+                warn!(?room_id, "Some errors occurred when fetching room members");
+            }
+
+            let current_server_members: Vec<OwnedUserId> = room_members
+                .into_iter()
+                .map(Result::unwrap)
+                .filter(|member| member.server_name() == sender_servername)
+                .collect();
+
             let event_is_visible = services().rooms.state_accessor.server_can_see_event(
                 sender_servername,
-                room_id,
+                current_server_members.as_slice(),
                 &queued_events[i],
             )?;
 
