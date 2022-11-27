@@ -7,7 +7,9 @@ use std::{
 pub use data::Data;
 use lru_cache::LruCache;
 use ruma::{
-    events::{room::history_visibility::HistoryVisibility, StateEventType},
+    events::{
+        room::history_visibility::HistoryVisibility, room::member::MembershipState, StateEventType,
+    },
     EventId, OwnedServerName, OwnedUserId, RoomId, ServerName, UserId,
 };
 
@@ -151,14 +153,20 @@ impl Service {
     }
 
     /// The user was a joined member at this state (potentially in the past)
-    pub fn user_was_joined(&self, shortstatehash: u64, user_id: &UserId) -> Result<bool> {
-        self.db.user_was_joined(shortstatehash, user_id)
+    pub fn user_was_joined(&self, shortstatehash: u64, user_id: &UserId) -> bool {
+        self.db
+            .user_membership(shortstatehash, user_id)
+            .map(|s| s == MembershipState::Join)
+            .unwrap_or_default() // Return sensible default, i.e. false
     }
 
     /// The user was an invited or joined room member at this state (potentially
     /// in the past)
-    pub fn user_was_invited(&self, shortstatehash: u64, user_id: &UserId) -> Result<bool> {
-        self.db.user_was_invited(shortstatehash, user_id)
+    pub fn user_was_invited(&self, shortstatehash: u64, user_id: &UserId) -> bool {
+        self.db
+            .user_membership(shortstatehash, user_id)
+            .map(|s| s == MembershipState::Join || s == MembershipState::Invite)
+            .unwrap_or_default() // Return sensible default, i.e. false
     }
 
     /// Returns the full room state.

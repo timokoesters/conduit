@@ -9,6 +9,7 @@ use ruma::{
     events::{room::member::MembershipState, StateEventType},
     EventId, RoomId, UserId,
 };
+use serde_json::Value;
 
 #[async_trait]
 impl service::rooms::state_accessor::Data for KeyValueDatabase {
@@ -131,7 +132,7 @@ impl service::rooms::state_accessor::Data for KeyValueDatabase {
         shortstatehash: u64,
         event_type: &StateEventType,
         state_key: &str,
-    ) -> Result<Option<serde_json::Value>> {
+    ) -> Result<Option<Value>> {
         let content = self
             .state_get(shortstatehash, event_type, state_key)?
             .map(|event| serde_json::from_str(event.content.get()))
@@ -159,40 +160,21 @@ impl service::rooms::state_accessor::Data for KeyValueDatabase {
             })
     }
 
-    /// The user was a joined member at this state (potentially in the past)
-    fn user_was_joined(&self, shortstatehash: u64, user_id: &UserId) -> Result<bool> {
-        Ok(self
-            .state_get_content(
-                shortstatehash,
-                &StateEventType::RoomMember,
-                user_id.as_str(),
-            )?
-            .map(|content| match content.get("membership") {
-                Some(membership) => MembershipState::from(membership.as_str().unwrap_or("")),
-                None => MembershipState::Leave,
-            } == MembershipState::Join)
-            .unwrap_or(false))
-    }
-
-    /// The user was an invited or joined room member at this state (potentially
-    /// in the past)
-    fn user_was_invited(&self, shortstatehash: u64, user_id: &UserId) -> Result<bool> {
-        Ok(self
-            .state_get_content(
-                shortstatehash,
-                &StateEventType::RoomMember,
-                user_id.as_str(),
-            )?
-            .map(|content| {
-                let membership = match content.get("membership") {
-                    Some(membership) => MembershipState::from(membership.as_str().unwrap_or("")),
-                    None => MembershipState::Leave,
-                };
-                let joined = membership == MembershipState::Join;
-                let invited = membership == MembershipState::Invite;
-                invited || joined
-            })
-            .unwrap_or(false))
+    /// Get membership for given user in state
+    fn user_membership(&self, shortstatehash: u64, user_id: &UserId) -> Result<MembershipState> {
+        self.state_get_content(
+            shortstatehash,
+            &StateEventType::RoomMember,
+            user_id.as_str(),
+        )?
+        .map(|content| match content.get("membership") {
+            Some(Value::String(membership)) => Ok(MembershipState::from(membership.as_str())),
+            None => Ok(MembershipState::Leave),
+            _ => Err(Error::bad_database(
+                "Malformed membership, expected Value::String",
+            )),
+        })
+        .unwrap_or(Ok(MembershipState::Leave))
     }
 
     /// Returns the full room state.

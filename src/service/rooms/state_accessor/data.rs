@@ -4,6 +4,7 @@ use std::{
 };
 
 use async_trait::async_trait;
+use ruma::events::room::member::MembershipState;
 use ruma::{events::StateEventType, EventId, RoomId, UserId};
 
 use crate::{PduEvent, Result};
@@ -45,12 +46,8 @@ pub trait Data: Send + Sync {
     /// Returns the state hash for this pdu.
     fn pdu_shortstatehash(&self, event_id: &EventId) -> Result<Option<u64>>;
 
-    /// The user was a joined member at this state (potentially in the past)
-    fn user_was_joined(&self, shortstatehash: u64, user_id: &UserId) -> Result<bool>;
-
-    /// The user was an invited or joined room member at this state (potentially
-    /// in the past)
-    fn user_was_invited(&self, shortstatehash: u64, user_id: &UserId) -> Result<bool>;
+    /// Get membership for given user in state
+    fn user_membership(&self, shortstatehash: u64, user_id: &UserId) -> Result<MembershipState>;
 
     /// Returns the full room state.
     async fn room_state_full(
