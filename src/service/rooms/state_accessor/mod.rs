@@ -12,8 +12,9 @@ use ruma::{
     },
     EventId, OwnedServerName, OwnedUserId, RoomId, ServerName, UserId,
 };
+use tracing::warn;
 
-use crate::{services, PduEvent, Result};
+use crate::{PduEvent, Result};
 
 pub struct Service {
     pub db: &'static dyn Data,
@@ -77,7 +78,7 @@ impl Service {
     pub fn server_can_see_event(
         &self,
         server_name: &ServerName,
-        room_id: &RoomId,
+        current_server_members: &[OwnedUserId],
         event_id: &EventId,
     ) -> Result<bool> {
         let shortstatehash = match self.pdu_shortstatehash(event_id) {
@@ -93,18 +94,6 @@ impl Service {
         {
             return Ok(*visibility);
         }
-
-        let current_server_members: Vec<OwnedUserId> = services()
-            .rooms
-            .state_cache
-            .room_members(room_id)
-            .filter(|member| {
-                member
-                    .as_ref()
-                    .map(|member| member.server_name() == server_name)
-                    .unwrap_or(true)
-            })
-            .collect::<Result<_>>()?;
 
         let history_visibility = self
             .state_get_content(shortstatehash, &StateEventType::RoomHistoryVisibility, "")?
