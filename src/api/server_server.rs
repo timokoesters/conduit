@@ -1106,14 +1106,14 @@ fn get_missing_events(
             // event's prev_events.
             stop_at_events.insert(queued_events[i].clone());
 
+            let prev_events = pdu
+                .get("prev_events")
+                .ok_or_else(|| Error::bad_database("Event in db has no prev_events field."))?;
+
             queued_events.extend_from_slice(
-                &serde_json::from_value::<Vec<OwnedEventId>>(
-                    serde_json::to_value(pdu.get("prev_events").cloned().ok_or_else(|| {
-                        Error::bad_database("Event in db has no prev_events field.")
-                    })?)
-                    .expect("canonical json is valid json value"),
-                )
-                .map_err(|_| Error::bad_database("Invalid prev_events content in pdu in db."))?,
+                &serde_json::from_value::<Vec<OwnedEventId>>(prev_events.clone().into()).map_err(
+                    |_| Error::bad_database("Invalid prev_events content in pdu in db."),
+                )?,
             );
             events.push(PduEvent::convert_to_outgoing_federation_event(pdu));
         }
