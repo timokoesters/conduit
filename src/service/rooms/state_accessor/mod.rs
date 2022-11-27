@@ -119,28 +119,16 @@ impl Service {
                 true
             }
             Some(HistoryVisibility::Invited) => {
-                let mut visible = false;
-                // Allow if any member on requesting server was invited or joined, else deny
-                for member in current_server_members {
-                    if self.user_was_invited(shortstatehash, &member)?
-                        || self.user_was_joined(shortstatehash, &member)?
-                    {
-                        visible = true;
-                        break;
-                    }
-                }
-                visible
+                // Allow if any member on requesting server was AT LEAST invited, else deny
+                current_server_members
+                    .into_iter()
+                    .any(|member| self.user_was_invited(shortstatehash, &member))
             }
             _ => {
                 // Allow if any member on requested server was joined, else deny
-                let mut visible = false;
-                for member in current_server_members {
-                    if self.user_was_joined(shortstatehash, &member)? {
-                        visible = true;
-                        break;
-                    }
-                }
-                visible
+                current_server_members
+                    .into_iter()
+                    .any(|member| self.user_was_joined(shortstatehash, &member))
             }
         };
 
