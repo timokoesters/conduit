@@ -130,7 +130,7 @@ impl Service {
     }
 
     /// The user was a joined member at this state (potentially in the past)
-    pub fn user_was_joined(&self, shortstatehash: u64, user_id: &UserId) -> bool {
+    fn user_was_joined(&self, shortstatehash: u64, user_id: &UserId) -> bool {
         self.db
             .user_membership(shortstatehash, user_id)
             .map(|s| s == MembershipState::Join)
@@ -139,7 +139,7 @@ impl Service {
 
     /// The user was an invited or joined room member at this state (potentially
     /// in the past)
-    pub fn user_was_invited(&self, shortstatehash: u64, user_id: &UserId) -> bool {
+    fn user_was_invited(&self, shortstatehash: u64, user_id: &UserId) -> bool {
         self.db
             .user_membership(shortstatehash, user_id)
             .map(|s| s == MembershipState::Join || s == MembershipState::Invite)
