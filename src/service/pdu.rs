@@ -281,16 +281,16 @@ impl state_res::Event for PduEvent {
         &self.sender
     }
 
+    fn origin_server_ts(&self) -> MilliSecondsSinceUnixEpoch {
+        MilliSecondsSinceUnixEpoch(self.origin_server_ts)
+    }
+
     fn event_type(&self) -> &RoomEventType {
         &self.kind
     }
 
     fn content(&self) -> &RawJsonValue {
         &self.content
-    }
-
-    fn origin_server_ts(&self) -> MilliSecondsSinceUnixEpoch {
-        MilliSecondsSinceUnixEpoch(self.origin_server_ts)
     }
 
     fn state_key(&self) -> Option<&str> {
