@@ -13,7 +13,8 @@ use tokio::{sync::mpsc, time::sleep};
 
 use crate::{
     database::KeyValueDatabase,
-    service, services, utils,
+    service::{self, rooms::edus::presence::PresenceIter},
+    services, utils,
     utils::{millis_since_unix_epoch, u64_from_bytes},
     Error, Result,
 };
@@ -148,11 +149,7 @@ impl service::rooms::edus::presence::Data for KeyValueDatabase {
             .transpose()
     }
 
-    fn presence_since<'a>(
-        &'a self,
-        room_id: &RoomId,
-        since: u64,
-    ) -> Result<Box<dyn Iterator<Item = (OwnedUserId, PresenceEvent)> + 'a>> {
+    fn presence_since<'a>(&'a self, room_id: &RoomId, since: u64) -> Result<PresenceIter<'a>> {
         let user_timestamp: HashMap<OwnedUserId, u64> = self
             .userid_presenceupdate
             .iter()

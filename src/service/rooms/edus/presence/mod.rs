@@ -6,6 +6,8 @@ use tokio::sync::mpsc;
 
 use crate::{services, Error, Result};
 
+pub(crate) type PresenceIter<'a> = Box<dyn Iterator<Item = (OwnedUserId, PresenceEvent)> + 'a>;
+
 pub struct Service {
     pub db: &'static dyn Data,
 
@@ -99,11 +101,7 @@ impl Service {
 
     /// Returns the most recent presence updates that happened after the event with id `since`.
     #[tracing::instrument(skip(self, since, room_id))]
-    pub fn presence_since(
-        &self,
-        room_id: &RoomId,
-        since: u64,
-    ) -> Result<Box<dyn Iterator<Item = (OwnedUserId, PresenceEvent)>>> {
+    pub fn presence_since<'a>(&'a self, room_id: &RoomId, since: u64) -> Result<PresenceIter<'a>> {
         if !services().globals.allow_presence() {
             return Ok(Box::new(std::iter::empty()));
         }

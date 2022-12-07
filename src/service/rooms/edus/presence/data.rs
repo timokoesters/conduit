@@ -2,6 +2,8 @@ use crate::Result;
 use ruma::{events::presence::PresenceEvent, OwnedUserId, RoomId, UserId};
 use tokio::sync::mpsc;
 
+use super::PresenceIter;
+
 pub trait Data: Send + Sync {
     /// Adds a presence event which will be saved until a new event replaces it.
     ///
@@ -34,11 +36,7 @@ pub trait Data: Send + Sync {
     ) -> Result<Option<PresenceEvent>>;
 
     /// Returns the most recent presence updates that happened after the event with id `since`.
-    fn presence_since<'a>(
-        &'a self,
-        room_id: &RoomId,
-        since: u64,
-    ) -> Result<Box<dyn Iterator<Item = (OwnedUserId, PresenceEvent)> + 'a>>;
+    fn presence_since<'a>(&'a self, room_id: &RoomId, since: u64) -> Result<PresenceIter<'a>>;
 
     fn presence_maintain(&self, timer_receiver: mpsc::UnboundedReceiver<OwnedUserId>)
         -> Result<()>;
