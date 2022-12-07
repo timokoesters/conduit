@@ -114,18 +114,10 @@ impl Service {
         &self,
         timer_receiver: mpsc::UnboundedReceiver<OwnedUserId>,
     ) -> Result<()> {
-        if !services().globals.allow_presence() {
-            return Ok(());
-        }
-
         self.db.presence_maintain(timer_receiver)
     }
 
     fn presence_cleanup(&self) -> Result<()> {
-        if !services().globals.allow_presence() {
-            return Ok(());
-        }
-
         self.db.presence_cleanup()
     }
 

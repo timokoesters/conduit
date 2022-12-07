@@ -210,6 +210,10 @@ impl service::rooms::edus::presence::Data for KeyValueDatabase {
             // Wait for services to be created
             sleep(Duration::from_secs(15)).await;
 
+            if !services().globals.allow_presence() {
+                return;
+            }
+
             let idle_timeout = Duration::from_secs(services().globals.presence_idle_timeout());
             let offline_timeout =
                 Duration::from_secs(services().globals.presence_offline_timeout());
@@ -295,6 +299,10 @@ impl service::rooms::edus::presence::Data for KeyValueDatabase {
         tokio::spawn(async move {
             // Wait for services to be created
             sleep(Duration::from_secs(15)).await;
+
+            if !services().globals.allow_presence() {
+                return;
+            }
 
             let period = Duration::from_secs(services().globals.presence_cleanup_period());
             let age_limit = Duration::from_secs(services().globals.presence_cleanup_limit());
