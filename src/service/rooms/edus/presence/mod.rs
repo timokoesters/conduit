@@ -4,7 +4,7 @@ pub use data::Data;
 use ruma::{events::presence::PresenceEvent, OwnedUserId, RoomId, UserId};
 use tokio::sync::mpsc;
 
-use crate::{Error, Result};
+use crate::{Error, Result, services};
 
 pub struct Service {
     pub db: &'static dyn Data,
@@ -36,6 +36,10 @@ impl Service {
         update_timestamp: bool,
         spawn_timer: bool,
     ) -> Result<()> {
+        if !services().globals.allow_presence() {
+            return Ok(())
+        }
+
         if spawn_timer {
             self.spawn_timer(user_id)?;
         }
@@ -55,6 +59,10 @@ impl Service {
         presence: PresenceEvent,
         spawn_timer: bool,
     ) -> Result<()> {
+        if !services().globals.allow_presence() {
+            return Ok(())
+        }
+
         if spawn_timer {
             self.spawn_timer(user_id)?;
         }
@@ -64,6 +72,10 @@ impl Service {
 
     /// Returns the timestamp of when the presence was last updated for the specified user.
     pub fn last_presence_update(&self, user_id: &UserId) -> Result<Option<(u64, u64)>> {
+        if !services().globals.allow_presence() {
+            return Ok(None)
+        }
+
         self.db.last_presence_update(user_id)
     }
 
@@ -73,6 +85,10 @@ impl Service {
         user_id: &UserId,
         room_id: &RoomId,
     ) -> Result<Option<PresenceEvent>> {
+        if !services().globals.allow_presence() {
+            return Ok(None)
+        }
+
         let last_update = match self.db.last_presence_update(user_id)? {
             Some(last) => last.1,
             None => return Ok(None),
@@ -88,6 +104,10 @@ impl Service {
         room_id: &RoomId,
         since: u64,
     ) -> Result<Box<dyn Iterator<Item = (OwnedUserId, PresenceEvent)>>> {
+        if !services().globals.allow_presence() {
+            return Ok(Box::new(std::iter::empty()))
+        }
+
         self.db.presence_since(room_id, since)
     }
 
@@ -96,15 +116,27 @@ impl Service {
         &self,
         timer_receiver: mpsc::UnboundedReceiver<OwnedUserId>,
     ) -> Result<()> {
+        if !services().globals.allow_presence() {
+            return Ok(())
+        }
+
         self.db.presence_maintain(timer_receiver)
     }
 
     fn presence_cleanup(&self) -> Result<()> {
+        if !services().globals.allow_presence() {
+            return Ok(())
+        }
+
         self.db.presence_cleanup()
     }
 
     /// Spawns a timer for the user used by the maintenance task
     fn spawn_timer(&self, user_id: &UserId) -> Result<()> {
+        if !services().globals.allow_presence() {
+            return Ok(())
+        }
+
         self.timer_sender
             .send(user_id.into())
             .map_err(|_| Error::bad_database("Sender errored out"))?;

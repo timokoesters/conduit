@@ -76,6 +76,9 @@ pub struct Config {
 
     pub emergency_password: Option<String>,
 
+    #[serde(default = "true_fn")]
+    pub allow_presence: bool,
+
     #[serde(default = "default_presence_idle_timeout")]
     pub presence_idle_timeout: u64,
     #[serde(default = "default_presence_offline_timeout")]

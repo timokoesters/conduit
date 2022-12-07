@@ -286,6 +286,10 @@ impl Service {
         &self.config.emergency_password
     }
 
+    pub fn allow_presence(&self) -> bool {
+        self.config.allow_presence
+    }
+
     pub fn presence_idle_timeout(&self) -> u64 {
         self.config.presence_idle_timeout
     }
