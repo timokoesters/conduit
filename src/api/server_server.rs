@@ -1058,6 +1058,23 @@ fn get_missing_events(
     latest_events: &[OwnedEventId],
     limit: UInt,
 ) -> Result<Vec<Box<RawJsonValue>>> {
+    let (room_members, room_errors): (Vec<_>, Vec<_>) = services()
+        .rooms
+        .state_cache
+        .room_members(room_id)
+        .partition(Result::is_ok);
+
+    // Just log errors and continue with correct users
+    if !room_errors.is_empty() {
+        warn!(?room_id, "Some errors occurred when fetching room members");
+    }
+
+    let current_server_members: Vec<OwnedUserId> = room_members
+        .into_iter()
+        .map(Result::unwrap)
+        .filter(|member| member.server_name() == sender_servername)
+        .collect();
+
     let limit = u64::from(limit) as usize;
 
     let mut queued_events = latest_events.to_owned();
@@ -1093,23 +1110,6 @@ fn get_missing_events(
                     "Evil event detected",
                 ));
             }
-
-            let (room_members, room_errors): (Vec<_>, Vec<_>) = services()
-                .rooms
-                .state_cache
-                .room_members(room_id)
-                .partition(Result::is_ok);
-
-            // Just log errors and continue with correct users
-            if !room_errors.is_empty() {
-                warn!(?room_id, "Some errors occurred when fetching room members");
-            }
-
-            let current_server_members: Vec<OwnedUserId> = room_members
-                .into_iter()
-                .map(Result::unwrap)
-                .filter(|member| member.server_name() == sender_servername)
-                .collect();
 
             let event_is_visible = services().rooms.state_accessor.server_can_see_event(
                 sender_servername,
