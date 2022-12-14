@@ -1093,7 +1093,7 @@ fn get_missing_events(
 
         match event_room_id {
             Some(event_room_id) => {
-                let valid_event = event_room_id != room_id;
+                let valid_event = event_room_id == room_id;
                 if !valid_event {
                     error!(?room_id, ?event_room_id, "An evil event detected");
                 }
