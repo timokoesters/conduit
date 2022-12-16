@@ -584,7 +584,7 @@ async fn join_room_by_id_helper(
 
         if let Some(signed_raw) = &send_join_response.room_state.event {
             let (signed_event_id, signed_value) =
-                match gen_event_id_canonical_json(&signed_raw, &room_version_id) {
+                match gen_event_id_canonical_json(signed_raw, &room_version_id) {
                     Ok(t) => t,
                     Err(_) => {
                         // Event could not be converted to canonical json
@@ -784,7 +784,7 @@ async fn join_room_by_id_helper(
         // TODO: Conduit does not implement restricted join rules yet, we always ask over
         // federation
         let join_rules_event = services().rooms.state_accessor.room_state_get(
-            &room_id,
+            room_id,
             &StateEventType::RoomJoinRules,
             "",
         )?;
@@ -1114,7 +1114,7 @@ pub(crate) async fn invite_helper<'a>(
                 create_invite::v2::Request {
                     room_id,
                     event_id: &pdu.event_id,
-                    room_version: &room_version_id,
+                    room_version: room_version_id,
                     event: &PduEvent::convert_to_outgoing_federation_event(pdu_json.clone()),
                     invite_room_state: &invite_room_state,
                 },
