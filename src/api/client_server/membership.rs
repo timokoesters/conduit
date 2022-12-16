@@ -595,7 +595,7 @@ async fn join_room_by_id_helper(
                     }
                 };
 
-            if &signed_event_id != event_id {
+            if signed_event_id != event_id {
                 return Err(Error::BadRequest(
                     ErrorKind::InvalidParam,
                     "Server sent event with wrong event id",
@@ -916,7 +916,7 @@ async fn join_room_by_id_helper(
                         }
                     };
 
-                if &signed_event_id != event_id {
+                if signed_event_id != event_id {
                     return Err(Error::BadRequest(
                         ErrorKind::InvalidParam,
                         "Server sent event with wrong event id",

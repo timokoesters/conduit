@@ -12,6 +12,7 @@ use ruma::{
         client::error::{Error as RumaError, ErrorKind},
         federation::{
             authorization::get_event_authorization,
+            backfill::get_backfill,
             device::get_devices::{self, v1::UserDevice},
             directory::{get_public_rooms, get_public_rooms_filtered},
             discovery::{get_server_keys, get_server_version, ServerSigningKeys, VerifyKey},
@@ -33,6 +34,7 @@ use ruma::{
     },
     directory::{IncomingFilter, IncomingRoomNetwork},
     events::{
+        presence::{PresenceEvent, PresenceEventContent},
         receipt::{ReceiptEvent, ReceiptEventContent, ReceiptType},
         room::{
             join_rules::{JoinRule, RoomJoinRulesEventContent},
@@ -43,11 +45,11 @@ use ruma::{
     serde::{Base64, JsonObject, Raw},
     to_device::DeviceIdOrAllDevices,
     CanonicalJsonObject, CanonicalJsonValue, EventId, MilliSecondsSinceUnixEpoch, OwnedEventId,
-    OwnedRoomId, OwnedServerName, OwnedServerSigningKeyId, OwnedUserId, RoomId, ServerName,
+    OwnedRoomId, OwnedServerName, OwnedServerSigningKeyId, OwnedUserId, RoomId, ServerName, UInt,
 };
 use serde_json::value::{to_raw_value, RawValue as RawJsonValue};
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashSet, VecDeque},
     fmt::Debug,
     mem,
     net::{IpAddr, SocketAddr},
@@ -753,45 +755,74 @@ pub async fn send_transaction_message_route(
         .filter_map(|edu| serde_json::from_str::<Edu>(edu.json().get()).ok())
     {
         match edu {
-            Edu::Presence(_) => {}
+            Edu::Presence(presence) => {
+                for presence_update in presence.push {
+                    let user_id = presence_update.user_id;
+                    for room_id in services()
+                        .rooms
+                        .state_cache
+                        .rooms_joined(&user_id)
+                        .filter_map(|room_id| room_id.ok())
+                    {
+                        services().rooms.edus.presence.update_presence(
+                            &user_id,
+                            &room_id,
+                            PresenceEvent {
+                                content: PresenceEventContent {
+                                    avatar_url: services().users.avatar_url(&user_id)?,
+                                    currently_active: Some(presence_update.currently_active),
+                                    displayname: services().users.displayname(&user_id)?,
+                                    last_active_ago: Some(presence_update.last_active_ago),
+                                    presence: presence_update.presence.clone(),
+                                    status_msg: presence_update.status_msg.clone(),
+                                },
+                                sender: user_id.clone(),
+                            },
+                            true,
+                        )?;
+                    }
+                }
+            }
             Edu::Receipt(receipt) => {
-                for (room_id, room_updates) in receipt.receipts {
-                    for (user_id, user_updates) in room_updates.read {
-                        if let Some((event_id, _)) = user_updates
-                            .event_ids
-                            .iter()
-                            .filter_map(|id| {
+                if services().globals.allow_receiving_read_receipts() {
+                    for (room_id, room_updates) in receipt.receipts {
+                        for (user_id, user_updates) in room_updates.read {
+                            if let Some((event_id, _)) = user_updates
+                                .event_ids
+                                .iter()
+                                .filter_map(|id| {
+                                    services()
+                                        .rooms
+                                        .timeline
+                                        .get_pdu_count(id)
+                                        .ok()
+                                        .flatten()
+                                        .map(|r| (id, r))
+                                })
+                                .max_by_key(|(_, count)| *count)
+                            {
+                                let mut user_receipts = BTreeMap::new();
+                                user_receipts.insert(user_id.clone(), user_updates.data);
+
+                                let mut receipts = BTreeMap::new();
+                                receipts.insert(ReceiptType::Read, user_receipts);
+
+                                let mut receipt_content = BTreeMap::new();
+                                receipt_content.insert(event_id.to_owned(), receipts);
+
+                                let event = ReceiptEvent {
+                                    content: ReceiptEventContent(receipt_content),
+                                    room_id: room_id.clone(),
+                                };
                                 services()
                                     .rooms
-                                    .timeline
-                                    .get_pdu_count(id)
-                                    .ok()
-                                    .flatten()
-                                    .map(|r| (id, r))
-                            })
-                            .max_by_key(|(_, count)| *count)
-                        {
-                            let mut user_receipts = BTreeMap::new();
-                            user_receipts.insert(user_id.clone(), user_updates.data);
-
-                            let mut receipts = BTreeMap::new();
-                            receipts.insert(ReceiptType::Read, user_receipts);
-
-                            let mut receipt_content = BTreeMap::new();
-                            receipt_content.insert(event_id.to_owned(), receipts);
-
-                            let event = ReceiptEvent {
-                                content: ReceiptEventContent(receipt_content),
-                                room_id: room_id.clone(),
-                            };
-                            services()
-                                .rooms
-                                .edus
-                                .read_receipt
-                                .readreceipt_update(&user_id, &room_id, event)?;
-                        } else {
-                            // TODO fetch missing events
-                            info!("No known event ids in read receipt: {:?}", user_updates);
+                                    .edus
+                                    .read_receipt
+                                    .readreceipt_update(&user_id, &room_id, event)?;
+                            } else {
+                                // TODO fetch missing events
+                                info!("No known event ids in read receipt: {:?}", user_updates);
+                            }
                         }
                     }
                 }
@@ -959,6 +990,58 @@ pub async fn get_event_route(
     })
 }
 
+/// # `GET /_matrix/federation/v1/backfill/<room_id>`
+///
+/// Retrieves events from before the sender joined the room, if the room's
+/// history visibility allows.
+pub async fn get_backfill_route(
+    body: Ruma<get_backfill::v1::IncomingRequest>,
+) -> Result<get_backfill::v1::Response> {
+    if !services().globals.allow_federation() {
+        return Err(Error::bad_config("Federation is disabled."));
+    }
+
+    let sender_servername = body
+        .sender_servername
+        .as_ref()
+        .expect("server is authenticated");
+
+    info!("Got backfill request from: {}", sender_servername);
+
+    if !services()
+        .rooms
+        .state_cache
+        .server_in_room(sender_servername, &body.room_id)?
+    {
+        return Err(Error::BadRequest(
+            ErrorKind::Forbidden,
+            "Server is not in room.",
+        ));
+    }
+
+    services()
+        .rooms
+        .event_handler
+        .acl_check(sender_servername, &body.room_id)?;
+
+    let origin = services().globals.server_name().to_owned();
+    let earliest_events = &[];
+
+    let events = get_missing_events(
+        sender_servername,
+        &body.room_id,
+        earliest_events,
+        &body.v,
+        body.limit,
+    )?;
+
+    Ok(get_backfill::v1::Response {
+        origin,
+        origin_server_ts: MilliSecondsSinceUnixEpoch::now(),
+        pdus: events,
+    })
+}
+
 /// # `POST /_matrix/federation/v1/get_missing_events/{roomId}`
 ///
 /// Retrieves events that the sender is missing.
@@ -990,50 +1073,195 @@ pub async fn get_missing_events_route(
         .event_handler
         .acl_check(sender_servername, &body.room_id)?;
 
-    let mut queued_events = body.latest_events.clone();
-    let mut events = Vec::new();
-
-    let mut i = 0;
-    while i < queued_events.len() && events.len() < u64::from(body.limit) as usize {
-        if let Some(pdu) = services().rooms.timeline.get_pdu_json(&queued_events[i])? {
-            let room_id_str = pdu
-                .get("room_id")
-                .and_then(|val| val.as_str())
-                .ok_or_else(|| Error::bad_database("Invalid event in database"))?;
-
-            let event_room_id = <&RoomId>::try_from(room_id_str)
-                .map_err(|_| Error::bad_database("Invalid room id field in event in database"))?;
-
-            if event_room_id != body.room_id {
-                warn!(
-                    "Evil event detected: Event {} found while searching in room {}",
-                    queued_events[i], body.room_id
-                );
-                return Err(Error::BadRequest(
-                    ErrorKind::InvalidParam,
-                    "Evil event detected",
-                ));
-            }
-
-            if body.earliest_events.contains(&queued_events[i]) {
-                i += 1;
-                continue;
-            }
-            queued_events.extend_from_slice(
-                &serde_json::from_value::<Vec<OwnedEventId>>(
-                    serde_json::to_value(pdu.get("prev_events").cloned().ok_or_else(|| {
-                        Error::bad_database("Event in db has no prev_events field.")
-                    })?)
-                    .expect("canonical json is valid json value"),
-                )
-                .map_err(|_| Error::bad_database("Invalid prev_events content in pdu in db."))?,
-            );
-            events.push(PduEvent::convert_to_outgoing_federation_event(pdu));
-        }
-        i += 1;
-    }
+    let events = get_missing_events(
+        sender_servername,
+        &body.room_id,
+        &body.earliest_events,
+        &body.latest_events,
+        body.limit,
+    )?;
 
     Ok(get_missing_events::v1::Response { events })
+}
+
+/// Fetch events starting from `latest_events`, going backwards
+/// through each event's `prev_events` until reaching the `earliest_events`.
+///
+/// Used by the federation /backfill and /get_missing_events routes.
+fn get_missing_events(
+    sender_servername: &ServerName,
+    room_id: &RoomId,
+    earliest_events: &[OwnedEventId],
+    latest_events: &[OwnedEventId],
+    limit: UInt,
+) -> Result<Vec<Box<RawJsonValue>>> {
+    let (room_members, room_errors): (Vec<_>, Vec<_>) = services()
+        .rooms
+        .state_cache
+        .room_members(room_id)
+        .partition(Result::is_ok);
+
+    // Just log errors and continue with correct users
+    if !room_errors.is_empty() {
+        warn!(?room_id, "Some errors occurred when fetching room members");
+    }
+
+    let current_server_members: Vec<OwnedUserId> = room_members
+        .into_iter()
+        .map(Result::unwrap)
+        .filter(|member| member.server_name() == sender_servername)
+        .collect();
+
+    let event_filter = |event_id: &EventId| {
+        services()
+            .rooms
+            .state_accessor
+            .server_can_see_event(
+                sender_servername,
+                current_server_members.as_slice(),
+                event_id,
+            )
+            .unwrap_or_default()
+    };
+
+    let pdu_filter = |pdu: &CanonicalJsonObject| {
+        let event_room_id = pdu
+            .get("room_id")
+            .and_then(|val| val.as_str())
+            .and_then(|room_id_str| <&RoomId>::try_from(room_id_str).ok());
+
+        match event_room_id {
+            Some(event_room_id) => {
+                let valid_event = event_room_id == room_id;
+                if !valid_event {
+                    error!(?room_id, ?event_room_id, "An evil event detected");
+                }
+                valid_event
+            }
+            None => {
+                error!(?pdu, "Can't extract valid `room_id` from pdu");
+                false
+            }
+        }
+    };
+
+    #[inline]
+    fn get_pdu(event: &EventId) -> Option<CanonicalJsonObject> {
+        services()
+            .rooms
+            .timeline
+            .get_pdu_json(event)
+            .unwrap_or_default()
+    }
+
+    let events = linearize_previous_events(
+        latest_events.iter().cloned(),
+        earliest_events.iter().cloned(),
+        limit,
+        get_pdu,
+        event_filter,
+        pdu_filter,
+    );
+
+    Ok(events)
+}
+
+/// Unwinds previous events by doing a breadth-first walk from given roots
+///
+/// # Arguments
+///
+/// * `roots`: Starting point to unwind event history
+/// * `excluded`: Skipped events
+/// * `limit`: How many events to extract
+/// * `pdu_extractor`: Closure to extract PDU for given event_id, for example, from DB.
+/// * `event_filter`: Closure to filter event by it's visiblity. It may or may not hit DB.
+/// * `pdu_filter`: Closure to get basic validation against malformed PDUs.
+///
+/// # Returns
+///
+/// The previous events for given roots, without any `excluded` events, up to the provided `limit`.
+///
+/// # Note
+///
+/// In matrix specification, «Server-Server API», paragraph 8 there is no mention of previous events for excluded events.
+/// Therefore, algorithm below excludes **only** events itself, but allows to process their history.
+fn linearize_previous_events<E, L, F, V, P>(
+    roots: E,
+    excluded: E,
+    limit: L,
+    pdu_extractor: P,
+    event_filter: F,
+    pdu_filter: V,
+) -> Vec<Box<RawJsonValue>>
+where
+    E: IntoIterator<Item = OwnedEventId>,
+    F: Fn(&EventId) -> bool,
+    L: Into<u64>,
+    V: Fn(&CanonicalJsonObject) -> bool,
+    P: Fn(&EventId) -> Option<CanonicalJsonObject>,
+{
+    let limit = limit.into() as usize;
+    assert!(limit > 0, "Limit should be > 0");
+
+    #[inline]
+    fn get_previous_events(pdu: &CanonicalJsonObject) -> Option<Vec<OwnedEventId>> {
+        match pdu.get("prev_events") {
+            None => {
+                error!(?pdu, "A stored event has no 'prev_events' field");
+                None
+            }
+            Some(prev_events) => {
+                let val = prev_events.clone().into();
+                let events = serde_json::from_value::<Vec<OwnedEventId>>(val);
+                if let Err(error) = events {
+                    error!(?prev_events, ?error, "Broken 'prev_events' field");
+                    return None;
+                }
+                Some(events.unwrap_or_default())
+            }
+        }
+    }
+
+    let mut visited: HashSet<OwnedEventId> = Default::default();
+    let mut history: Vec<Box<RawJsonValue>> = Default::default();
+    let mut queue: VecDeque<OwnedEventId> = Default::default();
+    let excluded: HashSet<_> = excluded.into_iter().collect();
+
+    // Add all roots into processing queue
+    for root in roots {
+        queue.push_back(root);
+    }
+
+    while let Some(current_event) = queue.pop_front() {
+        // Return all collected events if reached limit
+        if history.len() >= limit {
+            return history;
+        }
+
+        // Skip an entire branch containing incorrect events
+        if !event_filter(&current_event) {
+            continue;
+        }
+
+        // Process PDU from a current event if it exists and valid
+        if let Some(pdu) = pdu_extractor(&current_event).filter(&pdu_filter) {
+            if !&excluded.contains(&current_event) {
+                history.push(PduEvent::convert_to_outgoing_federation_event(pdu.clone()));
+            }
+
+            // Fetch previous events, if they exists
+            if let Some(previous_events) = get_previous_events(&pdu) {
+                for previous_event in previous_events {
+                    if !visited.contains(&previous_event) {
+                        visited.insert(previous_event.clone());
+                        queue.push_back(previous_event);
+                    }
+                }
+            }
+        }
+    }
+    // All done, return collected events
+    history
 }
 
 /// # `GET /_matrix/federation/v1/event_auth/{roomId}/{eventId}`
@@ -1788,7 +2016,11 @@ pub async fn claim_keys_route(
 
 #[cfg(test)]
 mod tests {
-    use super::{add_port_to_hostname, get_ip_with_port, FedDest};
+    use super::{add_port_to_hostname, get_ip_with_port, linearize_previous_events, FedDest};
+    use ruma::{CanonicalJsonObject, CanonicalJsonValue, OwnedEventId};
+    use serde::{Deserialize, Serialize};
+    use serde_json::{value::RawValue, Value};
+    use std::collections::HashMap;
 
     #[test]
     fn ips_get_default_ports() {
@@ -1827,6 +2059,229 @@ mod tests {
         assert_eq!(
             add_port_to_hostname("example.com:1337"),
             FedDest::Named(String::from("example.com"), String::from(":1337"))
+        )
+    }
+
+    type PduStorage = HashMap<OwnedEventId, CanonicalJsonObject>;
+
+    #[derive(Debug, Serialize, Deserialize)]
+    struct MockPDU {
+        content: i32,
+        prev_events: Vec<OwnedEventId>,
+    }
+
+    fn mock_event_id(id: &i32) -> OwnedEventId {
+        const DOMAIN: &str = "canterlot.eq";
+        <OwnedEventId>::try_from(format!("${id}:{DOMAIN}")).unwrap()
+    }
+
+    fn create_graph(data: Vec<(i32, Vec<i32>)>) -> PduStorage {
+        data.iter()
+            .map(|(head, tail)| {
+                let key = mock_event_id(head);
+                let pdu = MockPDU {
+                    content: *head,
+                    prev_events: tail.iter().map(mock_event_id).collect(),
+                };
+                let value = serde_json::to_value(pdu).unwrap();
+                let value: CanonicalJsonValue = value.try_into().unwrap();
+                (key, value.as_object().unwrap().to_owned())
+            })
+            .collect()
+    }
+
+    fn mock_full_graph() -> PduStorage {
+        /*
+                      (1)
+             __________|___________
+            /         /     \      \
+           (2)      (3)    (10)   (11)
+          /  \     /   \     |     |
+        (4)  (5)  (6)  (7)  (12)  (13)
+              |    |              |
+             (8)  (9)             (14)
+              \   /
+               (15)
+                |
+               (16)
+        */
+        create_graph(vec![
+            (1, vec![2, 3, 10, 11]),
+            (2, vec![4, 5]),
+            (3, vec![6, 7]),
+            (4, vec![]),
+            (5, vec![8]),
+            (6, vec![9]),
+            (7, vec![]),
+            (8, vec![15]),
+            (9, vec![15]),
+            (10, vec![12]),
+            (11, vec![13]),
+            (12, vec![]),
+            (13, vec![14]),
+            (14, vec![]),
+            (15, vec![16]),
+            (16, vec![16]),
+        ])
+    }
+
+    fn extract_events_payload(events: Vec<Box<RawValue>>) -> Vec<i32> {
+        events
+            .iter()
+            .map(|e| serde_json::from_str(e.get()).unwrap())
+            .map(|p: MockPDU| p.content)
+            .collect()
+    }
+
+    #[test]
+    fn backfill_empty() {
+        let events = linearize_previous_events(
+            vec![],
+            vec![],
+            16u64,
+            |_| unreachable!(),
+            |_| true,
+            |_| true,
+        );
+        assert!(events.is_empty());
+    }
+    #[test]
+    fn backfill_limit() {
+        /*
+           (5) → (4) → (3) → (2) → (1) → ×
+        */
+        let events = create_graph(vec![
+            (1, vec![]),
+            (2, vec![1]),
+            (3, vec![2]),
+            (4, vec![3]),
+            (5, vec![4]),
+        ]);
+        let roots = vec![mock_event_id(&5)];
+        let result = linearize_previous_events(
+            roots,
+            vec![],
+            3u64,
+            |e| events.get(e).cloned(),
+            |_| true,
+            |_| true,
+        );
+
+        assert_eq!(extract_events_payload(result), vec![5, 4, 3])
+    }
+
+    #[test]
+    fn backfill_bfs() {
+        let events = mock_full_graph();
+        let roots = vec![mock_event_id(&1)];
+        let result = linearize_previous_events(
+            roots,
+            vec![],
+            100u64,
+            |e| events.get(e).cloned(),
+            |_| true,
+            |_| true,
+        );
+        assert_eq!(
+            extract_events_payload(result),
+            vec![1, 2, 3, 10, 11, 4, 5, 6, 7, 12, 13, 8, 9, 14, 15, 16]
+        )
+    }
+
+    #[test]
+    fn backfill_subgraph() {
+        let events = mock_full_graph();
+        let roots = vec![mock_event_id(&3)];
+        let result = linearize_previous_events(
+            roots,
+            vec![],
+            100u64,
+            |e| events.get(e).cloned(),
+            |_| true,
+            |_| true,
+        );
+        assert_eq!(extract_events_payload(result), vec![3, 6, 7, 9, 15, 16])
+    }
+
+    #[test]
+    fn backfill_two_roots() {
+        let events = mock_full_graph();
+        let roots = vec![mock_event_id(&3), mock_event_id(&11)];
+        let result = linearize_previous_events(
+            roots,
+            vec![],
+            100u64,
+            |e| events.get(e).cloned(),
+            |_| true,
+            |_| true,
+        );
+        assert_eq!(
+            extract_events_payload(result),
+            vec![3, 11, 6, 7, 13, 9, 14, 15, 16]
+        )
+    }
+
+    #[test]
+    fn backfill_exclude_events() {
+        let events = mock_full_graph();
+        let roots = vec![mock_event_id(&1)];
+        let excluded_events = vec![
+            mock_event_id(&14),
+            mock_event_id(&15),
+            mock_event_id(&16),
+            mock_event_id(&3),
+        ];
+        let result = linearize_previous_events(
+            roots,
+            excluded_events,
+            100u64,
+            |e| events.get(e).cloned(),
+            |_| true,
+            |_| true,
+        );
+        assert_eq!(
+            extract_events_payload(result),
+            vec![1, 2, 10, 11, 4, 5, 6, 7, 12, 13, 8, 9]
+        )
+    }
+
+    #[test]
+    fn backfill_exclude_branch_with_evil_event() {
+        let events = mock_full_graph();
+        let roots = vec![mock_event_id(&1)];
+        let result = linearize_previous_events(
+            roots,
+            vec![],
+            100u64,
+            |e| events.get(e).cloned(),
+            |_| true,
+            |e| {
+                let value: Value = CanonicalJsonValue::Object(e.clone()).into();
+                let pdu: MockPDU = serde_json::from_value(value).unwrap();
+                pdu.content != 3
+            },
+        );
+        assert_eq!(
+            extract_events_payload(result),
+            vec![1, 2, 10, 11, 4, 5, 12, 13, 8, 14, 15, 16]
+        )
+    }
+
+    #[test]
+    fn backfill_exclude_branch_with_inaccessible_event() {
+        let events = mock_full_graph();
+        let roots = vec![mock_event_id(&1)];
+        let result = linearize_previous_events(
+            roots,
+            vec![],
+            100u64,
+            |e| events.get(e).cloned(),
+            |e| e != mock_event_id(&3),
+            |_| true,
+        );
+        assert_eq!(
+            extract_events_payload(result),
+            vec![1, 2, 10, 11, 4, 5, 12, 13, 8, 14, 15, 16]
         )
     }
 }

@@ -5,7 +5,11 @@ use std::{
 
 use crate::{database::KeyValueDatabase, service, services, utils, Error, PduEvent, Result};
 use async_trait::async_trait;
-use ruma::{events::StateEventType, EventId, RoomId};
+use ruma::{
+    events::{room::member::MembershipState, StateEventType},
+    EventId, RoomId, UserId,
+};
+use serde_json::Value;
 
 #[async_trait]
 impl service::rooms::state_accessor::Data for KeyValueDatabase {
@@ -123,6 +127,21 @@ impl service::rooms::state_accessor::Data for KeyValueDatabase {
             })
     }
 
+    fn state_get_content(
+        &self,
+        shortstatehash: u64,
+        event_type: &StateEventType,
+        state_key: &str,
+    ) -> Result<Option<Value>> {
+        let content = self
+            .state_get(shortstatehash, event_type, state_key)?
+            .map(|event| serde_json::from_str(event.content.get()))
+            .transpose()
+            .map_err(|_| Error::bad_database("Invalid event in database"))?;
+
+        Ok(content)
+    }
+
     /// Returns the state hash for this pdu.
     fn pdu_shortstatehash(&self, event_id: &EventId) -> Result<Option<u64>> {
         self.eventid_shorteventid
@@ -139,6 +158,23 @@ impl service::rooms::state_accessor::Data for KeyValueDatabase {
                     })
                     .transpose()
             })
+    }
+
+    /// Get membership for given user in state
+    fn user_membership(&self, shortstatehash: u64, user_id: &UserId) -> Result<MembershipState> {
+        self.state_get_content(
+            shortstatehash,
+            &StateEventType::RoomMember,
+            user_id.as_str(),
+        )?
+        .map(|content| match content.get("membership") {
+            Some(Value::String(membership)) => Ok(MembershipState::from(membership.as_str())),
+            None => Ok(MembershipState::Leave),
+            _ => Err(Error::bad_database(
+                "Malformed membership, expected Value::String",
+            )),
+        })
+        .unwrap_or(Ok(MembershipState::Leave))
     }
 
     /// Returns the full room state.

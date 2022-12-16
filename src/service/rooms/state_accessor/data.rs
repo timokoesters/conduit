@@ -4,7 +4,10 @@ use std::{
 };
 
 use async_trait::async_trait;
-use ruma::{events::StateEventType, EventId, RoomId};
+use ruma::{
+    events::{room::member::MembershipState, StateEventType},
+    EventId, RoomId, UserId,
+};
 
 use crate::{PduEvent, Result};
 
@@ -35,8 +38,18 @@ pub trait Data: Send + Sync {
         state_key: &str,
     ) -> Result<Option<Arc<PduEvent>>>;
 
+    fn state_get_content(
+        &self,
+        shortstatehash: u64,
+        event_type: &StateEventType,
+        state_key: &str,
+    ) -> Result<Option<serde_json::Value>>;
+
     /// Returns the state hash for this pdu.
     fn pdu_shortstatehash(&self, event_id: &EventId) -> Result<Option<u64>>;
+
+    /// Get membership for given user in state
+    fn user_membership(&self, shortstatehash: u64, user_id: &UserId) -> Result<MembershipState>;
 
     /// Returns the full room state.
     async fn room_state_full(

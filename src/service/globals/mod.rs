@@ -222,6 +222,10 @@ impl Service {
         self.config.max_request_size
     }
 
+    pub fn max_fetch_prev_events(&self) -> u16 {
+        self.config.max_fetch_prev_events
+    }
+
     pub fn allow_registration(&self) -> bool {
         self.config.allow_registration
     }
@@ -232,6 +236,14 @@ impl Service {
 
     pub fn allow_federation(&self) -> bool {
         self.config.allow_federation
+    }
+
+    pub fn allow_public_read_receipts(&self) -> bool {
+        self.config.allow_public_read_receipts
+    }
+
+    pub fn allow_receiving_read_receipts(&self) -> bool {
+        self.config.allow_receiving_read_receipts
     }
 
     pub fn allow_room_creation(&self) -> bool {
@@ -248,6 +260,10 @@ impl Service {
 
     pub fn enable_lightning_bolt(&self) -> bool {
         self.config.enable_lightning_bolt
+    }
+
+    pub fn hierarchy_max_depth(&self) -> u64 {
+        self.config.hierarchy_max_depth
     }
 
     pub fn trusted_servers(&self) -> &[OwnedServerName] {
@@ -284,6 +300,26 @@ impl Service {
 
     pub fn emergency_password(&self) -> &Option<String> {
         &self.config.emergency_password
+    }
+
+    pub fn allow_presence(&self) -> bool {
+        self.config.allow_presence
+    }
+
+    pub fn presence_idle_timeout(&self) -> u64 {
+        self.config.presence_idle_timeout
+    }
+
+    pub fn presence_offline_timeout(&self) -> u64 {
+        self.config.presence_offline_timeout
+    }
+
+    pub fn presence_cleanup_period(&self) -> u64 {
+        self.config.presence_cleanup_period
+    }
+
+    pub fn presence_cleanup_limit(&self) -> u64 {
+        self.config.presence_cleanup_limit
     }
 
     pub fn supported_room_versions(&self) -> Vec<RoomVersionId> {

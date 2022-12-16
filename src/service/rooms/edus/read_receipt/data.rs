@@ -25,8 +25,9 @@ pub trait Data: Send + Sync {
             > + 'a,
     >;
 
-    /// Sets a private read marker at `count`.
-    fn private_read_set(&self, room_id: &RoomId, user_id: &UserId, count: u64) -> Result<()>;
+    /// Sets a private read marker at `shorteventid`.
+    fn private_read_set(&self, room_id: &RoomId, user_id: &UserId, shorteventid: u64)
+        -> Result<()>;
 
     /// Returns the private read marker.
     fn private_read_get(&self, room_id: &RoomId, user_id: &UserId) -> Result<Option<u64>>;
