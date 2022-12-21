@@ -1716,6 +1716,13 @@ pub async fn get_profile_information_route(
         return Err(Error::bad_config("Federation is disabled."));
     }
 
+    if body.user_id.server_name() != services().globals.server_name() {
+        return Err(Error::BadRequest(
+            ErrorKind::NotFound,
+            "User does not belong to this server",
+        ));
+    }
+
     let mut displayname = None;
     let mut avatar_url = None;
     let mut blurhash = None;
