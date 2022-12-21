@@ -1615,14 +1615,18 @@ pub async fn create_invite_route(
         .state_cache
         .server_in_room(services().globals.server_name(), &body.room_id)?
     {
-        services().rooms.state_cache.update_membership(
-            &body.room_id,
-            &invited_user,
-            MembershipState::Invite,
-            &sender,
-            Some(invite_state),
-            true,
-        )?;
+        services()
+            .rooms
+            .state_cache
+            .update_membership(
+                &body.room_id,
+                &invited_user,
+                RoomMemberEventContent::new(MembershipState::Invite),
+                &sender,
+                Some(invite_state),
+                true,
+            )
+            .await?;
     }
 
     Ok(create_invite::v2::Response {

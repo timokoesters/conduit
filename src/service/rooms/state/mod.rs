@@ -7,14 +7,13 @@ use std::{
 pub use data::Data;
 use ruma::{
     events::{
-        room::{create::RoomCreateEventContent, member::MembershipState},
+        room::{create::RoomCreateEventContent, member::RoomMemberEventContent},
         AnyStrippedStateEvent, RoomEventType, StateEventType,
     },
     serde::Raw,
     state_res::{self, StateMap},
     EventId, OwnedEventId, RoomId, RoomVersionId, UserId,
 };
-use serde::Deserialize;
 use tokio::sync::MutexGuard;
 use tracing::warn;
 
@@ -60,15 +59,11 @@ impl Service {
                 Err(_) => continue,
             };
 
-            #[derive(Deserialize)]
-            struct ExtractMembership {
-                membership: MembershipState,
-            }
-
-            let membership = match serde_json::from_str::<ExtractMembership>(pdu.content.get()) {
-                Ok(e) => e.membership,
-                Err(_) => continue,
-            };
+            let membership_event =
+                match serde_json::from_str::<RoomMemberEventContent>(pdu.content.get()) {
+                    Ok(e) => e,
+                    Err(_) => continue,
+                };
 
             let state_key = match pdu.state_key {
                 Some(k) => k,
@@ -80,14 +75,18 @@ impl Service {
                 Err(_) => continue,
             };
 
-            services().rooms.state_cache.update_membership(
-                room_id,
-                &user_id,
-                membership,
-                &pdu.sender,
-                None,
-                false,
-            )?;
+            services()
+                .rooms
+                .state_cache
+                .update_membership(
+                    room_id,
+                    &user_id,
+                    membership_event,
+                    &pdu.sender,
+                    None,
+                    false,
+                )
+                .await?;
         }
 
         services().rooms.state_cache.update_joined_count(room_id)?;

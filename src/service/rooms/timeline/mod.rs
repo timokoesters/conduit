@@ -15,7 +15,8 @@ use ruma::{
     events::{
         push_rules::PushRulesEvent,
         room::{
-            create::RoomCreateEventContent, member::MembershipState,
+            create::RoomCreateEventContent,
+            member::{MembershipState, RoomMemberEventContent},
             power_levels::RoomPowerLevelsEventContent,
         },
         GlobalAccountDataEventType, RoomEventType, StateEventType,
@@ -145,7 +146,7 @@ impl Service {
     ///
     /// Returns pdu id
     #[tracing::instrument(skip(self, pdu, pdu_json, leaves))]
-    pub fn append_pdu<'a>(
+    pub async fn append_pdu<'a>(
         &self,
         pdu: &PduEvent,
         mut pdu_json: CanonicalJsonObject,
@@ -211,7 +212,7 @@ impl Service {
                 .entry(pdu.room_id.clone())
                 .or_default(),
         );
-        let insert_lock = mutex_insert.lock().unwrap();
+        let insert_lock = mutex_insert.lock().await;
 
         let count1 = services().globals.next_count()?;
         // Mark as read first so the sending client doesn't get a notification even if appending
@@ -323,16 +324,11 @@ impl Service {
             }
             RoomEventType::RoomMember => {
                 if let Some(state_key) = &pdu.state_key {
-                    #[derive(Deserialize)]
-                    struct ExtractMembership {
-                        membership: MembershipState,
-                    }
-
                     // if the state_key fails
                     let target_user_id = UserId::parse(state_key.clone())
                         .expect("This state_key was previously validated");
 
-                    let content = serde_json::from_str::<ExtractMembership>(pdu.content.get())
+                    let content = serde_json::from_str::<RoomMemberEventContent>(pdu.content.get())
                         .map_err(|_| Error::bad_database("Invalid content in pdu."))?;
 
                     let invite_state = match content.membership {
@@ -345,14 +341,18 @@ impl Service {
 
                     // Update our membership info, we do this here incase a user is invited
                     // and immediately leaves we need the DB to record the invite event for auth
-                    services().rooms.state_cache.update_membership(
-                        &pdu.room_id,
-                        &target_user_id,
-                        content.membership,
-                        &pdu.sender,
-                        invite_state,
-                        true,
-                    )?;
+                    services()
+                        .rooms
+                        .state_cache
+                        .update_membership(
+                            &pdu.room_id,
+                            &target_user_id,
+                            content,
+                            &pdu.sender,
+                            invite_state,
+                            true,
+                        )
+                        .await?;
                 }
             }
             RoomEventType::RoomMessage => {
@@ -673,7 +673,7 @@ impl Service {
     /// Creates a new persisted data unit and adds it to a room. This function takes a
     /// roomid_mutex_state, meaning that only this function is able to mutate the room state.
     #[tracing::instrument(skip(self, state_lock))]
-    pub fn build_and_append_pdu(
+    pub async fn build_and_append_pdu(
         &self,
         pdu_builder: PduBuilder,
         sender: &UserId,
@@ -687,14 +687,16 @@ impl Service {
         // pdu without it's state. This is okay because append_pdu can't fail.
         let statehashid = services().rooms.state.append_to_state(&pdu)?;
 
-        let pdu_id = self.append_pdu(
-            &pdu,
-            pdu_json,
-            // Since this PDU references all pdu_leaves we can update the leaves
-            // of the room
-            vec![(*pdu.event_id).to_owned()],
-            state_lock,
-        )?;
+        let pdu_id = self
+            .append_pdu(
+                &pdu,
+                pdu_json,
+                // Since this PDU references all pdu_leaves we can update the leaves
+                // of the room
+                vec![(*pdu.event_id).to_owned()],
+                state_lock,
+            )
+            .await?;
 
         // We set the room state after inserting the pdu, so that we never have a moment in time
         // where events in the current room state do not exist
@@ -732,7 +734,7 @@ impl Service {
     /// Append the incoming event setting the state snapshot to the state from the
     /// server that sent the event.
     #[tracing::instrument(skip_all)]
-    pub fn append_incoming_pdu<'a>(
+    pub async fn append_incoming_pdu<'a>(
         &self,
         pdu: &PduEvent,
         pdu_json: CanonicalJsonObject,
@@ -762,11 +764,11 @@ impl Service {
             return Ok(None);
         }
 
-        let pdu_id =
-            services()
-                .rooms
-                .timeline
-                .append_pdu(pdu, pdu_json, new_room_leaves, state_lock)?;
+        let pdu_id = services()
+            .rooms
+            .timeline
+            .append_pdu(pdu, pdu_json, new_room_leaves, state_lock)
+            .await?;
 
         Ok(Some(pdu_id))
     }

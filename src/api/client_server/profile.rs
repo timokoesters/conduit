@@ -83,12 +83,11 @@ pub async fn set_displayname_route(
         );
         let state_lock = mutex_state.lock().await;
 
-        let _ = services().rooms.timeline.build_and_append_pdu(
-            pdu_builder,
-            sender_user,
-            &room_id,
-            &state_lock,
-        );
+        let _ = services()
+            .rooms
+            .timeline
+            .build_and_append_pdu(pdu_builder, sender_user, &room_id, &state_lock)
+            .await;
 
         // Presence update
         services().rooms.edus.presence.update_presence(
@@ -115,15 +114,17 @@ pub async fn set_displayname_route(
     Ok(set_display_name::v3::Response {})
 }
 
-/// # `GET /_matrix/client/r0/profile/{userId}/displayname`
+/// # `GET /_matrix/client/v3/profile/{userId}/displayname`
 ///
 /// Returns the displayname of the user.
 ///
-/// - If user is on another server: Fetches displayname over federation
+/// - If user is on another server and we do not have a copy, fetch over federation
 pub async fn get_displayname_route(
     body: Ruma<get_display_name::v3::Request>,
 ) -> Result<get_display_name::v3::Response> {
-    if body.user_id.server_name() != services().globals.server_name() {
+    if (services().users.exists(&body.user_id)?)
+        && (body.user_id.server_name() != services().globals.server_name())
+    {
         let response = services()
             .sending
             .send_federation_request(
@@ -134,6 +135,18 @@ pub async fn get_displayname_route(
                 },
             )
             .await?;
+
+        // Create and update our local copy of the user
+        let _ = services().users.create(&body.user_id, None);
+        let _ = services()
+            .users
+            .set_displayname(&body.user_id, response.displayname.clone());
+        let _ = services()
+            .users
+            .set_avatar_url(&body.user_id, response.avatar_url);
+        let _ = services()
+            .users
+            .set_blurhash(&body.user_id, response.blurhash);
 
         return Ok(get_display_name::v3::Response {
             displayname: response.displayname,
@@ -218,12 +231,11 @@ pub async fn set_avatar_url_route(
         );
         let state_lock = mutex_state.lock().await;
 
-        let _ = services().rooms.timeline.build_and_append_pdu(
-            pdu_builder,
-            sender_user,
-            &room_id,
-            &state_lock,
-        );
+        let _ = services()
+            .rooms
+            .timeline
+            .build_and_append_pdu(pdu_builder, sender_user, &room_id, &state_lock)
+            .await;
 
         // Presence update
         services().rooms.edus.presence.update_presence(
@@ -250,15 +262,17 @@ pub async fn set_avatar_url_route(
     Ok(set_avatar_url::v3::Response {})
 }
 
-/// # `GET /_matrix/client/r0/profile/{userId}/avatar_url`
+/// # `GET /_matrix/client/v3/profile/{userId}/avatar_url`
 ///
 /// Returns the avatar_url and blurhash of the user.
 ///
-/// - If user is on another server: Fetches avatar_url and blurhash over federation
+/// - If user is on another server and we do not have a copy, fetch over federation
 pub async fn get_avatar_url_route(
     body: Ruma<get_avatar_url::v3::Request>,
 ) -> Result<get_avatar_url::v3::Response> {
-    if body.user_id.server_name() != services().globals.server_name() {
+    if (services().users.exists(&body.user_id)?)
+        && (body.user_id.server_name() != services().globals.server_name())
+    {
         let response = services()
             .sending
             .send_federation_request(
@@ -269,6 +283,18 @@ pub async fn get_avatar_url_route(
                 },
             )
             .await?;
+
+        // Create and update our local copy of the user
+        let _ = services().users.create(&body.user_id, None);
+        let _ = services()
+            .users
+            .set_displayname(&body.user_id, response.displayname);
+        let _ = services()
+            .users
+            .set_avatar_url(&body.user_id, response.avatar_url.clone());
+        let _ = services()
+            .users
+            .set_blurhash(&body.user_id, response.blurhash.clone());
 
         return Ok(get_avatar_url::v3::Response {
             avatar_url: response.avatar_url,
@@ -286,11 +312,13 @@ pub async fn get_avatar_url_route(
 ///
 /// Returns the displayname, avatar_url and blurhash of the user.
 ///
-/// - If user is on another server: Fetches profile over federation
+/// - If user is on another server and we do not have a copy, fetch over federation
 pub async fn get_profile_route(
     body: Ruma<get_profile::v3::Request>,
 ) -> Result<get_profile::v3::Response> {
-    if body.user_id.server_name() != services().globals.server_name() {
+    if (services().users.exists(&body.user_id)?)
+        && (body.user_id.server_name() != services().globals.server_name())
+    {
         let response = services()
             .sending
             .send_federation_request(
@@ -301,6 +329,18 @@ pub async fn get_profile_route(
                 },
             )
             .await?;
+
+        // Create and update our local copy of the user
+        let _ = services().users.create(&body.user_id, None);
+        let _ = services()
+            .users
+            .set_displayname(&body.user_id, response.displayname.clone());
+        let _ = services()
+            .users
+            .set_avatar_url(&body.user_id, response.avatar_url.clone());
+        let _ = services()
+            .users
+            .set_blurhash(&body.user_id, response.blurhash.clone());
 
         return Ok(get_profile::v3::Response {
             displayname: response.displayname,
