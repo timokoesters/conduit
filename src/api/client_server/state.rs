@@ -287,18 +287,22 @@ async fn send_state_event_for_key_helper(
     );
     let state_lock = mutex_state.lock().await;
 
-    let event_id = services().rooms.timeline.build_and_append_pdu(
-        PduBuilder {
-            event_type: event_type.to_string().into(),
-            content: serde_json::from_str(json.json().get()).expect("content is valid json"),
-            unsigned: None,
-            state_key: Some(state_key),
-            redacts: None,
-        },
-        sender_user,
-        room_id,
-        &state_lock,
-    )?;
+    let event_id = services()
+        .rooms
+        .timeline
+        .build_and_append_pdu(
+            PduBuilder {
+                event_type: event_type.to_string().into(),
+                content: serde_json::from_str(json.json().get()).expect("content is valid json"),
+                unsigned: None,
+                state_key: Some(state_key),
+                redacts: None,
+            },
+            sender_user,
+            room_id,
+            &state_lock,
+        )
+        .await?;
 
     Ok(event_id)
 }

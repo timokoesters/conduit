@@ -70,19 +70,23 @@ pub async fn send_message_event_route(
     let mut unsigned = BTreeMap::new();
     unsigned.insert("transaction_id".to_owned(), body.txn_id.to_string().into());
 
-    let event_id = services().rooms.timeline.build_and_append_pdu(
-        PduBuilder {
-            event_type: body.event_type.to_string().into(),
-            content: serde_json::from_str(body.body.body.json().get())
-                .map_err(|_| Error::BadRequest(ErrorKind::BadJson, "Invalid JSON body."))?,
-            unsigned: Some(unsigned),
-            state_key: None,
-            redacts: None,
-        },
-        sender_user,
-        &body.room_id,
-        &state_lock,
-    )?;
+    let event_id = services()
+        .rooms
+        .timeline
+        .build_and_append_pdu(
+            PduBuilder {
+                event_type: body.event_type.to_string().into(),
+                content: serde_json::from_str(body.body.body.json().get())
+                    .map_err(|_| Error::BadRequest(ErrorKind::BadJson, "Invalid JSON body."))?,
+                unsigned: Some(unsigned),
+                state_key: None,
+                redacts: None,
+            },
+            sender_user,
+            &body.room_id,
+            &state_lock,
+        )
+        .await?;
 
     services().transaction_ids.add_txnid(
         sender_user,

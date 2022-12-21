@@ -52,7 +52,7 @@ pub struct Service {
     pub bad_signature_ratelimiter: Arc<RwLock<HashMap<Vec<String>, RateLimitState>>>,
     pub servername_ratelimiter: Arc<RwLock<HashMap<OwnedServerName, Arc<Semaphore>>>>,
     pub sync_receivers: RwLock<HashMap<(OwnedUserId, OwnedDeviceId), SyncHandle>>,
-    pub roomid_mutex_insert: RwLock<HashMap<OwnedRoomId, Arc<Mutex<()>>>>,
+    pub roomid_mutex_insert: RwLock<HashMap<OwnedRoomId, Arc<TokioMutex<()>>>>,
     pub roomid_mutex_state: RwLock<HashMap<OwnedRoomId, Arc<TokioMutex<()>>>>,
     pub roomid_mutex_federation: RwLock<HashMap<OwnedRoomId, Arc<TokioMutex<()>>>>, // this lock will be held longer
     pub roomid_federationhandletime: RwLock<HashMap<OwnedRoomId, (OwnedEventId, Instant)>>,
@@ -238,6 +238,14 @@ impl Service {
         self.config.allow_federation
     }
 
+    pub fn allow_public_read_receipts(&self) -> bool {
+        self.config.allow_public_read_receipts
+    }
+
+    pub fn allow_receiving_read_receipts(&self) -> bool {
+        self.config.allow_receiving_read_receipts
+    }
+
     pub fn allow_room_creation(&self) -> bool {
         self.config.allow_room_creation
     }
@@ -252,6 +260,10 @@ impl Service {
 
     pub fn enable_lightning_bolt(&self) -> bool {
         self.config.enable_lightning_bolt
+    }
+
+    pub fn hierarchy_max_depth(&self) -> u64 {
+        self.config.hierarchy_max_depth
     }
 
     pub fn trusted_servers(&self) -> &[OwnedServerName] {
@@ -288,6 +300,26 @@ impl Service {
 
     pub fn emergency_password(&self) -> &Option<String> {
         &self.config.emergency_password
+    }
+
+    pub fn allow_presence(&self) -> bool {
+        self.config.allow_presence
+    }
+
+    pub fn presence_idle_timeout(&self) -> u64 {
+        self.config.presence_idle_timeout
+    }
+
+    pub fn presence_offline_timeout(&self) -> u64 {
+        self.config.presence_offline_timeout
+    }
+
+    pub fn presence_cleanup_period(&self) -> u64 {
+        self.config.presence_cleanup_period
+    }
+
+    pub fn presence_cleanup_limit(&self) -> u64 {
+        self.config.presence_cleanup_limit
     }
 
     pub fn supported_room_versions(&self) -> Vec<RoomVersionId> {

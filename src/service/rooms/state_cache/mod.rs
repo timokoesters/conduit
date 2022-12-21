@@ -4,10 +4,14 @@ use std::{collections::HashSet, sync::Arc};
 pub use data::Data;
 
 use ruma::{
+    api::federation::{self, query::get_profile_information::v1::ProfileField},
     events::{
         direct::DirectEvent,
         ignored_user_list::IgnoredUserListEvent,
-        room::{create::RoomCreateEventContent, member::MembershipState},
+        room::{
+            create::RoomCreateEventContent,
+            member::{MembershipState, RoomMemberEventContent},
+        },
         AnyStrippedStateEvent, AnySyncStateEvent, GlobalAccountDataEventType,
         RoomAccountDataEventType, StateEventType,
     },
@@ -24,19 +28,43 @@ pub struct Service {
 impl Service {
     /// Update current membership data.
     #[tracing::instrument(skip(self, last_state))]
-    pub fn update_membership(
+    pub async fn update_membership(
         &self,
         room_id: &RoomId,
         user_id: &UserId,
-        membership: MembershipState,
+        membership_event: RoomMemberEventContent,
         sender: &UserId,
         last_state: Option<Vec<Raw<AnyStrippedStateEvent>>>,
         update_joined_count: bool,
     ) -> Result<()> {
+        let membership = membership_event.membership;
         // Keep track what remote users exist by adding them as "deactivated" users
         if user_id.server_name() != services().globals.server_name() {
             services().users.create(user_id, None)?;
-            // TODO: displayname, avatar url
+            // Try to update our local copy of the user if ours does not match
+            if ((services().users.displayname(user_id)? != membership_event.displayname)
+                || (services().users.avatar_url(user_id)? != membership_event.avatar_url)
+                || (services().users.blurhash(user_id)? != membership_event.blurhash))
+                && (membership != MembershipState::Leave)
+            {
+                let response = services()
+                    .sending
+                    .send_federation_request(
+                        user_id.server_name(),
+                        federation::query::get_profile_information::v1::Request {
+                            user_id: user_id.into(),
+                            field: Some(ProfileField::AvatarUrl),
+                        },
+                    )
+                    .await?;
+                let _ = services()
+                    .users
+                    .set_displayname(user_id, response.displayname.clone());
+                let _ = services()
+                    .users
+                    .set_avatar_url(user_id, response.avatar_url);
+                let _ = services().users.set_blurhash(user_id, response.blurhash);
+            };
         }
 
         match &membership {

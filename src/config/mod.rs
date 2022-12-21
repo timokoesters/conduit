@@ -49,11 +49,17 @@ pub struct Config {
     #[serde(default = "false_fn")]
     pub allow_federation: bool,
     #[serde(default = "true_fn")]
+    pub allow_public_read_receipts: bool,
+    #[serde(default = "true_fn")]
+    pub allow_receiving_read_receipts: bool,
+    #[serde(default = "true_fn")]
     pub allow_room_creation: bool,
     #[serde(default = "true_fn")]
     pub allow_unstable_room_versions: bool,
     #[serde(default = "default_default_room_version")]
     pub default_room_version: RoomVersionId,
+    #[serde(default = "default_hierarchy_max_depth")]
+    pub hierarchy_max_depth: u64,
     #[serde(default = "false_fn")]
     pub allow_jaeger: bool,
     #[serde(default = "false_fn")]
@@ -77,6 +83,19 @@ pub struct Config {
     pub turn_ttl: u64,
 
     pub emergency_password: Option<String>,
+
+    #[serde(default = "true_fn")]
+    pub allow_presence: bool,
+
+    #[serde(default = "default_presence_idle_timeout")]
+    pub presence_idle_timeout: u64,
+    #[serde(default = "default_presence_offline_timeout")]
+    pub presence_offline_timeout: u64,
+
+    #[serde(default = "default_presence_cleanup_period")]
+    pub presence_cleanup_period: u64,
+    #[serde(default = "default_presence_cleanup_limit")]
+    pub presence_cleanup_limit: u64,
 
     #[serde(flatten)]
     pub catchall: BTreeMap<String, IgnoredAny>,
@@ -263,7 +282,27 @@ fn default_turn_ttl() -> u64 {
     60 * 60 * 24
 }
 
+fn default_presence_idle_timeout() -> u64 {
+    60
+}
+
+fn default_presence_offline_timeout() -> u64 {
+    30 * 60
+}
+
+fn default_presence_cleanup_period() -> u64 {
+    24 * 60 * 60
+}
+
+fn default_presence_cleanup_limit() -> u64 {
+    24 * 60 * 60
+}
+
 // I know, it's a great name
 pub fn default_default_room_version() -> RoomVersionId {
     RoomVersionId::V9
+}
+
+fn default_hierarchy_max_depth() -> u64 {
+    6
 }

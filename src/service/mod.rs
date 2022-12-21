@@ -62,7 +62,7 @@ impl Services {
                 auth_chain: rooms::auth_chain::Service { db },
                 directory: rooms::directory::Service { db },
                 edus: rooms::edus::Service {
-                    presence: rooms::edus::presence::Service { db },
+                    presence: rooms::edus::presence::Service::build(db)?,
                     read_receipt: rooms::edus::read_receipt::Service { db },
                     typing: rooms::edus::typing::Service { db },
                 },
@@ -77,7 +77,12 @@ impl Services {
                 search: rooms::search::Service { db },
                 short: rooms::short::Service { db },
                 state: rooms::state::Service { db },
-                state_accessor: rooms::state_accessor::Service { db },
+                state_accessor: rooms::state_accessor::Service {
+                    db,
+                    server_visibility_cache: Mutex::new(LruCache::new(
+                        (100.0 * config.conduit_cache_capacity_modifier) as usize,
+                    )),
+                },
                 state_cache: rooms::state_cache::Service { db },
                 state_compressor: rooms::state_compressor::Service {
                     db,

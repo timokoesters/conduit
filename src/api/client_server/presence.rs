@@ -1,5 +1,9 @@
-use crate::{services, utils, Result, Ruma};
-use ruma::api::client::presence::{get_presence, set_presence};
+use crate::{services, Result, Ruma};
+use ruma::{
+    api::client::presence::{get_presence, set_presence},
+    presence::PresenceState,
+    uint,
+};
 use std::time::Duration;
 
 /// # `PUT /_matrix/client/r0/presence/{userId}/status`
@@ -21,16 +25,13 @@ pub async fn set_presence_route(
                     avatar_url: services().users.avatar_url(sender_user)?,
                     currently_active: None,
                     displayname: services().users.displayname(sender_user)?,
-                    last_active_ago: Some(
-                        utils::millis_since_unix_epoch()
-                            .try_into()
-                            .expect("time is valid"),
-                    ),
+                    last_active_ago: Some(uint!(0)),
                     presence: body.presence.clone(),
                     status_msg: body.status_msg.clone(),
                 },
                 sender: sender_user.clone(),
             },
+            true,
         )?;
     }
 
@@ -60,7 +61,7 @@ pub async fn get_presence_route(
             .rooms
             .edus
             .presence
-            .get_last_presence_event(sender_user, &room_id)?
+            .get_presence_event(sender_user, &room_id)?
         {
             presence_event = Some(presence);
             break;
@@ -69,7 +70,6 @@ pub async fn get_presence_route(
 
     if let Some(presence) = presence_event {
         Ok(get_presence::v3::Response {
-            // TODO: Should ruma just use the presenceeventcontent type here?
             status_msg: presence.content.status_msg,
             currently_active: presence.content.currently_active,
             last_active_ago: presence
@@ -79,6 +79,6 @@ pub async fn get_presence_route(
             presence: presence.content.presence,
         })
     } else {
-        todo!();
+        Ok(get_presence::v3::Response::new(PresenceState::Offline))
     }
 }

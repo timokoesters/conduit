@@ -6,6 +6,7 @@ use ruma::{
         uiaa::UiaaResponse,
     },
     events::{
+        receipt::{ReceiptThread, ReceiptType},
         room::member::{MembershipState, RoomMemberEventContent},
         RoomEventType, StateEventType,
     },
@@ -166,7 +167,11 @@ async fn sync_helper(
     };
 
     // TODO: match body.set_presence {
-    services().rooms.edus.presence.ping_presence(&sender_user)?;
+    services()
+        .rooms
+        .edus
+        .presence
+        .ping_presence(&sender_user, false, true, true)?;
 
     // Setup watchers, so if there's no response, we can wait for them
     let watcher = services().globals.watch(&sender_user, &sender_device);
@@ -231,7 +236,7 @@ async fn sync_helper(
                     .entry(room_id.clone())
                     .or_default(),
             );
-            let insert_lock = mutex_insert.lock().unwrap();
+            let insert_lock = mutex_insert.lock().await;
             drop(insert_lock);
         }
 
@@ -731,6 +736,50 @@ async fn sync_helper(
             .map(|(_, _, v)| v)
             .collect();
 
+        if services()
+            .rooms
+            .edus
+            .read_receipt
+            .last_privateread_update(&sender_user, &room_id)
+            .unwrap_or(0)
+            > since
+        {
+            if let Ok(event_id) = services().rooms.short.get_eventid_from_short(
+                services()
+                    .rooms
+                    .edus
+                    .read_receipt
+                    .private_read_get(&room_id, &sender_user)
+                    .expect("User did not have a valid private read receipt?")
+                    .expect("User had a last read private receipt update but no receipt?"),
+            ) {
+                let mut user_receipts = BTreeMap::new();
+                user_receipts.insert(
+                    sender_user.clone(),
+                    ruma::events::receipt::Receipt {
+                        ts: None,
+                        thread: ReceiptThread::Unthreaded,
+                    },
+                );
+
+                let mut receipts = BTreeMap::new();
+                receipts.insert(ReceiptType::ReadPrivate, user_receipts);
+
+                let mut receipt_content = BTreeMap::new();
+                receipt_content.insert((*event_id).to_owned(), receipts);
+
+                edus.push(
+                    serde_json::from_str(
+                        &serde_json::to_string(&ruma::events::SyncEphemeralRoomEvent {
+                            content: ruma::events::receipt::ReceiptEventContent(receipt_content),
+                        })
+                        .expect("Did not get valid JSON?"),
+                    )
+                    .expect("JSON was somehow invalid despite just being created"),
+                );
+            }
+        };
+
         if services().rooms.edus.typing.last_typing_update(&room_id)? > since {
             edus.push(
                 serde_json::from_str(
@@ -847,7 +896,7 @@ async fn sync_helper(
                     .entry(room_id.clone())
                     .or_default(),
             );
-            let insert_lock = mutex_insert.lock().unwrap();
+            let insert_lock = mutex_insert.lock().await;
             drop(insert_lock);
         }
 
@@ -979,7 +1028,7 @@ async fn sync_helper(
                     .entry(room_id.clone())
                     .or_default(),
             );
-            let insert_lock = mutex_insert.lock().unwrap();
+            let insert_lock = mutex_insert.lock().await;
             drop(insert_lock);
         }
 
