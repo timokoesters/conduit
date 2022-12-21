@@ -1,8 +1,10 @@
 use std::{collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
-use ruma::events::room::member::MembershipState;
-use ruma::{events::StateEventType, EventId, RoomId, UserId};
+use ruma::{
+    events::{room::member::MembershipState, StateEventType},
+    EventId, RoomId, UserId,
+};
 
 use crate::{PduEvent, Result};
 

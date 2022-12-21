@@ -1116,8 +1116,8 @@ fn get_missing_events(
     }
 
     let events = linearize_previous_events(
-        latest_events.into_iter().cloned(),
-        earliest_events.into_iter().cloned(),
+        latest_events.iter().cloned(),
+        earliest_events.iter().cloned(),
         limit,
         get_pdu,
         event_filter,
@@ -1169,7 +1169,7 @@ where
         match pdu.get("prev_events") {
             None => {
                 error!(?pdu, "A stored event has no 'prev_events' field");
-                return None;
+                None
             }
             Some(prev_events) => {
                 let val = prev_events.clone().into();
@@ -1977,12 +1977,10 @@ pub async fn claim_keys_route(
 
 #[cfg(test)]
 mod tests {
-    use super::linearize_previous_events;
-    use super::{add_port_to_hostname, get_ip_with_port, FedDest};
+    use super::{add_port_to_hostname, get_ip_with_port, linearize_previous_events, FedDest};
     use ruma::{CanonicalJsonObject, CanonicalJsonValue, OwnedEventId};
     use serde::{Deserialize, Serialize};
-    use serde_json::value::RawValue;
-    use serde_json::Value;
+    use serde_json::{value::RawValue, Value};
     use std::collections::HashMap;
 
     #[test]

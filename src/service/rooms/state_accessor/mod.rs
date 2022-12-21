@@ -8,7 +8,8 @@ pub use data::Data;
 use lru_cache::LruCache;
 use ruma::{
     events::{
-        room::history_visibility::HistoryVisibility, room::member::MembershipState, StateEventType,
+        room::{history_visibility::HistoryVisibility, member::MembershipState},
+        StateEventType,
     },
     EventId, OwnedServerName, OwnedUserId, RoomId, ServerName, UserId,
 };
@@ -110,14 +111,14 @@ impl Service {
             Some(HistoryVisibility::Invited) => {
                 // Allow if any member on requesting server was AT LEAST invited, else deny
                 current_server_members
-                    .into_iter()
-                    .any(|member| self.user_was_invited(shortstatehash, &member))
+                    .iter()
+                    .any(|member| self.user_was_invited(shortstatehash, member))
             }
             _ => {
                 // Allow if any member on requested server was joined, else deny
                 current_server_members
-                    .into_iter()
-                    .any(|member| self.user_was_joined(shortstatehash, &member))
+                    .iter()
+                    .any(|member| self.user_was_joined(shortstatehash, member))
             }
         };
 
