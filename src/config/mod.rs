@@ -32,6 +32,8 @@ pub struct Config {
     pub conduit_cache_capacity_modifier: f64,
     #[serde(default = "default_rocksdb_max_open_files")]
     pub rocksdb_max_open_files: i32,
+    #[serde(default = "false_fn")]
+    pub rocksdb_destructive_recovery: bool,
     #[serde(default = "default_pdu_cache_capacity")]
     pub pdu_cache_capacity: u32,
     #[serde(default = "default_cleanup_second_interval")]

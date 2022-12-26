@@ -56,7 +56,14 @@ impl KeyValueDatabaseEngine for Arc<Engine> {
         let cache_capacity_bytes = (config.db_cache_capacity_mb * 1024.0 * 1024.0) as usize;
         let rocksdb_cache = rocksdb::Cache::new_lru_cache(cache_capacity_bytes).unwrap();
 
-        let db_opts = db_options(config.rocksdb_max_open_files, &rocksdb_cache);
+        let mut db_opts = db_options(config.rocksdb_max_open_files, &rocksdb_cache);
+
+        // Destructive database recovery
+        // Last-ditch effort to bring database to usable state, generally should not be needed
+        // Ignores/Discards corrupted WAL entries
+        if config.rocksdb_destructive_recovery {
+            db_opts.set_wal_recovery_mode(rocksdb::DBRecoveryMode::SkipAnyCorruptedRecord);
+        }
 
         let cfs = rocksdb::DBWithThreadMode::<rocksdb::MultiThreaded>::list_cf(
             &db_opts,

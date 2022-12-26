@@ -254,6 +254,10 @@ impl Service {
         self.config.enable_lightning_bolt
     }
 
+    pub fn rocksdb_destructive_recovery(&self) -> bool {
+        self.config.rocksdb_destructive_recovery
+    }
+
     pub fn trusted_servers(&self) -> &[OwnedServerName] {
         &self.config.trusted_servers
     }
