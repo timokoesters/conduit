@@ -47,7 +47,7 @@ impl Service {
                 || (services().users.blurhash(user_id)? != membership_event.blurhash))
                 && (membership != MembershipState::Leave)
             {
-                let response = services()
+                if let Ok(response) = services()
                     .sending
                     .send_federation_request(
                         user_id.server_name(),
@@ -56,14 +56,16 @@ impl Service {
                             field: Some(ProfileField::AvatarUrl),
                         },
                     )
-                    .await?;
-                let _ = services()
-                    .users
-                    .set_displayname(user_id, response.displayname.clone());
-                let _ = services()
-                    .users
-                    .set_avatar_url(user_id, response.avatar_url);
-                let _ = services().users.set_blurhash(user_id, response.blurhash);
+                    .await
+                {
+                    let _ = services()
+                        .users
+                        .set_displayname(user_id, response.displayname.clone());
+                    let _ = services()
+                        .users
+                        .set_avatar_url(user_id, response.avatar_url);
+                    let _ = services().users.set_blurhash(user_id, response.blurhash);
+                }
             };
         }
 
