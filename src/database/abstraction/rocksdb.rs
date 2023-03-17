@@ -45,6 +45,8 @@ fn db_options(max_open_files: i32, rocksdb_cache: &rocksdb::Cache) -> rocksdb::O
     db_opts.set_compaction_style(rocksdb::DBCompactionStyle::Level);
     db_opts.optimize_level_style_compaction(10 * 1024 * 1024);
 
+    db_opts.set_wal_recovery_mode(rocksdb::DBRecoveryMode::TolerateCorruptedTailRecords);
+
     let prefix_extractor = rocksdb::SliceTransform::create_fixed_prefix(1);
     db_opts.set_prefix_extractor(prefix_extractor);
 
