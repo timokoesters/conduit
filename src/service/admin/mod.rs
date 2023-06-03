@@ -160,6 +160,9 @@ enum AdminCommand {
         password: Option<String>,
     },
 
+    /// Temporarily toggle user registration by passing either true or false as an argument, does not persist between restarts
+    AllowRegistration { status: Option<bool> },
+
     /// Disables incoming federation handling for a room.
     DisableRoom { room_id: Box<RoomId> },
     /// Enables incoming federation handling for a room again.
@@ -655,6 +658,24 @@ impl Service {
                 RoomMessageEventContent::text_plain(format!(
                     "Created user with user_id: {user_id} and password: {password}"
                 ))
+            }
+            AdminCommand::AllowRegistration { status } => {
+                if let Some(status) = status {
+                    services().globals.set_registration(status).await;
+                    RoomMessageEventContent::text_plain(if status {
+                        "Registration is now enabled"
+                    } else {
+                        "Registration is now disabled"
+                    })
+                } else {
+                    RoomMessageEventContent::text_plain(
+                        if services().globals.allow_registration().await {
+                            "Registration is currently enabled"
+                        } else {
+                            "Registration is currently disabled"
+                        },
+                    )
+                }
             }
             AdminCommand::DisableRoom { room_id } => {
                 services().rooms.metadata.disable_room(&room_id, true)?;
