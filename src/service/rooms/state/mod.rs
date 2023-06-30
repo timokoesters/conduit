@@ -16,7 +16,7 @@ use ruma::{
 };
 use serde::Deserialize;
 use tokio::sync::MutexGuard;
-use tracing::warn;
+use tracing::{info, warn};
 
 use crate::{services, utils::calculate_hash, Error, PduEvent, Result};
 
@@ -33,7 +33,7 @@ impl Service {
         room_id: &RoomId,
         shortstatehash: u64,
         statediffnew: Arc<HashSet<CompressedStateEvent>>,
-        _statediffremoved: Arc<HashSet<CompressedStateEvent>>,
+        statediffremoved: Arc<HashSet<CompressedStateEvent>>,
         state_lock: &MutexGuard<'_, ()>, // Take mutex guard to make sure users get the room state mutex
     ) -> Result<()> {
         for event_id in statediffnew.iter().filter_map(|new| {
@@ -48,6 +48,8 @@ impl Service {
                 Some(pdu) => pdu,
                 None => continue,
             };
+
+            info!("New in state: {event_id}");
 
             if pdu.get("type").and_then(|val| val.as_str()) != Some("m.room.member") {
                 continue;
@@ -88,6 +90,17 @@ impl Service {
                 None,
                 false,
             )?;
+        }
+
+        for event_id in statediffremoved.iter().filter_map(|removed| {
+            services()
+                .rooms
+                .state_compressor
+                .parse_compressed_state_event(&removed)
+                .ok()
+                .map(|(_, id)| id)
+        }) {
+            info!("Removed from state: {event_id}");
         }
 
         services().rooms.state_cache.update_joined_count(room_id)?;

@@ -632,81 +632,18 @@ impl Service {
         }
 
         if state_at_incoming_event.is_none() {
-            info!("Calling /state_ids");
-            // Call /state_ids to find out what the state at this pdu is. We trust the server's
-            // response to some extend, but we still do a lot of checks on the events
-            match services()
-                .sending
-                .send_federation_request(
+            state_at_incoming_event = Some(
+                self.ask_for_state(
+                    room_id,
+                    &incoming_pdu.event_id,
                     origin,
-                    get_room_state_ids::v1::Request {
-                        room_id: room_id.to_owned(),
-                        event_id: (*incoming_pdu.event_id).to_owned(),
-                    },
+                    create_event,
+                    room_version_id,
+                    pub_key_map,
                 )
-                .await
-            {
-                Ok(res) => {
-                    info!("Fetching state events at event.");
-                    let state_vec = self
-                        .fetch_and_handle_outliers(
-                            origin,
-                            &res.pdu_ids
-                                .iter()
-                                .map(|x| Arc::from(&**x))
-                                .collect::<Vec<_>>(),
-                            create_event,
-                            room_id,
-                            room_version_id,
-                            pub_key_map,
-                        )
-                        .await;
-
-                    let mut state: HashMap<_, Arc<EventId>> = HashMap::new();
-                    for (pdu, _) in state_vec {
-                        let state_key = pdu.state_key.clone().ok_or_else(|| {
-                            Error::bad_database("Found non-state pdu in state events.")
-                        })?;
-
-                        let shortstatekey = services().rooms.short.get_or_create_shortstatekey(
-                            &pdu.kind.to_string().into(),
-                            &state_key,
-                        )?;
-
-                        match state.entry(shortstatekey) {
-                            hash_map::Entry::Vacant(v) => {
-                                v.insert(Arc::from(&*pdu.event_id));
-                            }
-                            hash_map::Entry::Occupied(_) => return Err(
-                                Error::bad_database("State event's type and state_key combination exists multiple times."),
-                            ),
-                        }
-                    }
-
-                    // The original create event must still be in the state
-                    let create_shortstatekey = services()
-                        .rooms
-                        .short
-                        .get_shortstatekey(&StateEventType::RoomCreate, "")?
-                        .expect("Room exists");
-
-                    if state.get(&create_shortstatekey).map(|id| id.as_ref())
-                        != Some(&create_event.event_id)
-                    {
-                        return Err(Error::bad_database(
-                            "Incoming event refers to wrong create event.",
-                        ));
-                    }
-
-                    state_at_incoming_event = Some(state);
-                }
-                Err(e) => {
-                    warn!("Fetching state for event failed: {}", e);
-                    return Err(e);
-                }
-            };
+                .await?,
+            );
         }
-
         let state_at_incoming_event =
             state_at_incoming_event.expect("we always set this to some above");
 
@@ -884,7 +821,91 @@ impl Service {
         Ok(pdu_id)
     }
 
-    async fn resolve_state(
+    pub async fn ask_for_state(
+        &self,
+        room_id: &RoomId,
+        event_id: &EventId,
+        server_name: &ServerName,
+        create_event: &PduEvent,
+        room_version_id: &RoomVersionId,
+        pub_key_map: &RwLock<BTreeMap<String, BTreeMap<String, Base64>>>,
+    ) -> Result<HashMap<u64, Arc<EventId>>> {
+        info!("Calling /state_ids");
+        // Call /state_ids to find out what the state at this pdu is. We trust the server's
+        // response to some extend, but we still do a lot of checks on the events
+        match services()
+            .sending
+            .send_federation_request(
+                server_name,
+                get_room_state_ids::v1::Request {
+                    room_id: room_id.to_owned(),
+                    event_id: event_id.to_owned(),
+                },
+            )
+            .await
+        {
+            Ok(res) => {
+                info!("Fetching state events at event.");
+                let state_vec = self
+                    .fetch_and_handle_outliers(
+                        server_name,
+                        &res.pdu_ids
+                            .iter()
+                            .map(|x| Arc::from(&**x))
+                            .collect::<Vec<_>>(),
+                        create_event,
+                        room_id,
+                        room_version_id,
+                        pub_key_map,
+                    )
+                    .await;
+
+                let mut state: HashMap<_, Arc<EventId>> = HashMap::new();
+                for (pdu, _) in state_vec {
+                    let state_key = pdu.state_key.clone().ok_or_else(|| {
+                        Error::bad_database("Found non-state pdu in state events.")
+                    })?;
+
+                    let shortstatekey = services()
+                        .rooms
+                        .short
+                        .get_or_create_shortstatekey(&pdu.kind.to_string().into(), &state_key)?;
+
+                    match state.entry(shortstatekey) {
+                        hash_map::Entry::Vacant(v) => {
+                            v.insert(Arc::from(&*pdu.event_id));
+                        }
+                        hash_map::Entry::Occupied(_) => return Err(Error::bad_database(
+                            "State event's type and state_key combination exists multiple times.",
+                        )),
+                    }
+                }
+
+                // The original create event must still be in the state
+                let create_shortstatekey = services()
+                    .rooms
+                    .short
+                    .get_shortstatekey(&StateEventType::RoomCreate, "")?
+                    .expect("Room exists");
+
+                if state.get(&create_shortstatekey).map(|id| id.as_ref())
+                    != Some(&create_event.event_id)
+                {
+                    return Err(Error::bad_database(
+                        "Incoming event refers to wrong create event.",
+                    ));
+                }
+
+                Ok(state)
+            }
+            Err(e) => {
+                warn!("Fetching state for event failed: {}", e);
+                Err(e)
+            }
+        }
+    }
+
+    pub async fn resolve_state(
         &self,
         room_id: &RoomId,
         room_version_id: &RoomVersionId,

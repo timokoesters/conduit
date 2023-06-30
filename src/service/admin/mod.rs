@@ -1,7 +1,7 @@
 use std::{
     collections::BTreeMap,
     convert::{TryFrom, TryInto},
-    sync::Arc,
+    sync::{Arc, RwLock},
     time::Instant,
 };
 
@@ -21,12 +21,13 @@ use ruma::{
             power_levels::RoomPowerLevelsEventContent,
             topic::RoomTopicEventContent,
         },
-        TimelineEventType,
+        StateEventType, TimelineEventType,
     },
     EventId, OwnedRoomAliasId, RoomAliasId, RoomId, RoomVersionId, ServerName, UserId,
 };
 use serde_json::value::to_raw_value;
 use tokio::sync::{mpsc, Mutex, MutexGuard};
+use tracing::{error, info};
 
 use crate::{
     api::client_server::{leave_all_rooms, AUTO_GEN_PASSWORD_LENGTH},
@@ -151,6 +152,12 @@ enum AdminCommand {
         username: String,
         /// Password of the new user, if unspecified one is generated
         password: Option<String>,
+    },
+
+    AskForState {
+        room_id: Box<RoomId>,
+        event_id: Box<EventId>,
+        server: Box<ServerName>,
     },
 
     /// Disables incoming federation handling for a room.
@@ -735,6 +742,71 @@ impl Service {
                         "Expected code block in command body. Add --help for details.",
                     )
                 }
+            }
+            AdminCommand::AskForState {
+                room_id,
+                event_id,
+                server,
+            } => {
+                let create_event = services()
+                    .rooms
+                    .state_accessor
+                    .room_state_get(&room_id, &StateEventType::RoomCreate, "")?
+                    .ok_or_else(|| Error::bad_database("Failed to find create event in db."))?;
+                let create_event_content: RoomCreateEventContent =
+                    serde_json::from_str(create_event.content.get()).map_err(|e| {
+                        error!("Invalid create event: {}", e);
+                        Error::BadDatabase("Invalid create event in db")
+                    })?;
+                let room_version_id = &create_event_content.room_version;
+
+                let state_at_event = services()
+                    .rooms
+                    .event_handler
+                    .ask_for_state(
+                        &room_id,
+                        &event_id,
+                        &server,
+                        &create_event,
+                        room_version_id,
+                        &mut RwLock::new(BTreeMap::new()),
+                    )
+                    .await?;
+
+                // We start looking at current room state now, so lets lock the room
+                let mutex_state = Arc::clone(
+                    services()
+                        .globals
+                        .roomid_mutex_state
+                        .write()
+                        .unwrap()
+                        .entry((*room_id).to_owned())
+                        .or_default(),
+                );
+                let state_lock = mutex_state.lock().await;
+
+                let new_room_state = services()
+                    .rooms
+                    .event_handler
+                    .resolve_state(&room_id, room_version_id, state_at_event)
+                    .await?;
+
+                // Set the new room state to the resolved state
+                info!("Forcing new room state");
+
+                let (sstatehash, new, removed) = services()
+                    .rooms
+                    .state_compressor
+                    .save_state(&room_id, new_room_state)?;
+
+                services()
+                    .rooms
+                    .state
+                    .force_state(&room_id, sstatehash, new, removed, &state_lock)
+                    .await?;
+
+                drop(state_lock);
+                RoomMessageEventContent::text_plain("Updated state.")
             }
         };
 
