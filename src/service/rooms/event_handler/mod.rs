@@ -624,7 +624,7 @@ impl Service {
                             .collect::<Result<_>>()?,
                     ),
                     Err(e) => {
-                        warn!("State resolution on prev events failed, either an event could not be found or deserialization: {}", e);
+                        warn!("State resolution on prev events failed, either an event could not be found or deserialization failed: {}", e);
                         None
                     }
                 }
@@ -967,8 +967,9 @@ impl Service {
             res.ok().flatten()
         }) {
             Ok(new_state) => new_state,
-            Err(_) => {
-                return Err(Error::bad_database("State resolution failed, either an event could not be found or deserialization"));
+            Err(e) => {
+                warn!("State resolution on prev events failed, either an event could not be found or deserialization failed: {}", e);
+                return Err(Error::bad_database("State resolution failed, either an event could not be found or deserialization failed"));
             }
         };
 
