@@ -777,7 +777,20 @@ pub async fn send_transaction_message_route(
         .filter_map(|edu| serde_json::from_str::<Edu>(edu.json().get()).ok())
     {
         match edu {
-            Edu::Presence(_) => {}
+            Edu::Presence(presence) => {
+                for update in presence.push {
+                    for room_id in services().rooms.state_cache.rooms_joined(&update.user_id) {
+                        services().rooms.edus.presence.set_presence(
+                            &room_id?,
+                            &update.user_id,
+                            update.presence.clone(),
+                            Some(update.currently_active),
+                            Some(update.last_active_ago),
+                            update.status_msg.clone(),
+                        )?;
+                    }
+                }
+            }
             Edu::Receipt(receipt) => {
                 for (room_id, room_updates) in receipt.receipts {
                     for (user_id, user_updates) in room_updates.read {

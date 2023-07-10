@@ -1,152 +1,190 @@
-use std::collections::HashMap;
+use std::{iter, time::Duration};
 
 use ruma::{
     events::presence::PresenceEvent, presence::PresenceState, OwnedUserId, RoomId, UInt, UserId,
 };
 
-use crate::{database::KeyValueDatabase, service, services, utils, Error, Result};
+use crate::{
+    database::KeyValueDatabase,
+    service::{self, rooms::edus::presence::Presence},
+    services,
+    utils::{self, user_id_from_bytes},
+    Error, Result,
+};
 
 impl service::rooms::edus::presence::Data for KeyValueDatabase {
-    fn update_presence(
-        &self,
-        user_id: &UserId,
-        room_id: &RoomId,
-        presence: PresenceEvent,
-    ) -> Result<()> {
-        // TODO: Remove old entry? Or maybe just wipe completely from time to time?
+    fn get_presence(&self, room_id: &RoomId, user_id: &UserId) -> Result<Option<PresenceEvent>> {
+        if !services().globals.config.allow_presence {
+            return Ok(None);
+        }
 
-        let count = services().globals.next_count()?.to_be_bytes();
+        let key = presence_key(room_id, user_id);
 
-        let mut presence_id = room_id.as_bytes().to_vec();
-        presence_id.push(0xff);
-        presence_id.extend_from_slice(&count);
-        presence_id.push(0xff);
-        presence_id.extend_from_slice(presence.sender.as_bytes());
-
-        self.presenceid_presence.insert(
-            &presence_id,
-            &serde_json::to_vec(&presence).expect("PresenceEvent can be serialized"),
-        )?;
-
-        self.userid_lastpresenceupdate.insert(
-            user_id.as_bytes(),
-            &utils::millis_since_unix_epoch().to_be_bytes(),
-        )?;
-
-        Ok(())
-    }
-
-    fn ping_presence(&self, user_id: &UserId) -> Result<()> {
-        self.userid_lastpresenceupdate.insert(
-            user_id.as_bytes(),
-            &utils::millis_since_unix_epoch().to_be_bytes(),
-        )?;
-
-        Ok(())
-    }
-
-    fn last_presence_update(&self, user_id: &UserId) -> Result<Option<u64>> {
-        self.userid_lastpresenceupdate
-            .get(user_id.as_bytes())?
-            .map(|bytes| {
-                utils::u64_from_bytes(&bytes).map_err(|_| {
-                    Error::bad_database("Invalid timestamp in userid_lastpresenceupdate.")
-                })
+        self.roomuserid_presence
+            .get(&key)?
+            .map(|presence_bytes| -> Result<PresenceEvent> {
+                Presence::from_json_bytes(&presence_bytes)?.to_presence_event(user_id)
             })
             .transpose()
     }
 
-    fn get_presence_event(
+    fn ping_presence(&self, user_id: &UserId, new_state: PresenceState) -> Result<()> {
+        if !services().globals.config.allow_presence {
+            return Ok(());
+        }
+
+        let now = utils::millis_since_unix_epoch();
+        let mut state_changed = false;
+
+        for room_id in services().rooms.state_cache.rooms_joined(user_id) {
+            let key = presence_key(&room_id?, user_id);
+
+            let presence_bytes = self.roomuserid_presence.get(&key)?;
+
+            if let Some(presence_bytes) = presence_bytes {
+                let presence = Presence::from_json_bytes(&presence_bytes)?;
+                if presence.state != new_state {
+                    state_changed = true;
+                    break;
+                }
+            }
+        }
+
+        let count = if state_changed {
+            services().globals.next_count()?
+        } else {
+            services().globals.current_count()?
+        };
+
+        for room_id in services().rooms.state_cache.rooms_joined(user_id) {
+            let key = presence_key(&room_id?, user_id);
+
+            let presence_bytes = self.roomuserid_presence.get(&key)?;
+
+            let new_presence = match presence_bytes {
+                Some(presence_bytes) => {
+                    let mut presence = Presence::from_json_bytes(&presence_bytes)?;
+                    presence.state = new_state.clone();
+                    presence.currently_active = presence.state == PresenceState::Online;
+                    presence.last_active_ts = now;
+                    presence.last_count = count;
+
+                    presence
+                }
+                None => Presence::new(
+                    new_state.clone(),
+                    new_state == PresenceState::Online,
+                    now,
+                    count,
+                    None,
+                ),
+            };
+
+            self.roomuserid_presence
+                .insert(&key, &new_presence.to_json_bytes()?)?;
+        }
+
+        let timeout = match new_state {
+            PresenceState::Online => services().globals.config.presence_idle_timeout_s,
+            _ => services().globals.config.presence_offline_timeout_s,
+        };
+
+        self.presence_timer_sender
+            .send((user_id.to_owned(), Duration::from_secs(timeout)))
+            .map_err(|_| Error::bad_database("Failed to add presence timer"))
+    }
+
+    fn set_presence(
         &self,
         room_id: &RoomId,
         user_id: &UserId,
-        count: u64,
-    ) -> Result<Option<PresenceEvent>> {
-        let mut presence_id = room_id.as_bytes().to_vec();
-        presence_id.push(0xff);
-        presence_id.extend_from_slice(&count.to_be_bytes());
-        presence_id.push(0xff);
-        presence_id.extend_from_slice(user_id.as_bytes());
-
-        self.presenceid_presence
-            .get(&presence_id)?
-            .map(|value| parse_presence_event(&value))
-            .transpose()
-    }
-
-    fn presence_since(
-        &self,
-        room_id: &RoomId,
-        since: u64,
-    ) -> Result<HashMap<OwnedUserId, PresenceEvent>> {
-        let mut prefix = room_id.as_bytes().to_vec();
-        prefix.push(0xff);
-
-        let mut first_possible_edu = prefix.clone();
-        first_possible_edu.extend_from_slice(&(since + 1).to_be_bytes()); // +1 so we don't send the event at since
-        let mut hashmap = HashMap::new();
-
-        for (key, value) in self
-            .presenceid_presence
-            .iter_from(&first_possible_edu, false)
-            .take_while(|(key, _)| key.starts_with(&prefix))
-        {
-            let user_id = UserId::parse(
-                utils::string_from_bytes(
-                    key.rsplit(|&b| b == 0xff)
-                        .next()
-                        .expect("rsplit always returns an element"),
-                )
-                .map_err(|_| Error::bad_database("Invalid UserId bytes in presenceid_presence."))?,
-            )
-            .map_err(|_| Error::bad_database("Invalid UserId in presenceid_presence."))?;
-
-            let presence = parse_presence_event(&value)?;
-
-            hashmap.insert(user_id, presence);
+        presence_state: PresenceState,
+        currently_active: Option<bool>,
+        last_active_ago: Option<UInt>,
+        status_msg: Option<String>,
+    ) -> Result<()> {
+        if !services().globals.config.allow_presence {
+            return Ok(());
         }
 
-        Ok(hashmap)
+        let now = utils::millis_since_unix_epoch();
+        let last_active_ts = match last_active_ago {
+            Some(last_active_ago) => now.saturating_sub(last_active_ago.into()),
+            None => now,
+        };
+
+        let key = presence_key(room_id, user_id);
+
+        let presence = Presence::new(
+            presence_state,
+            currently_active.unwrap_or(false),
+            last_active_ts,
+            services().globals.next_count()?,
+            status_msg,
+        );
+
+        let timeout = match presence.state {
+            PresenceState::Online => services().globals.config.presence_idle_timeout_s,
+            _ => services().globals.config.presence_offline_timeout_s,
+        };
+
+        self.presence_timer_sender
+            .send((user_id.to_owned(), Duration::from_secs(timeout)))
+            .map_err(|_| Error::bad_database("Failed to add presence timer"))?;
+
+        self.roomuserid_presence
+            .insert(&key, &presence.to_json_bytes()?)?;
+
+        Ok(())
     }
 
-    /*
-    fn presence_maintain(&self, db: Arc<TokioRwLock<Database>>) {
-        // TODO @M0dEx: move this to a timed tasks module
-        tokio::spawn(async move {
-            loop {
-                select! {
-                    Some(user_id) = self.presence_timers.next() {
-                        // TODO @M0dEx: would it be better to acquire the lock outside the loop?
-                        let guard = db.read().await;
+    fn remove_presence(&self, user_id: &UserId) -> Result<()> {
+        for room_id in services().rooms.state_cache.rooms_joined(user_id) {
+            let key = presence_key(&room_id?, user_id);
 
-                        // TODO @M0dEx: add self.presence_timers
-                        // TODO @M0dEx: maintain presence
-                    }
-                }
-            }
-        });
+            self.roomuserid_presence.remove(&key)?;
+        }
+
+        Ok(())
     }
-    */
+
+    fn presence_since<'a>(
+        &'a self,
+        room_id: &RoomId,
+        since: u64,
+    ) -> Box<dyn Iterator<Item = Result<(OwnedUserId, u64, PresenceEvent)>> + 'a> {
+        if !services().globals.config.allow_presence {
+            return Box::new(iter::empty());
+        }
+
+        let prefix = [room_id.as_bytes(), &[0xff]].concat();
+
+        Box::new(
+            self.roomuserid_presence
+                .scan_prefix(prefix)
+                .map(
+                    |(key, presence_bytes)| -> Result<(OwnedUserId, u64, PresenceEvent)> {
+                        let user_id = user_id_from_bytes(
+                            key.rsplit(|byte| *byte == 0xff).next().ok_or_else(|| {
+                                Error::bad_database("No UserID bytes in presence key")
+                            })?,
+                        )?;
+
+                        let presence = Presence::from_json_bytes(&presence_bytes)?;
+                        let presence_event = presence.to_presence_event(&user_id)?;
+
+                        Ok((user_id, presence.last_count, presence_event))
+                    },
+                )
+                .filter(move |presence_data| match presence_data {
+                    Ok((_, count, _)) => *count > since,
+                    Err(_) => false,
+                }),
+        )
+    }
 }
 
-fn parse_presence_event(bytes: &[u8]) -> Result<PresenceEvent> {
-    let mut presence: PresenceEvent = serde_json::from_slice(bytes)
-        .map_err(|_| Error::bad_database("Invalid presence event in db."))?;
-
-    let current_timestamp: UInt = utils::millis_since_unix_epoch()
-        .try_into()
-        .expect("time is valid");
-
-    if presence.content.presence == PresenceState::Online {
-        // Don't set last_active_ago when the user is online
-        presence.content.last_active_ago = None;
-    } else {
-        // Convert from timestamp to duration
-        presence.content.last_active_ago = presence
-            .content
-            .last_active_ago
-            .map(|timestamp| current_timestamp - timestamp);
-    }
-
-    Ok(presence)
+#[inline]
+fn presence_key(room_id: &RoomId, user_id: &UserId) -> Vec<u8> {
+    [room_id.as_bytes(), &[0xff], user_id.as_bytes()].concat()
 }

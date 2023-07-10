@@ -353,6 +353,18 @@ impl Service {
         &self.config.emergency_password
     }
 
+    pub fn allow_presence(&self) -> bool {
+        self.config.allow_presence
+    }
+
+    pub fn presence_idle_timeout_s(&self) -> u64 {
+        self.config.presence_idle_timeout_s
+    }
+
+    pub fn presence_offline_timeout_s(&self) -> u64 {
+        self.config.presence_offline_timeout_s
+    }
+
     pub fn supported_room_versions(&self) -> Vec<RoomVersionId> {
         let mut room_versions: Vec<RoomVersionId> = vec![];
         room_versions.extend(self.stable_room_versions.clone());

@@ -174,8 +174,12 @@ async fn sync_helper(
     body: sync_events::v3::Request,
     // bool = caching allowed
 ) -> Result<(sync_events::v3::Response, bool), Error> {
-    // TODO: match body.set_presence {
-    services().rooms.edus.presence.ping_presence(&sender_user)?;
+    // Presence update
+    services()
+        .rooms
+        .edus
+        .presence
+        .ping_presence(&sender_user, body.set_presence)?;
 
     // Setup watchers, so if there's no response, we can wait for them
     let watcher = services().globals.watch(&sender_user, &sender_device);
@@ -252,36 +256,36 @@ async fn sync_helper(
             }
 
             // Take presence updates from this room
-            for (user_id, presence) in services()
+            for presence_data in services()
                 .rooms
                 .edus
                 .presence
-                .presence_since(&room_id, since)?
+                .presence_since(&room_id, since)
             {
+                let (user_id, _, presence_event) = presence_data?;
+
                 match presence_updates.entry(user_id) {
-                    Entry::Vacant(v) => {
-                        v.insert(presence);
+                    Entry::Vacant(slot) => {
+                        slot.insert(presence_event);
                     }
-                    Entry::Occupied(mut o) => {
-                        let p = o.get_mut();
+                    Entry::Occupied(mut slot) => {
+                        let curr_event = slot.get_mut();
+                        let curr_content = &mut curr_event.content;
+                        let new_content = presence_event.content;
 
                         // Update existing presence event with more info
-                        p.content.presence = presence.content.presence;
-                        if let Some(status_msg) = presence.content.status_msg {
-                            p.content.status_msg = Some(status_msg);
-                        }
-                        if let Some(last_active_ago) = presence.content.last_active_ago {
-                            p.content.last_active_ago = Some(last_active_ago);
-                        }
-                        if let Some(displayname) = presence.content.displayname {
-                            p.content.displayname = Some(displayname);
-                        }
-                        if let Some(avatar_url) = presence.content.avatar_url {
-                            p.content.avatar_url = Some(avatar_url);
-                        }
-                        if let Some(currently_active) = presence.content.currently_active {
-                            p.content.currently_active = Some(currently_active);
-                        }
+                        curr_content.presence = new_content.presence;
+                        curr_content.status_msg =
+                            curr_content.status_msg.clone().or(new_content.status_msg);
+                        curr_content.last_active_ago =
+                            curr_content.last_active_ago.or(new_content.last_active_ago);
+                        curr_content.displayname =
+                            curr_content.displayname.clone().or(new_content.displayname);
+                        curr_content.avatar_url =
+                            curr_content.avatar_url.clone().or(new_content.avatar_url);
+                        curr_content.currently_active = curr_content
+                            .currently_active
+                            .or(new_content.currently_active);
                     }
                 }
             }

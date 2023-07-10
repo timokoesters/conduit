@@ -1,4 +1,4 @@
-use crate::{service::pdu::PduBuilder, services, utils, Error, Result, Ruma};
+use crate::{service::pdu::PduBuilder, services, Error, Result, Ruma};
 use ruma::{
     api::{
         client::{
@@ -10,6 +10,7 @@ use ruma::{
         federation::{self, query::get_profile_information::v1::ProfileField},
     },
     events::{room::member::RoomMemberEventContent, StateEventType, TimelineEventType},
+    presence::PresenceState,
 };
 use serde_json::value::to_raw_value;
 use std::sync::Arc;
@@ -89,28 +90,14 @@ pub async fn set_displayname_route(
             .timeline
             .build_and_append_pdu(pdu_builder, sender_user, &room_id, &state_lock)
             .await;
-
-        // Presence update
-        services().rooms.edus.presence.update_presence(
-            sender_user,
-            &room_id,
-            ruma::events::presence::PresenceEvent {
-                content: ruma::events::presence::PresenceEventContent {
-                    avatar_url: services().users.avatar_url(sender_user)?,
-                    currently_active: None,
-                    displayname: services().users.displayname(sender_user)?,
-                    last_active_ago: Some(
-                        utils::millis_since_unix_epoch()
-                            .try_into()
-                            .expect("time is valid"),
-                    ),
-                    presence: ruma::presence::PresenceState::Online,
-                    status_msg: None,
-                },
-                sender: sender_user.clone(),
-            },
-        )?;
     }
+
+    // Presence update
+    services()
+        .rooms
+        .edus
+        .presence
+        .ping_presence(sender_user, PresenceState::Online)?;
 
     Ok(set_display_name::v3::Response {})
 }
@@ -224,28 +211,14 @@ pub async fn set_avatar_url_route(
             .timeline
             .build_and_append_pdu(pdu_builder, sender_user, &room_id, &state_lock)
             .await;
-
-        // Presence update
-        services().rooms.edus.presence.update_presence(
-            sender_user,
-            &room_id,
-            ruma::events::presence::PresenceEvent {
-                content: ruma::events::presence::PresenceEventContent {
-                    avatar_url: services().users.avatar_url(sender_user)?,
-                    currently_active: None,
-                    displayname: services().users.displayname(sender_user)?,
-                    last_active_ago: Some(
-                        utils::millis_since_unix_epoch()
-                            .try_into()
-                            .expect("time is valid"),
-                    ),
-                    presence: ruma::presence::PresenceState::Online,
-                    status_msg: None,
-                },
-                sender: sender_user.clone(),
-            },
-        )?;
     }
+
+    // Presence update
+    services()
+        .rooms
+        .edus
+        .presence
+        .ping_presence(sender_user, PresenceState::Online)?;
 
     Ok(set_avatar_url::v3::Response {})
 }

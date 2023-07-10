@@ -26,7 +26,8 @@ use ruma::{
         federation::{
             self,
             transactions::edu::{
-                DeviceListUpdateContent, Edu, ReceiptContent, ReceiptData, ReceiptMap,
+                DeviceListUpdateContent, Edu, PresenceContent, PresenceUpdate, ReceiptContent,
+                ReceiptData, ReceiptMap,
             },
         },
         OutgoingRequest,
@@ -283,6 +284,39 @@ impl Service {
                     .keys_changed(room_id.as_ref(), since, None)
                     .filter_map(|r| r.ok())
                     .filter(|user_id| user_id.server_name() == services().globals.server_name()),
+            );
+
+            // Look for presence updates in this room
+            let mut presence_updates = Vec::new();
+
+            for presence_data in services()
+                .rooms
+                .edus
+                .presence
+                .presence_since(&room_id, since)
+            {
+                let (user_id, count, presence_event) = presence_data?;
+
+                if count > max_edu_count {
+                    max_edu_count = count;
+                }
+
+                if user_id.server_name() != services().globals.server_name() {
+                    continue;
+                }
+
+                presence_updates.push(PresenceUpdate {
+                    user_id,
+                    presence: presence_event.content.presence,
+                    currently_active: presence_event.content.currently_active.unwrap_or(false),
+                    last_active_ago: presence_event.content.last_active_ago.unwrap_or(uint!(0)),
+                    status_msg: presence_event.content.status_msg,
+                });
+            }
+
+            let presence_content = Edu::Presence(PresenceContent::new(presence_updates));
+            events.push(
+                serde_json::to_vec(&presence_content).expect("PresenceEvent can be serialized"),
             );
 
             // Look for read receipts in this room

@@ -1,38 +1,33 @@
-use std::collections::HashMap;
-
 use crate::Result;
-use ruma::{events::presence::PresenceEvent, OwnedUserId, RoomId, UserId};
+use ruma::{
+    events::presence::PresenceEvent, presence::PresenceState, OwnedUserId, RoomId, UInt, UserId,
+};
 
 pub trait Data: Send + Sync {
+    /// Returns the latest presence event for the given user in the given room.
+    fn get_presence(&self, room_id: &RoomId, user_id: &UserId) -> Result<Option<PresenceEvent>>;
+
+    /// Pings the presence of the given user in the given room, setting the specified state.
+    fn ping_presence(&self, user_id: &UserId, new_state: PresenceState) -> Result<()>;
+
     /// Adds a presence event which will be saved until a new event replaces it.
-    ///
-    /// Note: This method takes a RoomId because presence updates are always bound to rooms to
-    /// make sure users outside these rooms can't see them.
-    fn update_presence(
+    fn set_presence(
         &self,
-        user_id: &UserId,
         room_id: &RoomId,
-        presence: PresenceEvent,
+        user_id: &UserId,
+        presence_state: PresenceState,
+        currently_active: Option<bool>,
+        last_active_ago: Option<UInt>,
+        status_msg: Option<String>,
     ) -> Result<()>;
 
-    /// Resets the presence timeout, so the user will stay in their current presence state.
-    fn ping_presence(&self, user_id: &UserId) -> Result<()>;
-
-    /// Returns the timestamp of the last presence update of this user in millis since the unix epoch.
-    fn last_presence_update(&self, user_id: &UserId) -> Result<Option<u64>>;
-
-    /// Returns the presence event with correct last_active_ago.
-    fn get_presence_event(
-        &self,
-        room_id: &RoomId,
-        user_id: &UserId,
-        count: u64,
-    ) -> Result<Option<PresenceEvent>>;
+    /// Removes the presence record for the given user from the database.
+    fn remove_presence(&self, user_id: &UserId) -> Result<()>;
 
     /// Returns the most recent presence updates that happened after the event with id `since`.
-    fn presence_since(
-        &self,
+    fn presence_since<'a>(
+        &'a self,
         room_id: &RoomId,
         since: u64,
-    ) -> Result<HashMap<OwnedUserId, PresenceEvent>>;
+    ) -> Box<dyn Iterator<Item = Result<(OwnedUserId, u64, PresenceEvent)>> + 'a>;
 }

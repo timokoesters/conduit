@@ -83,6 +83,13 @@ pub struct Config {
 
     pub emergency_password: Option<String>,
 
+    #[serde(default = "false_fn")]
+    pub allow_presence: bool,
+    #[serde(default = "default_presence_idle_timeout_s")]
+    pub presence_idle_timeout_s: u64,
+    #[serde(default = "default_presence_offline_timeout_s")]
+    pub presence_offline_timeout_s: u64,
+
     #[serde(flatten)]
     pub catchall: BTreeMap<String, IgnoredAny>,
 }
@@ -300,6 +307,14 @@ fn default_log() -> String {
 
 fn default_turn_ttl() -> u64 {
     60 * 60 * 24
+}
+
+fn default_presence_idle_timeout_s() -> u64 {
+    5 * 60
+}
+
+fn default_presence_offline_timeout_s() -> u64 {
+    15 * 60
 }
 
 // I know, it's a great name

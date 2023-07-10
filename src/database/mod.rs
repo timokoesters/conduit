@@ -2,8 +2,8 @@ pub mod abstraction;
 pub mod key_value;
 
 use crate::{
-    service::rooms::timeline::PduCount, services, utils, Config, Error, PduEvent, Result, Services,
-    SERVICES,
+    service::rooms::{edus::presence::presence_handler, timeline::PduCount},
+    services, utils, Config, Error, PduEvent, Result, Services, SERVICES,
 };
 use abstraction::{KeyValueDatabaseEngine, KvTree};
 use directories::ProjectDirs;
@@ -29,7 +29,7 @@ use std::{
     sync::{Arc, Mutex, RwLock},
     time::Duration,
 };
-use tokio::time::interval;
+use tokio::{sync::mpsc, time::interval};
 
 use tracing::{debug, error, info, warn};
 
@@ -71,8 +71,7 @@ pub struct KeyValueDatabase {
     pub(super) readreceiptid_readreceipt: Arc<dyn KvTree>, // ReadReceiptId = RoomId + Count + UserId
     pub(super) roomuserid_privateread: Arc<dyn KvTree>, // RoomUserId = Room + User, PrivateRead = Count
     pub(super) roomuserid_lastprivatereadupdate: Arc<dyn KvTree>, // LastPrivateReadUpdate = Count
-    pub(super) presenceid_presence: Arc<dyn KvTree>,    // PresenceId = RoomId + Count + UserId
-    pub(super) userid_lastpresenceupdate: Arc<dyn KvTree>, // LastPresenceUpdate = Count
+    pub(super) roomuserid_presence: Arc<dyn KvTree>,
 
     //pub rooms: rooms::Rooms,
     pub(super) pduid_pdu: Arc<dyn KvTree>, // PduId = ShortRoomId + Count
@@ -170,6 +169,7 @@ pub struct KeyValueDatabase {
     pub(super) our_real_users_cache: RwLock<HashMap<OwnedRoomId, Arc<HashSet<OwnedUserId>>>>,
     pub(super) appservice_in_room_cache: RwLock<HashMap<OwnedRoomId, HashMap<String, bool>>>,
     pub(super) lasttimelinecount_cache: Mutex<HashMap<OwnedRoomId, PduCount>>,
+    pub(super) presence_timer_sender: Arc<mpsc::UnboundedSender<(OwnedUserId, Duration)>>,
 }
 
 impl KeyValueDatabase {
@@ -273,6 +273,8 @@ impl KeyValueDatabase {
             error!(?config.max_request_size, "Max request size is less than 1KB. Please increase it.");
         }
 
+        let (presence_sender, presence_receiver) = mpsc::unbounded_channel();
+
         let db_raw = Box::new(Self {
             _db: builder.clone(),
             userid_password: builder.open_tree("userid_password")?,
@@ -299,8 +301,7 @@ impl KeyValueDatabase {
             roomuserid_privateread: builder.open_tree("roomuserid_privateread")?, // "Private" read receipt
             roomuserid_lastprivatereadupdate: builder
                 .open_tree("roomuserid_lastprivatereadupdate")?,
-            presenceid_presence: builder.open_tree("presenceid_presence")?,
-            userid_lastpresenceupdate: builder.open_tree("userid_lastpresenceupdate")?,
+            roomuserid_presence: builder.open_tree("roomuserid_presence")?,
             pduid_pdu: builder.open_tree("pduid_pdu")?,
             eventid_pduid: builder.open_tree("eventid_pduid")?,
             roomid_pduleaves: builder.open_tree("roomid_pduleaves")?,
@@ -392,6 +393,7 @@ impl KeyValueDatabase {
             our_real_users_cache: RwLock::new(HashMap::new()),
             appservice_in_room_cache: RwLock::new(HashMap::new()),
             lasttimelinecount_cache: Mutex::new(HashMap::new()),
+            presence_timer_sender: Arc::new(presence_sender),
         });
 
         let db = Box::leak(db_raw);
@@ -962,9 +964,6 @@ impl KeyValueDatabase {
             );
         }
 
-        // This data is probably outdated
-        db.presenceid_presence.clear()?;
-
         services().admin.start_handler();
 
         // Set emergency access for the conduit user
@@ -988,6 +987,9 @@ impl KeyValueDatabase {
         Self::start_cleanup_task().await;
         if services().globals.allow_check_for_updates() {
             Self::start_check_for_updates_task();
+        }
+        if services().globals.config.allow_presence {
+            Self::start_presence_handler(presence_receiver).await;
         }
 
         Ok(())
@@ -1062,8 +1064,7 @@ impl KeyValueDatabase {
     pub async fn start_cleanup_task() {
         #[cfg(unix)]
         use tokio::signal::unix::{signal, SignalKind};
-
-        use std::time::{Duration, Instant};
+        use tokio::time::Instant;
 
         let timer_interval =
             Duration::from_secs(services().globals.config.cleanup_second_interval as u64);
@@ -1095,6 +1096,17 @@ impl KeyValueDatabase {
                 } else {
                     debug!("cleanup: Finished in {:?}", start.elapsed());
                 }
+            }
+        });
+    }
+
+    pub async fn start_presence_handler(
+        presence_timer_receiver: mpsc::UnboundedReceiver<(OwnedUserId, Duration)>,
+    ) {
+        tokio::spawn(async move {
+            match presence_handler(presence_timer_receiver).await {
+                Ok(()) => warn!("Presence maintenance task finished"),
+                Err(e) => error!("Presence maintenance task finished with error: {e}"),
             }
         });
     }

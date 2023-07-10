@@ -1,12 +1,15 @@
 pub mod error;
 
+use crate::{Error, Result};
 use argon2::{Config, Variant};
-use cmp::Ordering;
 use rand::prelude::*;
 use ring::digest;
-use ruma::{canonical_json::try_from_json_map, CanonicalJsonError, CanonicalJsonObject};
+use ruma::{
+    canonical_json::try_from_json_map, CanonicalJsonError, CanonicalJsonObject, OwnedUserId,
+};
 use std::{
-    cmp, fmt,
+    cmp::Ordering,
+    fmt,
     str::FromStr,
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -49,6 +52,15 @@ pub fn u64_from_bytes(bytes: &[u8]) -> Result<u64, std::array::TryFromSliceError
 /// Parses the bytes into a string.
 pub fn string_from_bytes(bytes: &[u8]) -> Result<String, std::string::FromUtf8Error> {
     String::from_utf8(bytes.to_vec())
+}
+
+/// Parses a OwnedUserId from bytes.
+pub fn user_id_from_bytes(bytes: &[u8]) -> Result<OwnedUserId> {
+    OwnedUserId::try_from(
+        string_from_bytes(bytes)
+            .map_err(|_| Error::bad_database("Failed to parse string from bytes"))?,
+    )
+    .map_err(|_| Error::bad_database("Failed to parse user id from bytes"))
 }
 
 pub fn random_string(length: usize) -> String {
