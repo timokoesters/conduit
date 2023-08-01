@@ -8,6 +8,12 @@ use ruma::{
 use crate::api::server_server::FedDest;
 
 use crate::{services, Config, Error, Result};
+use futures_util::FutureExt;
+use hyper::{
+    client::connect::dns::{GaiResolver, Name},
+    service::Service as HyperService,
+};
+use reqwest::dns::{Addrs, Resolve, Resolving};
 use ruma::{
     api::{
         client::sync::sync_events,
@@ -17,8 +23,10 @@ use ruma::{
 };
 use std::{
     collections::{BTreeMap, HashMap},
+    error::Error as StdError,
     fs,
-    future::Future,
+    future::{self, Future},
+    iter,
     net::{IpAddr, SocketAddr},
     path::PathBuf,
     sync::{
@@ -99,6 +107,35 @@ impl Default for RotationHandler {
     }
 }
 
+pub struct Resolver {
+    inner: GaiResolver,
+    overrides: Box<dyn Fn(&str) -> Option<SocketAddr> + Send + Sync>,
+}
+
+impl Resolver {
+    pub fn new(overrides: Box<dyn Fn(&str) -> Option<SocketAddr> + Send + Sync>) -> Resolver {
+        Resolver {
+            inner: GaiResolver::new(),
+            overrides,
+        }
+    }
+}
+
+impl Resolve for Resolver {
+    fn resolve(&self, name: Name) -> Resolving {
+        if let Some(addr) = (self.overrides)(name.as_str()) {
+            let once: Box<dyn Iterator<Item = SocketAddr> + Send> = Box::new(iter::once(addr));
+            return Box::pin(future::ready(Ok(once)));
+        }
+        let this = &mut self.inner.clone();
+        Box::pin(HyperService::<Name>::call(this, name).map(|result| {
+            result
+                .map(|addrs| -> Addrs { Box::new(addrs) })
+                .map_err(|err| -> Box<dyn StdError + Send + Sync> { Box::new(err) })
+        }))
+    }
+}
+
 impl Service {
     pub fn load(db: &'static dyn Data, config: Config) -> Result<Self> {
         let keypair = db.load_keypair();
@@ -122,12 +159,12 @@ impl Service {
         let default_client = reqwest_client_builder(&config)?.build()?;
         let name_override = Arc::clone(&tls_name_override);
         let federation_client = reqwest_client_builder(&config)?
-            .resolve_fn(move |domain| {
+            .dns_resolver(Arc::new(Resolver::new(Box::new(move |domain| {
                 let read_guard = name_override.read().unwrap();
-                let (override_name, port) = read_guard.get(&domain)?;
+                let (override_name, port) = read_guard.get(domain)?;
                 let first_name = override_name.get(0)?;
                 Some(SocketAddr::new(*first_name, *port))
-            })
+            }))))
             .build()?;
 
         // Supported and stable room versions
