@@ -316,13 +316,13 @@ If using Cloudflare, configure instead the edge and origin certificates in dashb
 Now you can start Conduit with:
 
 ```bash
-$ sudo systemctl start conduit
+$ sudo systemctl start matrix-conduit
 ```
 
 Set it to start automatically when your system boots with:
 
 ```bash
-$ sudo systemctl enable conduit
+$ sudo systemctl enable matrix-conduit
 ```
 
 ## How do I know it works?
