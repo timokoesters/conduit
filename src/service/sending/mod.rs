@@ -286,38 +286,40 @@ impl Service {
                     .filter(|user_id| user_id.server_name() == services().globals.server_name()),
             );
 
-            // Look for presence updates in this room
-            let mut presence_updates = Vec::new();
+            if services().globals.allow_outcoming_presence() {
+                // Look for presence updates in this room
+                let mut presence_updates = Vec::new();
 
-            for presence_data in services()
-                .rooms
-                .edus
-                .presence
-                .presence_since(&room_id, since)
-            {
-                let (user_id, count, presence_event) = presence_data?;
+                for presence_data in services()
+                    .rooms
+                    .edus
+                    .presence
+                    .presence_since(&room_id, since)
+                {
+                    let (user_id, count, presence_event) = presence_data?;
 
-                if count > max_edu_count {
-                    max_edu_count = count;
+                    if count > max_edu_count {
+                        max_edu_count = count;
+                    }
+
+                    if user_id.server_name() != services().globals.server_name() {
+                        continue;
+                    }
+
+                    presence_updates.push(PresenceUpdate {
+                        user_id,
+                        presence: presence_event.content.presence,
+                        currently_active: presence_event.content.currently_active.unwrap_or(false),
+                        last_active_ago: presence_event.content.last_active_ago.unwrap_or(uint!(0)),
+                        status_msg: presence_event.content.status_msg,
+                    });
                 }
 
-                if user_id.server_name() != services().globals.server_name() {
-                    continue;
-                }
-
-                presence_updates.push(PresenceUpdate {
-                    user_id,
-                    presence: presence_event.content.presence,
-                    currently_active: presence_event.content.currently_active.unwrap_or(false),
-                    last_active_ago: presence_event.content.last_active_ago.unwrap_or(uint!(0)),
-                    status_msg: presence_event.content.status_msg,
-                });
+                let presence_content = Edu::Presence(PresenceContent::new(presence_updates));
+                events.push(
+                    serde_json::to_vec(&presence_content).expect("PresenceEvent can be serialized"),
+                );
             }
-
-            let presence_content = Edu::Presence(PresenceContent::new(presence_updates));
-            events.push(
-                serde_json::to_vec(&presence_content).expect("PresenceEvent can be serialized"),
-            );
 
             // Look for read receipts in this room
             for r in services()

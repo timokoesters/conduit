@@ -988,7 +988,7 @@ impl KeyValueDatabase {
         if services().globals.allow_check_for_updates() {
             Self::start_check_for_updates_task();
         }
-        if services().globals.config.allow_presence {
+        if services().globals.allow_local_presence() {
             Self::start_presence_handler(presence_receiver).await;
         }
 

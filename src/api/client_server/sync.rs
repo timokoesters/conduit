@@ -18,6 +18,7 @@ use ruma::{
         uiaa::UiaaResponse,
     },
     events::{
+        presence::PresenceEvent,
         room::member::{MembershipState, RoomMemberEventContent},
         StateEventType, TimelineEventType,
     },
@@ -175,11 +176,13 @@ async fn sync_helper(
     // bool = caching allowed
 ) -> Result<(sync_events::v3::Response, bool), Error> {
     // Presence update
-    services()
-        .rooms
-        .edus
-        .presence
-        .ping_presence(&sender_user, body.set_presence)?;
+    if services().globals.allow_local_presence() {
+        services()
+            .rooms
+            .edus
+            .presence
+            .ping_presence(&sender_user, body.set_presence)?;
+    }
 
     // Setup watchers, so if there's no response, we can wait for them
     let watcher = services().globals.watch(&sender_user, &sender_device);
@@ -255,39 +258,8 @@ async fn sync_helper(
                 joined_rooms.insert(room_id.clone(), joined_room);
             }
 
-            // Take presence updates from this room
-            for presence_data in services()
-                .rooms
-                .edus
-                .presence
-                .presence_since(&room_id, since)
-            {
-                let (user_id, _, presence_event) = presence_data?;
-
-                match presence_updates.entry(user_id) {
-                    Entry::Vacant(slot) => {
-                        slot.insert(presence_event);
-                    }
-                    Entry::Occupied(mut slot) => {
-                        let curr_event = slot.get_mut();
-                        let curr_content = &mut curr_event.content;
-                        let new_content = presence_event.content;
-
-                        // Update existing presence event with more info
-                        curr_content.presence = new_content.presence;
-                        curr_content.status_msg =
-                            curr_content.status_msg.clone().or(new_content.status_msg);
-                        curr_content.last_active_ago =
-                            curr_content.last_active_ago.or(new_content.last_active_ago);
-                        curr_content.displayname =
-                            curr_content.displayname.clone().or(new_content.displayname);
-                        curr_content.avatar_url =
-                            curr_content.avatar_url.clone().or(new_content.avatar_url);
-                        curr_content.currently_active = curr_content
-                            .currently_active
-                            .or(new_content.currently_active);
-                    }
-                }
+            if services().globals.allow_local_presence() {
+                process_room_presence_updates(&mut presence_updates, &room_id, since).await?;
             }
         }
     }
@@ -597,6 +569,49 @@ async fn sync_helper(
     } else {
         Ok((response, since != next_batch)) // Only cache if we made progress
     }
+}
+
+async fn process_room_presence_updates(
+    presence_updates: &mut HashMap<OwnedUserId, PresenceEvent>,
+    room_id: &RoomId,
+    since: u64,
+) -> Result<()> {
+    // Take presence updates from this room
+    for presence_data in services()
+        .rooms
+        .edus
+        .presence
+        .presence_since(room_id, since)
+    {
+        let (user_id, _, presence_event) = presence_data?;
+
+        match presence_updates.entry(user_id) {
+            Entry::Vacant(slot) => {
+                slot.insert(presence_event);
+            }
+            Entry::Occupied(mut slot) => {
+                let curr_event = slot.get_mut();
+                let curr_content = &mut curr_event.content;
+                let new_content = presence_event.content;
+
+                // Update existing presence event with more info
+                curr_content.presence = new_content.presence;
+                curr_content.status_msg =
+                    curr_content.status_msg.clone().or(new_content.status_msg);
+                curr_content.last_active_ago =
+                    curr_content.last_active_ago.or(new_content.last_active_ago);
+                curr_content.displayname =
+                    curr_content.displayname.clone().or(new_content.displayname);
+                curr_content.avatar_url =
+                    curr_content.avatar_url.clone().or(new_content.avatar_url);
+                curr_content.currently_active = curr_content
+                    .currently_active
+                    .or(new_content.currently_active);
+            }
+        }
+    }
+
+    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]

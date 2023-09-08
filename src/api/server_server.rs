@@ -778,6 +778,10 @@ pub async fn send_transaction_message_route(
     {
         match edu {
             Edu::Presence(presence) => {
+                if !services().globals.allow_incoming_presence() {
+                    continue;
+                }
+
                 for update in presence.push {
                     for room_id in services().rooms.state_cache.rooms_joined(&update.user_id) {
                         services().rooms.edus.presence.set_presence(

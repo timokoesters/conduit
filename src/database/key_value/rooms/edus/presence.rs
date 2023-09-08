@@ -1,4 +1,4 @@
-use std::{iter, time::Duration};
+use std::time::Duration;
 
 use ruma::{
     events::presence::PresenceEvent, presence::PresenceState, OwnedUserId, RoomId, UInt, UserId,
@@ -14,10 +14,6 @@ use crate::{
 
 impl service::rooms::edus::presence::Data for KeyValueDatabase {
     fn get_presence(&self, room_id: &RoomId, user_id: &UserId) -> Result<Option<PresenceEvent>> {
-        if !services().globals.config.allow_presence {
-            return Ok(None);
-        }
-
         let key = presence_key(room_id, user_id);
 
         self.roomuserid_presence
@@ -29,10 +25,6 @@ impl service::rooms::edus::presence::Data for KeyValueDatabase {
     }
 
     fn ping_presence(&self, user_id: &UserId, new_state: PresenceState) -> Result<()> {
-        if !services().globals.config.allow_presence {
-            return Ok(());
-        }
-
         let now = utils::millis_since_unix_epoch();
         let mut state_changed = false;
 
@@ -103,10 +95,6 @@ impl service::rooms::edus::presence::Data for KeyValueDatabase {
         last_active_ago: Option<UInt>,
         status_msg: Option<String>,
     ) -> Result<()> {
-        if !services().globals.config.allow_presence {
-            return Ok(());
-        }
-
         let now = utils::millis_since_unix_epoch();
         let last_active_ts = match last_active_ago {
             Some(last_active_ago) => now.saturating_sub(last_active_ago.into()),
@@ -153,10 +141,6 @@ impl service::rooms::edus::presence::Data for KeyValueDatabase {
         room_id: &RoomId,
         since: u64,
     ) -> Box<dyn Iterator<Item = Result<(OwnedUserId, u64, PresenceEvent)>> + 'a> {
-        if !services().globals.config.allow_presence {
-            return Box::new(iter::empty());
-        }
-
         let prefix = [room_id.as_bytes(), &[0xff]].concat();
 
         Box::new(
