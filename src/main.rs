@@ -65,8 +65,6 @@ async fn main() {
 
     config.warn_deprecated();
 
-    let log = format!("{},ruma_state_res=error,_=off,sled=off", config.log);
-
     if config.allow_jaeger {
         opentelemetry::global::set_text_map_propagator(opentelemetry_jaeger::Propagator::new());
         let tracer = opentelemetry_jaeger::new_agent_pipeline()
@@ -76,7 +74,7 @@ async fn main() {
             .unwrap();
         let telemetry = tracing_opentelemetry::layer().with_tracer(tracer);
 
-        let filter_layer = match EnvFilter::try_new(&log) {
+        let filter_layer = match EnvFilter::try_new(&config.log) {
             Ok(s) => s,
             Err(e) => {
                 eprintln!(
@@ -103,7 +101,7 @@ async fn main() {
     } else {
         let registry = tracing_subscriber::Registry::default();
         let fmt_layer = tracing_subscriber::fmt::Layer::new();
-        let filter_layer = match EnvFilter::try_new(&log) {
+        let filter_layer = match EnvFilter::try_new(&config.log) {
             Ok(s) => s,
             Err(e) => {
                 eprintln!("It looks like your config is invalid. The following error occured while parsing it: {e}");
