@@ -17,7 +17,7 @@ variables:
 .docker-shared-settings:
   stage: "build docker image"
   needs: []
-  tags: [ "docker" ]
+  tags: [ "docker", "tudo-fsinfo" ]
   variables:
     # Docker in Docker:
     DOCKER_BUILDKIT: 1
@@ -27,11 +27,12 @@ variables:
     - name: docker.io/docker:dind
       alias: docker
   script:
-    - apk add openssh-client
-    - eval $(ssh-agent -s)
-    - mkdir -p ~/.ssh && chmod 700 ~/.ssh
-    - printf "Host *\n\tStrictHostKeyChecking no\n\n" >> ~/.ssh/config
-    - sh .gitlab/setup-buildx-remote-builders.sh
+    - >
+      docker buildx create
+      --name "multi"
+      --driver "docker-container"
+      --platform "linux/arm64,linux/arm/v7"
+      --use
     # Authorize against this project's own image registry:
     - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
     # Build multiplatform image and push to temporary tag:
@@ -101,7 +102,6 @@ docker:tags:
     - if: "$BUILD_SERVER_SSH_PRIVATE_KEY && $CI_COMMIT_TAG"
   variables:
     TAG: "matrix-conduit:$CI_COMMIT_TAG"
-
 
 docker build debugging:
   extends: .docker-shared-settings
