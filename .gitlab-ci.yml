@@ -33,14 +33,14 @@ variables:
       docker buildx create
       --name "multi"
       --driver "docker-container"
-      --platform "linux/arm64,linux/arm/v7,linux/amd64"
+      --platform "linux/arm64,linux/amd64"
       --use ci-context
     # Authorize against this project's own image registry:
     - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
     # Build multiplatform image and push to temporary tag:
     - >
       docker buildx build 
-      --platform "linux/arm/v7,linux/arm64,linux/amd64"
+      --platform "linux/arm64,linux/amd64"
       --pull
       --cache-from=type=registry,ref=$CI_REGISTRY_IMAGE/$TAG
       --cache-from=type=registry,ref=$CI_REGISTRY_IMAGE/matrix-conduit:next
@@ -52,7 +52,7 @@ variables:
     # Build multiplatform image to deb stage and extract their .deb files:
     - >
       docker buildx build 
-      --platform "linux/arm/v7,linux/arm64,linux/amd64"
+      --platform "linux/arm64,linux/amd64"
       --ulimit nofile=2048
       --target "packager-result"
       --output="type=local,dest=/tmp/build-output"
@@ -61,7 +61,7 @@ variables:
     # Build multiplatform image to binary stage and extract their binaries:
     - >
       docker buildx build 
-      --platform "linux/arm/v7,linux/arm64,linux/amd64"
+      --platform "linux/arm64,linux/amd64"
       --ulimit nofile=2048
       --target "builder-result"
       --output="type=local,dest=/tmp/build-output"
@@ -123,7 +123,7 @@ docker build debugging:
 
 cargo check:
   stage: test
-  image: docker.io/rust:1.70.0-bullseye
+  image: docker.io/rust:1.73.0-bullseye
   needs: []
   interruptible: true
   before_script:
