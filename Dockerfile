@@ -1,11 +1,13 @@
-# syntax=docker/dockerfile:1
+# syntax=docker.io/docker/dockerfile:1.6
 FROM docker.io/rust:1.73-bullseye AS base
 
 FROM base AS builder
 WORKDIR /usr/src/conduit
 
 # Install required packages to build Conduit and it's dependencies
-RUN apt-get update && \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && \
     apt-get -y --no-install-recommends install libclang-dev=1:11.0-51+nmu5
 
 # == Build dependencies without our own code separately for caching ==
@@ -16,11 +18,11 @@ RUN apt-get update && \
 # request that would allow just dependencies to be compiled, presumably
 # regardless of whether source files are available.
 RUN mkdir src && touch src/lib.rs && echo 'fn main() {}' > src/main.rs
-COPY Cargo.toml Cargo.lock ./
+COPY --link Cargo.toml Cargo.lock ./
 RUN cargo build --release && rm -r src
 
 # Copy over actual Conduit sources
-COPY src src
+COPY --link src src
 
 # main.rs and lib.rs need their timestamp updated for this to work correctly since
 # otherwise the build with the fake main.rs from above is newer than the
@@ -41,7 +43,9 @@ COPY --from=builder /usr/src/conduit/target/release/conduit /conduit
 # ---------------------------------------------------------------------------------------------------------------
 FROM base AS build-cargo-deb
 
-RUN apt-get update && \
+RUN --mount=type=cache,id=cargodeb,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,id=cargodeb,target=/var/lib/apt,sharing=locked \
+    apt-get update && \
     apt-get install -y --no-install-recommends \
     dpkg \
     dpkg-dev \
@@ -58,9 +62,9 @@ FROM builder AS packager
 WORKDIR /usr/src/conduit
 
 COPY ./LICENSE ./LICENSE
-COPY ./README.md ./README.md
-COPY debian ./debian
-COPY --from=build-cargo-deb /usr/local/cargo/bin/cargo-deb /usr/local/cargo/bin/cargo-deb
+COPY --link ./README.md ./README.md
+COPY --link debian ./debian
+COPY --from=build-cargo-deb --link /usr/local/cargo/bin/cargo-deb /usr/local/cargo/bin/cargo-deb
 
 # --no-build makes cargo-deb reuse already compiled project
 RUN cargo deb --no-build
@@ -93,7 +97,9 @@ ENV CONDUIT_PORT=6167 \
 #   dpkg: to install conduit.deb
 #   ca-certificates: for https
 #   iproute2 & wget: for the healthcheck script
-RUN apt-get update && apt-get -y --no-install-recommends install \
+RUN --mount=type=cache,id=runner,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,id=runner,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get -y --no-install-recommends install \
     dpkg \
     ca-certificates \
     iproute2 \
@@ -101,11 +107,11 @@ RUN apt-get update && apt-get -y --no-install-recommends install \
     && rm -rf /var/lib/apt/lists/*
 
 # Test if Conduit is still alive, uses the same endpoint as Element
-COPY ./docker/healthcheck.sh /srv/conduit/healthcheck.sh
+COPY --link ./docker/healthcheck.sh /srv/conduit/healthcheck.sh
 HEALTHCHECK --start-period=5s --interval=5s CMD ./healthcheck.sh
 
 # Install conduit.deb:
-COPY --from=packager /usr/src/conduit/target/debian/*.deb /srv/conduit/
+COPY --from=packager --link /usr/src/conduit/target/debian/*.deb /srv/conduit/
 RUN dpkg -i /srv/conduit/*.deb
 
 # Improve security: Don't run stuff as root, that does not need to run as root

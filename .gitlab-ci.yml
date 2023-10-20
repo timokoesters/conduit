@@ -28,6 +28,7 @@ variables:
     - name: docker.io/docker:dind
       alias: docker
   script:
+    - free -h; lscpu || true
     - docker context create ci-context
     - >
       docker buildx create
@@ -42,8 +43,12 @@ variables:
       docker buildx build 
       --platform "linux/arm64,linux/amd64"
       --pull
-      --cache-from=type=registry,ref=$CI_REGISTRY_IMAGE/$TAG
-      --cache-from=type=registry,ref=$CI_REGISTRY_IMAGE/matrix-conduit:next
+      --cache-from="type=registry,ref=$CI_REGISTRY_IMAGE/$TAG"
+      --cache-from="type=registry,ref=$CI_REGISTRY_IMAGE/matrix-conduit:next"
+      --cache-from="type=registry,ref=$CI_REGISTRY_IMAGE/temporary-ci-images:buildkit-cache-$CI_COMMIT_REF_NAME"
+      --cache-to="type=registry,mode=max,compression=zstd,ref=$CI_REGISTRY_IMAGE/temporary-ci-images:buildkit-cache-$CI_COMMIT_REF_NAME"
+      --cache-to type=local,mode=max,dest=path/tmp/conduit-docker-buildcache
+      --cache-from type=local,src=path/tmp/conduit-docker-buildcache
       --ulimit nofile=2048
       --tag "$CI_REGISTRY_IMAGE/temporary-ci-images:$CI_JOB_ID"
       --push
@@ -53,6 +58,11 @@ variables:
     - >
       docker buildx build 
       --platform "linux/arm64,linux/amd64"
+      --pull
+      --cache-from="type=registry,ref=$CI_REGISTRY_IMAGE/$TAG"
+      --cache-from="type=registry,ref=$CI_REGISTRY_IMAGE/matrix-conduit:next"
+      --cache-from="type=registry,ref=$CI_REGISTRY_IMAGE/temporary-ci-images:buildkit-cache-$CI_COMMIT_REF_NAME"
+      --cache-from type=local,src=path/tmp/conduit-docker-buildcache
       --ulimit nofile=2048
       --target "packager-result"
       --output="type=local,dest=/tmp/build-output"
@@ -62,6 +72,11 @@ variables:
     - >
       docker buildx build 
       --platform "linux/arm64,linux/amd64"
+      --pull
+      --cache-from="type=registry,ref=$CI_REGISTRY_IMAGE/$TAG"
+      --cache-from="type=registry,ref=$CI_REGISTRY_IMAGE/matrix-conduit:next"
+      --cache-from="type=registry,ref=$CI_REGISTRY_IMAGE/temporary-ci-images:buildkit-cache-$CI_COMMIT_REF_NAME"
+      --cache-from type=local,src=path/tmp/conduit-docker-buildcache
       --ulimit nofile=2048
       --target "builder-result"
       --output="type=local,dest=/tmp/build-output"
