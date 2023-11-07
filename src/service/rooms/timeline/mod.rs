@@ -320,12 +320,25 @@ impl Service {
         let mut notifies = Vec::new();
         let mut highlights = Vec::new();
 
-        for user in services()
+        let mut push_target = services()
             .rooms
             .state_cache
-            .get_our_real_users(&pdu.room_id)?
-            .iter()
-        {
+            .get_our_real_users(&pdu.room_id)?;
+
+        if pdu.kind == TimelineEventType::RoomMember {
+            if let Some(state_key) = &pdu.state_key {
+                let target_user_id = UserId::parse(state_key.clone())
+                    .expect("This state_key was previously validated");
+
+                if !push_target.contains(&target_user_id) {
+                    let mut target = push_target.as_ref().clone();
+                    target.insert(target_user_id);
+                    push_target = Arc::new(target);
+                }
+            }
+        }
+
+        for user in push_target.iter() {
             // Don't notify the user of their own events
             if user == &pdu.sender {
                 continue;
