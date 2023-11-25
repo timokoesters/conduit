@@ -64,7 +64,7 @@ pub async fn join_room_by_id_route(
             .map(|user| user.server_name().to_owned()),
     );
 
-    servers.push(body.room_id.server_name().to_owned());
+    servers.push(body.room_id.server_name().unwrap().into());
 
     join_room_by_id_helper(
         body.sender_user.as_deref(),
@@ -105,7 +105,7 @@ pub async fn join_room_by_id_or_alias_route(
                     .map(|user| user.server_name().to_owned()),
             );
 
-            servers.push(room_id.server_name().to_owned());
+            servers.push(room_id.server_name().unwrap().into());
 
             (servers, room_id)
         }
@@ -1366,7 +1366,7 @@ pub async fn leave_all_rooms(user_id: &UserId) -> Result<()> {
 pub async fn leave_room(user_id: &UserId, room_id: &RoomId, reason: Option<String>) -> Result<()> {
     // Ask a remote server if we don't have this room
     if !services().rooms.metadata.exists(room_id)?
-        && room_id.server_name() != services().globals.server_name()
+        && room_id.server_name() != Some(services().globals.server_name())
     {
         if let Err(e) = remote_leave_room(user_id, room_id).await {
             warn!("Failed to leave room {} remotely: {}", user_id, e);

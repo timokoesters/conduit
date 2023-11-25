@@ -1051,7 +1051,7 @@ impl Service {
         services().rooms.timeline.build_and_append_pdu(
             PduBuilder {
                 event_type: TimelineEventType::RoomName,
-                content: to_raw_value(&RoomNameEventContent::new(Some(room_name)))
+                content: to_raw_value(&RoomNameEventContent::new(room_name))
                     .expect("event is valid, we just created it"),
                 unsigned: None,
                 state_key: Some("".to_owned()),

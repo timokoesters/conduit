@@ -279,8 +279,14 @@ impl Service {
             .room_state_get(room_id, &StateEventType::RoomName, "")?
             .map_or(Ok(None), |s| {
                 serde_json::from_str(s.content.get())
-                    .map(|c: RoomNameEventContent| c.name)
-                    .map_err(|_| Error::bad_database("Invalid room name event in database."))
+                    .map(|c: RoomNameEventContent| Some(c.name))
+                    .map_err(|e| {
+                        error!(
+                            "Invalid room name event in database for room {}. {}",
+                            room_id, e
+                        );
+                        Error::bad_database("Invalid room name event in database.")
+                    })
             })
     }
 

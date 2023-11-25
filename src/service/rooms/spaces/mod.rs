@@ -134,7 +134,7 @@ impl Service {
 
                     if serde_json::from_str::<SpaceChildEventContent>(pdu.content.get())
                         .ok()
-                        .and_then(|c| c.via)
+                        .and_then(|c| Some(c.via))
                         .map_or(true, |v| v.is_empty())
                     {
                         continue;
@@ -185,7 +185,7 @@ impl Service {
                     stack.push(children_ids);
                 }
             } else {
-                let server = current_room.server_name();
+                let server = current_room.server_name().unwrap();
                 if server == services().globals.server_name() {
                     continue;
                 }
@@ -193,7 +193,7 @@ impl Service {
                     // Early return so the client can see some data already
                     break;
                 }
-                warn!("Asking {server} for /hierarchy");
+                debug!("Asking {server} for /hierarchy");
                 if let Ok(response) = services()
                     .sending
                     .send_federation_request(
