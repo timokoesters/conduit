@@ -139,7 +139,12 @@ impl Service {
             RoomVersionId::V10,
         ];
         // Experimental, partially supported room versions
-        let unstable_room_versions = vec![RoomVersionId::V3, RoomVersionId::V4, RoomVersionId::V5];
+        let unstable_room_versions = vec![
+            RoomVersionId::V3,
+            RoomVersionId::V4,
+            RoomVersionId::V5,
+            RoomVersionId::V11,
+        ];
 
         let mut s = Self {
             db,
