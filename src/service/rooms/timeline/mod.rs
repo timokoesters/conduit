@@ -695,11 +695,20 @@ impl Service {
             .take(20)
             .collect();
 
-        // If there was no create event yet, assume we are creating a room with the default
-        // version right now
-        let room_version_id = self
-            .get_room_version(room_id)?
-            .unwrap_or_else(|| services().globals.default_room_version());
+        // If there was no create event yet, assume we are creating a room
+        let room_version_id = self.get_room_version(room_id)?.unwrap_or_else(|| {
+            if event_type != TimelineEventType::RoomCreate {
+                panic!("non-create event for room of unknown version");
+            }
+            #[derive(Deserialize)]
+            struct RoomCreate {
+                room_version: RoomVersionId,
+            }
+            let content = serde_json::from_str::<RoomCreate>(content.get())
+                .expect("Invalid content in RoomCreate pdu.");
+            content.room_version
+        });
+
         let room_version = RoomVersion::new(&room_version_id).expect("room version is supported");
 
         let auth_events = services().rooms.state.get_auth_events(
