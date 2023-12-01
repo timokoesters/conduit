@@ -80,6 +80,8 @@ pub enum Error {
     #[cfg(feature = "conduit_bin")]
     #[error("{0}")]
     PathError(#[from] axum::extract::rejection::PathRejection),
+    #[error("from {0}: {1}")]
+    RedactionError(OwnedServerName, ruma::canonical_json::RedactionError),
 }
 
 impl Error {
