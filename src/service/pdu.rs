@@ -49,12 +49,28 @@ pub struct PduEvent {
 
 impl PduEvent {
     #[tracing::instrument(skip(self))]
-    pub fn redact(&mut self, reason: &PduEvent) -> crate::Result<()> {
+    pub fn redact(
+        &mut self,
+        room_version_id: RoomVersionId,
+        reason: &PduEvent,
+    ) -> crate::Result<()> {
         self.unsigned = None;
 
         let allowed: &[&str] = match self.kind {
             TimelineEventType::RoomMember => &["join_authorised_via_users_server", "membership"],
-            TimelineEventType::RoomCreate => &["creator"],
+            TimelineEventType::RoomCreate => match room_version_id {
+                RoomVersionId::V1
+                | RoomVersionId::V2
+                | RoomVersionId::V3
+                | RoomVersionId::V4
+                | RoomVersionId::V5
+                | RoomVersionId::V6
+                | RoomVersionId::V7
+                | RoomVersionId::V8
+                | RoomVersionId::V9
+                | RoomVersionId::V10 => &["creator"],
+                _ => &[], // V11 removed the creator key
+            },
             TimelineEventType::RoomJoinRules => &["join_rule"],
             TimelineEventType::RoomPowerLevels => &[
                 "ban",

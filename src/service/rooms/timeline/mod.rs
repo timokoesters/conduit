@@ -28,7 +28,7 @@ use ruma::{
     state_res,
     state_res::{Event, RoomVersion},
     uint, user_id, CanonicalJsonObject, CanonicalJsonValue, EventId, OwnedEventId, OwnedRoomId,
-    OwnedServerName, RoomAliasId, RoomId, ServerName, UserId,
+    OwnedServerName, RoomAliasId, RoomId, RoomVersionId, ServerName, UserId,
 };
 use serde::Deserialize;
 use serde_json::value::{to_raw_value, RawValue as RawJsonValue};
@@ -126,6 +126,27 @@ impl Service {
     /// Returns the `count` of this pdu's id.
     pub fn get_pdu_count(&self, event_id: &EventId) -> Result<Option<PduCount>> {
         self.db.get_pdu_count(event_id)
+    }
+
+    /// Returns the version of a room, if known
+    pub fn get_room_version(&self, room_id: &RoomId) -> Result<Option<RoomVersionId>> {
+        let create_event = services().rooms.state_accessor.room_state_get(
+            room_id,
+            &StateEventType::RoomCreate,
+            "",
+        )?;
+
+        let create_event_content: Option<RoomCreateEventContent> = create_event
+            .as_ref()
+            .map(|create_event| {
+                serde_json::from_str(create_event.content.get()).map_err(|e| {
+                    warn!("Invalid create event: {}", e);
+                    Error::bad_database("Invalid create event in db.")
+                })
+            })
+            .transpose()?;
+
+        Ok(create_event_content.map(|content| content.room_version))
     }
 
     // TODO Is this the same as the function above?
@@ -645,28 +666,11 @@ impl Service {
             .take(20)
             .collect();
 
-        let create_event = services().rooms.state_accessor.room_state_get(
-            room_id,
-            &StateEventType::RoomCreate,
-            "",
-        )?;
-
-        let create_event_content: Option<RoomCreateEventContent> = create_event
-            .as_ref()
-            .map(|create_event| {
-                serde_json::from_str(create_event.content.get()).map_err(|e| {
-                    warn!("Invalid create event: {}", e);
-                    Error::bad_database("Invalid create event in db.")
-                })
-            })
-            .transpose()?;
-
         // If there was no create event yet, assume we are creating a room with the default
         // version right now
-        let room_version_id = create_event_content
-            .map_or(services().globals.default_room_version(), |create_event| {
-                create_event.room_version
-            });
+        let room_version_id = self
+            .get_room_version(room_id)?
+            .unwrap_or_else(|| services().globals.default_room_version());
         let room_version = RoomVersion::new(&room_version_id).expect("room version is supported");
 
         let auth_events = services().rooms.state.get_auth_events(
@@ -1034,7 +1038,10 @@ impl Service {
             let mut pdu = self
                 .get_pdu_from_id(&pdu_id)?
                 .ok_or_else(|| Error::bad_database("PDU ID points to invalid PDU."))?;
-            pdu.redact(reason)?;
+            let room_version_id = self.get_room_version(&pdu.room_id)?.ok_or_else(|| {
+                Error::bad_database("Trying to redact PDU in in room of unknown version")
+            })?;
+            pdu.redact(room_version_id, reason)?;
             self.replace_pdu(
                 &pdu_id,
                 &utils::to_canonical_object(&pdu).expect("PDU is an object"),
