@@ -627,7 +627,10 @@ pub async fn upgrade_room_route(
                 })?,
             );
         }
-        _ => {} // V11 removed the "creator" key
+        _ => {
+            // "creator" key no longer exists in V11 rooms
+            create_event_content.remove("creator");
+        }
     }
     create_event_content.insert(
         "room_version".into(),
