@@ -82,6 +82,8 @@ pub enum Error {
     PathError(#[from] axum::extract::rejection::PathRejection),
     #[error("from {0}: {1}")]
     RedactionError(OwnedServerName, ruma::canonical_json::RedactionError),
+    #[error("{0} in {1}")]
+    InconsistentRoomState(&'static str, ruma::OwnedRoomId),
 }
 
 impl Error {
