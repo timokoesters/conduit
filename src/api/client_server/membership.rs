@@ -619,7 +619,7 @@ async fn join_room_by_id_helper(
                 ));
             }
 
-            if let Ok(signature) = signed_value["signatures"]
+            match signed_value["signatures"]
                 .as_object()
                 .ok_or(Error::BadRequest(
                     ErrorKind::InvalidParam,
@@ -630,18 +630,20 @@ async fn join_room_by_id_helper(
                         ErrorKind::InvalidParam,
                         "Server did not send its signature",
                     ))
-                })
-            {
-                join_event
-                    .get_mut("signatures")
-                    .expect("we created a valid pdu")
-                    .as_object_mut()
-                    .expect("we created a valid pdu")
-                    .insert(remote_server.to_string(), signature.clone());
-            } else {
-                warn!(
-                    "Server {remote_server} sent invalid signature in sendjoin signatures for event {signed_value:?}",
-                );
+                }) {
+                Ok(signature) => {
+                    join_event
+                        .get_mut("signatures")
+                        .expect("we created a valid pdu")
+                        .as_object_mut()
+                        .expect("we created a valid pdu")
+                        .insert(remote_server.to_string(), signature.clone());
+                }
+                Err(e) => {
+                    warn!(
+                        "Server {remote_server} sent invalid signature in sendjoin signatures for event {signed_value:?}: {e:?}",
+                    );
+                }
             }
         }
 
