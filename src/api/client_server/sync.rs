@@ -594,17 +594,15 @@ async fn process_room_presence_updates(
 
                 // Update existing presence event with more info
                 curr_content.presence = new_content.presence;
-                curr_content.status_msg =
-                    curr_content.status_msg.clone().or(new_content.status_msg);
+                curr_content.status_msg = new_content.status_msg.or(curr_content.status_msg.take());
                 curr_content.last_active_ago =
-                    curr_content.last_active_ago.or(new_content.last_active_ago);
+                    new_content.last_active_ago.or(curr_content.last_active_ago);
                 curr_content.displayname =
-                    curr_content.displayname.clone().or(new_content.displayname);
-                curr_content.avatar_url =
-                    curr_content.avatar_url.clone().or(new_content.avatar_url);
-                curr_content.currently_active = curr_content
+                    new_content.displayname.or(curr_content.displayname.take());
+                curr_content.avatar_url = new_content.avatar_url.or(curr_content.avatar_url.take());
+                curr_content.currently_active = new_content
                     .currently_active
-                    .or(new_content.currently_active);
+                    .or(curr_content.currently_active);
             }
         }
     }
