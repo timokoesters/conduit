@@ -122,11 +122,11 @@ impl Service {
     }
 
     /// Returns the most recent presence updates that happened after the event with id `since`.
-    pub fn presence_since<'a>(
-        &'a self,
+    pub fn presence_since(
+        &self,
         room_id: &RoomId,
         since: u64,
-    ) -> Box<dyn Iterator<Item = Result<(OwnedUserId, u64, PresenceEvent)>> + 'a> {
+    ) -> Box<dyn Iterator<Item = (OwnedUserId, u64, PresenceEvent)>> {
         self.db.presence_since(room_id, since)
     }
 }

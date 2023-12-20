@@ -290,14 +290,12 @@ impl Service {
                 // Look for presence updates in this room
                 let mut presence_updates = Vec::new();
 
-                for presence_data in services()
+                for (user_id, count, presence_event) in services()
                     .rooms
                     .edus
                     .presence
                     .presence_since(&room_id, since)
                 {
-                    let (user_id, count, presence_event) = presence_data?;
-
                     if count > max_edu_count {
                         max_edu_count = count;
                     }

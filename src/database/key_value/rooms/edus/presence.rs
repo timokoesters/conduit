@@ -140,13 +140,13 @@ impl service::rooms::edus::presence::Data for KeyValueDatabase {
         &'a self,
         room_id: &RoomId,
         since: u64,
-    ) -> Box<dyn Iterator<Item = Result<(OwnedUserId, u64, PresenceEvent)>> + 'a> {
+    ) -> Box<dyn Iterator<Item = (OwnedUserId, u64, PresenceEvent)> + 'a> {
         let prefix = [room_id.as_bytes(), &[0xff]].concat();
 
         Box::new(
             self.roomuserid_presence
                 .scan_prefix(prefix)
-                .map(
+                .flat_map(
                     |(key, presence_bytes)| -> Result<(OwnedUserId, u64, PresenceEvent)> {
                         let user_id = user_id_from_bytes(
                             key.rsplit(|byte| *byte == 0xff).next().ok_or_else(|| {
@@ -160,10 +160,7 @@ impl service::rooms::edus::presence::Data for KeyValueDatabase {
                         Ok((user_id, presence.last_count, presence_event))
                     },
                 )
-                .filter(move |presence_data| match presence_data {
-                    Ok((_, count, _)) => *count > since,
-                    Err(_) => false,
-                }),
+                .filter(move |(_, count, _)| *count > since),
         )
     }
 }

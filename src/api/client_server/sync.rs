@@ -577,14 +577,12 @@ async fn process_room_presence_updates(
     since: u64,
 ) -> Result<()> {
     // Take presence updates from this room
-    for presence_data in services()
+    for (user_id, _, presence_event) in services()
         .rooms
         .edus
         .presence
         .presence_since(room_id, since)
     {
-        let (user_id, _, presence_event) = presence_data?;
-
         match presence_updates.entry(user_id) {
             Entry::Vacant(slot) => {
                 slot.insert(presence_event);

@@ -29,5 +29,5 @@ pub trait Data: Send + Sync {
         &'a self,
         room_id: &RoomId,
         since: u64,
-    ) -> Box<dyn Iterator<Item = Result<(OwnedUserId, u64, PresenceEvent)>> + 'a>;
+    ) -> Box<dyn Iterator<Item = (OwnedUserId, u64, PresenceEvent)> + 'a>;
 }
