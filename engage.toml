@@ -1,0 +1,64 @@
+interpreter = ["bash", "-euo", "pipefail", "-c"]
+
+[[task]]
+name = "engage"
+group = "versions"
+script = "engage --version"
+
+[[task]]
+name = "rustc"
+group = "versions"
+script = "rustc --version"
+
+[[task]]
+name = "cargo"
+group = "versions"
+script = "cargo --version"
+
+[[task]]
+name = "cargo-fmt"
+group = "versions"
+script = "cargo fmt --version"
+
+[[task]]
+name = "rustdoc"
+group = "versions"
+script = "rustdoc --version"
+
+[[task]]
+name = "cargo-clippy"
+group = "versions"
+script = "cargo clippy -- --version"
+
+[[task]]
+name = "cargo-fmt"
+group = "lints"
+script = "cargo fmt --check -- --color=always"
+
+[[task]]
+name = "cargo-doc"
+group = "lints"
+script = """
+RUSTDOCFLAGS="-D warnings" cargo doc \
+    --workspace \
+    --no-deps \
+    --document-private-items \
+    --color always
+"""
+
+[[task]]
+name = "cargo-clippy"
+group = "lints"
+script = "cargo clippy --workspace --all-targets --color=always -- -D warnings"
+
+[[task]]
+name = "cargo"
+group = "tests"
+script = """
+cargo test \
+    --workspace \
+    --all-targets \
+    --color=always \
+    -- \
+    --color=always
+"""

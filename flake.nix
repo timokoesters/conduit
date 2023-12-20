@@ -82,6 +82,8 @@
           rust-src
           rustc
           rustfmt
+        ]) ++ (with pkgs; [
+          engage
         ]);
       };
 
