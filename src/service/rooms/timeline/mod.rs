@@ -128,27 +128,6 @@ impl Service {
         self.db.get_pdu_count(event_id)
     }
 
-    /// Returns the version of a room, if known
-    pub fn get_room_version(&self, room_id: &RoomId) -> Result<Option<RoomVersionId>> {
-        let create_event = services().rooms.state_accessor.room_state_get(
-            room_id,
-            &StateEventType::RoomCreate,
-            "",
-        )?;
-
-        let create_event_content: Option<RoomCreateEventContent> = create_event
-            .as_ref()
-            .map(|create_event| {
-                serde_json::from_str(create_event.content.get()).map_err(|e| {
-                    warn!("Invalid create event: {}", e);
-                    Error::bad_database("Invalid create event in db.")
-                })
-            })
-            .transpose()?;
-
-        Ok(create_event_content.map(|content| content.room_version))
-    }
-
     // TODO Is this the same as the function above?
     /*
     #[tracing::instrument(skip(self))]
@@ -404,9 +383,7 @@ impl Service {
 
         match pdu.kind {
             TimelineEventType::RoomRedaction => {
-                let room_version_id = self
-                    .get_room_version(&pdu.room_id)?
-                    .expect("Got RoomRedaction in a room of unknown version");
+                let room_version_id = services().rooms.state.get_room_version(&pdu.room_id)?;
                 match room_version_id {
                     RoomVersionId::V1
                     | RoomVersionId::V2
@@ -696,9 +673,11 @@ impl Service {
             .collect();
 
         // If there was no create event yet, assume we are creating a room
-        let room_version_id = self
-            .get_room_version(room_id)?
-            .or_else(|| {
+        let room_version_id = services()
+            .rooms
+            .state
+            .get_room_version(room_id)
+            .or_else(|_| {
                 if event_type == TimelineEventType::RoomCreate {
                     #[derive(Deserialize)]
                     struct RoomCreate {
@@ -706,16 +685,13 @@ impl Service {
                     }
                     let content = serde_json::from_str::<RoomCreate>(content.get())
                         .expect("Invalid content in RoomCreate pdu.");
-                    Some(content.room_version)
+                    Ok(content.room_version)
                 } else {
-                    None
+                    Err(Error::InconsistentRoomState(
+                        "non-create event for room of unknown version",
+                        room_id.to_owned(),
+                    ))
                 }
-            })
-            .ok_or_else(|| {
-                Error::InconsistentRoomState(
-                    "non-create event for room of unknown version",
-                    room_id.to_owned(),
-                )
             })?;
 
         let room_version = RoomVersion::new(&room_version_id).expect("room version is supported");
@@ -1085,9 +1061,10 @@ impl Service {
             let mut pdu = self
                 .get_pdu_from_id(&pdu_id)?
                 .ok_or_else(|| Error::bad_database("PDU ID points to invalid PDU."))?;
-            let room_version_id = self.get_room_version(&pdu.room_id)?.ok_or_else(|| {
-                Error::bad_database("Trying to redact PDU in in room of unknown version")
-            })?;
+            let room_version_id = services()
+                .rooms
+                .state
+                .get_room_version(&pdu.room_id)?;
             pdu.redact(room_version_id, reason)?;
             self.replace_pdu(
                 &pdu_id,
