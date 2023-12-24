@@ -78,10 +78,10 @@ tracing-opentelemetry = "0.18.0"
 lru-cache = "0.1.2"
 rusqlite = { version = "0.29.0", optional = true, features = ["bundled"] }
 parking_lot = { version = "0.12.1", optional = true }
-crossbeam = { version = "0.8.2", optional = true }
+# crossbeam = { version = "0.8.2", optional = true }
 num_cpus = "1.15.0"
 threadpool = "1.8.1"
-heed = { git = "https://github.com/timokoesters/heed.git", rev = "f6f825da7fb2c758867e05ad973ef800a6fe1d5d", optional = true }
+# heed = { git = "https://github.com/timokoesters/heed.git", rev = "f6f825da7fb2c758867e05ad973ef800a6fe1d5d", optional = true }
 # Used for ruma wrapper
 serde_html_form = "0.2.0"
 
@@ -112,7 +112,7 @@ default = ["conduit_bin", "backend_sqlite", "backend_rocksdb", "systemd"]
 #backend_sled = ["sled"]
 backend_persy = ["persy", "parking_lot"]
 backend_sqlite = ["sqlite"]
-backend_heed = ["heed", "crossbeam"]
+#backend_heed = ["heed", "crossbeam"]
 backend_rocksdb = ["rocksdb"]
 jemalloc = ["tikv-jemalloc-ctl", "tikv-jemallocator"]
 sqlite = ["rusqlite", "parking_lot", "tokio/signal"]
