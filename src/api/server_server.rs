@@ -55,7 +55,7 @@ use std::{
     time::{Duration, Instant, SystemTime},
 };
 
-use tracing::{debug, error, trace, warn};
+use tracing::{debug, error, warn};
 
 /// Wraps either an literal IP address plus port, or a hostname plus complement
 /// (colon-plus-port if it was specified).

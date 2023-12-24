@@ -163,6 +163,8 @@ pub async fn login_route(body: Ruma<login::v3::Request>) -> Result<login::v3::Re
 
     info!("{} logged in", user_id);
 
+    // Homeservers are still required to send the `home_server` field
+    #[allow(deprecated)]
     Ok(login::v3::Response {
         user_id,
         access_token: token,
