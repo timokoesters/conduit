@@ -85,7 +85,7 @@ pub async fn get_state_events_route(
     if !services()
         .rooms
         .state_accessor
-        .user_can_see_state_events(&sender_user, &body.room_id)?
+        .user_can_see_state_events(sender_user, &body.room_id)?
     {
         return Err(Error::BadRequest(
             ErrorKind::Forbidden,
@@ -118,7 +118,7 @@ pub async fn get_state_events_for_key_route(
     if !services()
         .rooms
         .state_accessor
-        .user_can_see_state_events(&sender_user, &body.room_id)?
+        .user_can_see_state_events(sender_user, &body.room_id)?
     {
         return Err(Error::BadRequest(
             ErrorKind::Forbidden,
@@ -157,7 +157,7 @@ pub async fn get_state_events_for_empty_key_route(
     if !services()
         .rooms
         .state_accessor
-        .user_can_see_state_events(&sender_user, &body.room_id)?
+        .user_can_see_state_events(sender_user, &body.room_id)?
     {
         return Err(Error::BadRequest(
             ErrorKind::Forbidden,

@@ -666,7 +666,7 @@ pub fn parse_incoming_pdu(
 
     let room_version_id = services().rooms.state.get_room_version(&room_id)?;
 
-    let (event_id, value) = match gen_event_id_canonical_json(&pdu, &room_version_id) {
+    let (event_id, value) = match gen_event_id_canonical_json(pdu, &room_version_id) {
         Ok(t) => t,
         Err(_) => {
             // Event could not be converted to canonical json
@@ -724,7 +724,7 @@ pub async fn send_transaction_message_route(
             continue;
         }
 
-        let r = parse_incoming_pdu(&pdu);
+        let r = parse_incoming_pdu(pdu);
         let (event_id, value, room_id) = match r {
             Ok(t) => t,
             Err(e) => {
@@ -992,7 +992,7 @@ pub async fn get_event_route(
 
     if !services().rooms.state_accessor.server_can_see_event(
         sender_servername,
-        &room_id,
+        room_id,
         &body.event_id,
     )? {
         return Err(Error::BadRequest(
@@ -1058,7 +1058,7 @@ pub async fn get_backfill_route(
     let all_events = services()
         .rooms
         .timeline
-        .pdus_until(&user_id!("@doesntmatter:conduit.rs"), &body.room_id, until)?
+        .pdus_until(user_id!("@doesntmatter:conduit.rs"), &body.room_id, until)?
         .take(limit.try_into().unwrap());
 
     let events = all_events
@@ -1075,7 +1075,7 @@ pub async fn get_backfill_route(
         })
         .map(|(_, pdu)| services().rooms.timeline.get_pdu_json(&pdu.event_id))
         .filter_map(|r| r.ok().flatten())
-        .map(|pdu| PduEvent::convert_to_outgoing_federation_event(pdu))
+        .map(PduEvent::convert_to_outgoing_federation_event)
         .collect();
 
     Ok(get_backfill::v1::Response {

@@ -8,6 +8,7 @@ use tokio::sync::watch;
 
 #[derive(Default)]
 pub(super) struct Watchers {
+    #[allow(clippy::type_complexity)]
     watchers: RwLock<HashMap<Vec<u8>, (watch::Sender<()>, watch::Receiver<()>)>>,
 }
 

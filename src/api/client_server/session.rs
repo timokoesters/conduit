@@ -117,12 +117,10 @@ pub async fn login_route(body: Ruma<login::v3::Request>) -> Result<login::v3::Re
             } else {
                 return Err(Error::BadRequest(ErrorKind::Forbidden, "Bad login type."));
             };
-            let user_id =
-                UserId::parse_with_server_name(username, services().globals.server_name())
-                    .map_err(|_| {
-                        Error::BadRequest(ErrorKind::InvalidUsername, "Username is invalid.")
-                    })?;
-            user_id
+
+            UserId::parse_with_server_name(username, services().globals.server_name()).map_err(
+                |_| Error::BadRequest(ErrorKind::InvalidUsername, "Username is invalid."),
+            )?
         }
         _ => {
             warn!("Unsupported or unknown login type: {:?}", &body.login_info);

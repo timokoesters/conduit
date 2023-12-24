@@ -78,6 +78,7 @@ pub trait Data: Send + Sync {
     ) -> Box<dyn Iterator<Item = Result<OwnedRoomId>> + 'a>;
 
     /// Returns an iterator over all rooms a user was invited to.
+    #[allow(clippy::type_complexity)]
     fn rooms_invited<'a>(
         &'a self,
         user_id: &UserId,
@@ -96,6 +97,7 @@ pub trait Data: Send + Sync {
     ) -> Result<Option<Vec<Raw<AnyStrippedStateEvent>>>>;
 
     /// Returns an iterator over all rooms a user left.
+    #[allow(clippy::type_complexity)]
     fn rooms_left<'a>(
         &'a self,
         user_id: &UserId,

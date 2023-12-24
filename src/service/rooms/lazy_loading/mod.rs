@@ -14,6 +14,7 @@ use super::timeline::PduCount;
 pub struct Service {
     pub db: &'static dyn Data,
 
+    #[allow(clippy::type_complexity)]
     pub lazy_load_waiting:
         Mutex<HashMap<(OwnedUserId, OwnedDeviceId, OwnedRoomId, PduCount), HashSet<OwnedUserId>>>,
 }

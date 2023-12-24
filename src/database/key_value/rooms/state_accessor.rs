@@ -20,7 +20,7 @@ impl service::rooms::state_accessor::Data for KeyValueDatabase {
             let parsed = services()
                 .rooms
                 .state_compressor
-                .parse_compressed_state_event(&compressed)?;
+                .parse_compressed_state_event(compressed)?;
             result.insert(parsed.0, parsed.1);
 
             i += 1;
@@ -49,7 +49,7 @@ impl service::rooms::state_accessor::Data for KeyValueDatabase {
             let (_, eventid) = services()
                 .rooms
                 .state_compressor
-                .parse_compressed_state_event(&compressed)?;
+                .parse_compressed_state_event(compressed)?;
             if let Some(pdu) = services().rooms.timeline.get_pdu(&eventid)? {
                 result.insert(
                     (
@@ -101,7 +101,7 @@ impl service::rooms::state_accessor::Data for KeyValueDatabase {
                 services()
                     .rooms
                     .state_compressor
-                    .parse_compressed_state_event(&compressed)
+                    .parse_compressed_state_event(compressed)
                     .ok()
                     .map(|(_, id)| id)
             }))

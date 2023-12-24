@@ -34,6 +34,7 @@ pub struct SlidingSyncCache {
 
 pub struct Service {
     pub db: &'static dyn Data,
+    #[allow(clippy::type_complexity)]
     pub connections:
         Mutex<BTreeMap<(OwnedUserId, OwnedDeviceId, String), Arc<Mutex<SlidingSyncCache>>>>,
 }
