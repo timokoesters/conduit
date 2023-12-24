@@ -944,7 +944,8 @@ impl Service {
             | RoomVersionId::V8
             | RoomVersionId::V9
             | RoomVersionId::V10 => RoomCreateEventContent::new_v1(conduit_user.clone()),
-            _ => RoomCreateEventContent::new_v11(),
+            RoomVersionId::V11 => RoomCreateEventContent::new_v11(),
+            _ => panic!("Unexpected room version {}", room_version),
         };
         content.federate = true;
         content.predecessor = None;
