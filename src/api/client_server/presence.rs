@@ -1,5 +1,8 @@
-use crate::{services, utils, Result, Ruma};
-use ruma::api::client::presence::{get_presence, set_presence};
+use crate::{services, utils, Error, Result, Ruma};
+use ruma::api::client::{
+    error::ErrorKind,
+    presence::{get_presence, set_presence},
+};
 use std::time::Duration;
 
 /// # `PUT /_matrix/client/r0/presence/{userId}/status`
@@ -79,6 +82,9 @@ pub async fn get_presence_route(
             presence: presence.content.presence,
         })
     } else {
-        todo!();
+        Err(Error::BadRequest(
+            ErrorKind::NotFound,
+            "Presence state for this user was not found",
+        ))
     }
 }
