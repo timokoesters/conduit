@@ -50,7 +50,7 @@ enum AdminCommand {
     /// Registering a new bridge using the ID of an existing bridge will replace
     /// the old one.
     ///
-    /// [commandbody]
+    /// [commandbody]()
     /// # ```
     /// # yaml content here
     /// # ```
@@ -96,7 +96,7 @@ enum AdminCommand {
     /// Removing a mass amount of users from a room may cause a significant amount of leave events.
     /// The time to leave rooms may depend significantly on joined rooms and servers.
     ///
-    /// [commandbody]
+    /// [commandbody]()
     /// # ```
     /// # User list here
     /// # ```
@@ -121,7 +121,7 @@ enum AdminCommand {
     /// The PDU event is only checked for validity and is not added to the
     /// database.
     ///
-    /// [commandbody]
+    /// [commandbody]()
     /// # ```
     /// # PDU json content here
     /// # ```
@@ -165,14 +165,14 @@ enum AdminCommand {
     EnableRoom { room_id: Box<RoomId> },
 
     /// Verify json signatures
-    /// [commandbody]
+    /// [commandbody]()
     /// # ```
     /// # json here
     /// # ```
     SignJson,
 
     /// Verify json signatures
-    /// [commandbody]
+    /// [commandbody]()
     /// # ```
     /// # json here
     /// # ```
@@ -858,12 +858,15 @@ impl Service {
             .expect("Regex compilation should not fail");
         let text = re.replace_all(&text, "<code>$1</code>: $4");
 
-        // Look for a `[commandbody]` tag. If it exists, use all lines below it that
+        // Look for a `[commandbody]()` tag. If it exists, use all lines below it that
         // start with a `#` in the USAGE section.
         let mut text_lines: Vec<&str> = text.lines().collect();
         let mut command_body = String::new();
 
-        if let Some(line_index) = text_lines.iter().position(|line| *line == "[commandbody]") {
+        if let Some(line_index) = text_lines
+            .iter()
+            .position(|line| *line == "[commandbody]()")
+        {
             text_lines.remove(line_index);
 
             while text_lines

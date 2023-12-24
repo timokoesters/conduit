@@ -341,7 +341,7 @@ fn add_port_to_hostname(destination_str: &str) -> FedDest {
 }
 
 /// Returns: actual_destination, host header
-/// Implemented according to the specification at https://matrix.org/docs/spec/server_server/r0.1.4#resolving-server-names
+/// Implemented according to the specification at <https://matrix.org/docs/spec/server_server/r0.1.4#resolving-server-names>
 /// Numbers in comments below refer to bullet points in linked section of specification
 async fn find_actual_destination(destination: &'_ ServerName) -> (FedDest, FedDest) {
     debug!("Finding actual destination for {destination}");
