@@ -1,6 +1,5 @@
 use crate::{services, Error, Result, Ruma};
 use rand::seq::SliceRandom;
-use regex::Regex;
 use ruma::{
     api::{
         appservice,
@@ -101,31 +100,28 @@ pub(crate) async fn get_alias_helper(
     match services().rooms.alias.resolve_local_alias(&room_alias)? {
         Some(r) => room_id = Some(r),
         None => {
-            for (_id, registration) in services().appservice.all()? {
-                let aliases = registration
-                    .get("namespaces")
-                    .and_then(|ns| ns.get("aliases"))
-                    .and_then(|aliases| aliases.as_sequence())
-                    .map_or_else(Vec::new, |aliases| {
-                        aliases
-                            .iter()
-                            .filter_map(|aliases| Regex::new(aliases.get("regex")?.as_str()?).ok())
-                            .collect::<Vec<_>>()
-                    });
-
-                if aliases
-                    .iter()
-                    .any(|aliases| aliases.is_match(room_alias.as_str()))
-                    && services()
+            for appservice in services()
+                .appservice
+                .registration_info
+                .read()
+                .await
+                .values()
+            {
+                if appservice.aliases.is_match(room_alias.as_str())
+                    && if let Some(opt_result) = services()
                         .sending
                         .send_appservice_request(
-                            registration,
+                            appservice.registration.clone(),
                             appservice::query::query_room_alias::v1::Request {
                                 room_alias: room_alias.clone(),
                             },
                         )
                         .await
-                        .is_ok()
+                    {
+                        opt_result.is_ok()
+                    } else {
+                        false
+                    }
                 {
                     room_id = Some(
                         services()

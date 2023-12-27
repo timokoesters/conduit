@@ -1,10 +1,11 @@
+use ruma::api::appservice::Registration;
+
 use crate::{database::KeyValueDatabase, service, utils, Error, Result};
 
 impl service::appservice::Data for KeyValueDatabase {
     /// Registers an appservice and returns the ID to the caller
-    fn register_appservice(&self, yaml: serde_yaml::Value) -> Result<String> {
-        // TODO: Rumaify
-        let id = yaml.get("id").unwrap().as_str().unwrap();
+    fn register_appservice(&self, yaml: Registration) -> Result<String> {
+        let id = yaml.id.as_str();
         self.id_appserviceregistrations.insert(
             id.as_bytes(),
             serde_yaml::to_string(&yaml).unwrap().as_bytes(),
@@ -32,7 +33,7 @@ impl service::appservice::Data for KeyValueDatabase {
         Ok(())
     }
 
-    fn get_registration(&self, id: &str) -> Result<Option<serde_yaml::Value>> {
+    fn get_registration(&self, id: &str) -> Result<Option<Registration>> {
         self.cached_registrations
             .read()
             .unwrap()
@@ -64,7 +65,7 @@ impl service::appservice::Data for KeyValueDatabase {
         )))
     }
 
-    fn all(&self) -> Result<Vec<(String, serde_yaml::Value)>> {
+    fn all(&self) -> Result<Vec<(String, Registration)>> {
         self.iter_ids()?
             .filter_map(|id| id.ok())
             .map(move |id| {

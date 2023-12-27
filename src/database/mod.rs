@@ -8,7 +8,9 @@ use crate::{
 use abstraction::{KeyValueDatabaseEngine, KvTree};
 use directories::ProjectDirs;
 use lru_cache::LruCache;
+
 use ruma::{
+    api::appservice::Registration,
     events::{
         push_rules::{PushRulesEvent, PushRulesEventContent},
         room::message::RoomMessageEventContent,
@@ -162,7 +164,7 @@ pub struct KeyValueDatabase {
     //pub pusher: pusher::PushData,
     pub(super) senderkey_pusher: Arc<dyn KvTree>,
 
-    pub(super) cached_registrations: Arc<RwLock<HashMap<String, serde_yaml::Value>>>,
+    pub(super) cached_registrations: Arc<RwLock<HashMap<String, Registration>>>,
     pub(super) pdu_cache: Mutex<LruCache<OwnedEventId, Arc<PduEvent>>>,
     pub(super) shorteventid_cache: Mutex<LruCache<u64, Arc<EventId>>>,
     pub(super) auth_chain_cache: Mutex<LruCache<Vec<u64>, Arc<HashSet<u64>>>>,
@@ -965,6 +967,22 @@ impl KeyValueDatabase {
                 services().globals.config.database_backend,
                 latest_database_version
             );
+        }
+
+        // Inserting registrations into cache
+        for appservice in services().appservice.all()? {
+            services()
+                .appservice
+                .registration_info
+                .write()
+                .await
+                .insert(
+                    appservice.0,
+                    appservice
+                        .1
+                        .try_into()
+                        .expect("Should be validated on registration"),
+                );
         }
 
         // This data is probably outdated

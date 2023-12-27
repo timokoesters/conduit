@@ -22,7 +22,7 @@ use base64::{engine::general_purpose, Engine as _};
 
 use ruma::{
     api::{
-        appservice,
+        appservice::{self, Registration},
         federation::{
             self,
             transactions::edu::{
@@ -484,7 +484,7 @@ impl Service {
 
                 let permit = services().sending.maximum_requests.acquire().await;
 
-                let response = appservice_server::send_request(
+                let response = match appservice_server::send_request(
                     services()
                         .appservice
                         .get_registration(id)
@@ -511,8 +511,12 @@ impl Service {
                     },
                 )
                 .await
-                .map(|_response| kind.clone())
-                .map_err(|e| (kind, e));
+                {
+                    None => Ok(kind.clone()),
+                    Some(op_resp) => op_resp
+                        .map(|_response| kind.clone())
+                        .map_err(|e| (kind.clone(), e)),
+                };
 
                 drop(permit);
 
@@ -698,12 +702,15 @@ impl Service {
         response
     }
 
+    /// Sends a request to an appservice
+    ///
+    /// Only returns None if there is no url specified in the appservice registration file
     #[tracing::instrument(skip(self, registration, request))]
     pub async fn send_appservice_request<T: OutgoingRequest>(
         &self,
-        registration: serde_yaml::Value,
+        registration: Registration,
         request: T,
-    ) -> Result<T::IncomingResponse>
+    ) -> Option<Result<T::IncomingResponse>>
     where
         T: Debug,
     {

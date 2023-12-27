@@ -8,6 +8,7 @@ use std::{
 use clap::Parser;
 use regex::Regex;
 use ruma::{
+    api::appservice::Registration,
     events::{
         room::{
             canonical_alias::RoomCanonicalAliasEventContent,
@@ -335,10 +336,9 @@ impl Service {
                 if body.len() > 2 && body[0].trim() == "```" && body.last().unwrap().trim() == "```"
                 {
                     let appservice_config = body[1..body.len() - 1].join("\n");
-                    let parsed_config =
-                        serde_yaml::from_str::<serde_yaml::Value>(&appservice_config);
+                    let parsed_config = serde_yaml::from_str::<Registration>(&appservice_config);
                     match parsed_config {
-                        Ok(yaml) => match services().appservice.register_appservice(yaml) {
+                        Ok(yaml) => match services().appservice.register_appservice(yaml).await {
                             Ok(id) => RoomMessageEventContent::text_plain(format!(
                                 "Appservice registered with ID: {id}."
                             )),
@@ -361,6 +361,7 @@ impl Service {
             } => match services()
                 .appservice
                 .unregister_appservice(&appservice_identifier)
+                .await
             {
                 Ok(()) => RoomMessageEventContent::text_plain("Appservice unregistered."),
                 Err(e) => RoomMessageEventContent::text_plain(format!(
