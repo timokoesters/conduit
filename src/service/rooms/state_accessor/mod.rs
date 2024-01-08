@@ -5,6 +5,7 @@ use std::{
 };
 
 pub use data::Data;
+use js_option::JsOption;
 use lru_cache::LruCache;
 use ruma::{
     events::{
@@ -290,12 +291,12 @@ impl Service {
             })
     }
 
-    pub fn get_avatar(&self, room_id: &RoomId) -> Result<Option<RoomAvatarEventContent>> {
+    pub fn get_avatar(&self, room_id: &RoomId) -> Result<JsOption<RoomAvatarEventContent>> {
         services()
             .rooms
             .state_accessor
             .room_state_get(room_id, &StateEventType::RoomAvatar, "")?
-            .map_or(Ok(None), |s| {
+            .map_or(Ok(JsOption::Undefined), |s| {
                 serde_json::from_str(s.content.get())
                     .map_err(|_| Error::bad_database("Invalid room avatar event in database."))
             })

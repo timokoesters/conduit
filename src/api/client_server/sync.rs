@@ -1614,12 +1614,22 @@ pub async fn sync_events_v4_route(
         rooms.insert(
             room_id.clone(),
             sync_events::v4::SlidingSyncRoom {
-                name: services().rooms.state_accessor.get_name(room_id)?.or(name),
-                avatar: services()
+                name: services()
                     .rooms
                     .state_accessor
-                    .get_avatar(room_id)?
-                    .map_or(avatar, |a| a.url),
+                    .get_name(room_id)?
+                    .or_else(|| name),
+                avatar: if let Some(avatar) = avatar {
+                    ruma::JsOption::Some(avatar)
+                } else {
+                    match services().rooms.state_accessor.get_avatar(room_id)? {
+                        ruma::JsOption::Some(avatar) => {
+                            js_option::JsOption::Some(avatar.url.unwrap())
+                        }
+                        ruma::JsOption::Null => ruma::JsOption::Null,
+                        ruma::JsOption::Undefined => ruma::JsOption::Undefined,
+                    }
+                },
                 initial: Some(roomsince == &0),
                 is_dm: None,
                 invite_state: None,

@@ -1,6 +1,6 @@
 mod data;
 pub use data::Data;
-use ruma::events::AnySyncTimelineEvent;
+use ruma::{events::AnySyncTimelineEvent, push::PushConditionPowerLevelsCtx};
 
 use crate::{services, Error, PduEvent, Result};
 use bytes::BytesMut;
@@ -193,6 +193,12 @@ impl Service {
         pdu: &Raw<AnySyncTimelineEvent>,
         room_id: &RoomId,
     ) -> Result<&'a [Action]> {
+        let power_levels = PushConditionPowerLevelsCtx {
+            users: power_levels.users.clone(),
+            users_default: power_levels.users_default,
+            notifications: power_levels.notifications.clone(),
+        };
+
         let ctx = PushConditionRoomCtx {
             room_id: room_id.to_owned(),
             member_count: 10_u32.into(), // TODO: get member count efficiently
@@ -201,9 +207,7 @@ impl Service {
                 .users
                 .displayname(user)?
                 .unwrap_or_else(|| user.localpart().to_owned()),
-            users_power_levels: power_levels.users.clone(),
-            default_power_level: power_levels.users_default,
-            notification_power_levels: power_levels.notifications.clone(),
+            power_levels: Some(power_levels),
         };
 
         Ok(ruleset.get_actions(pdu, &ctx))
