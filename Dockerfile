@@ -1,85 +1,79 @@
-# syntax=docker.io/docker/dockerfile:1.6
-FROM docker.io/rust:1.73-bullseye AS base
+# Platforms might be linux/amd64, linux/arm64
 
-FROM base AS builder
-WORKDIR /usr/src/conduit
+FROM --platform=$BUILDPLATFORM docker.io/rust:1.75-bookworm AS builder
 
-# Install required packages to build Conduit and it's dependencies
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    apt-get update && \
-    apt-get -y --no-install-recommends install libclang-dev=1:11.0-51+nmu5
+RUN apt-get update && \
+    apt-get -y --no-install-recommends install libclang-dev
 
-# == Build dependencies without our own code separately for caching ==
-#
-# Need a fake main.rs since Cargo refuses to build anything otherwise.
-#
-# See https://github.com/rust-lang/cargo/issues/2644 for a Cargo feature
-# request that would allow just dependencies to be compiled, presumably
-# regardless of whether source files are available.
-RUN mkdir src && touch src/lib.rs && echo 'fn main() {}' > src/main.rs
-COPY --link Cargo.toml Cargo.lock ./
-RUN cargo build --release && rm -r src
+# Install Zig
+ARG ZIG_VERSION=0.11.0
+RUN curl -L "https://ziglang.org/download/${ZIG_VERSION}/zig-linux-$(uname -m)-${ZIG_VERSION}.tar.xz" | tar -J -x -C /usr/local && \
+    ln -s "/usr/local/zig-linux-$(uname -m)-${ZIG_VERSION}/zig" /usr/local/bin/zig
+
+ARG TARGETARCH
+
+# Install zigbuild
+RUN cargo install cargo-zigbuild
+
+RUN <<EOL
+    case $TARGETARCH in \
+          (amd64)   rustarch="x86_64-unknown-linux-gnu";; \
+          (arm64)   rustarch="aarch64-unknown-linux-gnu";; \
+          (arm)   rustarch="armv7-unknown-linux-gnueabihf";; \
+    esac
+    echo "$TARGETARCH"
+    rustup target add "$rustarch"
+EOL
+
+## # == Build dependencies without our own code separately for caching ==
+## #
+## # Need a fake main.rs since Cargo refuses to build anything otherwise.
+## #
+## # See https://github.com/rust-lang/cargo/issues/2644 for a Cargo feature
+## # request that would allow just dependencies to be compiled, presumably
+## # regardless of whether source files are available.
+## COPY Cargo.toml Cargo.lock ./
+## 
+## RUN <<EOL
+##     case $TARGETARCH in \
+##           (amd64)   rustarch="x86_64-unknown-linux-gnu";; \
+##           (arm64)   rustarch="aarch64-unknown-linux-gnu";; \
+##           (arm)   rustarch="armv7-unknown-linux-gnueabihf";; \
+##     esac
+## 
+##     mkdir src && touch src/lib.rs && echo 'fn main() {}' > src/main.rs
+##     cargo zigbuild --target --release "$rustarch"
+##     rm -r src
+## EOL
 
 # Copy over actual Conduit sources
-COPY --link src src
+COPY Cargo.toml Cargo.lock ./
+COPY src src
+
 
 # main.rs and lib.rs need their timestamp updated for this to work correctly since
 # otherwise the build with the fake main.rs from above is newer than the
 # source files (COPY preserves timestamps).
 #
-# Builds conduit and places the binary at /usr/src/conduit/target/release/conduit
-RUN touch src/main.rs && touch src/lib.rs && cargo build --release
+# Builds conduit and places the binary at /conduit
+RUN <<EOL
+    case $TARGETARCH in \
+          (amd64)   rustarch="x86_64-unknown-linux-gnu";; \
+          (arm64)   rustarch="aarch64-unknown-linux-gnu";; \
+          (arm)   rustarch="armv7-unknown-linux-gnueabihf";; \
+    esac
+
+    touch src/main.rs
+    touch src/lib.rs
+    cargo zigbuild --release --target "$rustarch"
+    mv "target/$rustarch/debug/conduit" /conduit
+EOL
 
 
-# ONLY USEFUL FOR CI: target stage to extract build artifacts
-FROM scratch AS builder-result
-COPY --from=builder /usr/src/conduit/target/release/conduit /conduit
 
 
-
-# ---------------------------------------------------------------------------------------------------------------
-# Build cargo-deb, a tool to package up rust binaries into .deb packages for Debian/Ubuntu based systems:
-# ---------------------------------------------------------------------------------------------------------------
-FROM base AS build-cargo-deb
-
-RUN --mount=type=cache,id=cargodeb,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,id=cargodeb,target=/var/lib/apt,sharing=locked \
-    apt-get update && \
-    apt-get install -y --no-install-recommends \
-    dpkg \
-    dpkg-dev \
-    liblzma-dev
-
-RUN cargo install cargo-deb 
-# => binary is in /usr/local/cargo/bin/cargo-deb
-
-
-# ---------------------------------------------------------------------------------------------------------------
-# Package conduit build-result into a .deb package:
-# ---------------------------------------------------------------------------------------------------------------
-FROM builder AS packager
-WORKDIR /usr/src/conduit
-
-COPY ./LICENSE ./LICENSE
-COPY --link ./README.md ./README.md
-COPY --link debian ./debian
-COPY --from=build-cargo-deb --link /usr/local/cargo/bin/cargo-deb /usr/local/cargo/bin/cargo-deb
-
-# --no-build makes cargo-deb reuse already compiled project
-RUN cargo deb --no-build
-# => Package is in /usr/src/conduit/target/debian/<project_name>_<version>_<arch>.deb
-
-
-# ONLY USEFUL FOR CI: target stage to extract build artifacts
-FROM scratch AS packager-result
-COPY --from=packager /usr/src/conduit/target/debian/*.deb /conduit.deb
-
-
-# ---------------------------------------------------------------------------------------------------------------
-# Stuff below this line actually ends up in the resulting docker image
-# ---------------------------------------------------------------------------------------------------------------
-FROM docker.io/debian:bullseye-slim AS runner
+# On the target arch:
+FROM docker.io/debian:bookworm-slim AS runtime
 
 # Standard port on which Conduit launches.
 # You still need to map the port when using the docker command or docker-compose.
@@ -93,26 +87,19 @@ ENV CONDUIT_PORT=6167 \
     CONDUIT_CONFIG=''
 #    └─> Set no config file to do all configuration with env vars
 
+# Test if Conduit is still alive, uses the same endpoint as Element
+COPY ./docker/healthcheck.sh /srv/conduit/healthcheck.sh
+HEALTHCHECK --start-period=5s --interval=5s CMD ./healthcheck.sh
+
 # Conduit needs:
-#   dpkg: to install conduit.deb
 #   ca-certificates: for https
 #   iproute2 & wget: for the healthcheck script
-RUN --mount=type=cache,id=runner,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,id=runner,target=/var/lib/apt,sharing=locked \
-    apt-get update && apt-get -y --no-install-recommends install \
-    dpkg \
+RUN apt-get update && apt-get -y --no-install-recommends install \
     ca-certificates \
     iproute2 \
     wget \
     && rm -rf /var/lib/apt/lists/*
 
-# Test if Conduit is still alive, uses the same endpoint as Element
-COPY --link ./docker/healthcheck.sh /srv/conduit/healthcheck.sh
-HEALTHCHECK --start-period=5s --interval=5s CMD ./healthcheck.sh
-
-# Install conduit.deb:
-COPY --from=packager --link /usr/src/conduit/target/debian/*.deb /srv/conduit/
-RUN dpkg -i /srv/conduit/*.deb
 
 # Improve security: Don't run stuff as root, that does not need to run as root
 # Most distros also use 1000:1000 for the first real user, so this should resolve volume mounting problems.
@@ -136,3 +123,10 @@ WORKDIR /srv/conduit
 # Run Conduit and print backtraces on panics
 ENV RUST_BACKTRACE=1
 ENTRYPOINT [ "/usr/sbin/matrix-conduit" ]
+
+
+
+FROM runtime AS final
+
+# Actually copy over conduit binary
+COPY --from=builder /conduit /usr/sbin/matrix-conduit
