@@ -2,6 +2,7 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs?ref=nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
+    nix-filter.url = "github:numtide/nix-filter";
 
     fenix = {
       url = "github:nix-community/fenix";
@@ -17,6 +18,7 @@
     { self
     , nixpkgs
     , flake-utils
+    , nix-filter
 
     , fenix
     , crane
@@ -73,7 +75,14 @@
     in
     {
       packages.default = builder {
-        src = ./.;
+        src = nix-filter {
+          root = ./.;
+          include = [
+            "src"
+            "Cargo.toml"
+            "Cargo.lock"
+          ];
+        };
 
         # This is redundant with CI
         doCheck = false;
