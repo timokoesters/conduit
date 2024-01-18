@@ -95,6 +95,26 @@
         meta.mainProgram = cargoToml.package.name;
       };
 
+      packages.oci-image =
+      let
+        package = self.packages.${system}.default;
+      in
+      pkgs.dockerTools.buildImage {
+        name = package.pname;
+        tag = "latest";
+        config = {
+          # Use the `tini` init system so that signals (e.g. ctrl+c/SIGINT) are
+          # handled as expected
+          Entrypoint = [
+            "${pkgs.lib.getExe' pkgs.tini "tini"}"
+            "--"
+          ];
+          Cmd = [
+            "${pkgs.lib.getExe package}"
+          ];
+        };
+      };
+
       devShells.default = (pkgs.mkShell.override { inherit stdenv; }) {
         env = env // {
           # Rust Analyzer needs to be able to find the path to default crate

@@ -1,5 +1,6 @@
 stages:
   - ci
+  - artifacts
 
 variables:
   # Makes some things print in color
@@ -31,3 +32,15 @@ ci:
     paths:
       - target
       - .gitlab-ci.d
+
+docker:
+  stage: artifacts
+  image: nixos/nix:2.19.2
+  script:
+    - nix build .#oci-image
+
+    # Make the output less difficult to find
+    - cp result docker-image.tar.gz
+  artifacts:
+    paths:
+      - docker-image.tar.gz
