@@ -2,7 +2,6 @@ stages:
   - build
   - build docker image
   - test
-  - upload artifacts
 
 variables:
   # Make GitLab CI go fast:
@@ -207,31 +206,6 @@ test:dockerlint:
         - .gitlab-ci.yml
     - if: '$CI_COMMIT_REF_NAME == "master"'
     - if: '$CI_COMMIT_REF_NAME == "next"'
-
-# --------------------------------------------------------------------- #
-#  Store binaries as package so they have download urls                 #
-# --------------------------------------------------------------------- #
-
-# DISABLED FOR NOW, NEEDS TO BE FIXED AT A LATER TIME:
-
-#publish:package:
-#  stage: "upload artifacts"
-#  needs:
-#    - "docker:tags"
-#  rules:
-#    - if: "$CI_COMMIT_TAG"
-#  image: curlimages/curl:latest
-#  tags: ["docker"]
-#  variables:
-#    GIT_STRATEGY: "none" # Don't need a clean copy of the code, we just operate on artifacts
-#  script:
-#    - 'BASE_URL="${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/conduit-${CI_COMMIT_REF_SLUG}/build-${CI_PIPELINE_ID}"'
-#    - 'curl --header "JOB-TOKEN: $CI_JOB_TOKEN" --upload-file build-output/linux_amd64/conduit "${BASE_URL}/conduit-x86_64-unknown-linux-gnu"'
-#    - 'curl --header "JOB-TOKEN: $CI_JOB_TOKEN" --upload-file build-output/linux_arm_v7/conduit "${BASE_URL}/conduit-armv7-unknown-linux-gnu"'
-#    - 'curl --header "JOB-TOKEN: $CI_JOB_TOKEN" --upload-file build-output/linux_arm64/conduit "${BASE_URL}/conduit-aarch64-unknown-linux-gnu"'
-#    - 'curl --header "JOB-TOKEN: $CI_JOB_TOKEN" --upload-file build-output/linux_amd64/conduit.deb "${BASE_URL}/conduit-x86_64-unknown-linux-gnu.deb"'
-#    - 'curl --header "JOB-TOKEN: $CI_JOB_TOKEN" --upload-file build-output/linux_arm_v7/conduit.deb "${BASE_URL}/conduit-armv7-unknown-linux-gnu.deb"'
-#    - 'curl --header "JOB-TOKEN: $CI_JOB_TOKEN" --upload-file build-output/linux_arm64/conduit.deb "${BASE_URL}/conduit-aarch64-unknown-linux-gnu.deb"'
 
 # Avoid duplicate pipelines
 # See: https://docs.gitlab.com/ee/ci/yaml/workflow.html#switch-between-branch-pipelines-and-merge-request-pipelines
