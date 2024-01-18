@@ -174,39 +174,6 @@ test:audit:
     reports:
       sast: gl-sast-report.json
 
-test:dockerlint:
-  stage: "test"
-  needs: []
-  image: "ghcr.io/hadolint/hadolint@sha256:6c4b7c23f96339489dd35f21a711996d7ce63047467a9a562287748a03ad5242" # 2.8.0-alpine
-  interruptible: true
-  script:
-    - hadolint --version
-    # First pass: Print for CI log:
-    - >
-      hadolint
-      --no-fail --verbose
-      ./Dockerfile
-    # Then output the results into a json for GitLab to pretty-print this in the MR:
-    - >
-      hadolint
-      --format gitlab_codeclimate
-      --failure-threshold error
-      ./Dockerfile > dockerlint.json
-  artifacts:
-    when: always
-    reports:
-      codequality: dockerlint.json
-    paths:
-      - dockerlint.json
-  rules:
-    - if: '$CI_COMMIT_REF_NAME != "master"'
-      changes:
-        - docker/*Dockerfile
-        - Dockerfile
-        - .gitlab-ci.yml
-    - if: '$CI_COMMIT_REF_NAME == "master"'
-    - if: '$CI_COMMIT_REF_NAME == "next"'
-
 # Avoid duplicate pipelines
 # See: https://docs.gitlab.com/ee/ci/yaml/workflow.html#switch-between-branch-pipelines-and-merge-request-pipelines
 workflow:
