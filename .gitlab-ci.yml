@@ -1,175 +1,33 @@
 stages:
-  - build
-  - build docker image
-  - test
+  - ci
 
 variables:
-  # Make GitLab CI go fast:
-  GIT_SUBMODULE_STRATEGY: recursive
-  FF_USE_FASTZIP: 1
-  CACHE_COMPRESSION_LEVEL: fastest
+  # Makes some things print in color
+  TERM: ansi
 
-# --------------------------------------------------------------------- #
-#  Create and publish docker image                                      #
-# --------------------------------------------------------------------- #
+before_script:
+  # Enable nix-command and flakes
+  - echo "experimental-features = nix-command flakes" >> /etc/nix/nix.conf
 
-.docker-shared-settings:
-  stage: "build docker image"
-  needs: []
-  tags: [ "docker" ]
-  variables:
-    # Docker in Docker:
-    DOCKER_BUILDKIT: 1
-  image:
-    name: docker.io/docker
-  services:
-    - name: docker.io/docker:dind
-      alias: docker
+  # Add nix-community binary cache
+  - echo "extra-substituters = https://nix-community.cachix.org" >> /etc/nix/nix.conf
+  - echo "extra-trusted-public-keys = nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs=" >> /etc/nix/nix.conf
+
+  # Install direnv and nix-direnv
+  - nix-env -iA nixpkgs.direnv nixpkgs.nix-direnv
+
+  # Allow .envrc
+  - direnv allow
+
+  # Set CARGO_HOME to a cacheable path
+  - export CARGO_HOME="$(git rev-parse --show-toplevel)/.gitlab-ci.d/cargo"
+
+ci:
+  stage: ci
+  image: nixos/nix:2.19.2
   script:
-    - apk add openssh-client
-    - eval $(ssh-agent -s)
-    - mkdir -p ~/.ssh && chmod 700 ~/.ssh
-    - printf "Host *\n\tStrictHostKeyChecking no\n\n" >> ~/.ssh/config
-    - sh .gitlab/setup-buildx-remote-builders.sh
-    # Authorize against this project's own image registry:
-    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
-    # Build multiplatform image and push to temporary tag:
-    - >
-      docker buildx build 
-      --platform "linux/arm/v7,linux/arm64,linux/amd64"
-      --pull
-      --tag "$CI_REGISTRY_IMAGE/temporary-ci-images:$CI_JOB_ID"
-      --push
-      --provenance=false
-      --file "Dockerfile" .
-    # Build multiplatform image to deb stage and extract their .deb files:
-    - >
-      docker buildx build 
-      --platform "linux/arm/v7,linux/arm64,linux/amd64"
-      --target "packager-result"
-      --output="type=local,dest=/tmp/build-output"
-      --provenance=false
-      --file "Dockerfile" .
-    # Build multiplatform image to binary stage and extract their binaries:
-    - >
-      docker buildx build 
-      --platform "linux/arm/v7,linux/arm64,linux/amd64"
-      --target "builder-result"
-      --output="type=local,dest=/tmp/build-output"
-      --provenance=false
-      --file "Dockerfile" .
-    # Copy to GitLab container registry:
-    - >
-      docker buildx imagetools create
-      --tag "$CI_REGISTRY_IMAGE/$TAG"
-      --tag "$CI_REGISTRY_IMAGE/$TAG-bullseye"
-      --tag "$CI_REGISTRY_IMAGE/$TAG-commit-$CI_COMMIT_SHORT_SHA"
-      "$CI_REGISTRY_IMAGE/temporary-ci-images:$CI_JOB_ID"
-    # if DockerHub credentials exist, also copy to dockerhub:
-    - if [ -n "${DOCKER_HUB}" ]; then docker login -u "$DOCKER_HUB_USER" -p "$DOCKER_HUB_PASSWORD" "$DOCKER_HUB"; fi
-    - >
-      if [ -n "${DOCKER_HUB}" ]; then 
-      docker buildx imagetools create
-      --tag "$DOCKER_HUB_IMAGE/$TAG"
-      --tag "$DOCKER_HUB_IMAGE/$TAG-bullseye"
-      --tag "$DOCKER_HUB_IMAGE/$TAG-commit-$CI_COMMIT_SHORT_SHA"
-      "$CI_REGISTRY_IMAGE/temporary-ci-images:$CI_JOB_ID"
-      ; fi
-    - mv /tmp/build-output ./
-  artifacts:
+    - direnv exec . engage
+  cache:
     paths:
-      - "./build-output/" 
-
-docker:next:
-  extends: .docker-shared-settings
-  rules:
-    - if: '$BUILD_SERVER_SSH_PRIVATE_KEY && $CI_COMMIT_BRANCH == "next"'
-  variables:
-    TAG: "matrix-conduit:next"
-
-docker:master:
-  extends: .docker-shared-settings
-  rules:
-    - if: '$BUILD_SERVER_SSH_PRIVATE_KEY && $CI_COMMIT_BRANCH == "master"'
-  variables:
-    TAG: "matrix-conduit:latest"
-
-docker:tags:
-  extends: .docker-shared-settings
-  rules:
-    - if: "$BUILD_SERVER_SSH_PRIVATE_KEY && $CI_COMMIT_TAG"
-  variables:
-    TAG: "matrix-conduit:$CI_COMMIT_TAG"
-
-
-docker build debugging:
-  extends: .docker-shared-settings
-  rules:
-    - if: "$CI_MERGE_REQUEST_TITLE =~ /.*[Dd]ocker.*/"
-  variables:
-    TAG: "matrix-conduit-docker-tests:latest"
-
-# --------------------------------------------------------------------- #
-#  Run tests                                                            #
-# --------------------------------------------------------------------- #
-
-cargo check:
-  stage: test
-  image: docker.io/rust:1.70.0-bullseye
-  needs: []
-  interruptible: true
-  before_script:
-    - "rustup show && rustc --version && cargo --version" # Print version info for debugging
-    - apt-get update && apt-get -y --no-install-recommends install libclang-dev # dependency for rocksdb
-  script:
-    - cargo check
-
-
-.test-shared-settings:
-  stage: "test"
-  needs: []
-  image: "registry.gitlab.com/jfowl/conduit-containers/rust-with-tools:latest"
-  tags: ["docker"]
-  variables:
-    CARGO_INCREMENTAL: "false" # https://matklad.github.io/2021/09/04/fast-rust-builds.html#ci-workflow
-  interruptible: true
-
-test:cargo:
-  extends: .test-shared-settings
-  before_script:
-    - apt-get update && apt-get -y --no-install-recommends install libclang-dev # dependency for rocksdb
-  script:
-    - rustc --version && cargo --version # Print version info for debugging
-    - "cargo test --color always --workspace --verbose --locked --no-fail-fast"
-
-test:clippy:
-  extends: .test-shared-settings
-  allow_failure: true
-  before_script:
-    - rustup component add clippy
-    - apt-get update && apt-get -y --no-install-recommends install libclang-dev # dependency for rocksdb
-  script:
-    - rustc --version && cargo --version # Print version info for debugging
-    - "cargo clippy --color always --verbose --message-format=json | gitlab-report -p clippy > $CI_PROJECT_DIR/gl-code-quality-report.json"
-  artifacts:
-    when: always
-    reports:
-      codequality: gl-code-quality-report.json
-
-test:format:
-  extends: .test-shared-settings
-  before_script:
-    - rustup component add rustfmt
-  script:
-    - cargo fmt --all -- --check
-
-test:audit:
-  extends: .test-shared-settings
-  allow_failure: true
-  script:
-    - cargo audit --color always || true
-    - cargo audit --stale --json | gitlab-report -p audit > gl-sast-report.json
-  artifacts:
-    when: always
-    reports:
-      sast: gl-sast-report.json
+      - target
+      - .gitlab-ci.d
