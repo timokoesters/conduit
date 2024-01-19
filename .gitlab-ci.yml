@@ -8,17 +8,17 @@ variables:
 
 before_script:
   # Enable nix-command and flakes
-  - echo "experimental-features = nix-command flakes" >> /etc/nix/nix.conf
+  - if command -v nix > /dev/null; then echo "experimental-features = nix-command flakes" >> /etc/nix/nix.conf; fi
 
   # Add nix-community binary cache
-  - echo "extra-substituters = https://nix-community.cachix.org" >> /etc/nix/nix.conf
-  - echo "extra-trusted-public-keys = nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs=" >> /etc/nix/nix.conf
+  - if command -v nix > /dev/null; then echo "extra-substituters = https://nix-community.cachix.org" >> /etc/nix/nix.conf; fi
+  - if command -v nix > /dev/null; then echo "extra-trusted-public-keys = nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs=" >> /etc/nix/nix.conf; fi
 
   # Install direnv and nix-direnv
-  - nix-env -iA nixpkgs.direnv nixpkgs.nix-direnv
+  - if command -v nix > /dev/null; then nix-env -iA nixpkgs.direnv nixpkgs.nix-direnv; fi
 
   # Allow .envrc
-  - direnv allow
+  - if command -v nix > /dev/null; then direnv allow; fi
 
   # Set CARGO_HOME to a cacheable path
   - export CARGO_HOME="$(git rev-parse --show-toplevel)/.gitlab-ci.d/cargo"
@@ -29,6 +29,7 @@ ci:
   script:
     - direnv exec . engage
   cache:
+    key: nix
     paths:
       - target
       - .gitlab-ci.d
@@ -44,3 +45,22 @@ docker:
   artifacts:
     paths:
       - docker-image.tar.gz
+
+debian:
+  stage: artifacts
+  image: rust:1.70.0
+  script:
+    - apt-get update && apt-get install -y --no-install-recommends libclang-dev
+    - cargo install cargo-deb
+    - cargo deb
+
+    # Make the output less difficult to find
+    - mv target/debian/*.deb .
+  artifacts:
+    paths:
+      - "*.deb"
+  cache:
+    key: debian
+    paths:
+      - target
+      - .gitlab-ci.d
