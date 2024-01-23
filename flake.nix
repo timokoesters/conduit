@@ -71,25 +71,27 @@
       };
     in
     {
-      packages.default = package pkgsHost;
+      packages = {
+        default = package pkgsHost;
 
-      packages.oci-image =
-      let
-        package = self.packages.${system}.default;
-      in
-      pkgsHost.dockerTools.buildImage {
-        name = package.pname;
-        tag = "latest";
-        config = {
-          # Use the `tini` init system so that signals (e.g. ctrl+c/SIGINT) are
-          # handled as expected
-          Entrypoint = [
-            "${pkgsHost.lib.getExe' pkgsHost.tini "tini"}"
-            "--"
-          ];
-          Cmd = [
-            "${pkgsHost.lib.getExe package}"
-          ];
+        oci-image =
+        let
+          package = self.packages.${system}.default;
+        in
+        pkgsHost.dockerTools.buildImage {
+          name = package.pname;
+          tag = "latest";
+          config = {
+            # Use the `tini` init system so that signals (e.g. ctrl+c/SIGINT)
+            # are handled as expected
+            Entrypoint = [
+              "${pkgsHost.lib.getExe' pkgsHost.tini "tini"}"
+              "--"
+            ];
+            Cmd = [
+              "${pkgsHost.lib.getExe package}"
+            ];
+          };
         };
       };
 
