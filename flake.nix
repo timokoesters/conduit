@@ -72,6 +72,24 @@
             ++ lib.optionals
               (stdenv.buildPlatform.config != pkgs.stdenv.hostPlatform.config)
               ["-l" "c"]
+            ++ lib.optionals
+              # This check has to match the one [here][0]. We only need to set
+              # these flags when using a different linker. Don't ask me why,
+              # though, because I don't know. All I know is it breaks otherwise.
+              #
+              # [0]: https://github.com/NixOS/nixpkgs/blob/612f97239e2cc474c13c9dafa0df378058c5ad8d/pkgs/build-support/rust/lib/default.nix#L36-L39
+              (
+                pkgs.stdenv.hostPlatform.isAarch64
+                  && pkgs.stdenv.hostPlatform.isStatic
+                  && !pkgs.stdenv.isDarwin
+                  && !pkgs.stdenv.cc.bintools.isLLVM
+              )
+              [
+                "-l"
+                "stdc++"
+                "-L"
+                "${stdenv.cc.cc.lib}/${stdenv.hostPlatform.config}/lib"
+              ]
           );
       }
 
@@ -178,6 +196,7 @@
           })
           [
             "x86_64-unknown-linux-musl"
+            "aarch64-unknown-linux-musl"
           ]
       );
 

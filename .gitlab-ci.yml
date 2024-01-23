@@ -55,6 +55,19 @@ static:x86_64-unknown-linux-musl:
     paths:
       - conduit
 
+static:aarch64-unknown-linux-musl:
+  stage: artifacts
+  image: nixos/nix:2.19.2
+  script:
+    # Push artifacts and build requirements to binary cache
+    - ./bin/nix-build-and-cache .#static-aarch64-unknown-linux-musl
+
+    # Make the output less difficult to find
+    - cp result/bin/conduit conduit
+  artifacts:
+    paths:
+      - conduit
+
 oci-image:x86_64-unknown-linux-gnu:
   stage: artifacts
   image: nixos/nix:2.19.2
