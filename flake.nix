@@ -46,13 +46,82 @@
         ((crane.mkLib pkgs).overrideToolchain toolchain).buildPackage;
 
       nativeBuildInputs = pkgs: [
-        pkgs.rustPlatform.bindgenHook
+        # bindgen needs the build platform's libclang. Apparently due to
+        # "splicing weirdness", pkgs.rustPlatform.bindgenHook on its own doesn't
+        # quite do the right thing here.
+        pkgs.buildPackages.rustPlatform.bindgenHook
       ];
 
       env = pkgs: {
         ROCKSDB_INCLUDE_DIR = "${pkgs.rocksdb}/include";
         ROCKSDB_LIB_DIR = "${pkgs.rocksdb}/lib";
-      };
+      }
+      // pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isStatic {
+        ROCKSDB_STATIC = "";
+      }
+      // {
+        CARGO_BUILD_RUSTFLAGS = let inherit (pkgs) lib stdenv; in
+          lib.concatStringsSep " " ([]
+            ++ lib.optionals
+              # This disables PIE for static builds, which isn't great in terms
+              # of security. Unfortunately, my hand is forced because nixpkgs'
+              # `libstdc++.a` is built without `-fPIE`, which precludes us from
+              # leaving PIE enabled.
+              stdenv.hostPlatform.isStatic
+              ["-C" "relocation-model=static"]
+            ++ lib.optionals
+              (stdenv.buildPlatform.config != pkgs.stdenv.hostPlatform.config)
+              ["-l" "c"]
+          );
+      }
+
+      # What follows is stolen from [here][0]. Its purpose is to properly
+      # configure compilers and linkers for various stages of the build, and
+      # even covers the case of build scripts that need native code compiled and
+      # run on the build platform (I think).
+      #
+      # [0]: https://github.com/NixOS/nixpkgs/blob/612f97239e2cc474c13c9dafa0df378058c5ad8d/pkgs/build-support/rust/lib/default.nix#L64-L78
+      // (
+        let
+          inherit (pkgs.rust.lib) envVars;
+        in
+        pkgs.lib.optionalAttrs
+          (pkgs.stdenv.targetPlatform.rust.rustcTarget
+            != pkgs.stdenv.hostPlatform.rust.rustcTarget)
+          (
+            let
+              inherit (pkgs.stdenv.targetPlatform.rust) cargoEnvVarTarget;
+            in
+            {
+              "CC_${cargoEnvVarTarget}" = envVars.ccForTarget;
+              "CXX_${cargoEnvVarTarget}" = envVars.cxxForTarget;
+              "CARGO_TARGET_${cargoEnvVarTarget}_LINKER" =
+                envVars.linkerForTarget;
+            }
+          )
+      // (
+        let
+          inherit (pkgs.stdenv.hostPlatform.rust) cargoEnvVarTarget rustcTarget;
+        in
+        {
+          "CC_${cargoEnvVarTarget}" = envVars.ccForHost;
+          "CXX_${cargoEnvVarTarget}" = envVars.cxxForHost;
+          "CARGO_TARGET_${cargoEnvVarTarget}_LINKER" = envVars.linkerForHost;
+          CARGO_BUILD_TARGET = rustcTarget;
+        }
+      )
+      // (
+        let
+          inherit (pkgs.stdenv.buildPlatform.rust) cargoEnvVarTarget;
+        in
+        {
+          "CC_${cargoEnvVarTarget}" = envVars.ccForBuild;
+          "CXX_${cargoEnvVarTarget}" = envVars.cxxForBuild;
+          "CARGO_TARGET_${cargoEnvVarTarget}_LINKER" = envVars.linkerForBuild;
+          HOST_CC = "${pkgs.buildPackages.stdenv.cc}/bin/cc";
+          HOST_CXX = "${pkgs.buildPackages.stdenv.cc}/bin/c++";
+        }
+      ));
 
       package = pkgs: builder pkgs {
         src = nix-filter {
@@ -96,7 +165,21 @@
             ];
           };
         };
-      };
+      } // builtins.listToAttrs (
+        builtins.map
+          (crossSystem: {
+            name = "static-${crossSystem}";
+            value = package (import nixpkgs {
+              inherit system;
+              crossSystem = {
+                config = crossSystem;
+              };
+            }).pkgsStatic;
+          })
+          [
+            "x86_64-unknown-linux-musl"
+          ]
+      );
 
       devShells.default = pkgsHost.mkShell {
         env = env pkgsHost // {
