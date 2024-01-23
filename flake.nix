@@ -57,20 +57,20 @@
         fenix.packages.${system}.latest.rustfmt
       ]);
 
-      builder =
-        ((crane.mkLib pkgsHost).overrideToolchain buildToolchain).buildPackage;
+      builder = pkgs:
+        ((crane.mkLib pkgs).overrideToolchain buildToolchain).buildPackage;
 
-      nativeBuildInputs = [
-        pkgsHost.rustPlatform.bindgenHook
+      nativeBuildInputs = pkgs: [
+        pkgs.rustPlatform.bindgenHook
       ];
 
-      env = {
-        ROCKSDB_INCLUDE_DIR = "${pkgsHost.rocksdb}/include";
-        ROCKSDB_LIB_DIR = "${pkgsHost.rocksdb}/lib";
+      env = pkgs: {
+        ROCKSDB_INCLUDE_DIR = "${pkgs.rocksdb}/include";
+        ROCKSDB_LIB_DIR = "${pkgs.rocksdb}/lib";
       };
     in
     {
-      packages.default = builder {
+      packages.default = builder pkgsHost {
         src = nix-filter {
           root = ./.;
           include = [
@@ -83,9 +83,8 @@
         # This is redundant with CI
         doCheck = false;
 
-        inherit
-          env
-          nativeBuildInputs;
+        env = env pkgsHost;
+        nativeBuildInputs = nativeBuildInputs pkgsHost;
 
         meta.mainProgram = cargoToml.package.name;
       };
@@ -111,7 +110,7 @@
       };
 
       devShells.default = pkgsHost.mkShell {
-        env = env // {
+        env = env pkgsHost // {
           # Rust Analyzer needs to be able to find the path to default crate
           # sources, and it can read this environment variable to do so. The
           # `rust-src` component is required in order for this to work.
@@ -119,7 +118,7 @@
         };
 
         # Development tools
-        nativeBuildInputs = nativeBuildInputs ++ [
+        nativeBuildInputs = nativeBuildInputs pkgsHost ++ [
           devToolchain
         ] ++ (with pkgsHost; [
           engage
