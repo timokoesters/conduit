@@ -28,12 +28,6 @@
     let
       pkgs = nixpkgs.legacyPackages.${system};
 
-      # Use mold on Linux
-      stdenv = if pkgs.stdenv.isLinux then
-        pkgs.stdenvAdapters.useMoldLinker pkgs.stdenv
-      else
-        pkgs.stdenv;
-
       # Nix-accessible `Cargo.toml`
       cargoToml = builtins.fromTOML (builtins.readFile ./Cargo.toml);
 
@@ -91,8 +85,7 @@
 
         inherit
           env
-          nativeBuildInputs
-          stdenv;
+          nativeBuildInputs;
 
         meta.mainProgram = cargoToml.package.name;
       };
@@ -117,7 +110,7 @@
         };
       };
 
-      devShells.default = (pkgs.mkShell.override { inherit stdenv; }) {
+      devShells.default = pkgs.mkShell {
         env = env // {
           # Rust Analyzer needs to be able to find the path to default crate
           # sources, and it can read this environment variable to do so. The
