@@ -60,9 +60,9 @@
       builder =
         ((crane.mkLib pkgs).overrideToolchain buildToolchain).buildPackage;
 
-      nativeBuildInputs = (with pkgs.rustPlatform; [
-        bindgenHook
-      ]);
+      nativeBuildInputs = [
+        pkgs.rustPlatform.bindgenHook
+      ];
 
       env = {
         ROCKSDB_INCLUDE_DIR = "${pkgs.rocksdb}/include";
