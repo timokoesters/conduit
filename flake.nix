@@ -50,9 +50,8 @@
         ROCKSDB_INCLUDE_DIR = "${pkgs.rocksdb}/include";
         ROCKSDB_LIB_DIR = "${pkgs.rocksdb}/lib";
       };
-    in
-    {
-      packages.default = builder pkgsHost {
+
+      package = pkgs: builder pkgs {
         src = nix-filter {
           root = ./.;
           include = [
@@ -65,11 +64,14 @@
         # This is redundant with CI
         doCheck = false;
 
-        env = env pkgsHost;
-        nativeBuildInputs = nativeBuildInputs pkgsHost;
+        env = env pkgs;
+        nativeBuildInputs = nativeBuildInputs pkgs;
 
         meta.mainProgram = cargoToml.package.name;
       };
+    in
+    {
+      packages.default = package pkgsHost;
 
       packages.oci-image =
       let
