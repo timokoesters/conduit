@@ -26,7 +26,7 @@
     , ...
     }: flake-utils.lib.eachDefaultSystem (system:
     let
-      pkgs = nixpkgs.legacyPackages.${system};
+      pkgsHost = nixpkgs.legacyPackages.${system};
 
       # Nix-accessible `Cargo.toml`
       cargoToml = builtins.fromTOML (builtins.readFile ./Cargo.toml);
@@ -58,15 +58,15 @@
       ]);
 
       builder =
-        ((crane.mkLib pkgs).overrideToolchain buildToolchain).buildPackage;
+        ((crane.mkLib pkgsHost).overrideToolchain buildToolchain).buildPackage;
 
       nativeBuildInputs = [
-        pkgs.rustPlatform.bindgenHook
+        pkgsHost.rustPlatform.bindgenHook
       ];
 
       env = {
-        ROCKSDB_INCLUDE_DIR = "${pkgs.rocksdb}/include";
-        ROCKSDB_LIB_DIR = "${pkgs.rocksdb}/lib";
+        ROCKSDB_INCLUDE_DIR = "${pkgsHost.rocksdb}/include";
+        ROCKSDB_LIB_DIR = "${pkgsHost.rocksdb}/lib";
       };
     in
     {
@@ -94,23 +94,23 @@
       let
         package = self.packages.${system}.default;
       in
-      pkgs.dockerTools.buildImage {
+      pkgsHost.dockerTools.buildImage {
         name = package.pname;
         tag = "latest";
         config = {
           # Use the `tini` init system so that signals (e.g. ctrl+c/SIGINT) are
           # handled as expected
           Entrypoint = [
-            "${pkgs.lib.getExe' pkgs.tini "tini"}"
+            "${pkgsHost.lib.getExe' pkgsHost.tini "tini"}"
             "--"
           ];
           Cmd = [
-            "${pkgs.lib.getExe package}"
+            "${pkgsHost.lib.getExe package}"
           ];
         };
       };
 
-      devShells.default = pkgs.mkShell {
+      devShells.default = pkgsHost.mkShell {
         env = env // {
           # Rust Analyzer needs to be able to find the path to default crate
           # sources, and it can read this environment variable to do so. The
@@ -121,7 +121,7 @@
         # Development tools
         nativeBuildInputs = nativeBuildInputs ++ [
           devToolchain
-        ] ++ (with pkgs; [
+        ] ++ (with pkgsHost; [
           engage
         ]);
       };
