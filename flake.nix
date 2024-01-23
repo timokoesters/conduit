@@ -32,33 +32,15 @@
       cargoToml = builtins.fromTOML (builtins.readFile ./Cargo.toml);
 
       # The Rust toolchain to use
-      toolchain = fenix.packages.${system}.toolchainOf {
-        # Use the Rust version defined in `Cargo.toml`
-        channel = cargoToml.package.rust-version;
+      toolchain = fenix.packages.${system}.fromToolchainFile {
+        file = ./rust-toolchain.toml;
 
-        # THE rust-version HASH
+        # See also `rust-toolchain.toml`
         sha256 = "sha256-gdYqng0y9iHYzYPAdkC/ka3DRny3La/S5G8ASj0Ayyc=";
       };
 
-      mkToolchain = fenix.packages.${system}.combine;
-
-      buildToolchain = mkToolchain (with toolchain; [
-        cargo
-        rustc
-      ]);
-
-      devToolchain = mkToolchain (with toolchain; [
-        cargo
-        clippy
-        rust-src
-        rustc
-
-        # Always use nightly rustfmt because most of its options are unstable
-        fenix.packages.${system}.latest.rustfmt
-      ]);
-
       builder = pkgs:
-        ((crane.mkLib pkgs).overrideToolchain buildToolchain).buildPackage;
+        ((crane.mkLib pkgs).overrideToolchain toolchain).buildPackage;
 
       nativeBuildInputs = pkgs: [
         pkgs.rustPlatform.bindgenHook
@@ -114,12 +96,18 @@
           # Rust Analyzer needs to be able to find the path to default crate
           # sources, and it can read this environment variable to do so. The
           # `rust-src` component is required in order for this to work.
-          RUST_SRC_PATH = "${devToolchain}/lib/rustlib/src/rust/library";
+          RUST_SRC_PATH = "${toolchain}/lib/rustlib/src/rust/library";
         };
 
         # Development tools
         nativeBuildInputs = nativeBuildInputs pkgsHost ++ [
-          devToolchain
+          # Always use nightly rustfmt because most of its options are unstable
+          #
+          # This needs to come before `toolchain` in this list, otherwise
+          # `$PATH` will have stable rustfmt instead.
+          fenix.packages.${system}.latest.rustfmt
+
+          toolchain
         ] ++ (with pkgsHost; [
           engage
         ]);

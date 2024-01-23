@@ -9,12 +9,7 @@ readme = "README.md"
 version = "0.7.0-alpha"
 edition = "2021"
 
-# When changing this, make sure to update the hash near the text "THE
-# rust-version HASH" in `flake.nix`. If you don't have Nix installed or
-# otherwise don't know how to do this, ping `@charles:computer.surgery` or
-# `@dusk:gaze.systems` in the matrix room.
-#
-# Also make sure to update the docker image tags in `.gitlab-ci.yml`.
+# See also `rust-toolchain.toml`
 rust-version = "1.70.0"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
