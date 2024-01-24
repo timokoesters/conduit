@@ -238,7 +238,7 @@ async fn spawn_task<B: Send + 'static>(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
-async fn unrecognized_method<B>(
+async fn unrecognized_method<B: Send>(
     req: axum::http::Request<B>,
     next: axum::middleware::Next<B>,
 ) -> std::result::Result<axum::response::Response, StatusCode> {

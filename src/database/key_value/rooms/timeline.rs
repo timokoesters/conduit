@@ -39,11 +39,10 @@ impl service::rooms::timeline::Data for KeyValueDatabase {
 
     /// Returns the `count` of this pdu's id.
     fn get_pdu_count(&self, event_id: &EventId) -> Result<Option<PduCount>> {
-        Ok(self
-            .eventid_pduid
+        self.eventid_pduid
             .get(event_id.as_bytes())?
             .map(|pdu_id| pdu_count(&pdu_id))
-            .transpose()?)
+            .transpose()
     }
 
     /// Returns the json of a pdu.
@@ -80,7 +79,7 @@ impl service::rooms::timeline::Data for KeyValueDatabase {
 
     /// Returns the pdu's id.
     fn get_pdu_id(&self, event_id: &EventId) -> Result<Option<Vec<u8>>> {
-        Ok(self.eventid_pduid.get(event_id.as_bytes())?)
+        self.eventid_pduid.get(event_id.as_bytes())
     }
 
     /// Returns the pdu.
@@ -230,7 +229,7 @@ impl service::rooms::timeline::Data for KeyValueDatabase {
         room_id: &RoomId,
         until: PduCount,
     ) -> Result<Box<dyn Iterator<Item = Result<(PduCount, PduEvent)>> + 'a>> {
-        let (prefix, current) = count_to_id(&room_id, until, 1, true)?;
+        let (prefix, current) = count_to_id(room_id, until, 1, true)?;
 
         let user_id = user_id.to_owned();
 
@@ -257,7 +256,7 @@ impl service::rooms::timeline::Data for KeyValueDatabase {
         room_id: &RoomId,
         from: PduCount,
     ) -> Result<Box<dyn Iterator<Item = Result<(PduCount, PduEvent)>> + 'a>> {
-        let (prefix, current) = count_to_id(&room_id, from, 1, false)?;
+        let (prefix, current) = count_to_id(room_id, from, 1, false)?;
 
         let user_id = user_id.to_owned();
 

@@ -40,6 +40,7 @@ impl Service {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn paginate_relations_with_filter(
         &self,
         sender_user: &UserId,
@@ -82,7 +83,7 @@ impl Service {
                         services()
                             .rooms
                             .state_accessor
-                            .user_can_see_event(sender_user, &room_id, &pdu.event_id)
+                            .user_can_see_event(sender_user, room_id, &pdu.event_id)
                             .unwrap_or(false)
                     })
                     .take_while(|&(k, _)| Some(k) != to) // Stop at `to`
@@ -106,7 +107,7 @@ impl Service {
                 let events_before: Vec<_> = services()
                     .rooms
                     .pdu_metadata
-                    .relations_until(sender_user, &room_id, target, from)?
+                    .relations_until(sender_user, room_id, target, from)?
                     .filter(|r| {
                         r.as_ref().map_or(true, |(_, pdu)| {
                             filter_event_type.as_ref().map_or(true, |t| &pdu.kind == t)
@@ -129,7 +130,7 @@ impl Service {
                         services()
                             .rooms
                             .state_accessor
-                            .user_can_see_event(sender_user, &room_id, &pdu.event_id)
+                            .user_can_see_event(sender_user, room_id, &pdu.event_id)
                             .unwrap_or(false)
                     })
                     .take_while(|&(k, _)| Some(k) != to) // Stop at `to`

@@ -92,7 +92,7 @@ impl Service {
             ));
         }
 
-        services().rooms.event_handler.acl_check(origin, &room_id)?;
+        services().rooms.event_handler.acl_check(origin, room_id)?;
 
         // 1. Skip the PDU if we already have it as a timeline event
         if let Some(pdu_id) = services().rooms.timeline.get_pdu_id(event_id)? {
@@ -276,6 +276,7 @@ impl Service {
         r
     }
 
+    #[allow(clippy::type_complexity, clippy::too_many_arguments)]
     #[tracing::instrument(skip(self, create_event, value, pub_key_map))]
     fn handle_outlier_pdu<'a>(
         &'a self,
@@ -1009,6 +1010,7 @@ impl Service {
     /// b. Look at outlier pdu tree
     /// c. Ask origin server over federation
     /// d. TODO: Ask other servers over federation?
+    #[allow(clippy::type_complexity)]
     #[tracing::instrument(skip_all)]
     pub(crate) fn fetch_and_handle_outliers<'a>(
         &'a self,

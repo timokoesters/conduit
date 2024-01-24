@@ -58,8 +58,8 @@ impl PduCount {
     }
 
     pub fn try_from_string(token: &str) -> Result<Self> {
-        if token.starts_with('-') {
-            token[1..].parse().map(PduCount::Backfilled)
+        if let Some(stripped) = token.strip_prefix('-') {
+            stripped.parse().map(PduCount::Backfilled)
         } else {
             token.parse().map(PduCount::Normal)
         }
@@ -112,7 +112,7 @@ pub struct Service {
 impl Service {
     #[tracing::instrument(skip(self))]
     pub fn first_pdu_in_room(&self, room_id: &RoomId) -> Result<Option<Arc<PduEvent>>> {
-        self.all_pdus(&user_id!("@doesntmatter:conduit.rs"), &room_id)?
+        self.all_pdus(user_id!("@doesntmatter:conduit.rs"), room_id)?
             .next()
             .map(|o| o.map(|(_, p)| Arc::new(p)))
             .transpose()
@@ -458,7 +458,7 @@ impl Service {
                     let to_conduit = body.starts_with(&format!("{server_user}: "))
                         || body.starts_with(&format!("{server_user} "))
                         || body == format!("{server_user}:")
-                        || body == format!("{server_user}");
+                        || body == server_user;
 
                     // This will evaluate to false if the emergency password is set up so that
                     // the administrator can execute commands as conduit
@@ -842,7 +842,7 @@ impl Service {
 
                     let target = pdu
                         .state_key()
-                        .filter(|v| v.starts_with("@"))
+                        .filter(|v| v.starts_with('@'))
                         .unwrap_or(sender.as_str());
                     let server_name = services().globals.server_name();
                     let server_user = format!("@conduit:{}", server_name);
@@ -850,7 +850,7 @@ impl Service {
                         .map_err(|_| Error::bad_database("Invalid content in pdu."))?;
 
                     if content.membership == MembershipState::Leave {
-                        if target == &server_user {
+                        if target == server_user {
                             warn!("Conduit user cannot leave from admins room");
                             return Err(Error::BadRequest(
                                 ErrorKind::Forbidden,
@@ -876,7 +876,7 @@ impl Service {
                     }
 
                     if content.membership == MembershipState::Ban && pdu.state_key().is_some() {
-                        if target == &server_user {
+                        if target == server_user {
                             warn!("Conduit user cannot be banned in admins room");
                             return Err(Error::BadRequest(
                                 ErrorKind::Forbidden,
@@ -1048,7 +1048,7 @@ impl Service {
     #[tracing::instrument(skip(self, room_id))]
     pub async fn backfill_if_required(&self, room_id: &RoomId, from: PduCount) -> Result<()> {
         let first_pdu = self
-            .all_pdus(&user_id!("@doesntmatter:conduit.rs"), &room_id)?
+            .all_pdus(user_id!("@doesntmatter:conduit.rs"), room_id)?
             .next()
             .expect("Room is not empty")?;
 
@@ -1060,7 +1060,7 @@ impl Service {
         let power_levels: RoomPowerLevelsEventContent = services()
             .rooms
             .state_accessor
-            .room_state_get(&room_id, &StateEventType::RoomPowerLevels, "")?
+            .room_state_get(room_id, &StateEventType::RoomPowerLevels, "")?
             .map(|ev| {
                 serde_json::from_str(ev.content.get())
                     .map_err(|_| Error::bad_database("invalid m.room.power_levels event"))
@@ -1091,11 +1091,9 @@ impl Service {
                 .await;
             match response {
                 Ok(response) => {
-                    let mut pub_key_map = RwLock::new(BTreeMap::new());
+                    let pub_key_map = RwLock::new(BTreeMap::new());
                     for pdu in response.pdus {
-                        if let Err(e) = self
-                            .backfill_pdu(backfill_server, pdu, &mut pub_key_map)
-                            .await
+                        if let Err(e) = self.backfill_pdu(backfill_server, pdu, &pub_key_map).await
                         {
                             warn!("Failed to add backfilled pdu: {e}");
                         }
@@ -1142,7 +1140,7 @@ impl Service {
         services()
             .rooms
             .event_handler
-            .handle_incoming_pdu(origin, &event_id, &room_id, value, false, &pub_key_map)
+            .handle_incoming_pdu(origin, &event_id, &room_id, value, false, pub_key_map)
             .await?;
 
         let value = self.get_pdu_json(&event_id)?.expect("We just created it");
@@ -1175,24 +1173,21 @@ impl Service {
 
         drop(insert_lock);
 
-        match pdu.kind {
-            TimelineEventType::RoomMessage => {
-                #[derive(Deserialize)]
-                struct ExtractBody {
-                    body: Option<String>,
-                }
-
-                let content = serde_json::from_str::<ExtractBody>(pdu.content.get())
-                    .map_err(|_| Error::bad_database("Invalid content in pdu."))?;
-
-                if let Some(body) = content.body {
-                    services()
-                        .rooms
-                        .search
-                        .index_pdu(shortroomid, &pdu_id, &body)?;
-                }
+        if pdu.kind == TimelineEventType::RoomMessage {
+            #[derive(Deserialize)]
+            struct ExtractBody {
+                body: Option<String>,
             }
-            _ => {}
+
+            let content = serde_json::from_str::<ExtractBody>(pdu.content.get())
+                .map_err(|_| Error::bad_database("Invalid content in pdu."))?;
+
+            if let Some(body) = content.body {
+                services()
+                    .rooms
+                    .search
+                    .index_pdu(shortroomid, &pdu_id, &body)?;
+            }
         }
         drop(mutex_lock);
 

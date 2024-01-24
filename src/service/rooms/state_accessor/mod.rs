@@ -180,7 +180,7 @@ impl Service {
             return Ok(*visibility);
         }
 
-        let currently_member = services().rooms.state_cache.is_joined(&user_id, &room_id)?;
+        let currently_member = services().rooms.state_cache.is_joined(user_id, room_id)?;
 
         let history_visibility = self
             .state_get(shortstatehash, &StateEventType::RoomHistoryVisibility, "")?
@@ -197,11 +197,11 @@ impl Service {
             HistoryVisibility::Shared => currently_member,
             HistoryVisibility::Invited => {
                 // Allow if any member on requesting server was AT LEAST invited, else deny
-                self.user_was_invited(shortstatehash, &user_id)
+                self.user_was_invited(shortstatehash, user_id)
             }
             HistoryVisibility::Joined => {
                 // Allow if any member on requested server was joined, else deny
-                self.user_was_joined(shortstatehash, &user_id)
+                self.user_was_joined(shortstatehash, user_id)
             }
             _ => {
                 error!("Unknown history visibility {history_visibility}");
@@ -221,10 +221,10 @@ impl Service {
     /// the room's history_visibility at that event's state.
     #[tracing::instrument(skip(self, user_id, room_id))]
     pub fn user_can_see_state_events(&self, user_id: &UserId, room_id: &RoomId) -> Result<bool> {
-        let currently_member = services().rooms.state_cache.is_joined(&user_id, &room_id)?;
+        let currently_member = services().rooms.state_cache.is_joined(user_id, room_id)?;
 
         let history_visibility = self
-            .room_state_get(&room_id, &StateEventType::RoomHistoryVisibility, "")?
+            .room_state_get(room_id, &StateEventType::RoomHistoryVisibility, "")?
             .map_or(Ok(HistoryVisibility::Shared), |s| {
                 serde_json::from_str(s.content.get())
                     .map(|c: RoomHistoryVisibilityEventContent| c.history_visibility)
@@ -276,7 +276,7 @@ impl Service {
         services()
             .rooms
             .state_accessor
-            .room_state_get(&room_id, &StateEventType::RoomName, "")?
+            .room_state_get(room_id, &StateEventType::RoomName, "")?
             .map_or(Ok(None), |s| {
                 serde_json::from_str(s.content.get())
                     .map(|c: RoomNameEventContent| c.name)
@@ -288,7 +288,7 @@ impl Service {
         services()
             .rooms
             .state_accessor
-            .room_state_get(&room_id, &StateEventType::RoomAvatar, "")?
+            .room_state_get(room_id, &StateEventType::RoomAvatar, "")?
             .map_or(Ok(None), |s| {
                 serde_json::from_str(s.content.get())
                     .map_err(|_| Error::bad_database("Invalid room avatar event in database."))
@@ -303,7 +303,7 @@ impl Service {
         services()
             .rooms
             .state_accessor
-            .room_state_get(&room_id, &StateEventType::RoomMember, user_id.as_str())?
+            .room_state_get(room_id, &StateEventType::RoomMember, user_id.as_str())?
             .map_or(Ok(None), |s| {
                 serde_json::from_str(s.content.get())
                     .map_err(|_| Error::bad_database("Invalid room member event in database."))

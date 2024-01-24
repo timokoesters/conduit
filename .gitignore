@@ -68,3 +68,6 @@ cached_target
 
 # Direnv cache
 /.direnv
+
+# Gitlab CI cache
+/.gitlab-ci.d

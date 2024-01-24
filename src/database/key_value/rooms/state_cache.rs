@@ -471,6 +471,7 @@ impl service::rooms::state_cache::Data for KeyValueDatabase {
     }
 
     /// Returns an iterator over all rooms a user was invited to.
+    #[allow(clippy::type_complexity)]
     #[tracing::instrument(skip(self))]
     fn rooms_invited<'a>(
         &'a self,
@@ -549,6 +550,7 @@ impl service::rooms::state_cache::Data for KeyValueDatabase {
     }
 
     /// Returns an iterator over all rooms a user left.
+    #[allow(clippy::type_complexity)]
     #[tracing::instrument(skip(self))]
     fn rooms_left<'a>(
         &'a self,

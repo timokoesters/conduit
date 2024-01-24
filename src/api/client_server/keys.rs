@@ -360,7 +360,7 @@ pub(crate) async fn get_keys_helper<F: Fn(&UserId) -> bool>(
                 .bad_query_ratelimiter
                 .read()
                 .unwrap()
-                .get(&*server)
+                .get(server)
             {
                 // Exponential backoff
                 let mut min_elapsed_duration = Duration::from_secs(30) * (*tries) * (*tries);
@@ -393,7 +393,7 @@ pub(crate) async fn get_keys_helper<F: Fn(&UserId) -> bool>(
                     ),
                 )
                 .await
-                .map_err(|e| Error::BadServerResponse("Query took too long")),
+                .map_err(|_e| Error::BadServerResponse("Query took too long")),
             )
         })
         .collect();

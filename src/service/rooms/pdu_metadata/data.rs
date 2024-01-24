@@ -5,6 +5,7 @@ use ruma::{EventId, RoomId, UserId};
 
 pub trait Data: Send + Sync {
     fn add_relation(&self, from: u64, to: u64) -> Result<()>;
+    #[allow(clippy::type_complexity)]
     fn relations_until<'a>(
         &'a self,
         user_id: &'a UserId,

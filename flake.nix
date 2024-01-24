@@ -2,6 +2,7 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs?ref=nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
+    nix-filter.url = "github:numtide/nix-filter";
 
     fenix = {
       url = "github:nix-community/fenix";
@@ -10,7 +11,6 @@
     crane = {
       url = "github:ipetkov/crane";
       inputs.nixpkgs.follows = "nixpkgs";
-      inputs.flake-utils.follows = "flake-utils";
     };
   };
 
@@ -18,6 +18,7 @@
     { self
     , nixpkgs
     , flake-utils
+    , nix-filter
 
     , fenix
     , crane
@@ -43,51 +44,91 @@
         sha256 = "sha256-gdYqng0y9iHYzYPAdkC/ka3DRny3La/S5G8ASj0Ayyc=";
       };
 
-      # The system's RocksDB
-      ROCKSDB_INCLUDE_DIR = "${pkgs.rocksdb}/include";
-      ROCKSDB_LIB_DIR = "${pkgs.rocksdb}/lib";
+      mkToolchain = fenix.packages.${system}.combine;
 
-      # Shared between the package and the devShell
+      buildToolchain = mkToolchain (with toolchain; [
+        cargo
+        rustc
+      ]);
+
+      devToolchain = mkToolchain (with toolchain; [
+        cargo
+        clippy
+        rust-src
+        rustc
+
+        # Always use nightly rustfmt because most of its options are unstable
+        fenix.packages.${system}.latest.rustfmt
+      ]);
+
+      builder =
+        ((crane.mkLib pkgs).overrideToolchain buildToolchain).buildPackage;
+
       nativeBuildInputs = (with pkgs.rustPlatform; [
         bindgenHook
       ]);
 
-      builder =
-        ((crane.mkLib pkgs).overrideToolchain toolchain.toolchain).buildPackage;
+      env = {
+        ROCKSDB_INCLUDE_DIR = "${pkgs.rocksdb}/include";
+        ROCKSDB_LIB_DIR = "${pkgs.rocksdb}/lib";
+      };
     in
     {
       packages.default = builder {
-        src = ./.;
+        src = nix-filter {
+          root = ./.;
+          include = [
+            "src"
+            "Cargo.toml"
+            "Cargo.lock"
+          ];
+        };
+
+        # This is redundant with CI
+        doCheck = false;
 
         inherit
-          stdenv
+          env
           nativeBuildInputs
-          ROCKSDB_INCLUDE_DIR
-          ROCKSDB_LIB_DIR;
+          stdenv;
+
+        meta.mainProgram = cargoToml.package.name;
+      };
+
+      packages.oci-image =
+      let
+        package = self.packages.${system}.default;
+      in
+      pkgs.dockerTools.buildImage {
+        name = package.pname;
+        tag = "latest";
+        config = {
+          # Use the `tini` init system so that signals (e.g. ctrl+c/SIGINT) are
+          # handled as expected
+          Entrypoint = [
+            "${pkgs.lib.getExe' pkgs.tini "tini"}"
+            "--"
+          ];
+          Cmd = [
+            "${pkgs.lib.getExe package}"
+          ];
+        };
       };
 
       devShells.default = (pkgs.mkShell.override { inherit stdenv; }) {
-        # Rust Analyzer needs to be able to find the path to default crate
-        # sources, and it can read this environment variable to do so
-        RUST_SRC_PATH = "${toolchain.rust-src}/lib/rustlib/src/rust/library";
-
-        inherit
-          ROCKSDB_INCLUDE_DIR
-          ROCKSDB_LIB_DIR;
+        env = env // {
+          # Rust Analyzer needs to be able to find the path to default crate
+          # sources, and it can read this environment variable to do so. The
+          # `rust-src` component is required in order for this to work.
+          RUST_SRC_PATH = "${devToolchain}/lib/rustlib/src/rust/library";
+        };
 
         # Development tools
-        nativeBuildInputs = nativeBuildInputs ++ (with toolchain; [
-          cargo
-          clippy
-          rust-src
-          rustc
-          rustfmt
+        nativeBuildInputs = nativeBuildInputs ++ [
+          devToolchain
+        ] ++ (with pkgs; [
+          engage
         ]);
-      };
-
-      checks = {
-        packagesDefault = self.packages.${system}.default;
-        devShellsDefault = self.devShells.${system}.default;
       };
     });
 }

@@ -124,7 +124,7 @@ pub async fn get_message_events_route(
     let to = body
         .to
         .as_ref()
-        .and_then(|t| PduCount::try_from_string(&t).ok());
+        .and_then(|t| PduCount::try_from_string(t).ok());
 
     services().rooms.lazy_loading.lazy_load_confirm_delivery(
         sender_user,
