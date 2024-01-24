@@ -9,7 +9,10 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
     crane = {
-      url = "github:ipetkov/crane";
+      # TODO: Switch back to upstream after [this issue][0] is fixed
+      #
+      # [0]: https://github.com/ipetkov/crane/issues/497
+      url = "github:CobaltCause/crane?ref=crimes-for-cross";
       inputs.nixpkgs.follows = "nixpkgs";
     };
     attic.url = "github:zhaofengli/attic?ref=main";
