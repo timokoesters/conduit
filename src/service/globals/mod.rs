@@ -109,11 +109,11 @@ impl Default for RotationHandler {
 
 pub struct Resolver {
     inner: GaiResolver,
-    overrides: Box<dyn Fn(&str) -> Option<SocketAddr> + Send + Sync>,
+    overrides: Arc<RwLock<TlsNameMap>>,
 }
 
 impl Resolver {
-    pub fn new(overrides: Box<dyn Fn(&str) -> Option<SocketAddr> + Send + Sync>) -> Resolver {
+    pub fn new(overrides: Arc<RwLock<TlsNameMap>>) -> Self {
         Resolver {
             inner: GaiResolver::new(),
             overrides,
@@ -123,16 +123,26 @@ impl Resolver {
 
 impl Resolve for Resolver {
     fn resolve(&self, name: Name) -> Resolving {
-        if let Some(addr) = (self.overrides)(name.as_str()) {
-            let once: Box<dyn Iterator<Item = SocketAddr> + Send> = Box::new(iter::once(addr));
-            return Box::pin(future::ready(Ok(once)));
-        }
-        let this = &mut self.inner.clone();
-        Box::pin(HyperService::<Name>::call(this, name).map(|result| {
-            result
-                .map(|addrs| -> Addrs { Box::new(addrs) })
-                .map_err(|err| -> Box<dyn StdError + Send + Sync> { Box::new(err) })
-        }))
+        self.overrides
+            .read()
+            .expect("lock should not be poisoned")
+            .get(name.as_str())
+            .and_then(|(override_name, port)| {
+                override_name.get(0).map(|first_name| {
+                    let x: Box<dyn Iterator<Item = SocketAddr> + Send> =
+                        Box::new(iter::once(SocketAddr::new(*first_name, *port)));
+                    let x: Resolving = Box::pin(future::ready(Ok(x)));
+                    x
+                })
+            })
+            .unwrap_or_else(|| {
+                let this = &mut self.inner.clone();
+                Box::pin(HyperService::<Name>::call(this, name).map(|result| {
+                    result
+                        .map(|addrs| -> Addrs { Box::new(addrs) })
+                        .map_err(|err| -> Box<dyn StdError + Send + Sync> { Box::new(err) })
+                }))
+            })
     }
 }
 
@@ -157,14 +167,8 @@ impl Service {
             .map(|secret| jsonwebtoken::DecodingKey::from_secret(secret.as_bytes()));
 
         let default_client = reqwest_client_builder(&config)?.build()?;
-        let name_override = Arc::clone(&tls_name_override);
         let federation_client = reqwest_client_builder(&config)?
-            .dns_resolver(Arc::new(Resolver::new(Box::new(move |domain| {
-                let read_guard = name_override.read().unwrap();
-                let (override_name, port) = read_guard.get(domain)?;
-                let first_name = override_name.get(0)?;
-                Some(SocketAddr::new(*first_name, *port))
-            }))))
+            .dns_resolver(Arc::new(Resolver::new(tls_name_override.clone())))
             .build()?;
 
         // Supported and stable room versions
