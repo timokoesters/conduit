@@ -55,7 +55,8 @@ rand = "0.8.5"
 # Used to hash passwords
 rust-argon2 = "1.0.0"
 # Used to send requests
-reqwest = { default-features = false, features = ["rustls-tls-native-roots", "socks"], git = "https://github.com/timokoesters/reqwest", rev = "57b7cf4feb921573dfafad7d34b9ac6e44ead0bd" }
+hyper = "0.14.26"
+reqwest = { version = "0.11.18", default-features = false, features = ["rustls-tls-native-roots", "socks"] }
 # Used for conduit::Error type
 thiserror = "1.0.40"
 # Used to generate thumbnails for images
