@@ -31,14 +31,13 @@ services:
             ### Uncomment and change values as desired
             # CONDUIT_ADDRESS: 0.0.0.0
             # CONDUIT_PORT: 6167
+            # CONDUIT_REGISTRATION_TOKEN: '' # require password for registration
             # CONDUIT_CONFIG: '/srv/conduit/conduit.toml'  # if you want to configure purely by env vars, set this to an empty string ''
             # Available levels are: error, warn, info, debug, trace - more info at: https://docs.rs/env_logger/*/env_logger/#enabling-logging
-            # CONDUIT_ALLOW_JAEGER: 'false'
             # CONDUIT_ALLOW_ENCRYPTION: 'true'
             # CONDUIT_ALLOW_FEDERATION: 'true'
             # CONDUIT_ALLOW_CHECK_FOR_UPDATES: 'true'
             # CONDUIT_DATABASE_PATH: /srv/conduit/.local/share/conduit
-            # CONDUIT_WORKERS: 10
             # CONDUIT_MAX_REQUEST_SIZE: 20_000_000  # in bytes, ~20 MB
 
     # We need some way to server the client and server .well-known json. The simplest way is to use a nginx container

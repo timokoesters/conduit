@@ -41,7 +41,7 @@ allow_registration = true
 # A static registration token that new users will have to provide when creating
 # an account. YOU NEED TO EDIT THIS.
 # - Insert a password that users will have to enter on registration
-# - Comment out the line to remove the condition
+# - Start the line with '#' to remove the condition
 registration_token = ""
 
 allow_federation = true
