@@ -12,6 +12,7 @@
       url = "github:ipetkov/crane";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    attic.url = "github:zhaofengli/attic?ref=main";
   };
 
   outputs =
@@ -22,6 +23,7 @@
 
     , fenix
     , crane
+    , ...
     }: flake-utils.lib.eachDefaultSystem (system:
     let
       pkgs = nixpkgs.legacyPackages.${system};
