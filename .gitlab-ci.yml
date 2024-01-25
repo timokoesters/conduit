@@ -46,7 +46,13 @@ oci-image:x86_64-unknown-linux-gnu:
   stage: artifacts
   image: nixos/nix:2.19.2
   script:
-    - nix build .#oci-image
+    # Push artifacts and build requirements to binary cache
+    #
+    # Since the OCI image package is based on the binary package, this has the
+    # fun side effect of uploading the normal binary too. Conduit users who are
+    # deploying with Nix can leverage this fact by adding our binary cache to
+    # their systems.
+    - ./bin/nix-build-and-cache .#oci-image
 
     # Make the output less difficult to find
     - cp result oci-image.tar.gz
