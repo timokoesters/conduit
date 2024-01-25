@@ -10,6 +10,10 @@ before_script:
   # Enable nix-command and flakes
   - if command -v nix > /dev/null; then echo "experimental-features = nix-command flakes" >> /etc/nix/nix.conf; fi
 
+  # Add our own binary cache
+  - if command -v nix > /dev/null; then echo "extra-substituters = https://nix.computer.surgery/conduit" >> /etc/nix/nix.conf; fi
+  - if command -v nix > /dev/null; then echo "extra-trusted-public-keys = conduit:ZGAf6P6LhNvnoJJ3Me3PRg7tlLSrPxcQ2RiE5LIppjo=" >> /etc/nix/nix.conf; fi
+
   # Add crane binary cache
   - if command -v nix > /dev/null; then echo "extra-substituters = https://crane.cachix.org" >> /etc/nix/nix.conf; fi
   - if command -v nix > /dev/null; then echo "extra-trusted-public-keys = crane.cachix.org-1:8Scfpmn9w+hGdXH/Q9tTLiYAE/2dnJYRJP7kl80GuRk=" >> /etc/nix/nix.conf; fi
