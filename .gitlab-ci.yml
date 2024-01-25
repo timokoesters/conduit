@@ -34,19 +34,19 @@ ci:
       - target
       - .gitlab-ci.d
 
-docker:
+oci-image:x86_64-unknown-linux-gnu:
   stage: artifacts
   image: nixos/nix:2.19.2
   script:
     - nix build .#oci-image
 
     # Make the output less difficult to find
-    - cp result docker-image.tar.gz
+    - cp result oci-image.tar.gz
   artifacts:
     paths:
-      - docker-image.tar.gz
+      - oci-image.tar.gz
 
-debian:
+debian:x86_64-unknown-linux-gnu:
   stage: artifacts
   image: rust:1.70.0
   script:
@@ -55,10 +55,10 @@ debian:
     - cargo deb
 
     # Make the output less difficult to find
-    - mv target/debian/*.deb .
+    - mv target/debian/*.deb conduit.deb
   artifacts:
     paths:
-      - "*.deb"
+      - conduit.deb
   cache:
     key: debian
     paths:
