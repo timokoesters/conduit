@@ -159,30 +159,29 @@
 
         meta.mainProgram = cargoToml.package.name;
       };
-    in
-    {
-      packages = {
-        default = package pkgsHost;
 
-        oci-image =
-        let
-          package = self.packages.${system}.default;
-        in
-        pkgsHost.dockerTools.buildImage {
+      mkOciImage = pkgs: package:
+        pkgs.dockerTools.buildImage {
           name = package.pname;
           tag = "latest";
           config = {
             # Use the `tini` init system so that signals (e.g. ctrl+c/SIGINT)
             # are handled as expected
             Entrypoint = [
-              "${pkgsHost.lib.getExe' pkgsHost.tini "tini"}"
+              "${pkgs.lib.getExe' pkgs.tini "tini"}"
               "--"
             ];
             Cmd = [
-              "${pkgsHost.lib.getExe package}"
+              "${pkgs.lib.getExe package}"
             ];
           };
         };
+    in
+    {
+      packages = {
+        default = package pkgsHost;
+
+        oci-image = mkOciImage pkgsHost self.packages.${system}.default;
       } // builtins.listToAttrs (
         builtins.map
           (crossSystem: {
