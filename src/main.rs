@@ -1,13 +1,3 @@
-#![warn(
-    rust_2018_idioms,
-    unused_qualifications,
-    clippy::cloned_instead_of_copied,
-    clippy::str_to_string,
-    clippy::future_not_send
-)]
-#![allow(clippy::suspicious_else_formatting)]
-#![deny(clippy::dbg_macro)]
-
 use std::{future::Future, io, net::SocketAddr, sync::atomic, time::Duration};
 
 use axum::{
