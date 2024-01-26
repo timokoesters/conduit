@@ -128,7 +128,7 @@ impl Resolve for Resolver {
             .expect("lock should not be poisoned")
             .get(name.as_str())
             .and_then(|(override_name, port)| {
-                override_name.get(0).map(|first_name| {
+                override_name.first().map(|first_name| {
                     let x: Box<dyn Iterator<Item = SocketAddr> + Send> =
                         Box::new(iter::once(SocketAddr::new(*first_name, *port)));
                     let x: Resolving = Box::pin(future::ready(Ok(x)));

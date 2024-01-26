@@ -39,7 +39,7 @@
         file = ./rust-toolchain.toml;
 
         # See also `rust-toolchain.toml`
-        sha256 = "sha256-gdYqng0y9iHYzYPAdkC/ka3DRny3La/S5G8ASj0Ayyc=";
+        sha256 = "sha256-SXRtAuO4IqNOQq+nLbrsDFbVk+3aVA8NNpSZsKlVH/8=";
       };
 
       builder = pkgs:
@@ -79,7 +79,11 @@
               #
               # [0]: https://github.com/NixOS/nixpkgs/blob/612f97239e2cc474c13c9dafa0df378058c5ad8d/pkgs/build-support/rust/lib/default.nix#L36-L39
               (
-                pkgs.stdenv.hostPlatform.isAarch64
+                (pkgs.stdenv.hostPlatform.isAarch64
+                    # Nixpkgs doesn't check for x86_64 here but we do, because I
+                    # observed a failure building statically for x86_64 without
+                    # including it here. Linkers are weird.
+                    || pkgs.stdenv.hostPlatform.isx86_64)
                   && pkgs.stdenv.hostPlatform.isStatic
                   && !pkgs.stdenv.isDarwin
                   && !pkgs.stdenv.cc.bintools.isLLVM

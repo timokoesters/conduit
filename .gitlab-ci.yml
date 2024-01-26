@@ -106,7 +106,7 @@ oci-image:aarch64-unknown-linux-musl:
 debian:x86_64-unknown-linux-gnu:
   stage: artifacts
   # See also `rust-toolchain.toml`
-  image: rust:1.70.0
+  image: rust:1.75.0
   script:
     - apt-get update && apt-get install -y --no-install-recommends libclang-dev
     - cargo install cargo-deb

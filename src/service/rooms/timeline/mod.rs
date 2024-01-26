@@ -90,18 +90,6 @@ impl Ord for PduCount {
         }
     }
 }
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn comparisons() {
-        assert!(PduCount::Normal(1) < PduCount::Normal(2));
-        assert!(PduCount::Backfilled(2) < PduCount::Backfilled(1));
-        assert!(PduCount::Normal(1) > PduCount::Backfilled(1));
-        assert!(PduCount::Backfilled(1) < PduCount::Normal(1));
-    }
-}
 
 pub struct Service {
     pub db: &'static dyn Data,
@@ -1206,5 +1194,18 @@ impl Service {
 
         info!("Prepended backfill pdu");
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn comparisons() {
+        assert!(PduCount::Normal(1) < PduCount::Normal(2));
+        assert!(PduCount::Backfilled(2) < PduCount::Backfilled(1));
+        assert!(PduCount::Normal(1) > PduCount::Backfilled(1));
+        assert!(PduCount::Backfilled(1) < PduCount::Normal(1));
     }
 }
