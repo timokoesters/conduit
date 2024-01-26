@@ -131,7 +131,7 @@ impl Service {
         for (key, outgoing_kind, event) in self.db.active_requests().filter_map(|r| r.ok()) {
             let entry = initial_transactions
                 .entry(outgoing_kind.clone())
-                .or_insert_with(Vec::new);
+                .or_default();
 
             if entry.len() > 30 {
                 warn!(

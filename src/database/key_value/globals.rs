@@ -256,8 +256,8 @@ lasttimelinecount_cache: {lasttimelinecount_cache}\n"
             ..
         } = new_keys;
 
-        keys.verify_keys.extend(verify_keys.into_iter());
-        keys.old_verify_keys.extend(old_verify_keys.into_iter());
+        keys.verify_keys.extend(verify_keys);
+        keys.old_verify_keys.extend(old_verify_keys);
 
         self.server_signingkeys.insert(
             origin.as_bytes(),

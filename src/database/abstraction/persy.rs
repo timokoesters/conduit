@@ -116,7 +116,7 @@ impl KvTree for PersyTree {
         match iter {
             Ok(iter) => Box::new(iter.filter_map(|(k, v)| {
                 v.into_iter()
-                    .map(|val| ((*k).to_owned().into(), (*val).to_owned().into()))
+                    .map(|val| ((*k).to_owned(), (*val).to_owned()))
                     .next()
             })),
             Err(e) => {
@@ -142,7 +142,7 @@ impl KvTree for PersyTree {
             Ok(iter) => {
                 let map = iter.filter_map(|(k, v)| {
                     v.into_iter()
-                        .map(|val| ((*k).to_owned().into(), (*val).to_owned().into()))
+                        .map(|val| ((*k).to_owned(), (*val).to_owned()))
                         .next()
                 });
                 if backwards {
@@ -179,7 +179,7 @@ impl KvTree for PersyTree {
                     iter.take_while(move |(k, _)| (*k).starts_with(&owned_prefix))
                         .filter_map(|(k, v)| {
                             v.into_iter()
-                                .map(|val| ((*k).to_owned().into(), (*val).to_owned().into()))
+                                .map(|val| ((*k).to_owned(), (*val).to_owned()))
                                 .next()
                         }),
                 )

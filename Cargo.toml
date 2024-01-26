@@ -1,3 +1,14 @@
+# Keep alphabetically sorted
+[workspace.lints.rust]
+explicit_outlives_requirements = "warn"
+unused_qualifications = "warn"
+
+# Keep alphabetically sorted
+[workspace.lints.clippy]
+cloned_instead_of_copied = "warn"
+dbg_macro = "warn"
+str_to_string = "warn"
+
 [package]
 name = "conduit"
 description = "A Matrix homeserver written in Rust"
@@ -10,9 +21,12 @@ version = "0.7.0-alpha"
 edition = "2021"
 
 # See also `rust-toolchain.toml`
-rust-version = "1.70.0"
+rust-version = "1.75.0"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lints]
+workspace = true
 
 [dependencies]
 # Web framework
