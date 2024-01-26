@@ -182,6 +182,16 @@
         default = package pkgsHost;
 
         oci-image = mkOciImage pkgsHost self.packages.${system}.default;
+
+        # Build an OCI image from the musl aarch64 build so we don't have to
+        # build for aarch64 twice (to make a gnu version specifically for the
+        # OCI image)
+        oci-image-aarch64-unknown-linux-musl = mkOciImage
+          pkgsHost
+          self.packages.${system}.static-aarch64-unknown-linux-musl;
+
+        # Don't build a musl x86_64 OCI image because that would be pointless.
+        # Just use the gnu one (i.e. `self.packages."x86_64-linux".oci-image`).
       } // builtins.listToAttrs (
         builtins.map
           (crossSystem: {

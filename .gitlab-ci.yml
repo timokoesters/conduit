@@ -86,6 +86,23 @@ oci-image:x86_64-unknown-linux-gnu:
     paths:
       - oci-image.tar.gz
 
+oci-image:aarch64-unknown-linux-musl:
+  stage: artifacts
+  needs:
+    # Wait for the static binary job to finish before starting so we don't have
+    # to build that twice for no reason
+    - static:aarch64-unknown-linux-musl
+  image: nixos/nix:2.19.2
+  script:
+    # Push artifacts and build requirements to binary cache
+    - ./bin/nix-build-and-cache .#oci-image-aarch64-unknown-linux-musl
+
+    # Make the output less difficult to find
+    - cp result oci-image.tar.gz
+  artifacts:
+    paths:
+      - oci-image.tar.gz
+
 debian:x86_64-unknown-linux-gnu:
   stage: artifacts
   # See also `rust-toolchain.toml`
