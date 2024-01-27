@@ -166,7 +166,7 @@
       mkOciImage = pkgs: package:
         pkgs.dockerTools.buildImage {
           name = package.pname;
-          tag = "latest";
+          tag = "next";
           config = {
             # Use the `tini` init system so that signals (e.g. ctrl+c/SIGINT)
             # are handled as expected
