@@ -234,6 +234,13 @@
           toolchain
         ] ++ (with pkgsHost; [
           engage
+
+          # Needed for Complement
+          go
+          olm
+
+          # Needed for our script for Complement
+          jq
         ]);
       };
     });
