@@ -51,16 +51,16 @@
         ]
       },
       "locked": {
-        "lastModified": 1706070683,
-        "narHash": "sha256-iQoXIFviH5QbSKDkWyFJKKUtTcSiCvl1tW18ax+pKfI=",
-        "owner": "CobaltCause",
+        "lastModified": 1706473964,
+        "narHash": "sha256-Fq6xleee/TsX6NbtoRuI96bBuDHMU57PrcK9z1QEKbk=",
+        "owner": "ipetkov",
         "repo": "crane",
-        "rev": "8060686afabc5b042e8982200cb2cc3fd22cf416",
+        "rev": "c798790eabec3e3da48190ae3698ac227aab770c",
         "type": "github"
       },
       "original": {
-        "owner": "CobaltCause",
-        "ref": "crimes-for-cross",
+        "owner": "ipetkov",
+        "ref": "master",
         "repo": "crane",
         "type": "github"
       }
