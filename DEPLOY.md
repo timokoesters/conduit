@@ -12,11 +12,13 @@ only offer Linux binaries.
 
 You may simply download the binary that fits your machine. Run `uname -m` to see what you need. Now copy the appropriate url:
 
-| CPU Architecture                            | Download stable version                                         | Download development version                                |
-| ------------------------------------------- | --------------------------------------------------------------- | ----------------------------------------------------------- |
-| x84_64 / amd64 (Most servers and computers) | [Binary][x84_64-glibc-master] / [.deb][x84_64-glibc-master-deb] | [Binary][x84_64-glibc-next] / [.deb][x84_64-glibc-next-deb] |
-| armv7 (e.g. Raspberry Pi by default)        | [Binary][armv7-glibc-master] / [.deb][armv7-glibc-master-deb]   | [Binary][armv7-glibc-next] / [.deb][armv7-glibc-next-deb]   |
-| armv8 / aarch64                             | [Binary][armv8-glibc-master] / [.deb][armv8-glibc-master-deb]   | [Binary][armv8-glibc-next] / [.deb][armv8-glibc-next-deb]   |
+**Stable versions:**
+
+| CPU Architecture                            | Download stable version                                         |
+| ------------------------------------------- | --------------------------------------------------------------- |
+| x84_64 / amd64 (Most servers and computers) | [Binary][x84_64-glibc-master] / [.deb][x84_64-glibc-master-deb] |
+| armv7 (e.g. Raspberry Pi by default)        | [Binary][armv7-glibc-master] / [.deb][armv7-glibc-master-deb]   |
+| armv8 / aarch64                             | [Binary][armv8-glibc-master] / [.deb][armv8-glibc-master-deb]   |
 
 These builds were created on and linked against the glibc version shipped with Debian bullseye.
 If you use a system with an older glibc version (e.g. RHEL8), you might need to compile Conduit yourself.
@@ -24,15 +26,19 @@ If you use a system with an older glibc version (e.g. RHEL8), you might need to 
 [x84_64-glibc-master]: https://gitlab.com/famedly/conduit/-/jobs/artifacts/master/raw/build-output/linux_amd64/conduit?job=docker:master
 [armv7-glibc-master]: https://gitlab.com/famedly/conduit/-/jobs/artifacts/master/raw/build-output/linux_arm_v7/conduit?job=docker:master
 [armv8-glibc-master]: https://gitlab.com/famedly/conduit/-/jobs/artifacts/master/raw/build-output/linux_arm64/conduit?job=docker:master
-[x84_64-glibc-next]: https://gitlab.com/famedly/conduit/-/jobs/artifacts/next/raw/build-output/linux_amd64/conduit?job=docker:next
-[armv7-glibc-next]: https://gitlab.com/famedly/conduit/-/jobs/artifacts/next/raw/build-output/linux_arm_v7/conduit?job=docker:next
-[armv8-glibc-next]: https://gitlab.com/famedly/conduit/-/jobs/artifacts/next/raw/build-output/linux_arm64/conduit?job=docker:next
 [x84_64-glibc-master-deb]: https://gitlab.com/famedly/conduit/-/jobs/artifacts/master/raw/build-output/linux_amd64/conduit.deb?job=docker:master
 [armv7-glibc-master-deb]: https://gitlab.com/famedly/conduit/-/jobs/artifacts/master/raw/build-output/linux_arm_v7/conduit.deb?job=docker:master
 [armv8-glibc-master-deb]: https://gitlab.com/famedly/conduit/-/jobs/artifacts/master/raw/build-output/linux_arm64/conduit.deb?job=docker:master
-[x84_64-glibc-next-deb]: https://gitlab.com/famedly/conduit/-/jobs/artifacts/next/raw/build-output/linux_amd64/conduit.deb?job=docker:next
-[armv7-glibc-next-deb]: https://gitlab.com/famedly/conduit/-/jobs/artifacts/next/raw/build-output/linux_arm_v7/conduit.deb?job=docker:next
-[armv8-glibc-next-deb]: https://gitlab.com/famedly/conduit/-/jobs/artifacts/next/raw/build-output/linux_arm64/conduit.deb?job=docker:next
+
+**Latest versions:**
+
+| Target | Type | Download |
+|-|-|-|
+| `x86_64-unknown-linux-gnu` | Dynamically linked Debian package | [link](https://gitlab.com/api/v4/projects/famedly%2Fconduit/jobs/artifacts/next/raw/conduit.deb?job=debian:x86_64-unknown-linux-gnu) |
+| `x86_64-unknown-linux-musl` | Statically linked binary | [link](https://gitlab.com/api/v4/projects/famedly%2Fconduit/jobs/artifacts/next/raw/conduit?job=static:x86_64-unknown-linux-musl) |
+| `aarch64-unknown-linux-musl` | Statically linked binary | [link](https://gitlab.com/api/v4/projects/famedly%2Fconduit/jobs/artifacts/next/raw/conduit?job=static:aarch64-unknown-linux-musl) |
+| `x86_64-unknown-linux-musl` | OCI image | [link](https://gitlab.com/api/v4/projects/famedly%2Fconduit/jobs/artifacts/next/raw/oci-image.tar.gz?job=oci-image:x86_64-unknown-linux-musl) |
+| `aarch64-unknown-linux-musl` | OCI image | [link](https://gitlab.com/api/v4/projects/famedly%2Fconduit/jobs/artifacts/next/raw/oci-image.tar.gz?job=oci-image:aarch64-unknown-linux-musl) |
 
 ```bash
 $ sudo wget -O /usr/local/bin/matrix-conduit <url>
