@@ -183,34 +183,45 @@
     {
       packages = {
         default = package pkgsHost;
-
         oci-image = mkOciImage pkgsHost self.packages.${system}.default;
+      }
+      //
+      builtins.listToAttrs
+        (builtins.concatLists
+          (builtins.map
+            (crossSystem:
+              let
+                binaryName = "static-${crossSystem}";
+                pkgsCrossStatic =
+                  (import nixpkgs {
+                    inherit system;
+                    crossSystem = {
+                      config = crossSystem;
+                    };
+                  }).pkgsStatic;
+              in
+              [
+                # An output for a statically-linked binary
+                {
+                  name = binaryName;
+                  value = package pkgsCrossStatic;
+                }
 
-        # Build an OCI image from the musl aarch64 build so we don't have to
-        # build for aarch64 twice (to make a gnu version specifically for the
-        # OCI image)
-        oci-image-aarch64-unknown-linux-musl = mkOciImage
-          pkgsHost
-          self.packages.${system}.static-aarch64-unknown-linux-musl;
-
-        # Don't build a musl x86_64 OCI image because that would be pointless.
-        # Just use the gnu one (i.e. `self.packages."x86_64-linux".oci-image`).
-      } // builtins.listToAttrs (
-        builtins.map
-          (crossSystem: {
-            name = "static-${crossSystem}";
-            value = package (import nixpkgs {
-              inherit system;
-              crossSystem = {
-                config = crossSystem;
-              };
-            }).pkgsStatic;
-          })
-          [
-            "x86_64-unknown-linux-musl"
-            "aarch64-unknown-linux-musl"
-          ]
-      );
+                # An output for an OCI image based on that binary
+                {
+                  name = "oci-image-${crossSystem}";
+                  value = mkOciImage
+                    pkgsCrossStatic
+                    self.packages.${system}.${binaryName};
+                }
+              ]
+            )
+            [
+              "x86_64-unknown-linux-musl"
+              "aarch64-unknown-linux-musl"
+            ]
+          )
+        );
 
       devShells.default = pkgsHost.mkShell {
         env = env pkgsHost // {

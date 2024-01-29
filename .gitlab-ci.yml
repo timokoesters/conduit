@@ -68,6 +68,9 @@ static:aarch64-unknown-linux-musl:
     paths:
       - conduit
 
+# Note that although we have an `oci-image-x86_64-unknown-linux-musl` output,
+# we don't build it because it would be largely redundant to this one since it's
+# all containerized anyway.
 oci-image:x86_64-unknown-linux-gnu:
   stage: artifacts
   image: nixos/nix:2.19.2
