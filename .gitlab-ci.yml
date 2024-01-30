@@ -1,6 +1,7 @@
 stages:
   - ci
   - artifacts
+  - publish
 
 variables:
   # Makes some things print in color
@@ -84,10 +85,10 @@ oci-image:x86_64-unknown-linux-gnu:
     - ./bin/nix-build-and-cache .#oci-image
 
     # Make the output less difficult to find
-    - cp result oci-image.tar.gz
+    - cp result oci-image-amd64.tar.gz
   artifacts:
     paths:
-      - oci-image.tar.gz
+      - oci-image-amd64.tar.gz
 
 oci-image:aarch64-unknown-linux-musl:
   stage: artifacts
@@ -101,10 +102,10 @@ oci-image:aarch64-unknown-linux-musl:
     - ./bin/nix-build-and-cache .#oci-image-aarch64-unknown-linux-musl
 
     # Make the output less difficult to find
-    - cp result oci-image.tar.gz
+    - cp result oci-image-arm64v8.tar.gz
   artifacts:
     paths:
-      - oci-image.tar.gz
+      - oci-image-arm64v8.tar.gz
 
 debian:x86_64-unknown-linux-gnu:
   stage: artifacts
@@ -125,3 +126,44 @@ debian:x86_64-unknown-linux-gnu:
     paths:
       - target
       - .gitlab-ci.d
+
+docker-publish:
+  stage: publish
+  image: docker:25.0.0
+  services:
+    - docker:25.0.0-dind
+  variables:
+    IMAGE_NAME: $CI_REGISTRY_IMAGE/matrix-conduit
+    IMAGE_SUFFIX_AMD64: amd64
+    IMAGE_SUFFIX_ARM64V8: arm64v8
+  before_script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  script:
+    - docker load -i oci-image-amd64.tar.gz
+    - IMAGE_ID_AMD64=$(docker images -q conduit:next)
+    - docker load -i oci-image-arm64v8.tar.gz
+    - IMAGE_ID_ARM64V8=$(docker images -q conduit:next)
+    # Tag and push the architecture specific images
+    - docker tag $IMAGE_ID_AMD64 $IMAGE_NAME:$CI_COMMIT_SHA-$IMAGE_SUFFIX_AMD64
+    - docker tag $IMAGE_ID_ARM64V8 $IMAGE_NAME:$CI_COMMIT_SHA-$IMAGE_SUFFIX_ARM64V8
+    - docker push $IMAGE_NAME:$CI_COMMIT_SHA-$IMAGE_SUFFIX_AMD64
+    - docker push $IMAGE_NAME:$CI_COMMIT_SHA-$IMAGE_SUFFIX_ARM64V8
+    # Tag the multi-arch image
+    - docker manifest create $IMAGE_NAME:$CI_COMMIT_SHA --amend $IMAGE_NAME:$CI_COMMIT_SHA-$IMAGE_SUFFIX_AMD64 --amend $IMAGE_NAME:$CI_COMMIT_SHA-$IMAGE_SUFFIX_ARM64V8
+    - docker manifest push $IMAGE_NAME:$CI_COMMIT_SHA
+    # Tag and push the git ref
+    - docker manifest create $IMAGE_NAME:$CI_COMMIT_REF_NAME --amend $IMAGE_NAME:$CI_COMMIT_SHA-$IMAGE_SUFFIX_AMD64 --amend $IMAGE_NAME:$CI_COMMIT_SHA-$IMAGE_SUFFIX_ARM64V8
+    - docker manifest push $IMAGE_NAME:$CI_COMMIT_REF_NAME
+    # Tag git tags as 'latest'
+    - |
+      if [[ -n "$CI_COMMIT_TAG" ]]; then
+        docker manifest create $IMAGE_NAME:latest --amend $IMAGE_NAME:$CI_COMMIT_SHA-$IMAGE_SUFFIX_AMD64 --amend $IMAGE_NAME:$CI_COMMIT_SHA-$IMAGE_SUFFIX_ARM64V8
+        docker manifest push $IMAGE_NAME:latest
+      fi
+  dependencies:
+    - oci-image:x86_64-unknown-linux-gnu
+    - oci-image:aarch64-unknown-linux-musl
+  only:
+    - next
+    - master
+    - tags
