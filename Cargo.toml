@@ -73,13 +73,13 @@ image = { version = "0.24.6", default-features = false, features = ["jpeg", "png
 # Used to encode server public key
 base64 = "0.21.2"
 # Used when hashing the state
-ring = "0.16.20"
+ring = "0.17.7"
 # Used when querying the SRV record of other servers
 trust-dns-resolver = "0.22.0"
 # Used to find matching events for appservices
 regex = "1.8.1"
 # jwt jsonwebtokens
-jsonwebtoken = "8.3.0"
+jsonwebtoken = "9.2.0"
 # Performance measurements
 tracing = { version = "0.1.37", features = [] }
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }

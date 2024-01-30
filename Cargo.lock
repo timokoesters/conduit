@@ -192,12 +192,6 @@ dependencies = [
 
 [[package]]
 name = "base64"
-version = "0.13.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9e1b586273c5702936fe7b7d6896644d8be71e6314cfe09d3167c95f712589e8"
-
-[[package]]
-name = "base64"
 version = "0.21.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9d297deb1925b89f2ccc13d7635fa0714f12c87adce1c75356b39ca9b7178567"
@@ -383,7 +377,7 @@ dependencies = [
  "async-trait",
  "axum",
  "axum-server",
- "base64 0.21.7",
+ "base64",
  "bytes",
  "clap",
  "directories",
@@ -405,7 +399,7 @@ dependencies = [
  "rand",
  "regex",
  "reqwest",
- "ring 0.16.20",
+ "ring",
  "rocksdb",
  "ruma",
  "rusqlite",
@@ -860,8 +854,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "190092ea657667030ac6a35e305e62fc4dd69fd98ac98631e5d3a2b1575a12b5"
 dependencies = [
  "cfg-if",
+ "js-sys",
  "libc",
  "wasi",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -936,7 +932,7 @@ version = "0.3.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "06683b93020a07e3dbcf5f8c0f6d40080d725bea7936fc01ad345c01b97dc270"
 dependencies = [
- "base64 0.21.7",
+ "base64",
  "bytes",
  "headers-core",
  "http",
@@ -1210,13 +1206,14 @@ dependencies = [
 
 [[package]]
 name = "jsonwebtoken"
-version = "8.3.0"
+version = "9.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6971da4d9c3aa03c3d8f3ff0f4155b534aad021292003895a469716b2a230378"
+checksum = "5c7ea04a7c5c055c175f189b6dc6ba036fd62306b58c66c9f6389036c503a3f4"
 dependencies = [
- "base64 0.21.7",
+ "base64",
+ "js-sys",
  "pem",
- "ring 0.16.20",
+ "ring",
  "serde",
  "serde_json",
  "simple_asn1",
@@ -1684,11 +1681,12 @@ checksum = "19b17cddbe7ec3f8bc800887bab5e717348c95ea2ca0b1bf0837fb964dc67099"
 
 [[package]]
 name = "pem"
-version = "1.1.1"
+version = "3.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a8835c273a76a90455d7344889b0964598e3316e2a79ede8e36f16bdcf2228b8"
+checksum = "1b8fcc794035347fb64beda2d3b462595dd2753e3f268d89c5aae77e8cf2c310"
 dependencies = [
- "base64 0.13.1",
+ "base64",
+ "serde",
 ]
 
 [[package]]
@@ -1949,7 +1947,7 @@ version = "0.11.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "37b1ae8d9ac08420c66222fb9096fc5de435c3c48542bc5336c51892cffafb41"
 dependencies = [
- "base64 0.21.7",
+ "base64",
  "bytes",
  "encoding_rs",
  "futures-core",
@@ -1996,21 +1994,6 @@ dependencies = [
 
 [[package]]
 name = "ring"
-version = "0.16.20"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3053cf52e236a3ed746dfc745aa9cacf1b791d846bdaf412f60a8d7d6e17c8fc"
-dependencies = [
- "cc",
- "libc",
- "once_cell",
- "spin 0.5.2",
- "untrusted 0.7.1",
- "web-sys",
- "winapi",
-]
-
-[[package]]
-name = "ring"
 version = "0.17.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "688c63d65483050968b2a8937f7995f443e27041a0f7700aa59b0822aedebb74"
@@ -2018,8 +2001,8 @@ dependencies = [
  "cc",
  "getrandom",
  "libc",
- "spin 0.9.8",
- "untrusted 0.9.0",
+ "spin",
+ "untrusted",
  "windows-sys 0.48.0",
 ]
 
@@ -2088,7 +2071,7 @@ version = "0.11.3"
 source = "git+https://github.com/ruma/ruma?rev=b4853aa8fa5e3a24e3689fc88044de9915f6ab67#b4853aa8fa5e3a24e3689fc88044de9915f6ab67"
 dependencies = [
  "as_variant",
- "base64 0.21.7",
+ "base64",
  "bytes",
  "form_urlencoded",
  "http",
@@ -2195,7 +2178,7 @@ name = "ruma-signatures"
 version = "0.13.1"
 source = "git+https://github.com/ruma/ruma?rev=b4853aa8fa5e3a24e3689fc88044de9915f6ab67#b4853aa8fa5e3a24e3689fc88044de9915f6ab67"
 dependencies = [
- "base64 0.21.7",
+ "base64",
  "ed25519-dalek",
  "pkcs8",
  "rand",
@@ -2241,7 +2224,7 @@ version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a5885493fdf0be6cdff808d1533ce878d21cfa49c7086fa00c66355cd9141bfc"
 dependencies = [
- "base64 0.21.7",
+ "base64",
  "blake2b_simd",
  "constant_time_eq",
  "crossbeam-utils",
@@ -2275,7 +2258,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f9d5a6813c0759e4609cd494e8e725babae6a2ca7b62a5536a13daaec6fcb7ba"
 dependencies = [
  "log",
- "ring 0.17.7",
+ "ring",
  "rustls-webpki",
  "sct",
 ]
@@ -2298,7 +2281,7 @@ version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1c74cae0a4cf6ccbbf5f359f08efdf8ee7e1dc532573bf0db71968cb56b1448c"
 dependencies = [
- "base64 0.21.7",
+ "base64",
 ]
 
 [[package]]
@@ -2307,8 +2290,8 @@ version = "0.101.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8b6275d1ee7a1cd780b64aca7726599a1dbc893b1e64144529e55c3c2f745765"
 dependencies = [
- "ring 0.17.7",
- "untrusted 0.9.0",
+ "ring",
+ "untrusted",
 ]
 
 [[package]]
@@ -2344,8 +2327,8 @@ version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "da046153aa2352493d6cb7da4b6e5c0c057d8a1d0a9aa8560baffdd945acd414"
 dependencies = [
- "ring 0.17.7",
- "untrusted 0.9.0",
+ "ring",
+ "untrusted",
 ]
 
 [[package]]
@@ -2579,12 +2562,6 @@ dependencies = [
  "libc",
  "windows-sys 0.48.0",
 ]
-
-[[package]]
-name = "spin"
-version = "0.5.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
 
 [[package]]
 name = "spin"
@@ -3186,12 +3163,6 @@ name = "unsigned-varint"
 version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6889a77d49f1f013504cec6bf97a2c730394adedaeb1deb5ea08949a50541105"
-
-[[package]]
-name = "untrusted"
-version = "0.7.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a156c684c91ea7d62626509bce3cb4e1d9ed5c4d978f7b4352658f96a4c26b4a"
 
 [[package]]
 name = "untrusted"
