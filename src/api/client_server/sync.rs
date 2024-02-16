@@ -1618,7 +1618,7 @@ pub async fn sync_events_v4_route(
                     .rooms
                     .state_accessor
                     .get_name(room_id)?
-                    .or_else(|| name),
+                    .or(name),
                 avatar: if let Some(avatar) = avatar {
                     ruma::JsOption::Some(avatar)
                 } else {
