@@ -1614,11 +1614,7 @@ pub async fn sync_events_v4_route(
         rooms.insert(
             room_id.clone(),
             sync_events::v4::SlidingSyncRoom {
-                name: services()
-                    .rooms
-                    .state_accessor
-                    .get_name(room_id)?
-                    .or(name),
+                name: services().rooms.state_accessor.get_name(room_id)?.or(name),
                 avatar: if let Some(avatar) = avatar {
                     ruma::JsOption::Some(avatar)
                 } else {

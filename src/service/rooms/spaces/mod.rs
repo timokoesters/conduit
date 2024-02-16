@@ -133,7 +133,8 @@ impl Service {
                         .ok_or_else(|| Error::bad_database("Event in space state not found"))?;
 
                     if serde_json::from_str::<SpaceChildEventContent>(pdu.content.get())
-                        .ok().map(|c| c.via)
+                        .ok()
+                        .map(|c| c.via)
                         .map_or(true, |v| v.is_empty())
                     {
                         continue;
