@@ -127,17 +127,14 @@ debian:x86_64-unknown-linux-gnu:
       - target
       - .gitlab-ci.d
 
-docker-publish:
+.push-oci-image:
   stage: publish
   image: docker:25.0.0
   services:
     - docker:25.0.0-dind
   variables:
-    IMAGE_NAME: $CI_REGISTRY_IMAGE/matrix-conduit
     IMAGE_SUFFIX_AMD64: amd64
     IMAGE_SUFFIX_ARM64V8: arm64v8
-  before_script:
-    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
   script:
     - docker load -i oci-image-amd64.tar.gz
     - IMAGE_ID_AMD64=$(docker images -q conduit:next)
@@ -167,3 +164,17 @@ docker-publish:
     - next
     - master
     - tags
+
+oci-image:push-gitlab:
+  extends: .push-oci-image
+  variables:
+    IMAGE_NAME: $CI_REGISTRY_IMAGE/matrix-conduit
+  before_script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+
+oci-image:push-dockerhub:
+  extends: .push-oci-image
+  variables:
+    IMAGE_NAME: matrixconduit/matrix-conduit
+  before_script:
+    - docker login -u $DOCKER_HUB_USER -p $DOCKER_HUB_PASSWORD
