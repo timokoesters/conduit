@@ -185,7 +185,9 @@ impl Service {
                     stack.push(children_ids);
                 }
             } else {
-                let server = current_room.server_name().unwrap();
+                let server = current_room
+                    .server_name()
+                    .expect("Room IDs should always have a server name");
                 if server == services().globals.server_name() {
                     continue;
                 }

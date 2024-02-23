@@ -64,7 +64,12 @@ pub async fn join_room_by_id_route(
             .map(|user| user.server_name().to_owned()),
     );
 
-    servers.push(body.room_id.server_name().unwrap().into());
+    servers.push(
+        body.room_id
+            .server_name()
+            .expect("Room IDs should always have a server name")
+            .into(),
+    );
 
     join_room_by_id_helper(
         body.sender_user.as_deref(),
@@ -105,7 +110,12 @@ pub async fn join_room_by_id_or_alias_route(
                     .map(|user| user.server_name().to_owned()),
             );
 
-            servers.push(room_id.server_name().unwrap().into());
+            servers.push(
+                room_id
+                    .server_name()
+                    .expect("Room IDs should always have a server name")
+                    .into(),
+            );
 
             (servers, room_id)
         }

@@ -1620,7 +1620,7 @@ pub async fn sync_events_v4_route(
                 } else {
                     match services().rooms.state_accessor.get_avatar(room_id)? {
                         ruma::JsOption::Some(avatar) => {
-                            js_option::JsOption::Some(avatar.url.unwrap())
+                            js_option::JsOption::from_option(avatar.url)
                         }
                         ruma::JsOption::Null => ruma::JsOption::Null,
                         ruma::JsOption::Undefined => ruma::JsOption::Undefined,
