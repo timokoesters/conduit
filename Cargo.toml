@@ -116,9 +116,6 @@ async-trait = "0.1.68"
 
 sd-notify = { version = "0.4.1", optional = true }
 
-# stupid ruma using JsOption instead of Option
-js_option = "0.1"
-
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.26.2", features = ["resource"] }
 

@@ -387,7 +387,6 @@ dependencies = [
  "http",
  "hyper",
  "image",
- "js_option",
  "jsonwebtoken",
  "lazy_static",
  "lru-cache",

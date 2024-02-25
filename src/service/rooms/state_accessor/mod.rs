@@ -5,7 +5,6 @@ use std::{
 };
 
 pub use data::Data;
-use js_option::JsOption;
 use lru_cache::LruCache;
 use ruma::{
     events::{
@@ -17,7 +16,7 @@ use ruma::{
         },
         StateEventType,
     },
-    EventId, OwnedServerName, OwnedUserId, RoomId, ServerName, UserId,
+    EventId, JsOption, OwnedServerName, OwnedUserId, RoomId, ServerName, UserId,
 };
 use tracing::error;
 
