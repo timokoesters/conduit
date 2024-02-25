@@ -16,7 +16,7 @@ use ruma::{
         },
         StateEventType,
     },
-    EventId, OwnedServerName, OwnedUserId, RoomId, ServerName, UserId,
+    EventId, JsOption, OwnedServerName, OwnedUserId, RoomId, ServerName, UserId,
 };
 use tracing::error;
 
@@ -279,17 +279,23 @@ impl Service {
             .room_state_get(room_id, &StateEventType::RoomName, "")?
             .map_or(Ok(None), |s| {
                 serde_json::from_str(s.content.get())
-                    .map(|c: RoomNameEventContent| c.name)
-                    .map_err(|_| Error::bad_database("Invalid room name event in database."))
+                    .map(|c: RoomNameEventContent| Some(c.name))
+                    .map_err(|e| {
+                        error!(
+                            "Invalid room name event in database for room {}. {}",
+                            room_id, e
+                        );
+                        Error::bad_database("Invalid room name event in database.")
+                    })
             })
     }
 
-    pub fn get_avatar(&self, room_id: &RoomId) -> Result<Option<RoomAvatarEventContent>> {
+    pub fn get_avatar(&self, room_id: &RoomId) -> Result<JsOption<RoomAvatarEventContent>> {
         services()
             .rooms
             .state_accessor
             .room_state_get(room_id, &StateEventType::RoomAvatar, "")?
-            .map_or(Ok(None), |s| {
+            .map_or(Ok(JsOption::Undefined), |s| {
                 serde_json::from_str(s.content.get())
                     .map_err(|_| Error::bad_database("Invalid room avatar event in database."))
             })

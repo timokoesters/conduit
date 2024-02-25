@@ -966,14 +966,21 @@ impl Service {
 
         debug!("Resolving state");
 
-        let lock = services().globals.stateres_mutex.lock();
-        let state = match state_res::resolve(room_version_id, &fork_states, auth_chain_sets, |id| {
+        let fetch_event = |id: &_| {
             let res = services().rooms.timeline.get_pdu(id);
             if let Err(e) = &res {
                 error!("LOOK AT ME Failed to fetch event: {}", e);
             }
             res.ok().flatten()
-        }) {
+        };
+
+        let lock = services().globals.stateres_mutex.lock();
+        let state = match state_res::resolve(
+            room_version_id,
+            &fork_states,
+            auth_chain_sets,
+            fetch_event,
+        ) {
             Ok(new_state) => new_state,
             Err(_) => {
                 return Err(Error::bad_database("State resolution failed, either an event could not be found or deserialization"));

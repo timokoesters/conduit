@@ -42,24 +42,31 @@ pub async fn get_login_types_route(
 /// Note: You can use [`GET /_matrix/client/r0/login`](fn.get_supported_versions_route.html) to see
 /// supported login types.
 pub async fn login_route(body: Ruma<login::v3::Request>) -> Result<login::v3::Response> {
+    // To allow deprecated login methods
+    #![allow(deprecated)]
     // Validate login method
     // TODO: Other login methods
     let user_id = match &body.login_info {
         login::v3::LoginInfo::Password(login::v3::Password {
             identifier,
             password,
+            user,
+            address: _,
+            medium: _,
         }) => {
-            let username = if let UserIdentifier::UserIdOrLocalpart(user_id) = identifier {
-                user_id.to_lowercase()
+            let user_id = if let Some(UserIdentifier::UserIdOrLocalpart(user_id)) = identifier {
+                UserId::parse_with_server_name(
+                    user_id.to_lowercase(),
+                    services().globals.server_name(),
+                )
+            } else if let Some(user) = user {
+                UserId::parse(user)
             } else {
                 warn!("Bad login type: {:?}", &body.login_info);
                 return Err(Error::BadRequest(ErrorKind::Forbidden, "Bad login type."));
-            };
-            let user_id =
-                UserId::parse_with_server_name(username, services().globals.server_name())
-                    .map_err(|_| {
-                        Error::BadRequest(ErrorKind::InvalidUsername, "Username is invalid.")
-                    })?;
+            }
+            .map_err(|_| Error::BadRequest(ErrorKind::InvalidUsername, "Username is invalid."))?;
+
             let hash = services()
                 .users
                 .password_hash(&user_id)?
@@ -105,22 +112,28 @@ pub async fn login_route(body: Ruma<login::v3::Request>) -> Result<login::v3::Re
                 ));
             }
         }
-        login::v3::LoginInfo::ApplicationService(login::v3::ApplicationService { identifier }) => {
+        login::v3::LoginInfo::ApplicationService(login::v3::ApplicationService {
+            identifier,
+            user,
+        }) => {
             if !body.from_appservice {
                 return Err(Error::BadRequest(
                     ErrorKind::Forbidden,
                     "Forbidden login type.",
                 ));
             };
-            let username = if let UserIdentifier::UserIdOrLocalpart(user_id) = identifier {
-                user_id.to_lowercase()
+            if let Some(UserIdentifier::UserIdOrLocalpart(user_id)) = identifier {
+                UserId::parse_with_server_name(
+                    user_id.to_lowercase(),
+                    services().globals.server_name(),
+                )
+            } else if let Some(user) = user {
+                UserId::parse(user)
             } else {
+                warn!("Bad login type: {:?}", &body.login_info);
                 return Err(Error::BadRequest(ErrorKind::Forbidden, "Bad login type."));
-            };
-
-            UserId::parse_with_server_name(username, services().globals.server_name()).map_err(
-                |_| Error::BadRequest(ErrorKind::InvalidUsername, "Username is invalid."),
-            )?
+            }
+            .map_err(|_| Error::BadRequest(ErrorKind::InvalidUsername, "Username is invalid."))?
         }
         _ => {
             warn!("Unsupported or unknown login type: {:?}", &body.login_info);

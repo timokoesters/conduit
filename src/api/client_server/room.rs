@@ -366,7 +366,7 @@ pub async fn create_room_route(
         services().rooms.timeline.build_and_append_pdu(
             PduBuilder {
                 event_type: TimelineEventType::RoomName,
-                content: to_raw_value(&RoomNameEventContent::new(Some(name.clone())))
+                content: to_raw_value(&RoomNameEventContent::new(name.clone()))
                     .expect("event is valid, we just created it"),
                 unsigned: None,
                 state_key: Some("".to_owned()),

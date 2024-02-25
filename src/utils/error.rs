@@ -116,9 +116,11 @@ impl Error {
             Self::BadRequest(kind, _) => (
                 kind.clone(),
                 match kind {
-                    Forbidden | GuestAccessForbidden | ThreepidAuthFailed | ThreepidDenied => {
-                        StatusCode::FORBIDDEN
-                    }
+                    WrongRoomKeysVersion { .. }
+                    | Forbidden
+                    | GuestAccessForbidden
+                    | ThreepidAuthFailed
+                    | ThreepidDenied => StatusCode::FORBIDDEN,
                     Unauthorized | UnknownToken { .. } | MissingToken => StatusCode::UNAUTHORIZED,
                     NotFound | Unrecognized => StatusCode::NOT_FOUND,
                     LimitExceeded { .. } => StatusCode::TOO_MANY_REQUESTS,

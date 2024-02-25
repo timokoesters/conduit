@@ -20,7 +20,7 @@ use ruma::{
         StateEventType, TimelineEventType,
     },
     serde::Raw,
-    uint, DeviceId, OwnedDeviceId, OwnedUserId, RoomId, UInt, UserId,
+    uint, DeviceId, JsOption, OwnedDeviceId, OwnedUserId, RoomId, UInt, UserId,
 };
 use std::{
     collections::{hash_map::Entry, BTreeMap, BTreeSet, HashMap, HashSet},
@@ -1615,11 +1615,15 @@ pub async fn sync_events_v4_route(
             room_id.clone(),
             sync_events::v4::SlidingSyncRoom {
                 name: services().rooms.state_accessor.get_name(room_id)?.or(name),
-                avatar: services()
-                    .rooms
-                    .state_accessor
-                    .get_avatar(room_id)?
-                    .map_or(avatar, |a| a.url),
+                avatar: if let Some(avatar) = avatar {
+                    JsOption::Some(avatar)
+                } else {
+                    match services().rooms.state_accessor.get_avatar(room_id)? {
+                        JsOption::Some(avatar) => JsOption::from_option(avatar.url),
+                        JsOption::Null => JsOption::Null,
+                        JsOption::Undefined => JsOption::Undefined,
+                    }
+                },
                 initial: Some(roomsince == &0),
                 is_dm: None,
                 invite_state: None,
