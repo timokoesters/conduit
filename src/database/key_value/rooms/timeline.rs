@@ -331,7 +331,7 @@ fn count_to_id(
         .rooms
         .short
         .get_shortroomid(room_id)?
-        .expect("room exists")
+        .ok_or_else(|| Error::bad_database("Looked for bad shortroomid in timeline"))?
         .to_be_bytes()
         .to_vec();
     let mut pdu_id = prefix.clone();

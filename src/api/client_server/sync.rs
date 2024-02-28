@@ -1476,6 +1476,9 @@ pub async fn sync_events_v4_route(
 
     let mut known_subscription_rooms = BTreeSet::new();
     for (room_id, room) in &body.room_subscriptions {
+        if !services().rooms.metadata.exists(room_id)? {
+            continue;
+        }
         let todo_room = todo_rooms
             .entry(room_id.clone())
             .or_insert((BTreeSet::new(), 0, u64::MAX));
