@@ -184,7 +184,22 @@ impl Service {
             }
 
             if errors >= 5 {
-                break;
+                // Timeout other events
+                match services()
+                    .globals
+                    .bad_event_ratelimiter
+                    .write()
+                    .unwrap()
+                    .entry((*prev_id).to_owned())
+                {
+                    hash_map::Entry::Vacant(e) => {
+                        e.insert((Instant::now(), 1));
+                    }
+                    hash_map::Entry::Occupied(mut e) => {
+                        *e.get_mut() = (Instant::now(), e.get().1 + 1)
+                    }
+                }
+                continue;
             }
 
             if let Some((pdu, json)) = eventid_info.remove(&*prev_id) {
