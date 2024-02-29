@@ -17,29 +17,32 @@ impl Service {
     /// make sure users outside these rooms can't see them.
     pub fn update_presence(
         &self,
-        user_id: &UserId,
-        room_id: &RoomId,
-        presence: PresenceEvent,
+        _user_id: &UserId,
+        _room_id: &RoomId,
+        _presence: PresenceEvent,
     ) -> Result<()> {
-        self.db.update_presence(user_id, room_id, presence)
+        // self.db.update_presence(user_id, room_id, presence)
+        Ok(())
     }
 
     /// Resets the presence timeout, so the user will stay in their current presence state.
-    pub fn ping_presence(&self, user_id: &UserId) -> Result<()> {
-        self.db.ping_presence(user_id)
+    pub fn ping_presence(&self, _user_id: &UserId) -> Result<()> {
+        // self.db.ping_presence(user_id)
+        Ok(())
     }
 
     pub fn get_last_presence_event(
         &self,
-        user_id: &UserId,
-        room_id: &RoomId,
+        _user_id: &UserId,
+        _room_id: &RoomId,
     ) -> Result<Option<PresenceEvent>> {
-        let last_update = match self.db.last_presence_update(user_id)? {
-            Some(last) => last,
-            None => return Ok(None),
-        };
+        // let last_update = match self.db.last_presence_update(user_id)? {
+        //     Some(last) => last,
+        //     None => return Ok(None),
+        // };
 
-        self.db.get_presence_event(room_id, user_id, last_update)
+        // self.db.get_presence_event(room_id, user_id, last_update)
+        Ok(None)
     }
 
     /* TODO
@@ -111,12 +114,12 @@ impl Service {
     }*/
 
     /// Returns the most recent presence updates that happened after the event with id `since`.
-    #[tracing::instrument(skip(self, since, room_id))]
     pub fn presence_since(
         &self,
-        room_id: &RoomId,
-        since: u64,
+        _room_id: &RoomId,
+        _since: u64,
     ) -> Result<HashMap<OwnedUserId, PresenceEvent>> {
-        self.db.presence_since(room_id, since)
+        // self.db.presence_since(room_id, since)
+        Ok(HashMap::new())
     }
 }
