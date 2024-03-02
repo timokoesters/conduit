@@ -49,6 +49,9 @@ fn db_options(max_open_files: i32, rocksdb_cache: &rocksdb::Cache) -> rocksdb::O
     db_opts.set_max_background_jobs(6);
     db_opts.set_bytes_per_sync(1048576);
 
+    // https://github.com/facebook/rocksdb/issues/849
+    db_opts.set_keep_log_file_num(100);
+
     // https://github.com/facebook/rocksdb/wiki/WAL-Recovery-Modes#ktoleratecorruptedtailrecords
     //
     // Unclean shutdowns of a Matrix homeserver are likely to be fine when
