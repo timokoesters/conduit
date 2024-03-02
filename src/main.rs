@@ -451,6 +451,7 @@ fn routes(config: &Config) -> Router {
             .ruma_route(server_server::get_keys_route)
             .ruma_route(server_server::claim_keys_route)
             .ruma_route(server_server::get_openid_userinfo_route)
+            .ruma_route(server_server::get_hierarchy_route)
             .ruma_route(server_server::well_known_server)
     } else {
         router

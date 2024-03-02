@@ -248,11 +248,13 @@ impl Service {
         self.db.room_members(room_id)
     }
 
+    /// Returns the number of users which are currently in a room
     #[tracing::instrument(skip(self))]
     pub fn room_joined_count(&self, room_id: &RoomId) -> Result<Option<u64>> {
         self.db.room_joined_count(room_id)
     }
 
+    /// Returns the number of users which are currently invited to a room
     #[tracing::instrument(skip(self))]
     pub fn room_invited_count(&self, room_id: &RoomId) -> Result<Option<u64>> {
         self.db.room_invited_count(room_id)

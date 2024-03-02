@@ -105,7 +105,7 @@ impl Services {
                 },
                 threads: rooms::threads::Service { db },
                 spaces: rooms::spaces::Service {
-                    roomid_spacechunk_cache: Mutex::new(LruCache::new(200)),
+                    roomid_spacehierarchy_cache: Mutex::new(LruCache::new(200)),
                 },
                 user: rooms::user::Service { db },
             },
@@ -154,7 +154,13 @@ impl Services {
             .lock()
             .await
             .len();
-        let roomid_spacechunk_cache = self.rooms.spaces.roomid_spacechunk_cache.lock().await.len();
+        let roomid_spacehierarchy_cache = self
+            .rooms
+            .spaces
+            .roomid_spacehierarchy_cache
+            .lock()
+            .await
+            .len();
 
         format!(
             "\
@@ -163,7 +169,7 @@ server_visibility_cache: {server_visibility_cache}
 user_visibility_cache: {user_visibility_cache}
 stateinfo_cache: {stateinfo_cache}
 lasttimelinecount_cache: {lasttimelinecount_cache}
-roomid_spacechunk_cache: {roomid_spacechunk_cache}\
+roomid_spacechunk_cache: {roomid_spacehierarchy_cache}\
             "
         )
     }
@@ -211,7 +217,7 @@ roomid_spacechunk_cache: {roomid_spacechunk_cache}\
         if amount > 5 {
             self.rooms
                 .spaces
-                .roomid_spacechunk_cache
+                .roomid_spacehierarchy_cache
                 .lock()
                 .await
                 .clear();
