@@ -23,7 +23,7 @@ use ruma::{
         },
         TimelineEventType,
     },
-    EventId, OwnedRoomAliasId, RoomAliasId, RoomId, RoomVersionId, ServerName, UserId,
+    EventId, OwnedRoomAliasId, OwnedRoomId, RoomAliasId, RoomId, RoomVersionId, ServerName, UserId,
 };
 use serde_json::value::to_raw_value;
 use tokio::sync::{mpsc, Mutex, MutexGuard};
@@ -214,17 +214,7 @@ impl Service {
         let conduit_user = UserId::parse(format!("@conduit:{}", services().globals.server_name()))
             .expect("@conduit:server_name is valid");
 
-        let conduit_room = services()
-            .rooms
-            .alias
-            .resolve_local_alias(
-                format!("#admins:{}", services().globals.server_name())
-                    .as_str()
-                    .try_into()
-                    .expect("#admins:server_name is a valid room alias"),
-            )
-            .expect("Database data for admin room alias must be valid")
-            .expect("Admin room must exist");
+        let conduit_room = services().admin.get_admin_room();
 
         let send_message = |message: RoomMessageEventContent, mutex_lock: &MutexGuard<'_, ()>| {
             services()
@@ -1105,6 +1095,24 @@ impl Service {
         Ok(())
     }
 
+    /// Gets the room ID of the admin room
+    ///
+    /// If the room does not exist, this function panics, since it should have been created on first run
+    // ^ was the case before this function when the following code was re-used in multiple places
+    pub(crate) fn get_admin_room(&self) -> OwnedRoomId {
+        let admin_room_alias: Box<RoomAliasId> =
+            format!("#admins:{}", services().globals.server_name())
+                .try_into()
+                .expect("#admins:server_name is a valid alias name");
+
+        services()
+            .rooms
+            .alias
+            .resolve_local_alias(&admin_room_alias)
+            .expect("Room ID should be valid unicode, since this server created it")
+            .expect("Admin room must exist")
+    }
+
     /// Invite the user to the conduit admin room.
     ///
     /// In conduit, this is equivalent to granting admin privileges.
@@ -1113,15 +1121,7 @@ impl Service {
         user_id: &UserId,
         displayname: String,
     ) -> Result<()> {
-        let admin_room_alias: Box<RoomAliasId> =
-            format!("#admins:{}", services().globals.server_name())
-                .try_into()
-                .expect("#admins:server_name is a valid alias name");
-        let room_id = services()
-            .rooms
-            .alias
-            .resolve_local_alias(&admin_room_alias)?
-            .expect("Admin room must exist");
+        let room_id = services().admin.get_admin_room();
 
         let mutex_state = Arc::clone(
             services()

@@ -149,17 +149,18 @@ pub async fn register_route(body: Ruma<register::v3::Request>) -> Result<registe
                 return Err(Error::Uiaa(uiaainfo));
             }
         // Success!
-        } else if let Some(json) = body.json_body {
-            uiaainfo.session = Some(utils::random_string(SESSION_ID_LENGTH));
-            services().uiaa.create(
-                &UserId::parse_with_server_name("", services().globals.server_name())
-                    .expect("we know this is valid"),
-                "".into(),
-                &uiaainfo,
-                &json,
-            )?;
-            return Err(Error::Uiaa(uiaainfo));
         } else {
+            if let Some(json) = body.json_body {
+                uiaainfo.session = Some(utils::random_string(SESSION_ID_LENGTH));
+                services().uiaa.create(
+                    &UserId::parse_with_server_name("", services().globals.server_name())
+                        .expect("we know this is valid"),
+                    "".into(),
+                    &uiaainfo,
+                    &json,
+                )?;
+                return Err(Error::Uiaa(uiaainfo));
+            }
             return Err(Error::BadRequest(ErrorKind::NotJson, "Not json."));
         }
     }
@@ -239,7 +240,13 @@ pub async fn register_route(body: Ruma<register::v3::Request>) -> Result<registe
 
     // If this is the first real user, grant them admin privileges
     // Note: the server user, @conduit:servername, is generated first
-    if services().users.count()? == 2 {
+    if !is_guest
+        && services()
+            .rooms
+            .state_cache
+            .room_joined_count(&services().admin.get_admin_room())?
+            == Some(1)
+    {
         services()
             .admin
             .make_user_admin(&user_id, displayname)

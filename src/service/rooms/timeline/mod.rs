@@ -28,7 +28,7 @@ use ruma::{
     state_res,
     state_res::{Event, RoomVersion},
     uint, user_id, CanonicalJsonObject, CanonicalJsonValue, EventId, OwnedEventId, OwnedRoomId,
-    OwnedServerName, RoomAliasId, RoomId, ServerName, UserId,
+    OwnedServerName, RoomId, ServerName, UserId,
 };
 use serde::Deserialize;
 use serde_json::value::{to_raw_value, RawValue as RawJsonValue};
@@ -448,12 +448,7 @@ impl Service {
                         .search
                         .index_pdu(shortroomid, &pdu_id, &body)?;
 
-                    let admin_room = services().rooms.alias.resolve_local_alias(
-                        <&RoomAliasId>::try_from(
-                            format!("#admins:{}", services().globals.server_name()).as_str(),
-                        )
-                        .expect("#admins:server_name is a valid room alias"),
-                    )?;
+                    let admin_room = services().admin.get_admin_room();
                     let server_user = format!("@conduit:{}", services().globals.server_name());
 
                     let to_conduit = body.starts_with(&format!("{server_user}: "))
@@ -466,7 +461,7 @@ impl Service {
                     let from_conduit = pdu.sender == server_user
                         && services().globals.emergency_password().is_none();
 
-                    if to_conduit && !from_conduit && admin_room.as_ref() == Some(&pdu.room_id) {
+                    if to_conduit && !from_conduit && admin_room == pdu.room_id {
                         services().admin.process_message(body);
                     }
                 }
@@ -820,13 +815,8 @@ impl Service {
         let (pdu, pdu_json) =
             self.create_hash_and_sign_event(pdu_builder, sender, room_id, state_lock)?;
 
-        let admin_room = services().rooms.alias.resolve_local_alias(
-            <&RoomAliasId>::try_from(
-                format!("#admins:{}", services().globals.server_name()).as_str(),
-            )
-            .expect("#admins:server_name is a valid room alias"),
-        )?;
-        if admin_room.filter(|v| v == room_id).is_some() {
+        let admin_room = services().admin.get_admin_room();
+        if admin_room == room_id {
             match pdu.event_type() {
                 TimelineEventType::RoomEncryption => {
                     warn!("Encryption is not allowed in the admins room");
