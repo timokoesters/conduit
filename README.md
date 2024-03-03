@@ -31,8 +31,6 @@ There are still a few important features missing:
 - E2EE emoji comparison over federation (E2EE chat works)
 - Outgoing read receipts, typing, presence over federation (incoming works)
 
-Check out the [Conduit 1.0 Release Milestone](https://gitlab.com/famedly/conduit/-/milestones/3).
-
 #### How can I deploy my own?
 
 - Simple install (this was tested the most): [DEPLOY.md](DEPLOY.md)
@@ -44,12 +42,20 @@ If you want to connect an Appservice to Conduit, take a look at [APPSERVICES.md]
 
 #### How can I contribute?
 
-1. Look for an issue you would like to work on and make sure it's not assigned
-   to other users
-2. Ask someone to assign the issue to you (comment on the issue or chat in
-   [#conduit:fachschaften.org](https://matrix.to/#/#conduit:fachschaften.org))
-3. Fork the repo and work on the issue.[#conduit:fachschaften.org](https://matrix.to/#/#conduit:fachschaften.org) is happy to help :)
+1. Look for an issue you would like to work on and make sure no one else is currently working on it.
+2. Tell us that you are working on the issue (comment on the issue or chat in
+   [#conduit:fachschaften.org](https://matrix.to/#/#conduit:fachschaften.org)). If it is more complicated, please explain your approach and ask questions.
+3. Fork the repo, create a new branch and push commits.
 4. Submit a MR
+
+#### Contact
+
+If you have any questions, feel free to
+- Ask in `#conduit:fachschaften.org` on Matrix
+- Write an E-Mail to `conduit@koesters.xyz`
+- Send an direct message to `@timokoesters:fachschaften.org` on Matrix
+- [Open an issue on GitLab](https://gitlab.com/famedly/conduit/-/issues/new)
+
 
 #### Thanks to
 
@@ -59,14 +65,6 @@ Thanks to the contributors to Conduit and all libraries we use, for example:
 
 - Ruma: A clean library for the Matrix Spec in Rust
 - axum: A modular web framework
-
-#### Contact
-
-If you run into any question, feel free to
-- Ask us in `#conduit:fachschaften.org` on Matrix
-- Write an E-Mail to `conduit@koesters.xyz`
-- Send an direct message to `timokoesters@fachschaften.org` on Matrix
-- [Open an issue on GitLab](https://gitlab.com/famedly/conduit/-/issues/new)
 
 #### Donate
 
