@@ -1221,11 +1221,8 @@ impl Service {
             &room_id,
             &state_lock,
         )?;
-
-            Ok(())
-        } else {
-            Ok(())
         }
+        Ok(())
     }
 }
 
