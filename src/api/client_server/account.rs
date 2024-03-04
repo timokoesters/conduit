@@ -239,13 +239,22 @@ pub async fn register_route(body: Ruma<register::v3::Request>) -> Result<registe
 
     // If this is the first real user, grant them admin privileges
     // Note: the server user, @conduit:servername, is generated first
-    if services().users.count()? == 2 {
-        services()
-            .admin
-            .make_user_admin(&user_id, displayname)
-            .await?;
+    if !is_guest {
+        if let Some(admin_room) = services().admin.get_admin_room()? {
+            if services()
+                .rooms
+                .state_cache
+                .room_joined_count(&admin_room)?
+                == Some(1)
+            {
+                services()
+                    .admin
+                    .make_user_admin(&user_id, displayname)
+                    .await?;
 
-        warn!("Granting {} admin privileges as the first user", user_id);
+                warn!("Granting {} admin privileges as the first user", user_id);
+            }
+        }
     }
 
     Ok(register::v3::Response {
