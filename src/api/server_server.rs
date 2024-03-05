@@ -830,13 +830,13 @@ pub async fn send_transaction_message_route(
                             &typing.user_id,
                             &typing.room_id,
                             3000 + utils::millis_since_unix_epoch(),
-                        )?;
+                        ).await?;
                     } else {
                         services()
                             .rooms
                             .edus
                             .typing
-                            .typing_remove(&typing.user_id, &typing.room_id)?;
+                            .typing_remove(&typing.user_id, &typing.room_id).await?;
                     }
                 }
             }

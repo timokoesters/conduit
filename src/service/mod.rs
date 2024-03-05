@@ -7,6 +7,7 @@ use lru_cache::LruCache;
 use tokio::sync::Mutex;
 
 use crate::{Config, Result};
+use tokio::sync::RwLock;
 
 pub mod account_data;
 pub mod admin;
@@ -65,7 +66,7 @@ impl Services {
                 edus: rooms::edus::Service {
                     presence: rooms::edus::presence::Service { db },
                     read_receipt: rooms::edus::read_receipt::Service { db },
-                    typing: rooms::edus::typing::Service { db },
+                    typing: rooms::edus::typing::Service { db, typing: RwLock::new(BTreeMap::new()), last_typing_update: RwLock::new(BTreeMap::new()) },
                 },
                 event_handler: rooms::event_handler::Service,
                 lazy_loading: rooms::lazy_loading::Service {

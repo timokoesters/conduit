@@ -1055,10 +1055,10 @@ async fn load_joined_room(
         .map(|(_, _, v)| v)
         .collect();
 
-    if services().rooms.edus.typing.last_typing_update(room_id)? > since {
+    if services().rooms.edus.typing.last_typing_update(room_id).await? > since {
         edus.push(
             serde_json::from_str(
-                &serde_json::to_string(&services().rooms.edus.typing.typings_all(room_id)?)
+                &serde_json::to_string(&services().rooms.edus.typing.typings_all(room_id).await?)
                     .expect("event is valid, we just created it"),
             )
             .expect("event is valid, we just created it"),

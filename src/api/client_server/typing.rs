@@ -27,13 +27,13 @@ pub async fn create_typing_event_route(
             sender_user,
             &body.room_id,
             duration.as_millis() as u64 + utils::millis_since_unix_epoch(),
-        )?;
+        ).await?;
     } else {
         services()
             .rooms
             .edus
             .typing
-            .typing_remove(sender_user, &body.room_id)?;
+            .typing_remove(sender_user, &body.room_id).await?;
     }
 
     Ok(create_typing_event::v3::Response {})
