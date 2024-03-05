@@ -8,7 +8,6 @@ use std::{
     time::{Duration, Instant, SystemTime},
 };
 
-use async_recursion::async_recursion;
 use futures_util::{stream::FuturesUnordered, Future, StreamExt};
 use ruma::{
     api::{
@@ -1044,8 +1043,7 @@ impl Service {
     /// d. TODO: Ask other servers over federation?
     #[allow(clippy::type_complexity)]
     #[tracing::instrument(skip_all)]
-    #[async_recursion]
-    pub(crate) async fn fetch_and_handle_outliers<'a>(
+    pub(crate) fn fetch_and_handle_outliers<'a>(
         &'a self,
         origin: &'a ServerName,
         events: &'a [Arc<EventId>],
@@ -1053,175 +1051,180 @@ impl Service {
         room_id: &'a RoomId,
         room_version_id: &'a RoomVersionId,
         pub_key_map: &'a RwLock<BTreeMap<String, BTreeMap<String, Base64>>>,
-    ) -> Vec<(Arc<PduEvent>, Option<BTreeMap<String, CanonicalJsonValue>>)> {
-        let back_off = |id| async move {
-            match services()
-                .globals
-                .bad_event_ratelimiter
-                .write()
-                .await
-                .entry(id)
-            {
-                hash_map::Entry::Vacant(e) => {
-                    e.insert((Instant::now(), 1));
-                }
-                hash_map::Entry::Occupied(mut e) => *e.get_mut() = (Instant::now(), e.get().1 + 1),
-            }
-        };
-
-        let mut pdus = vec![];
-        for id in events {
-            // a. Look in the main timeline (pduid_pdu tree)
-            // b. Look at outlier pdu tree
-            // (get_pdu_json checks both)
-            if let Ok(Some(local_pdu)) = services().rooms.timeline.get_pdu(id) {
-                trace!("Found {} in db", id);
-                pdus.push((local_pdu, None));
-                continue;
-            }
-
-            // c. Ask origin server over federation
-            // We also handle its auth chain here so we don't get a stack overflow in
-            // handle_outlier_pdu.
-            let mut todo_auth_events = vec![Arc::clone(id)];
-            let mut events_in_reverse_order = Vec::new();
-            let mut events_all = HashSet::new();
-            let mut i = 0;
-            while let Some(next_id) = todo_auth_events.pop() {
-                if let Some((time, tries)) = services()
-                    .globals
-                    .bad_event_ratelimiter
-                    .read()
-                    .await
-                    .get(&*next_id)
-                {
-                    // Exponential backoff
-                    let mut min_elapsed_duration =
-                        Duration::from_secs(5 * 60) * (*tries) * (*tries);
-                    if min_elapsed_duration > Duration::from_secs(60 * 60 * 24) {
-                        min_elapsed_duration = Duration::from_secs(60 * 60 * 24);
-                    }
-
-                    if time.elapsed() < min_elapsed_duration {
-                        info!("Backing off from {}", next_id);
-                        continue;
-                    }
-                }
-
-                if events_all.contains(&next_id) {
-                    continue;
-                }
-
-                i += 1;
-                if i % 100 == 0 {
-                    tokio::task::yield_now().await;
-                }
-
-                if let Ok(Some(_)) = services().rooms.timeline.get_pdu(&next_id) {
-                    trace!("Found {} in db", next_id);
-                    continue;
-                }
-
-                info!("Fetching {} over federation.", next_id);
+    ) -> AsyncRecursiveType<'a, Vec<(Arc<PduEvent>, Option<BTreeMap<String, CanonicalJsonValue>>)>>
+    {
+        Box::pin(async move {
+            let back_off = |id| async move {
                 match services()
-                    .sending
-                    .send_federation_request(
-                        origin,
-                        get_event::v1::Request {
-                            event_id: (*next_id).to_owned(),
-                        },
-                    )
-                    .await
-                {
-                    Ok(res) => {
-                        info!("Got {} over federation", next_id);
-                        let (calculated_event_id, value) =
-                            match pdu::gen_event_id_canonical_json(&res.pdu, room_version_id) {
-                                Ok(t) => t,
-                                Err(_) => {
-                                    back_off((*next_id).to_owned()).await;
-                                    continue;
-                                }
-                            };
-
-                        if calculated_event_id != *next_id {
-                            warn!("Server didn't return event id we requested: requested: {}, we got {}. Event: {:?}",
-                                    next_id, calculated_event_id, &res.pdu);
-                        }
-
-                        if let Some(auth_events) =
-                            value.get("auth_events").and_then(|c| c.as_array())
-                        {
-                            for auth_event in auth_events {
-                                if let Ok(auth_event) =
-                                    serde_json::from_value(auth_event.clone().into())
-                                {
-                                    let a: Arc<EventId> = auth_event;
-                                    todo_auth_events.push(a);
-                                } else {
-                                    warn!("Auth event id is not valid");
-                                }
-                            }
-                        } else {
-                            warn!("Auth event list invalid");
-                        }
-
-                        events_in_reverse_order.push((next_id.clone(), value));
-                        events_all.insert(next_id);
-                    }
-                    Err(_) => {
-                        warn!("Failed to fetch event: {}", next_id);
-                        back_off((*next_id).to_owned()).await;
-                    }
-                }
-            }
-
-            for (next_id, value) in events_in_reverse_order.iter().rev() {
-                if let Some((time, tries)) = services()
                     .globals
                     .bad_event_ratelimiter
-                    .read()
+                    .write()
                     .await
-                    .get(&**next_id)
+                    .entry(id)
                 {
-                    // Exponential backoff
-                    let mut min_elapsed_duration =
-                        Duration::from_secs(5 * 60) * (*tries) * (*tries);
-                    if min_elapsed_duration > Duration::from_secs(60 * 60 * 24) {
-                        min_elapsed_duration = Duration::from_secs(60 * 60 * 24);
+                    hash_map::Entry::Vacant(e) => {
+                        e.insert((Instant::now(), 1));
+                    }
+                    hash_map::Entry::Occupied(mut e) => {
+                        *e.get_mut() = (Instant::now(), e.get().1 + 1)
+                    }
+                }
+            };
+
+            let mut pdus = vec![];
+            for id in events {
+                // a. Look in the main timeline (pduid_pdu tree)
+                // b. Look at outlier pdu tree
+                // (get_pdu_json checks both)
+                if let Ok(Some(local_pdu)) = services().rooms.timeline.get_pdu(id) {
+                    trace!("Found {} in db", id);
+                    pdus.push((local_pdu, None));
+                    continue;
+                }
+
+                // c. Ask origin server over federation
+                // We also handle its auth chain here so we don't get a stack overflow in
+                // handle_outlier_pdu.
+                let mut todo_auth_events = vec![Arc::clone(id)];
+                let mut events_in_reverse_order = Vec::new();
+                let mut events_all = HashSet::new();
+                let mut i = 0;
+                while let Some(next_id) = todo_auth_events.pop() {
+                    if let Some((time, tries)) = services()
+                        .globals
+                        .bad_event_ratelimiter
+                        .read()
+                        .await
+                        .get(&*next_id)
+                    {
+                        // Exponential backoff
+                        let mut min_elapsed_duration =
+                            Duration::from_secs(5 * 60) * (*tries) * (*tries);
+                        if min_elapsed_duration > Duration::from_secs(60 * 60 * 24) {
+                            min_elapsed_duration = Duration::from_secs(60 * 60 * 24);
+                        }
+
+                        if time.elapsed() < min_elapsed_duration {
+                            info!("Backing off from {}", next_id);
+                            continue;
+                        }
                     }
 
-                    if time.elapsed() < min_elapsed_duration {
-                        info!("Backing off from {}", next_id);
+                    if events_all.contains(&next_id) {
                         continue;
+                    }
+
+                    i += 1;
+                    if i % 100 == 0 {
+                        tokio::task::yield_now().await;
+                    }
+
+                    if let Ok(Some(_)) = services().rooms.timeline.get_pdu(&next_id) {
+                        trace!("Found {} in db", next_id);
+                        continue;
+                    }
+
+                    info!("Fetching {} over federation.", next_id);
+                    match services()
+                        .sending
+                        .send_federation_request(
+                            origin,
+                            get_event::v1::Request {
+                                event_id: (*next_id).to_owned(),
+                            },
+                        )
+                        .await
+                    {
+                        Ok(res) => {
+                            info!("Got {} over federation", next_id);
+                            let (calculated_event_id, value) =
+                                match pdu::gen_event_id_canonical_json(&res.pdu, room_version_id) {
+                                    Ok(t) => t,
+                                    Err(_) => {
+                                        back_off((*next_id).to_owned()).await;
+                                        continue;
+                                    }
+                                };
+
+                            if calculated_event_id != *next_id {
+                                warn!("Server didn't return event id we requested: requested: {}, we got {}. Event: {:?}",
+                                    next_id, calculated_event_id, &res.pdu);
+                            }
+
+                            if let Some(auth_events) =
+                                value.get("auth_events").and_then(|c| c.as_array())
+                            {
+                                for auth_event in auth_events {
+                                    if let Ok(auth_event) =
+                                        serde_json::from_value(auth_event.clone().into())
+                                    {
+                                        let a: Arc<EventId> = auth_event;
+                                        todo_auth_events.push(a);
+                                    } else {
+                                        warn!("Auth event id is not valid");
+                                    }
+                                }
+                            } else {
+                                warn!("Auth event list invalid");
+                            }
+
+                            events_in_reverse_order.push((next_id.clone(), value));
+                            events_all.insert(next_id);
+                        }
+                        Err(_) => {
+                            warn!("Failed to fetch event: {}", next_id);
+                            back_off((*next_id).to_owned()).await;
+                        }
                     }
                 }
 
-                match self
-                    .handle_outlier_pdu(
-                        origin,
-                        create_event,
-                        next_id,
-                        room_id,
-                        value.clone(),
-                        true,
-                        pub_key_map,
-                    )
-                    .await
-                {
-                    Ok((pdu, json)) => {
-                        if next_id == id {
-                            pdus.push((pdu, Some(json)));
+                for (next_id, value) in events_in_reverse_order.iter().rev() {
+                    if let Some((time, tries)) = services()
+                        .globals
+                        .bad_event_ratelimiter
+                        .read()
+                        .await
+                        .get(&**next_id)
+                    {
+                        // Exponential backoff
+                        let mut min_elapsed_duration =
+                            Duration::from_secs(5 * 60) * (*tries) * (*tries);
+                        if min_elapsed_duration > Duration::from_secs(60 * 60 * 24) {
+                            min_elapsed_duration = Duration::from_secs(60 * 60 * 24);
+                        }
+
+                        if time.elapsed() < min_elapsed_duration {
+                            info!("Backing off from {}", next_id);
+                            continue;
                         }
                     }
-                    Err(e) => {
-                        warn!("Authentication of event {} failed: {:?}", next_id, e);
-                        back_off((**next_id).to_owned()).await;
+
+                    match self
+                        .handle_outlier_pdu(
+                            origin,
+                            create_event,
+                            next_id,
+                            room_id,
+                            value.clone(),
+                            true,
+                            pub_key_map,
+                        )
+                        .await
+                    {
+                        Ok((pdu, json)) => {
+                            if next_id == id {
+                                pdus.push((pdu, Some(json)));
+                            }
+                        }
+                        Err(e) => {
+                            warn!("Authentication of event {} failed: {:?}", next_id, e);
+                            back_off((**next_id).to_owned()).await;
+                        }
                     }
                 }
             }
-        }
-        pdus
+            pdus
+        })
     }
 
     async fn fetch_unknown_prev_events(
