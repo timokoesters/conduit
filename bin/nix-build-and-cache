@@ -9,10 +9,10 @@ INSTALLABLE="$1"
 nix build "$@"
 
 if [ ! -z ${ATTIC_TOKEN+x} ]; then
-
-nix run --inputs-from . attic -- login \
-    conduit \
-        https://nix.computer.surgery/conduit \
+    nix run --inputs-from . attic -- \
+        login \
+        conduit \
+        "${ATTIC_ENDPOINT:-https://nix.computer.surgery/conduit}" \
         "$ATTIC_TOKEN"
 
     # Push the target installable and its build dependencies
