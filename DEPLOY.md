@@ -37,7 +37,7 @@ If you use a system with an older glibc version (e.g. RHEL8), you might need to 
 | `x86_64-unknown-linux-gnu` | Dynamically linked Debian package | [link](https://gitlab.com/api/v4/projects/famedly%2Fconduit/jobs/artifacts/next/raw/conduit.deb?job=debian:x86_64-unknown-linux-gnu) |
 | `x86_64-unknown-linux-musl` | Statically linked binary | [link](https://gitlab.com/api/v4/projects/famedly%2Fconduit/jobs/artifacts/next/raw/conduit?job=static:x86_64-unknown-linux-musl) |
 | `aarch64-unknown-linux-musl` | Statically linked binary | [link](https://gitlab.com/api/v4/projects/famedly%2Fconduit/jobs/artifacts/next/raw/conduit?job=static:aarch64-unknown-linux-musl) |
-| `x86_64-unknown-linux-musl` | OCI image | [link](https://gitlab.com/api/v4/projects/famedly%2Fconduit/jobs/artifacts/next/raw/oci-image-amd64.tar.gz?job=oci-image:x86_64-unknown-linux-musl) |
+| `x86_64-unknown-linux-gnu` | OCI image | [link](https://gitlab.com/api/v4/projects/famedly%2Fconduit/jobs/artifacts/next/raw/oci-image-amd64.tar.gz?job=oci-image:x86_64-unknown-linux-musl) |
 | `aarch64-unknown-linux-musl` | OCI image | [link](https://gitlab.com/api/v4/projects/famedly%2Fconduit/jobs/artifacts/next/raw/oci-image-arm64v8.tar.gz?job=oci-image:aarch64-unknown-linux-musl) |
 
 ```bash
