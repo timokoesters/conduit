@@ -4,7 +4,7 @@ mod database;
 mod service;
 mod utils;
 
-// Not async due to services() being used in many closures, and async colsures are not stable as of writing
+// Not async due to services() being used in many closures, and async closures are not stable as of writing
 // This is the case for every other occurence of sync Mutex/RwLock, except for database related ones, where
 // the current maintainer (Timo) as asked to not modify those
 use std::sync::RwLock;
