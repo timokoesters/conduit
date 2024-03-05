@@ -2,12 +2,8 @@ mod data;
 
 use std::{
     cmp::Ordering,
-    collections::{BTreeMap, HashMap},
-};
-
-use std::{
-    collections::HashSet,
-    sync::{Arc, Mutex, RwLock},
+    collections::{BTreeMap, HashMap, HashSet},
+    sync::Arc,
 };
 
 pub use data::Data;
@@ -32,7 +28,7 @@ use ruma::{
 };
 use serde::Deserialize;
 use serde_json::value::{to_raw_value, RawValue as RawJsonValue};
-use tokio::sync::MutexGuard;
+use tokio::sync::{Mutex, MutexGuard, RwLock};
 use tracing::{error, info, warn};
 
 use crate::{
@@ -201,7 +197,7 @@ impl Service {
     ///
     /// Returns pdu id
     #[tracing::instrument(skip(self, pdu, pdu_json, leaves))]
-    pub fn append_pdu<'a>(
+    pub async fn append_pdu<'a>(
         &self,
         pdu: &PduEvent,
         mut pdu_json: CanonicalJsonObject,
@@ -263,11 +259,11 @@ impl Service {
                 .globals
                 .roomid_mutex_insert
                 .write()
-                .unwrap()
+                .await
                 .entry(pdu.room_id.clone())
                 .or_default(),
         );
-        let insert_lock = mutex_insert.lock().unwrap();
+        let insert_lock = mutex_insert.lock().await;
 
         let count1 = services().globals.next_count()?;
         // Mark as read first so the sending client doesn't get a notification even if appending
@@ -395,7 +391,7 @@ impl Service {
                         .spaces
                         .roomid_spacechunk_cache
                         .lock()
-                        .unwrap()
+                        .await
                         .remove(&pdu.room_id);
                 }
             }
@@ -806,7 +802,7 @@ impl Service {
     /// Creates a new persisted data unit and adds it to a room. This function takes a
     /// roomid_mutex_state, meaning that only this function is able to mutate the room state.
     #[tracing::instrument(skip(self, state_lock))]
-    pub fn build_and_append_pdu(
+    pub async fn build_and_append_pdu(
         &self,
         pdu_builder: PduBuilder,
         sender: &UserId,
@@ -902,14 +898,16 @@ impl Service {
         // pdu without it's state. This is okay because append_pdu can't fail.
         let statehashid = services().rooms.state.append_to_state(&pdu)?;
 
-        let pdu_id = self.append_pdu(
-            &pdu,
-            pdu_json,
-            // Since this PDU references all pdu_leaves we can update the leaves
-            // of the room
-            vec![(*pdu.event_id).to_owned()],
-            state_lock,
-        )?;
+        let pdu_id = self
+            .append_pdu(
+                &pdu,
+                pdu_json,
+                // Since this PDU references all pdu_leaves we can update the leaves
+                // of the room
+                vec![(*pdu.event_id).to_owned()],
+                state_lock,
+            )
+            .await?;
 
         // We set the room state after inserting the pdu, so that we never have a moment in time
         // where events in the current room state do not exist
@@ -947,7 +945,7 @@ impl Service {
     /// Append the incoming event setting the state snapshot to the state from the
     /// server that sent the event.
     #[tracing::instrument(skip_all)]
-    pub fn append_incoming_pdu<'a>(
+    pub async fn append_incoming_pdu<'a>(
         &self,
         pdu: &PduEvent,
         pdu_json: CanonicalJsonObject,
@@ -977,11 +975,11 @@ impl Service {
             return Ok(None);
         }
 
-        let pdu_id =
-            services()
-                .rooms
-                .timeline
-                .append_pdu(pdu, pdu_json, new_room_leaves, state_lock)?;
+        let pdu_id = services()
+            .rooms
+            .timeline
+            .append_pdu(pdu, pdu_json, new_room_leaves, state_lock)
+            .await?;
 
         Ok(Some(pdu_id))
     }
@@ -1118,7 +1116,7 @@ impl Service {
                 .globals
                 .roomid_mutex_federation
                 .write()
-                .unwrap()
+                .await
                 .entry(room_id.to_owned())
                 .or_default(),
         );
@@ -1150,11 +1148,11 @@ impl Service {
                 .globals
                 .roomid_mutex_insert
                 .write()
-                .unwrap()
+                .await
                 .entry(room_id.clone())
                 .or_default(),
         );
-        let insert_lock = mutex_insert.lock().unwrap();
+        let insert_lock = mutex_insert.lock().await;
 
         let count = services().globals.next_count()?;
         let mut pdu_id = shortroomid.to_be_bytes().to_vec();

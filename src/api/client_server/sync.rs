@@ -1,6 +1,7 @@
 use crate::{
     service::rooms::timeline::PduCount, services, Error, PduEvent, Result, Ruma, RumaResponse,
 };
+
 use ruma::{
     api::client::{
         filter::{FilterDefinition, LazyLoadOptions},
@@ -75,7 +76,7 @@ pub async fn sync_events_route(
         .globals
         .sync_receivers
         .write()
-        .unwrap()
+        .await
         .entry((sender_user.clone(), sender_device.clone()))
     {
         Entry::Vacant(v) => {
@@ -147,7 +148,7 @@ async fn sync_helper_wrapper(
                 .globals
                 .sync_receivers
                 .write()
-                .unwrap()
+                .await
                 .entry((sender_user, sender_device))
             {
                 Entry::Occupied(o) => {
@@ -302,11 +303,11 @@ async fn sync_helper(
                     .globals
                     .roomid_mutex_insert
                     .write()
-                    .unwrap()
+                    .await
                     .entry(room_id.clone())
                     .or_default(),
             );
-            let insert_lock = mutex_insert.lock().unwrap();
+            let insert_lock = mutex_insert.lock().await;
             drop(insert_lock);
         }
 
@@ -434,11 +435,11 @@ async fn sync_helper(
                     .globals
                     .roomid_mutex_insert
                     .write()
-                    .unwrap()
+                    .await
                     .entry(room_id.clone())
                     .or_default(),
             );
-            let insert_lock = mutex_insert.lock().unwrap();
+            let insert_lock = mutex_insert.lock().await;
             drop(insert_lock);
         }
 
@@ -577,11 +578,11 @@ async fn load_joined_room(
                 .globals
                 .roomid_mutex_insert
                 .write()
-                .unwrap()
+                .await
                 .entry(room_id.to_owned())
                 .or_default(),
         );
-        let insert_lock = mutex_insert.lock().unwrap();
+        let insert_lock = mutex_insert.lock().await;
         drop(insert_lock);
     }
 
@@ -599,12 +600,11 @@ async fn load_joined_room(
         timeline_users.insert(event.sender.as_str().to_owned());
     }
 
-    services().rooms.lazy_loading.lazy_load_confirm_delivery(
-        sender_user,
-        sender_device,
-        room_id,
-        sincecount,
-    )?;
+    services()
+        .rooms
+        .lazy_loading
+        .lazy_load_confirm_delivery(sender_user, sender_device, room_id, sincecount)
+        .await?;
 
     // Database queries:
 
@@ -797,13 +797,17 @@ async fn load_joined_room(
 
                 // The state_events above should contain all timeline_users, let's mark them as lazy
                 // loaded.
-                services().rooms.lazy_loading.lazy_load_mark_sent(
-                    sender_user,
-                    sender_device,
-                    room_id,
-                    lazy_loaded,
-                    next_batchcount,
-                );
+                services()
+                    .rooms
+                    .lazy_loading
+                    .lazy_load_mark_sent(
+                        sender_user,
+                        sender_device,
+                        room_id,
+                        lazy_loaded,
+                        next_batchcount,
+                    )
+                    .await;
 
                 (
                     heroes,
@@ -884,13 +888,17 @@ async fn load_joined_room(
                     }
                 }
 
-                services().rooms.lazy_loading.lazy_load_mark_sent(
-                    sender_user,
-                    sender_device,
-                    room_id,
-                    lazy_loaded,
-                    next_batchcount,
-                );
+                services()
+                    .rooms
+                    .lazy_loading
+                    .lazy_load_mark_sent(
+                        sender_user,
+                        sender_device,
+                        room_id,
+                        lazy_loaded,
+                        next_batchcount,
+                    )
+                    .await;
 
                 let encrypted_room = services()
                     .rooms

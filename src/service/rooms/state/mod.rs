@@ -95,7 +95,7 @@ impl Service {
                         .spaces
                         .roomid_spacechunk_cache
                         .lock()
-                        .unwrap()
+                        .await
                         .remove(&pdu.room_id);
                 }
                 _ => continue,

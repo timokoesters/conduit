@@ -77,18 +77,17 @@ pub async fn set_displayname_route(
                 .globals
                 .roomid_mutex_state
                 .write()
-                .unwrap()
+                .await
                 .entry(room_id.clone())
                 .or_default(),
         );
         let state_lock = mutex_state.lock().await;
 
-        let _ = services().rooms.timeline.build_and_append_pdu(
-            pdu_builder,
-            sender_user,
-            &room_id,
-            &state_lock,
-        );
+        let _ = services()
+            .rooms
+            .timeline
+            .build_and_append_pdu(pdu_builder, sender_user, &room_id, &state_lock)
+            .await;
 
         // Presence update
         services().rooms.edus.presence.update_presence(
@@ -212,18 +211,17 @@ pub async fn set_avatar_url_route(
                 .globals
                 .roomid_mutex_state
                 .write()
-                .unwrap()
+                .await
                 .entry(room_id.clone())
                 .or_default(),
         );
         let state_lock = mutex_state.lock().await;
 
-        let _ = services().rooms.timeline.build_and_append_pdu(
-            pdu_builder,
-            sender_user,
-            &room_id,
-            &state_lock,
-        );
+        let _ = services()
+            .rooms
+            .timeline
+            .build_and_append_pdu(pdu_builder, sender_user, &room_id, &state_lock)
+            .await;
 
         // Presence update
         services().rooms.edus.presence.update_presence(
