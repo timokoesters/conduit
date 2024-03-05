@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use lru_cache::LruCache;
 use ruma::{
@@ -25,6 +25,7 @@ use ruma::{
     space::SpaceRoomJoinRule,
     OwnedRoomId, RoomId, UserId,
 };
+use tokio::sync::Mutex;
 
 use tracing::{debug, error, warn};
 
@@ -79,7 +80,7 @@ impl Service {
             if let Some(cached) = self
                 .roomid_spacechunk_cache
                 .lock()
-                .unwrap()
+                .await
                 .get_mut(&current_room.to_owned())
                 .as_ref()
             {
@@ -171,7 +172,7 @@ impl Service {
                         .transpose()?
                         .unwrap_or(JoinRule::Invite);
 
-                    self.roomid_spacechunk_cache.lock().unwrap().insert(
+                    self.roomid_spacechunk_cache.lock().await.insert(
                         current_room.clone(),
                         Some(CachedSpaceChunk {
                             chunk,
@@ -265,7 +266,7 @@ impl Service {
                         }
                     }
 
-                    self.roomid_spacechunk_cache.lock().unwrap().insert(
+                    self.roomid_spacechunk_cache.lock().await.insert(
                         current_room.clone(),
                         Some(CachedSpaceChunk {
                             chunk,
@@ -289,7 +290,7 @@ impl Service {
                 } else {
                     self.roomid_spacechunk_cache
                         .lock()
-                        .unwrap()
+                        .await
                         .insert(current_room.clone(), None);
                 }
             }

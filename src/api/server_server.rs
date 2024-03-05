@@ -51,9 +51,10 @@ use std::{
     fmt::Debug,
     mem,
     net::{IpAddr, SocketAddr},
-    sync::{Arc, RwLock},
+    sync::Arc,
     time::{Duration, Instant, SystemTime},
 };
+use tokio::sync::RwLock;
 
 use tracing::{debug, error, warn};
 
@@ -137,7 +138,7 @@ where
         .globals
         .actual_destination_cache
         .read()
-        .unwrap()
+        .await
         .get(destination)
         .cloned();
 
@@ -290,7 +291,7 @@ where
                         .globals
                         .actual_destination_cache
                         .write()
-                        .unwrap()
+                        .await
                         .insert(
                             OwnedServerName::from(destination),
                             (actual_destination, host),
@@ -740,7 +741,7 @@ pub async fn send_transaction_message_route(
                 .globals
                 .roomid_mutex_federation
                 .write()
-                .unwrap()
+                .await
                 .entry(room_id.to_owned())
                 .or_default(),
         );
@@ -1409,7 +1410,7 @@ pub async fn create_join_event_template_route(
             .globals
             .roomid_mutex_state
             .write()
-            .unwrap()
+            .await
             .entry(body.room_id.to_owned())
             .or_default(),
     );
@@ -1579,7 +1580,7 @@ async fn create_join_event(
             .globals
             .roomid_mutex_federation
             .write()
-            .unwrap()
+            .await
             .entry(room_id.to_owned())
             .or_default(),
     );
