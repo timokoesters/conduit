@@ -252,6 +252,9 @@
         ] ++ (with pkgsHost; [
           engage
 
+          # Needed for producing Debian packages
+          cargo-deb
+
           # Needed for Complement
           go
           olm
