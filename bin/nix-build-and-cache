@@ -15,17 +15,12 @@ nix run --inputs-from . attic -- login \
         https://nix.computer.surgery/conduit \
         "$ATTIC_TOKEN"
 
-    push_args=(
-        # Attic and its build dependencies
-        "$(nix path-info --inputs-from . attic)"
-        "$(nix path-info --inputs-from . attic --derivation)"
-
-        # The target installable and its build dependencies
-        "$(nix path-info "$INSTALLABLE" --derivation)"
+    # Push the target installable and its build dependencies
+    nix run --inputs-from . attic -- \
+        push \
+        conduit \
+        "$(nix path-info "$INSTALLABLE" --derivation)" \
         "$(nix path-info "$INSTALLABLE")"
-    )
-
-    nix run --inputs-from . attic -- push conduit "${push_args[@]}"
 else
     echo "\$ATTIC_TOKEN is unset, skipping uploading to the binary cache"
 fi
