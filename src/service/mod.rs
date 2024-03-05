@@ -1,6 +1,6 @@
 use std::{
     collections::{BTreeMap, HashMap},
-    sync::{Arc, Mutex as SyncMutex},
+    sync::{Arc, Mutex as StdMutex},
 };
 
 use lru_cache::LruCache;
@@ -80,17 +80,17 @@ impl Services {
                 state: rooms::state::Service { db },
                 state_accessor: rooms::state_accessor::Service {
                     db,
-                    server_visibility_cache: SyncMutex::new(LruCache::new(
+                    server_visibility_cache: StdMutex::new(LruCache::new(
                         (100.0 * config.conduit_cache_capacity_modifier) as usize,
                     )),
-                    user_visibility_cache: SyncMutex::new(LruCache::new(
+                    user_visibility_cache: StdMutex::new(LruCache::new(
                         (100.0 * config.conduit_cache_capacity_modifier) as usize,
                     )),
                 },
                 state_cache: rooms::state_cache::Service { db },
                 state_compressor: rooms::state_compressor::Service {
                     db,
-                    stateinfo_cache: SyncMutex::new(LruCache::new(
+                    stateinfo_cache: StdMutex::new(LruCache::new(
                         (100.0 * config.conduit_cache_capacity_modifier) as usize,
                     )),
                 },
@@ -108,7 +108,7 @@ impl Services {
             uiaa: uiaa::Service { db },
             users: users::Service {
                 db,
-                connections: SyncMutex::new(BTreeMap::new()),
+                connections: StdMutex::new(BTreeMap::new()),
             },
             account_data: account_data::Service { db },
             admin: admin::Service::build(),

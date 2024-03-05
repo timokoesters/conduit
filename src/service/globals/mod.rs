@@ -31,7 +31,7 @@ use std::{
     path::PathBuf,
     sync::{
         atomic::{self, AtomicBool},
-        Arc, RwLock as SyncRwLock,
+        Arc, RwLock as StdRwLock,
     },
     time::{Duration, Instant},
 };
@@ -53,7 +53,7 @@ pub struct Service {
     pub db: &'static dyn Data,
 
     pub actual_destination_cache: Arc<RwLock<WellKnownMap>>, // actual_destination, host
-    pub tls_name_override: Arc<SyncRwLock<TlsNameMap>>,
+    pub tls_name_override: Arc<StdRwLock<TlsNameMap>>,
     pub config: Config,
     keypair: Arc<ruma::signatures::Ed25519KeyPair>,
     dns_resolver: TokioAsyncResolver,
@@ -109,11 +109,11 @@ impl Default for RotationHandler {
 
 pub struct Resolver {
     inner: GaiResolver,
-    overrides: Arc<SyncRwLock<TlsNameMap>>,
+    overrides: Arc<StdRwLock<TlsNameMap>>,
 }
 
 impl Resolver {
-    pub fn new(overrides: Arc<SyncRwLock<TlsNameMap>>) -> Self {
+    pub fn new(overrides: Arc<StdRwLock<TlsNameMap>>) -> Self {
         Resolver {
             inner: GaiResolver::new(),
             overrides,
@@ -159,7 +159,7 @@ impl Service {
             }
         };
 
-        let tls_name_override = Arc::new(SyncRwLock::new(TlsNameMap::new()));
+        let tls_name_override = Arc::new(StdRwLock::new(TlsNameMap::new()));
 
         let jwt_decoding_key = config
             .jwt_secret
