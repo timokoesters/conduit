@@ -1197,14 +1197,11 @@ pub async fn sync_events_v4_route(
 
     if globalsince == 0 {
         if let Some(conn_id) = &body.conn_id {
-            services()
-                .users
-                .forget_sync_request_connection(
-                    sender_user.clone(),
-                    sender_device.clone(),
-                    conn_id.clone(),
-                )
-                .await
+            services().users.forget_sync_request_connection(
+                sender_user.clone(),
+                sender_device.clone(),
+                conn_id.clone(),
+            )
         }
     }
 
@@ -1474,17 +1471,14 @@ pub async fn sync_events_v4_route(
         );
 
         if let Some(conn_id) = &body.conn_id {
-            services()
-                .users
-                .update_sync_known_rooms(
-                    sender_user.clone(),
-                    sender_device.clone(),
-                    conn_id.clone(),
-                    list_id,
-                    new_known_rooms,
-                    globalsince,
-                )
-                .await;
+            services().users.update_sync_known_rooms(
+                sender_user.clone(),
+                sender_device.clone(),
+                conn_id.clone(),
+                list_id,
+                new_known_rooms,
+                globalsince,
+            );
         }
     }
 
@@ -1516,29 +1510,23 @@ pub async fn sync_events_v4_route(
     }
 
     if let Some(conn_id) = &body.conn_id {
-        services()
-            .users
-            .update_sync_known_rooms(
-                sender_user.clone(),
-                sender_device.clone(),
-                conn_id.clone(),
-                "subscriptions".to_owned(),
-                known_subscription_rooms,
-                globalsince,
-            )
-            .await;
+        services().users.update_sync_known_rooms(
+            sender_user.clone(),
+            sender_device.clone(),
+            conn_id.clone(),
+            "subscriptions".to_owned(),
+            known_subscription_rooms,
+            globalsince,
+        );
     }
 
     if let Some(conn_id) = &body.conn_id {
-        services()
-            .users
-            .update_sync_subscriptions(
-                sender_user.clone(),
-                sender_device.clone(),
-                conn_id.clone(),
-                body.room_subscriptions,
-            )
-            .await;
+        services().users.update_sync_subscriptions(
+            sender_user.clone(),
+            sender_device.clone(),
+            conn_id.clone(),
+            body.room_subscriptions,
+        );
     }
 
     let mut rooms = BTreeMap::new();

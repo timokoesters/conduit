@@ -45,7 +45,7 @@ impl Service {
         self.db.exists(user_id)
     }
 
-    pub async fn forget_sync_request_connection(
+    pub fn forget_sync_request_connection(
         &self,
         user_id: OwnedUserId,
         device_id: OwnedDeviceId,
@@ -186,7 +186,7 @@ impl Service {
         cached.known_rooms.clone()
     }
 
-    pub async fn update_sync_subscriptions(
+    pub fn update_sync_subscriptions(
         &self,
         user_id: OwnedUserId,
         device_id: OwnedDeviceId,
@@ -212,7 +212,7 @@ impl Service {
         cached.subscriptions = subscriptions;
     }
 
-    pub async fn update_sync_known_rooms(
+    pub fn update_sync_known_rooms(
         &self,
         user_id: OwnedUserId,
         device_id: OwnedDeviceId,
