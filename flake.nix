@@ -55,7 +55,7 @@
         # bindgen needs the build platform's libclang. Apparently due to
         # "splicing weirdness", pkgs.rustPlatform.bindgenHook on its own doesn't
         # quite do the right thing here.
-        pkgs.buildPackages.rustPlatform.bindgenHook
+        pkgs.pkgsBuildHost.rustPlatform.bindgenHook
       ];
 
       env = pkgs: {
@@ -83,7 +83,7 @@
               # these flags when using a different linker. Don't ask me why,
               # though, because I don't know. All I know is it breaks otherwise.
               #
-              # [0]: https://github.com/NixOS/nixpkgs/blob/612f97239e2cc474c13c9dafa0df378058c5ad8d/pkgs/build-support/rust/lib/default.nix#L36-L39
+              # [0]: https://github.com/NixOS/nixpkgs/blob/5cdb38bb16c6d0a38779db14fcc766bc1b2394d6/pkgs/build-support/rust/lib/default.nix#L37-L40
               (
                 # Nixpkgs doesn't check for x86_64 here but we do, because I
                 # observed a failure building statically for x86_64 without
@@ -107,7 +107,7 @@
       # even covers the case of build scripts that need native code compiled and
       # run on the build platform (I think).
       #
-      # [0]: https://github.com/NixOS/nixpkgs/blob/612f97239e2cc474c13c9dafa0df378058c5ad8d/pkgs/build-support/rust/lib/default.nix#L64-L78
+      # [0]: https://github.com/NixOS/nixpkgs/blob/5cdb38bb16c6d0a38779db14fcc766bc1b2394d6/pkgs/build-support/rust/lib/default.nix#L57-L80
       // (
         let
           inherit (pkgs.rust.lib) envVars;
@@ -145,8 +145,8 @@
           "CC_${cargoEnvVarTarget}" = envVars.ccForBuild;
           "CXX_${cargoEnvVarTarget}" = envVars.cxxForBuild;
           "CARGO_TARGET_${cargoEnvVarTarget}_LINKER" = envVars.linkerForBuild;
-          HOST_CC = "${pkgs.buildPackages.stdenv.cc}/bin/cc";
-          HOST_CXX = "${pkgs.buildPackages.stdenv.cc}/bin/c++";
+          HOST_CC = "${pkgs.pkgsBuildHost.stdenv.cc}/bin/cc";
+          HOST_CXX = "${pkgs.pkgsBuildHost.stdenv.cc}/bin/c++";
         }
       ));
 
