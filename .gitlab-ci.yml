@@ -43,68 +43,34 @@ ci:
       - target
       - .gitlab-ci.d
 
-static:x86_64-unknown-linux-musl:
+nix:artifacts:
   stage: artifacts
   image: nixos/nix:2.20.4
   script:
-    # Push artifacts and build requirements to binary cache
     - ./bin/nix-build-and-cache .#static-x86_64-unknown-linux-musl
+    - cp result/bin/conduit x86_64-unknown-linux-musl
 
-    # Make the output less difficult to find
-    - cp result/bin/conduit conduit
-  artifacts:
-    paths:
-      - conduit
-
-static:aarch64-unknown-linux-musl:
-  stage: artifacts
-  image: nixos/nix:2.20.4
-  script:
-    # Push artifacts and build requirements to binary cache
-    - ./bin/nix-build-and-cache .#static-aarch64-unknown-linux-musl
-
-    # Make the output less difficult to find
-    - cp result/bin/conduit conduit
-  artifacts:
-    paths:
-      - conduit
-
-# Note that although we have an `oci-image-x86_64-unknown-linux-musl` output,
-# we don't build it because it would be largely redundant to this one since it's
-# all containerized anyway.
-oci-image:x86_64-unknown-linux-gnu:
-  stage: artifacts
-  image: nixos/nix:2.20.4
-  script:
-    # Push artifacts and build requirements to binary cache
-    #
     # Since the OCI image package is based on the binary package, this has the
     # fun side effect of uploading the normal binary too. Conduit users who are
     # deploying with Nix can leverage this fact by adding our binary cache to
     # their systems.
+    #
+    # Note that although we have an `oci-image-x86_64-unknown-linux-musl`
+    # output, we don't build it because it would be largely redundant to this
+    # one since it's all containerized anyway.
     - ./bin/nix-build-and-cache .#oci-image
-
-    # Make the output less difficult to find
     - cp result oci-image-amd64.tar.gz
-  artifacts:
-    paths:
-      - oci-image-amd64.tar.gz
 
-oci-image:aarch64-unknown-linux-musl:
-  stage: artifacts
-  needs:
-    # Wait for the static binary job to finish before starting so we don't have
-    # to build that twice for no reason
-    - static:aarch64-unknown-linux-musl
-  image: nixos/nix:2.20.4
-  script:
-    # Push artifacts and build requirements to binary cache
+    - ./bin/nix-build-and-cache .#static-aarch64-unknown-linux-musl
+    - cp result/bin/conduit aarch64-unknown-linux-musl
+
     - ./bin/nix-build-and-cache .#oci-image-aarch64-unknown-linux-musl
-
-    # Make the output less difficult to find
     - cp result oci-image-arm64v8.tar.gz
   artifacts:
     paths:
+      - x86_64-unknown-linux-musl
+      - aarch64-unknown-linux-musl
+      - oci-image-amd64.tar.gz
       - oci-image-arm64v8.tar.gz
 
 debian:x86_64-unknown-linux-gnu:
@@ -158,8 +124,7 @@ debian:x86_64-unknown-linux-gnu:
         docker manifest push $IMAGE_NAME:latest
       fi
   dependencies:
-    - oci-image:x86_64-unknown-linux-gnu
-    - oci-image:aarch64-unknown-linux-musl
+    - nix:artifacts
   only:
     - next
     - master
