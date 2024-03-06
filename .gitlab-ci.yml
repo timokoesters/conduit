@@ -15,6 +15,10 @@ before_script:
   - if command -v nix > /dev/null; then echo "extra-substituters = https://nix.computer.surgery/conduit" >> /etc/nix/nix.conf; fi
   - if command -v nix > /dev/null; then echo "extra-trusted-public-keys = conduit:ZGAf6P6LhNvnoJJ3Me3PRg7tlLSrPxcQ2RiE5LIppjo=" >> /etc/nix/nix.conf; fi
 
+  # Add alternate binary cache
+  - if command -v nix > /dev/null && [ -n "$ATTIC_ENDPOINT" ]; then echo "extra-substituters = $ATTIC_ENDPOINT" >> /etc/nix/nix.conf; fi
+  - if command -v nix > /dev/null && [ -n "$ATTIC_PUBLIC_KEY" ]; then echo "extra-trusted-public-keys = $ATTIC_PUBLIC_KEY" >> /etc/nix/nix.conf; fi
+
   # Add crane binary cache
   - if command -v nix > /dev/null; then echo "extra-substituters = https://crane.cachix.org" >> /etc/nix/nix.conf; fi
   - if command -v nix > /dev/null; then echo "extra-trusted-public-keys = crane.cachix.org-1:8Scfpmn9w+hGdXH/Q9tTLiYAE/2dnJYRJP7kl80GuRk=" >> /etc/nix/nix.conf; fi
@@ -34,8 +38,11 @@ before_script:
 
 ci:
   stage: ci
-  image: nixos/nix:2.19.2
+  image: nixos/nix:2.20.4
   script:
+    # Cache the inputs required for the devShell
+    - ./bin/nix-build-and-cache .#devShells.x86_64-linux.default.inputDerivation
+
     - direnv exec . engage
   cache:
     key: nix
@@ -43,89 +50,41 @@ ci:
       - target
       - .gitlab-ci.d
 
-static:x86_64-unknown-linux-musl:
+artifacts:
   stage: artifacts
-  image: nixos/nix:2.19.2
+  image: nixos/nix:2.20.4
   script:
-    # Push artifacts and build requirements to binary cache
     - ./bin/nix-build-and-cache .#static-x86_64-unknown-linux-musl
+    - cp result/bin/conduit x86_64-unknown-linux-musl
 
-    # Make the output less difficult to find
-    - cp result/bin/conduit conduit
-  artifacts:
-    paths:
-      - conduit
+    - mkdir -p target/release
+    - cp result/bin/conduit target/release
+    - direnv exec . cargo deb --no-build
+    - mv target/debian/*.deb x86_64-unknown-linux-musl.deb
 
-static:aarch64-unknown-linux-musl:
-  stage: artifacts
-  image: nixos/nix:2.19.2
-  script:
-    # Push artifacts and build requirements to binary cache
-    - ./bin/nix-build-and-cache .#static-aarch64-unknown-linux-musl
-
-    # Make the output less difficult to find
-    - cp result/bin/conduit conduit
-  artifacts:
-    paths:
-      - conduit
-
-# Note that although we have an `oci-image-x86_64-unknown-linux-musl` output,
-# we don't build it because it would be largely redundant to this one since it's
-# all containerized anyway.
-oci-image:x86_64-unknown-linux-gnu:
-  stage: artifacts
-  image: nixos/nix:2.19.2
-  script:
-    # Push artifacts and build requirements to binary cache
-    #
     # Since the OCI image package is based on the binary package, this has the
     # fun side effect of uploading the normal binary too. Conduit users who are
     # deploying with Nix can leverage this fact by adding our binary cache to
     # their systems.
+    #
+    # Note that although we have an `oci-image-x86_64-unknown-linux-musl`
+    # output, we don't build it because it would be largely redundant to this
+    # one since it's all containerized anyway.
     - ./bin/nix-build-and-cache .#oci-image
-
-    # Make the output less difficult to find
     - cp result oci-image-amd64.tar.gz
-  artifacts:
-    paths:
-      - oci-image-amd64.tar.gz
 
-oci-image:aarch64-unknown-linux-musl:
-  stage: artifacts
-  needs:
-    # Wait for the static binary job to finish before starting so we don't have
-    # to build that twice for no reason
-    - static:aarch64-unknown-linux-musl
-  image: nixos/nix:2.19.2
-  script:
-    # Push artifacts and build requirements to binary cache
+    - ./bin/nix-build-and-cache .#static-aarch64-unknown-linux-musl
+    - cp result/bin/conduit aarch64-unknown-linux-musl
+
     - ./bin/nix-build-and-cache .#oci-image-aarch64-unknown-linux-musl
-
-    # Make the output less difficult to find
     - cp result oci-image-arm64v8.tar.gz
   artifacts:
     paths:
+      - x86_64-unknown-linux-musl
+      - aarch64-unknown-linux-musl
+      - x86_64-unknown-linux-musl.deb
+      - oci-image-amd64.tar.gz
       - oci-image-arm64v8.tar.gz
-
-debian:x86_64-unknown-linux-gnu:
-  stage: artifacts
-  # See also `rust-toolchain.toml`
-  image: rust:1.75.0
-  script:
-    - apt-get update && apt-get install -y --no-install-recommends libclang-dev
-    - cargo install cargo-deb
-    - cargo deb
-
-    # Make the output less difficult to find
-    - mv target/debian/*.deb conduit.deb
-  artifacts:
-    paths:
-      - conduit.deb
-  cache:
-    key: debian
-    paths:
-      - target
-      - .gitlab-ci.d
 
 .push-oci-image:
   stage: publish
@@ -158,8 +117,7 @@ debian:x86_64-unknown-linux-gnu:
         docker manifest push $IMAGE_NAME:latest
       fi
   dependencies:
-    - oci-image:x86_64-unknown-linux-gnu
-    - oci-image:aarch64-unknown-linux-musl
+    - artifacts
   only:
     - next
     - master
