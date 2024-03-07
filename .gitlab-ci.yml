@@ -49,6 +49,13 @@ ci:
     paths:
       - target
       - .gitlab-ci.d
+  rules:
+    # CI on upstream runners (only available for maintainers)
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $IS_UPSTREAM_CI == "true"
+    # Manual CI on forks
+    - if: $IS_UPSTREAM_CI != "true"
+      when: manual
+    - if: $CI
 
 artifacts:
   stage: artifacts
@@ -85,6 +92,14 @@ artifacts:
       - x86_64-unknown-linux-musl.deb
       - oci-image-amd64.tar.gz
       - oci-image-arm64v8.tar.gz
+  rules:
+    # CI required for all MRs
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    # Optional CI on forks
+    - if: $IS_UPSTREAM_CI != "true"
+      when: manual
+      allow_failure: true
+    - if: $CI
 
 .push-oci-image:
   stage: publish
