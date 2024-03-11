@@ -44,6 +44,8 @@ static GLOBAL: Jemalloc = Jemalloc;
 
 #[tokio::main]
 async fn main() {
+    clap::parse();
+
     // Initialize config
     let raw_config =
         Figment::new()
