@@ -7,6 +7,15 @@ variables:
   # Makes some things print in color
   TERM: ansi
 
+# Avoid duplicate pipelines
+# See: https://docs.gitlab.com/ee/ci/yaml/workflow.html#switch-between-branch-pipelines-and-merge-request-pipelines
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    - if: $CI
+
 before_script:
   # Enable nix-command and flakes
   - if command -v nix > /dev/null; then echo "experimental-features = nix-command flakes" >> /etc/nix/nix.conf; fi
@@ -52,10 +61,14 @@ ci:
   rules:
     # CI on upstream runners (only available for maintainers)
     - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $IS_UPSTREAM_CI == "true"
+    # Manual CI on unprotected branches that are not MRs
+    - if: $CI_PIPELINE_SOURCE != "merge_request_event" && $CI_COMMIT_REF_PROTECTED == "false"
+      when: manual
     # Manual CI on forks
     - if: $IS_UPSTREAM_CI != "true"
       when: manual
     - if: $CI
+  interruptible: true
 
 artifacts:
   stage: artifacts
@@ -100,6 +113,7 @@ artifacts:
       when: manual
       allow_failure: true
     - if: $CI
+  interruptible: true
 
 .push-oci-image:
   stage: publish
