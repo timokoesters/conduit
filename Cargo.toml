@@ -114,7 +114,8 @@ async-trait = "0.1.68"
 
 sd-notify = { version = "0.4.1", optional = true }
 
-[dependencies.rust-rocksdb]
+[dependencies.rocksdb]
+package = "rust-rocksdb"
 version = "0.22.7"
 optional = true
 features = [
@@ -131,7 +132,7 @@ default = ["conduit_bin", "backend_sqlite", "backend_rocksdb", "systemd"]
 backend_persy = ["persy", "parking_lot"]
 backend_sqlite = ["sqlite"]
 #backend_heed = ["heed", "crossbeam"]
-backend_rocksdb = ["rust-rocksdb"]
+backend_rocksdb = ["rocksdb"]
 jemalloc = ["tikv-jemalloc-ctl", "tikv-jemallocator"]
 sqlite = ["rusqlite", "parking_lot", "tokio/signal"]
 conduit_bin = ["axum"]
