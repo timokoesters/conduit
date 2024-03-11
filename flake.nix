@@ -58,9 +58,23 @@
         pkgs.pkgsBuildHost.rustPlatform.bindgenHook
       ];
 
+      rocksdb' = pkgs:
+      let
+        version = "8.11.3";
+      in
+      pkgs.rocksdb.overrideAttrs (old: {
+        inherit version;
+        src = pkgs.fetchFromGitHub {
+          owner = "facebook";
+          repo = "rocksdb";
+          rev = "v${version}";
+          hash = "sha256-OpEiMwGxZuxb9o3RQuSrwZMQGLhe9xLT1aa3HpI4KPs=";
+        };
+      });
+
       env = pkgs: {
-        ROCKSDB_INCLUDE_DIR = "${pkgs.rocksdb}/include";
-        ROCKSDB_LIB_DIR = "${pkgs.rocksdb}/lib";
+        ROCKSDB_INCLUDE_DIR = "${rocksdb' pkgs}/include";
+        ROCKSDB_LIB_DIR = "${rocksdb' pkgs}/lib";
       }
       // pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isStatic {
         ROCKSDB_STATIC = "";
