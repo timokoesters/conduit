@@ -32,7 +32,6 @@ services:
             CONDUIT_ALLOW_CHECK_FOR_UPDATES: 'true'
             CONDUIT_TRUSTED_SERVERS: '["matrix.org"]'
             #CONDUIT_MAX_CONCURRENT_REQUESTS: 100
-            #CONDUIT_LOG: warn,rocket=off,_=off,sled=off
             CONDUIT_ADDRESS: 0.0.0.0
             CONDUIT_CONFIG: '' # Ignore this
 

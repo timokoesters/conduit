@@ -33,7 +33,6 @@ services:
             # CONDUIT_PORT: 6167
             # CONDUIT_CONFIG: '/srv/conduit/conduit.toml'  # if you want to configure purely by env vars, set this to an empty string ''
             # Available levels are: error, warn, info, debug, trace - more info at: https://docs.rs/env_logger/*/env_logger/#enabling-logging
-            # CONDUIT_LOG: info  # default is: "warn,_=off,sled=off"
             # CONDUIT_ALLOW_JAEGER: 'false'
             # CONDUIT_ALLOW_ENCRYPTION: 'true'
             # CONDUIT_ALLOW_FEDERATION: 'true'

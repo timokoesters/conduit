@@ -139,56 +139,11 @@ $ sudo systemctl daemon-reload
 
 ## Creating the Conduit configuration file
 
-Now we need to create the Conduit's config file in `/etc/matrix-conduit/conduit.toml`. Paste this in **and take a moment
-to read it. You need to change at least the server name.**  
+Now we need to create the Conduit's config file in
+`/etc/matrix-conduit/conduit.toml`. Paste in the contents of
+[`conduit-example.toml`](./conduit-example.toml) **and take a moment to read it.
+You need to change at least the server name.**
 You can also choose to use a different database backend, but right now only `rocksdb` and `sqlite` are recommended.
-
-```toml
-[global]
-# The server_name is the pretty name of this server. It is used as a suffix for user
-# and room ids. Examples: matrix.org, conduit.rs
-
-# The Conduit server needs all /_matrix/ requests to be reachable at
-# https://your.server.name/ on port 443 (client-server) and 8448 (federation).
-
-# If that's not possible for you, you can create /.well-known files to redirect
-# requests. See
-# https://matrix.org/docs/spec/client_server/latest#get-well-known-matrix-client
-# and
-# https://matrix.org/docs/spec/server_server/r0.1.4#get-well-known-matrix-server
-# for more information
-
-# YOU NEED TO EDIT THIS
-#server_name = "your.server.name"
-
-# This is the only directory where Conduit will save its data
-database_path = "/var/lib/matrix-conduit/"
-database_backend = "rocksdb"
-
-# The port Conduit will be running on. You need to set up a reverse proxy in
-# your web server (e.g. apache or nginx), so all requests to /_matrix on port
-# 443 and 8448 will be forwarded to the Conduit instance running on this port
-# Docker users: Don't change this, you'll need to map an external port to this.
-port = 6167
-
-# Max size for uploads
-max_request_size = 20_000_000 # in bytes
-
-# Enables registration. If set to false, no users can register on this server.
-allow_registration = true
-
-allow_federation = true
-allow_check_for_updates = true
-
-# Server to get public keys from. You probably shouldn't change this
-trusted_servers = ["matrix.org"]
-
-#max_concurrent_requests = 100 # How many requests Conduit sends to other servers at the same time
-#log = "warn,state_res=warn,rocket=off,_=off,sled=off"
-
-address = "127.0.0.1" # This makes sure Conduit can only be reached using the reverse proxy
-#address = "0.0.0.0" # If Conduit is running in a container, make sure the reverse proxy (ie. Traefik) can reach it.
-```
 
 ## Setting the correct file permissions
 

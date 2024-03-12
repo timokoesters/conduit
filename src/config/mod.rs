@@ -264,7 +264,7 @@ fn default_trusted_servers() -> Vec<OwnedServerName> {
 }
 
 fn default_log() -> String {
-    "warn,state_res=warn,_=off,sled=off".to_owned()
+    "warn,state_res=warn,_=off".to_owned()
 }
 
 fn default_turn_ttl() -> u64 {
