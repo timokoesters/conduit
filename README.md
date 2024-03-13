@@ -1,7 +1,15 @@
 # Conduit
-### A Matrix homeserver written in Rust
 
+<!-- ANCHOR: catchphrase -->
+### A Matrix homeserver written in Rust
+<!-- ANCHOR_END: catchphrase -->
+
+Please visit the [Conduit documentation](https://famedly.gitlab.io/conduit) for more information.
+Alternatively you can open [docs/introduction.md](docs/introduction.md) in this repository.
+
+<!-- ANCHOR: body -->
 #### What is Matrix?
+
 [Matrix](https://matrix.org) is an open network for secure and decentralized
 communication. Users from every Matrix homeserver can chat with users from all
 other Matrix servers. You can even use bridges (also called Matrix appservices)
@@ -30,16 +38,9 @@ There are still a few important features missing:
 
 - E2EE emoji comparison over federation (E2EE chat works)
 - Outgoing read receipts, typing, presence over federation (incoming works)
+<!-- ANCHOR_END: body -->
 
-#### How can I deploy my own?
-
-- Simple install (this was tested the most): [DEPLOY.md](DEPLOY.md)
-- Debian package: [debian/README.md](debian/README.md)
-- Nix/NixOS: [nix/README.md](nix/README.md)
-- Docker: [docker/README.md](docker/README.md)
-
-If you want to connect an Appservice to Conduit, take a look at [APPSERVICES.md](APPSERVICES.md).
-
+<!-- ANCHOR: footer -->
 #### How can I contribute?
 
 1. Look for an issue you would like to work on and make sure no one else is currently working on it.
@@ -56,7 +57,6 @@ If you have any questions, feel free to
 - Send an direct message to `@timokoesters:fachschaften.org` on Matrix
 - [Open an issue on GitLab](https://gitlab.com/famedly/conduit/-/issues/new)
 
-
 #### Thanks to
 
 Thanks to FUTO, Famedly, Prototype Fund (DLR and German BMBF) and all individuals for financially supporting this project.
@@ -68,10 +68,11 @@ Thanks to the contributors to Conduit and all libraries we use, for example:
 
 #### Donate
 
-Liberapay: <https://liberapay.com/timokoesters/>\
-Bitcoin: `bc1qnnykf986tw49ur7wx9rpw2tevpsztvar5x8w4n`
+- Liberapay: <https://liberapay.com/timokoesters/>
+- Bitcoin: `bc1qnnykf986tw49ur7wx9rpw2tevpsztvar5x8w4n`
 
 #### Logo
 
-Lightning Bolt Logo: https://github.com/mozilla/fxemoji/blob/gh-pages/svgs/nature/u26A1-bolt.svg \
-Logo License: https://github.com/mozilla/fxemoji/blob/gh-pages/LICENSE.md
+- Lightning Bolt Logo: <https://github.com/mozilla/fxemoji/blob/gh-pages/svgs/nature/u26A1-bolt.svg>
+- Logo License: <https://github.com/mozilla/fxemoji/blob/gh-pages/LICENSE.md>
+<!-- ANCHOR_END: footer -->
