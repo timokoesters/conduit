@@ -121,6 +121,7 @@ optional = true
 features = [
     "multi-threaded-cf",
     "zstd",
+    "lz4",
 ]
 
 [target.'cfg(unix)'.dependencies]

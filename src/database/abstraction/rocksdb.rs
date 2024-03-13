@@ -23,29 +23,23 @@ pub struct RocksDbEngineTree<'a> {
 fn db_options(max_open_files: i32, rocksdb_cache: &rocksdb::Cache) -> rocksdb::Options {
     let mut block_based_options = rocksdb::BlockBasedOptions::default();
     block_based_options.set_block_cache(rocksdb_cache);
-
-    // "Difference of spinning disk"
-    // https://zhangyuchi.gitbooks.io/rocksdbbook/content/RocksDB-Tuning-Guide.html
+    block_based_options.set_bloom_filter(10.0, false);
     block_based_options.set_block_size(4 * 1024);
     block_based_options.set_cache_index_and_filter_blocks(true);
+    block_based_options.set_pin_l0_filter_and_index_blocks_in_cache(true);
+    block_based_options.set_optimize_filters_for_memory(true);
 
     let mut db_opts = rocksdb::Options::default();
     db_opts.set_block_based_table_factory(&block_based_options);
-    db_opts.set_optimize_filters_for_hits(true);
-    db_opts.set_skip_stats_update_on_db_open(true);
-    db_opts.set_level_compaction_dynamic_level_bytes(true);
-    db_opts.set_target_file_size_base(256 * 1024 * 1024);
-    //db_opts.set_compaction_readahead_size(2 * 1024 * 1024);
-    //db_opts.set_use_direct_reads(true);
-    //db_opts.set_use_direct_io_for_flush_and_compaction(true);
     db_opts.create_if_missing(true);
     db_opts.increase_parallelism(num_cpus::get() as i32);
     db_opts.set_max_open_files(max_open_files);
-    db_opts.set_compression_type(rocksdb::DBCompressionType::Zstd);
+    db_opts.set_compression_type(rocksdb::DBCompressionType::Lz4);
+    db_opts.set_bottommost_compression_type(rocksdb::DBCompressionType::Zstd);
     db_opts.set_compaction_style(rocksdb::DBCompactionStyle::Level);
-    db_opts.optimize_level_style_compaction(10 * 1024 * 1024);
 
     // https://github.com/facebook/rocksdb/wiki/Setup-Options-and-Basic-Tuning
+    db_opts.set_level_compaction_dynamic_level_bytes(true);
     db_opts.set_max_background_jobs(6);
     db_opts.set_bytes_per_sync(1048576);
 
@@ -58,9 +52,6 @@ fn db_options(max_open_files: i32, rocksdb_cache: &rocksdb::Cache) -> rocksdb::O
     // recovered in this manner as it's likely any lost information will be
     // restored via federation.
     db_opts.set_wal_recovery_mode(rocksdb::DBRecoveryMode::TolerateCorruptedTailRecords);
-
-    let prefix_extractor = rocksdb::SliceTransform::create_fixed_prefix(1);
-    db_opts.set_prefix_extractor(prefix_extractor);
 
     db_opts
 }
@@ -147,12 +138,17 @@ impl RocksDbEngineTree<'_> {
 
 impl KvTree for RocksDbEngineTree<'_> {
     fn get(&self, key: &[u8]) -> Result<Option<Vec<u8>>> {
-        Ok(self.db.rocks.get_cf(&self.cf(), key)?)
+        let readoptions = rocksdb::ReadOptions::default();
+
+        Ok(self.db.rocks.get_cf_opt(&self.cf(), key, &readoptions)?)
     }
 
     fn insert(&self, key: &[u8], value: &[u8]) -> Result<()> {
+        let writeoptions = rocksdb::WriteOptions::default();
         let lock = self.write_lock.read().unwrap();
-        self.db.rocks.put_cf(&self.cf(), key, value)?;
+        self.db
+            .rocks
+            .put_cf_opt(&self.cf(), key, value, &writeoptions)?;
         drop(lock);
 
         self.watchers.wake(key);
@@ -161,22 +157,31 @@ impl KvTree for RocksDbEngineTree<'_> {
     }
 
     fn insert_batch<'a>(&self, iter: &mut dyn Iterator<Item = (Vec<u8>, Vec<u8>)>) -> Result<()> {
+        let writeoptions = rocksdb::WriteOptions::default();
         for (key, value) in iter {
-            self.db.rocks.put_cf(&self.cf(), key, value)?;
+            self.db
+                .rocks
+                .put_cf_opt(&self.cf(), key, value, &writeoptions)?;
         }
 
         Ok(())
     }
 
     fn remove(&self, key: &[u8]) -> Result<()> {
-        Ok(self.db.rocks.delete_cf(&self.cf(), key)?)
+        let writeoptions = rocksdb::WriteOptions::default();
+        Ok(self
+            .db
+            .rocks
+            .delete_cf_opt(&self.cf(), key, &writeoptions)?)
     }
 
     fn iter<'a>(&'a self) -> Box<dyn Iterator<Item = (Vec<u8>, Vec<u8>)> + 'a> {
+        let readoptions = rocksdb::ReadOptions::default();
+
         Box::new(
             self.db
                 .rocks
-                .iterator_cf(&self.cf(), rocksdb::IteratorMode::Start)
+                .iterator_cf_opt(&self.cf(), readoptions, rocksdb::IteratorMode::Start)
                 .map(|r| r.unwrap())
                 .map(|(k, v)| (Vec::from(k), Vec::from(v))),
         )
@@ -187,11 +192,14 @@ impl KvTree for RocksDbEngineTree<'_> {
         from: &[u8],
         backwards: bool,
     ) -> Box<dyn Iterator<Item = (Vec<u8>, Vec<u8>)> + 'a> {
+        let readoptions = rocksdb::ReadOptions::default();
+
         Box::new(
             self.db
                 .rocks
-                .iterator_cf(
+                .iterator_cf_opt(
                     &self.cf(),
+                    readoptions,
                     rocksdb::IteratorMode::From(
                         from,
                         if backwards {
@@ -207,23 +215,33 @@ impl KvTree for RocksDbEngineTree<'_> {
     }
 
     fn increment(&self, key: &[u8]) -> Result<Vec<u8>> {
+        let readoptions = rocksdb::ReadOptions::default();
+        let writeoptions = rocksdb::WriteOptions::default();
+
         let lock = self.write_lock.write().unwrap();
 
-        let old = self.db.rocks.get_cf(&self.cf(), key)?;
+        let old = self.db.rocks.get_cf_opt(&self.cf(), key, &readoptions)?;
         let new = utils::increment(old.as_deref()).unwrap();
-        self.db.rocks.put_cf(&self.cf(), key, &new)?;
+        self.db
+            .rocks
+            .put_cf_opt(&self.cf(), key, &new, &writeoptions)?;
 
         drop(lock);
         Ok(new)
     }
 
     fn increment_batch<'a>(&self, iter: &mut dyn Iterator<Item = Vec<u8>>) -> Result<()> {
+        let readoptions = rocksdb::ReadOptions::default();
+        let writeoptions = rocksdb::WriteOptions::default();
+
         let lock = self.write_lock.write().unwrap();
 
         for key in iter {
-            let old = self.db.rocks.get_cf(&self.cf(), &key)?;
+            let old = self.db.rocks.get_cf_opt(&self.cf(), &key, &readoptions)?;
             let new = utils::increment(old.as_deref()).unwrap();
-            self.db.rocks.put_cf(&self.cf(), key, new)?;
+            self.db
+                .rocks
+                .put_cf_opt(&self.cf(), key, new, &writeoptions)?;
         }
 
         drop(lock);
@@ -235,11 +253,14 @@ impl KvTree for RocksDbEngineTree<'_> {
         &'a self,
         prefix: Vec<u8>,
     ) -> Box<dyn Iterator<Item = (Vec<u8>, Vec<u8>)> + 'a> {
+        let readoptions = rocksdb::ReadOptions::default();
+
         Box::new(
             self.db
                 .rocks
-                .iterator_cf(
+                .iterator_cf_opt(
                     &self.cf(),
+                    readoptions,
                     rocksdb::IteratorMode::From(&prefix, rocksdb::Direction::Forward),
                 )
                 .map(|r| r.unwrap())
