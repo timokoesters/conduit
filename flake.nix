@@ -304,6 +304,9 @@
 
           # Needed for our script for Complement
           jq
+
+          # Needed for finding broken markdown links
+          lychee
         ]);
       };
     });
