@@ -69,7 +69,7 @@ docker run -d -p 8448:6167 \
 
 or you can use [docker-compose](#docker-compose).
 
-The `-d` flag lets the container run in detached mode. You now need to supply a `conduit.toml` config file, an example can be found [here](../conduit-example.toml).
+The `-d` flag lets the container run in detached mode. You now need to supply a `conduit.toml` config file, an example can be found [here](../configuration.md).
 You can pass in different env vars to change config values on the fly. You can even configure Conduit completely by using env vars, but for that you need
 to pass `-e CONDUIT_CONFIG=""` into your container. For an overview of possible values, please take a look at the `docker-compose.yml` file.
 
@@ -87,8 +87,7 @@ Depending on your proxy setup, you can use one of the following files;
 When picking the traefik-related compose file, rename it so it matches `docker-compose.yml`, and
 rename the override file to `docker-compose.override.yml`. Edit the latter with the values you want
 for your server.
-
-Additional info about deploying Conduit can be found [here](../DEPLOY.md).
+Additional info about deploying Conduit can be found [here](simple.md).
 
 ### Build
 
@@ -130,7 +129,7 @@ So...step by step:
 1. Copy [`docker-compose.for-traefik.yml`](docker-compose.for-traefik.yml) (or
 [`docker-compose.with-traefik.yml`](docker-compose.with-traefik.yml)) and [`docker-compose.override.yml`](docker-compose.override.yml) from the repository and remove `.for-traefik` (or `.with-traefik`) from the filename.
 2. Open both files and modify/adjust them to your needs. Meaning, change the `CONDUIT_SERVER_NAME` and the volume host mappings according to your needs.
-3. Create the `conduit.toml` config file, an example can be found [here](../conduit-example.toml), or set `CONDUIT_CONFIG=""` and configure Conduit per env vars.
+3. Create the `conduit.toml` config file, an example can be found [here](../configuration.md), or set `CONDUIT_CONFIG=""` and configure Conduit per env vars.
 4. Uncomment the `element-web` service if you want to host your own Element Web Client and create a `element_config.json`.
 5. Create the files needed by the `well-known` service.
 

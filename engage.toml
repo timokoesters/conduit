@@ -31,6 +31,11 @@ group = "versions"
 script = "cargo clippy -- --version"
 
 [[task]]
+name = "lychee"
+group = "versions"
+script = "lychee --version"
+
+[[task]]
 name = "cargo-fmt"
 group = "lints"
 script = "cargo fmt --check -- --color=always"
@@ -50,6 +55,11 @@ RUSTDOCFLAGS="-D warnings" cargo doc \
 name = "cargo-clippy"
 group = "lints"
 script = "cargo clippy --workspace --all-targets --color=always -- -D warnings"
+
+[[task]]
+name = "lychee"
+group = "lints"
+script = "lychee --offline docs"
 
 [[task]]
 name = "cargo"

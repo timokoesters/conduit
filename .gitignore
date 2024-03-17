@@ -71,3 +71,6 @@ cached_target
 
 # Gitlab CI cache
 /.gitlab-ci.d
+
+# mdbook output
+public/

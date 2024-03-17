@@ -1,4 +1,6 @@
-# Deploying Conduit
+# Simple setup
+
+This is the recommended way to set up Conduit. It is the easiest way to get started and is suitable for most use cases.
 
 > ## Getting help
 >
@@ -141,7 +143,7 @@ $ sudo systemctl daemon-reload
 
 Now we need to create the Conduit's config file in
 `/etc/matrix-conduit/conduit.toml`. Paste in the contents of
-[`conduit-example.toml`](./conduit-example.toml) **and take a moment to read it.
+[`conduit-example.toml`](../configuration.md) **and take a moment to read it.
 You need to change at least the server name.**
 You can also choose to use a different database backend, but right now only `rocksdb` and `sqlite` are recommended.
 
@@ -305,8 +307,8 @@ $ curl https://your.server.name:8448/_matrix/client/versions
 
 ## Audio/Video calls
 
-For Audio/Video call functionality see the [TURN Guide](TURN.md).
+For Audio/Video call functionality see the [TURN Guide](../turn.md).
 
 ## Appservices
 
-If you want to set up an appservice, take a look at the [Appservice Guide](APPSERVICES.md).
+If you want to set up an appservice, take a look at the [Appservice Guide](../appservices.md).

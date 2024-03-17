@@ -1,0 +1,3 @@
+# Docs: Map markdown to html files
+- source: /docs/(.+)\.md/
+  public: '\1.html'
