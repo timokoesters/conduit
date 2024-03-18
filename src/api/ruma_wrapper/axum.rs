@@ -149,6 +149,10 @@ where
                         }
                     }
                     AuthScheme::ServerSignatures => {
+                        if !services().globals.allow_federation() {
+                            return Err(Error::bad_config("Federation is disabled."));
+                        }
+
                         let TypedHeader(Authorization(x_matrix)) = parts
                             .extract::<TypedHeader<Authorization<XMatrix>>>()
                             .await
