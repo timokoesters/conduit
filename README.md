@@ -23,8 +23,7 @@ friends or company.
 
 #### Can I try it out?
 
-Yes! You can test our Conduit instance by opening a Matrix client (<https://app.element.io> or Element Android for
-example) and registering on the `conduit.rs` homeserver. The registration token is "for_testing_only". Don't share personal information.
+Yes! You can test our Conduit instance by opening a client that supports registration tokens such as [Element web](https://app.element.io/), [Nheko](https://matrix.org/ecosystem/clients/nheko/) or [SchildiChat web](https://app.schildi.chat/) and registering on the `conduit.rs` homeserver. The registration token is "for_testing_only". Don't share personal information. Once you have registered, you can use any other [Matrix client](https://matrix.org/ecosystem/clients) to login.
 
 Server hosting for conduit.rs is donated by the Matrix.org Foundation.
 

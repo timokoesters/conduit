@@ -289,7 +289,7 @@ $ sudo systemctl enable conduit
 
 ## How do I know it works?
 
-You can open <https://app.element.io>, enter your homeserver and try to register.
+You can open [a Matrix client](https://matrix.org/ecosystem/clients), enter your homeserver and try to register. If you are using a registration token, use [Element web](https://app.element.io/), [Nheko](https://matrix.org/ecosystem/clients/nheko/) or [SchildiChat web](https://app.schildi.chat/), as they support this feature.
 
 You can also use these commands as a quick health check.
 
