@@ -307,6 +307,9 @@
 
           # Needed for finding broken markdown links
           lychee
+
+          # Useful for editing the book locally
+          mdbook
         ]);
       };
     });
