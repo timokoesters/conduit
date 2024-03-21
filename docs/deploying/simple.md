@@ -61,26 +61,6 @@ Then, `cd` into the source tree of conduit-next and run:
 $ cargo build --release
 ```
 
-If you want to cross compile Conduit to another architecture, read the guide below.
-
-<details>
-<summary>Cross compilation</summary>
-
-As easiest way to compile conduit for another platform [cross-rs](https://github.com/cross-rs/cross) is recommended, so install it first.
-
-In order to use RockDB as storage backend append `-latomic` to linker flags.
-
-For example, to build a binary for Raspberry Pi Zero W (ARMv6) you need `arm-unknown-linux-gnueabihf` as compilation
-target.
-
-```bash
-git clone https://gitlab.com/famedly/conduit.git
-cd conduit
-export RUSTFLAGS='-C link-arg=-lgcc -Clink-arg=-latomic -Clink-arg=-static-libgcc'
-cross build --release --no-default-features --features conduit_bin,backend_rocksdb,jemalloc --target=arm-unknown-linux-gnueabihf
-```
-</details>
-
 ## Adding a Conduit user
 
 While Conduit can run as any user it is usually better to use dedicated users for different services. This also allows
