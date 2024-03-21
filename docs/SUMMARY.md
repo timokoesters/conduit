@@ -4,7 +4,7 @@
 
 - [Example configuration](configuration.md)
 - [Deployment options](deploying.md)
-    - [Simple (Recommended)](deploying/simple.md)
+    - [Generic](deploying/generic.md)
     - [Debian](deploying/debian.md)
     - [Docker](deploying/docker.md)
     - [Nix](deploying/nix.md)

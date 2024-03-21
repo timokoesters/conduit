@@ -1,6 +1,4 @@
-# Simple setup
-
-This is the recommended way to set up Conduit. It is the easiest way to get started and is suitable for most use cases.
+# Generic deployment documentation
 
 > ## Getting help
 >
