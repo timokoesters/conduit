@@ -7,6 +7,6 @@
     - [Generic](deploying/generic.md)
     - [Debian](deploying/debian.md)
     - [Docker](deploying/docker.md)
-    - [Nix](deploying/nix.md)
+    - [NixOS](deploying/nixos.md)
 - [TURN](turn.md)
 - [Appservices](appservices.md)
