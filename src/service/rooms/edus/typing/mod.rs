@@ -1,31 +1,57 @@
-mod data;
-
-pub use data::Data;
-use ruma::{events::SyncEphemeralRoomEvent, RoomId, UserId, OwnedRoomId, OwnedUserId};
-use tokio::sync::RwLock;
+use ruma::{events::SyncEphemeralRoomEvent, OwnedRoomId, OwnedUserId, RoomId, UserId};
 use std::collections::BTreeMap;
+use tokio::sync::{broadcast, RwLock};
 
-use crate::{utils, services, Result};
+use crate::{services, utils, Result};
 
 pub struct Service {
-    pub db: &'static dyn Data,
     pub typing: RwLock<BTreeMap<OwnedRoomId, BTreeMap<OwnedUserId, u64>>>, // u64 is unix timestamp of timeout
     pub last_typing_update: RwLock<BTreeMap<OwnedRoomId, u64>>, // timestamp of the last change to typing users
+    pub typing_update_sender: broadcast::Sender<OwnedRoomId>,
 }
 
 impl Service {
     /// Sets a user as typing until the timeout timestamp is reached or roomtyping_remove is
     /// called.
     pub async fn typing_add(&self, user_id: &UserId, room_id: &RoomId, timeout: u64) -> Result<()> {
-        self.typing.write().await.entry(room_id.to_owned()).or_default().insert(user_id.to_owned(), timeout);
-        self.last_typing_update.write().await.insert(room_id.to_owned(), services().globals.next_count()?);
+        self.typing
+            .write()
+            .await
+            .entry(room_id.to_owned())
+            .or_default()
+            .insert(user_id.to_owned(), timeout);
+        self.last_typing_update
+            .write()
+            .await
+            .insert(room_id.to_owned(), services().globals.next_count()?);
+        let _ = self.typing_update_sender.send(room_id.to_owned());
         Ok(())
     }
 
     /// Removes a user from typing before the timeout is reached.
     pub async fn typing_remove(&self, user_id: &UserId, room_id: &RoomId) -> Result<()> {
-        self.typing.write().await.entry(room_id.to_owned()).or_default().remove(user_id);
-        self.last_typing_update.write().await.insert(room_id.to_owned(), services().globals.next_count()?);
+        self.typing
+            .write()
+            .await
+            .entry(room_id.to_owned())
+            .or_default()
+            .remove(user_id);
+        self.last_typing_update
+            .write()
+            .await
+            .insert(room_id.to_owned(), services().globals.next_count()?);
+        let _ = self.typing_update_sender.send(room_id.to_owned());
+        Ok(())
+    }
+
+    pub async fn wait_for_update(&self, room_id: &RoomId) -> Result<()> {
+        let mut receiver = self.typing_update_sender.subscribe();
+        while let Ok(next) = receiver.recv().await {
+            if next == room_id {
+                break;
+            }
+        }
+
         Ok(())
     }
 
@@ -35,7 +61,9 @@ impl Service {
         let mut removable = Vec::new();
         {
             let typing = self.typing.read().await;
-            let Some(room) = typing.get(room_id) else { return Ok(()); };
+            let Some(room) = typing.get(room_id) else {
+                return Ok(());
+            };
             for (user, timeout) in room {
                 if *timeout < current_timestamp {
                     removable.push(user.clone());
@@ -49,7 +77,11 @@ impl Service {
             for user in removable {
                 room.remove(&user);
             }
-            self.last_typing_update.write().await.insert(room_id.to_owned(), services().globals.next_count()?);
+            self.last_typing_update
+                .write()
+                .await
+                .insert(room_id.to_owned(), services().globals.next_count()?);
+            let _ = self.typing_update_sender.send(room_id.to_owned());
         }
         Ok(())
     }
@@ -57,7 +89,13 @@ impl Service {
     /// Returns the count of the last typing update in this room.
     pub async fn last_typing_update(&self, room_id: &RoomId) -> Result<u64> {
         self.typings_maintain(room_id).await?;
-        Ok(self.last_typing_update.read().await.get(room_id).copied().unwrap_or(0))
+        Ok(self
+            .last_typing_update
+            .read()
+            .await
+            .get(room_id)
+            .copied()
+            .unwrap_or(0))
     }
 
     /// Returns a new typing EDU.
@@ -67,7 +105,13 @@ impl Service {
     ) -> Result<SyncEphemeralRoomEvent<ruma::events::typing::TypingEventContent>> {
         Ok(SyncEphemeralRoomEvent {
             content: ruma::events::typing::TypingEventContent {
-                user_ids: self.typing.read().await.get(room_id).map(|m| m.keys().cloned().collect()).unwrap_or_default(),
+                user_ids: self
+                    .typing
+                    .read()
+                    .await
+                    .get(room_id)
+                    .map(|m| m.keys().cloned().collect())
+                    .unwrap_or_default(),
             },
         })
     }

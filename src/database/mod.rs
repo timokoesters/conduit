@@ -70,8 +70,6 @@ pub struct KeyValueDatabase {
     pub(super) readreceiptid_readreceipt: Arc<dyn KvTree>, // ReadReceiptId = RoomId + Count + UserId
     pub(super) roomuserid_privateread: Arc<dyn KvTree>, // RoomUserId = Room + User, PrivateRead = Count
     pub(super) roomuserid_lastprivatereadupdate: Arc<dyn KvTree>, // LastPrivateReadUpdate = Count
-    pub(super) typingid_userid: Arc<dyn KvTree>,        // TypingId = RoomId + TimeoutTime + Count
-    pub(super) roomid_lasttypingupdate: Arc<dyn KvTree>, // LastRoomTypingUpdate = Count
     pub(super) presenceid_presence: Arc<dyn KvTree>,    // PresenceId = RoomId + Count + UserId
     pub(super) userid_lastpresenceupdate: Arc<dyn KvTree>, // LastPresenceUpdate = Count
 
@@ -301,8 +299,6 @@ impl KeyValueDatabase {
             roomuserid_privateread: builder.open_tree("roomuserid_privateread")?, // "Private" read receipt
             roomuserid_lastprivatereadupdate: builder
                 .open_tree("roomuserid_lastprivatereadupdate")?,
-            typingid_userid: builder.open_tree("typingid_userid")?,
-            roomid_lasttypingupdate: builder.open_tree("roomid_lasttypingupdate")?,
             presenceid_presence: builder.open_tree("presenceid_presence")?,
             userid_lastpresenceupdate: builder.open_tree("userid_lastpresenceupdate")?,
             pduid_pdu: builder.open_tree("pduid_pdu")?,
