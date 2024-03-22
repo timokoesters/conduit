@@ -80,10 +80,11 @@ where
 
         let mut json_body = serde_json::from_slice::<CanonicalJsonValue>(&body).ok();
 
-        let appservices = services().appservice.all().await;
-        let appservice_registration = appservices
-            .iter()
-            .find(|info| Some(info.registration.as_token.as_str()) == token);
+        let appservice_registration = if let Some(token) = token {
+            services().appservice.find_from_token(token).await
+        } else {
+            None
+        };
 
         let (sender_user, sender_device, sender_servername, from_appservice) =
             if let Some(info) = appservice_registration {

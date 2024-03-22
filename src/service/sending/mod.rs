@@ -488,7 +488,7 @@ impl Service {
                     services()
                         .appservice
                         .get_registration(id)
-                        .map_err(|e| (kind.clone(), e))?
+                        .await
                         .ok_or_else(|| {
                             (
                                 kind.clone(),

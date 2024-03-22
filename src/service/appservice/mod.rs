@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 
 pub use data::Data;
 
+use futures_util::Future;
 use regex::RegexSet;
 use ruma::api::appservice::{Namespace, Registration};
 use tokio::sync::RwLock;
@@ -147,20 +148,36 @@ impl Service {
         self.db.unregister_appservice(service_name)
     }
 
-    pub fn get_registration(&self, id: &str) -> Result<Option<Registration>> {
-        self.db.get_registration(id)
-    }
-
-    pub fn iter_ids(&self) -> Result<impl Iterator<Item = Result<String>> + '_> {
-        self.db.iter_ids()
-    }
-
-    pub async fn all(&self) -> Vec<RegistrationInfo> {
+    pub async fn get_registration(&self, id: &str) -> Option<Registration> {
         self.registration_info
             .read()
             .await
-            .values()
+            .get(id)
+            .cloned()
+            .map(|info| info.registration)
+    }
+
+    pub async fn iter_ids(&self) -> Vec<String> {
+        self.registration_info
+            .read()
+            .await
+            .keys()
             .cloned()
             .collect()
+    }
+
+    pub async fn find_from_token(&self, token: &str) -> Option<RegistrationInfo> {
+        self.read()
+            .await
+            .values()
+            .find(|info| info.registration.as_token == token)
+            .cloned()
+    }
+
+    pub fn read(
+        &self,
+    ) -> impl Future<Output = tokio::sync::RwLockReadGuard<'_, BTreeMap<String, RegistrationInfo>>>
+    {
+        self.registration_info.read()
     }
 }

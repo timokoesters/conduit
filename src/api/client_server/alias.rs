@@ -100,7 +100,7 @@ pub(crate) async fn get_alias_helper(
     match services().rooms.alias.resolve_local_alias(&room_alias)? {
         Some(r) => room_id = Some(r),
         None => {
-            for appservice in services().appservice.all().await {
+            for appservice in services().appservice.read().await.values() {
                 if appservice.aliases.is_match(room_alias.as_str())
                     && if let Some(opt_result) = services()
                         .sending

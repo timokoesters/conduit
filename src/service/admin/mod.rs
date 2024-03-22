@@ -369,25 +369,13 @@ impl Service {
                 )),
             },
             AdminCommand::ListAppservices => {
-                if let Ok(appservices) = services()
-                    .appservice
-                    .iter_ids()
-                    .map(|ids| ids.collect::<Vec<_>>())
-                {
-                    let count = appservices.len();
-                    let output = format!(
-                        "Appservices ({}): {}",
-                        count,
-                        appservices
-                            .into_iter()
-                            .filter_map(|r| r.ok())
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    );
-                    RoomMessageEventContent::text_plain(output)
-                } else {
-                    RoomMessageEventContent::text_plain("Failed to get appservices.")
-                }
+                let appservices = services().appservice.iter_ids().await;
+                let output = format!(
+                    "Appservices ({}): {}",
+                    appservices.len(),
+                    appservices.join(", ")
+                );
+                RoomMessageEventContent::text_plain(output)
             }
             AdminCommand::ListRooms => {
                 let room_ids = services().rooms.metadata.iter_ids();

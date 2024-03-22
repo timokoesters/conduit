@@ -17,9 +17,7 @@ pub(crate) async fn send_request<T: OutgoingRequest>(
 where
     T: Debug,
 {
-    let Some(destination) = registration.url else {
-        return None;
-    };
+    let destination = registration.url?;
 
     let hs_token = registration.hs_token.as_str();
 
