@@ -1,6 +1,6 @@
 mod data;
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 pub use data::Data;
 
@@ -97,12 +97,12 @@ impl TryFrom<Registration> for RegistrationInfo {
 
 pub struct Service {
     pub db: &'static dyn Data,
-    registration_info: RwLock<HashMap<String, RegistrationInfo>>,
+    registration_info: RwLock<BTreeMap<String, RegistrationInfo>>,
 }
 
 impl Service {
     pub fn build(db: &'static dyn Data) -> Result<Self> {
-        let mut registration_info = HashMap::new();
+        let mut registration_info = BTreeMap::new();
         // Inserting registrations into cache
         for appservice in db.all()? {
             registration_info.insert(
