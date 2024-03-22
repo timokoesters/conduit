@@ -29,7 +29,7 @@ use std::{
     time::Duration,
 };
 use tokio::sync::watch::Sender;
-use tracing::error;
+use tracing::{error, info};
 
 /// # `GET /_matrix/client/r0/sync`
 ///
@@ -98,6 +98,8 @@ pub async fn sync_events_route(
                 let (tx, rx) = tokio::sync::watch::channel(None);
 
                 o.insert((body.since.clone(), rx.clone()));
+
+                info!("Sync started for {sender_user}");
 
                 tokio::spawn(sync_helper_wrapper(
                     sender_user.clone(),
