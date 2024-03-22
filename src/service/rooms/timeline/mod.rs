@@ -524,17 +524,11 @@ impl Service {
             }
         }
 
-        for appservice in services()
-            .appservice
-            .registration_info
-            .read()
-            .await
-            .values()
-        {
+        for appservice in services().appservice.all().await {
             if services()
                 .rooms
                 .state_cache
-                .appservice_in_room(&pdu.room_id, appservice)?
+                .appservice_in_room(&pdu.room_id, &appservice)?
             {
                 services()
                     .sending

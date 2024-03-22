@@ -80,19 +80,19 @@ where
 
         let mut json_body = serde_json::from_slice::<CanonicalJsonValue>(&body).ok();
 
-        let appservices = services().appservice.all().unwrap();
+        let appservices = services().appservice.all().await;
         let appservice_registration = appservices
             .iter()
-            .find(|(_id, registration)| Some(registration.as_token.as_str()) == token);
+            .find(|info| Some(info.registration.as_token.as_str()) == token);
 
         let (sender_user, sender_device, sender_servername, from_appservice) =
-            if let Some((_id, registration)) = appservice_registration {
+            if let Some(info) = appservice_registration {
                 match metadata.authentication {
                     AuthScheme::AccessToken => {
                         let user_id = query_params.user_id.map_or_else(
                             || {
                                 UserId::parse_with_server_name(
-                                    registration.sender_localpart.as_str(),
+                                    info.registration.sender_localpart.as_str(),
                                     services().globals.server_name(),
                                 )
                                 .unwrap()

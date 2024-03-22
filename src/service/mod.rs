@@ -4,7 +4,7 @@ use std::{
 };
 
 use lru_cache::LruCache;
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::Mutex;
 
 use crate::{Config, Result};
 
@@ -56,10 +56,7 @@ impl Services {
         config: Config,
     ) -> Result<Self> {
         Ok(Self {
-            appservice: appservice::Service {
-                db,
-                registration_info: RwLock::new(HashMap::new()),
-            },
+            appservice: appservice::Service::build(db)?,
             pusher: pusher::Service { db },
             rooms: rooms::Service {
                 alias: rooms::alias::Service { db },

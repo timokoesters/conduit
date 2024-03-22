@@ -10,10 +10,6 @@ impl service::appservice::Data for KeyValueDatabase {
             id.as_bytes(),
             serde_yaml::to_string(&yaml).unwrap().as_bytes(),
         )?;
-        self.cached_registrations
-            .write()
-            .unwrap()
-            .insert(id.to_owned(), yaml.to_owned());
 
         Ok(id.to_owned())
     }
@@ -26,33 +22,18 @@ impl service::appservice::Data for KeyValueDatabase {
     fn unregister_appservice(&self, service_name: &str) -> Result<()> {
         self.id_appserviceregistrations
             .remove(service_name.as_bytes())?;
-        self.cached_registrations
-            .write()
-            .unwrap()
-            .remove(service_name);
         Ok(())
     }
 
     fn get_registration(&self, id: &str) -> Result<Option<Registration>> {
-        self.cached_registrations
-            .read()
-            .unwrap()
-            .get(id)
-            .map_or_else(
-                || {
-                    self.id_appserviceregistrations
-                        .get(id.as_bytes())?
-                        .map(|bytes| {
-                            serde_yaml::from_slice(&bytes).map_err(|_| {
-                                Error::bad_database(
-                                    "Invalid registration bytes in id_appserviceregistrations.",
-                                )
-                            })
-                        })
-                        .transpose()
-                },
-                |r| Ok(Some(r.clone())),
-            )
+        self.id_appserviceregistrations
+            .get(id.as_bytes())?
+            .map(|bytes| {
+                serde_yaml::from_slice(&bytes).map_err(|_| {
+                    Error::bad_database("Invalid registration bytes in id_appserviceregistrations.")
+                })
+            })
+            .transpose()
     }
 
     fn iter_ids<'a>(&'a self) -> Result<Box<dyn Iterator<Item = Result<String>> + 'a>> {

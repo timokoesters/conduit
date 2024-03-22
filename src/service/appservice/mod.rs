@@ -10,7 +10,8 @@ use tokio::sync::RwLock;
 
 use crate::{services, Result};
 
-/// Compiled regular expressions for a namespace
+/// Compiled regular expressions for a namespace.
+#[derive(Clone, Debug)]
 pub struct NamespaceRegex {
     pub exclusive: Option<RegexSet>,
     pub non_exclusive: Option<RegexSet>,
@@ -72,7 +73,8 @@ impl TryFrom<Vec<Namespace>> for NamespaceRegex {
     type Error = regex::Error;
 }
 
-/// Compiled regular expressions for an appservice
+/// Appservice registration combined with its compiled regular expressions.
+#[derive(Clone, Debug)]
 pub struct RegistrationInfo {
     pub registration: Registration,
     pub users: NamespaceRegex,
@@ -95,11 +97,29 @@ impl TryFrom<Registration> for RegistrationInfo {
 
 pub struct Service {
     pub db: &'static dyn Data,
-    pub registration_info: RwLock<HashMap<String, RegistrationInfo>>,
+    registration_info: RwLock<HashMap<String, RegistrationInfo>>,
 }
 
 impl Service {
-    /// Registers an appservice and returns the ID to the caller
+    pub fn build(db: &'static dyn Data) -> Result<Self> {
+        let mut registration_info = HashMap::new();
+        // Inserting registrations into cache
+        for appservice in db.all()? {
+            registration_info.insert(
+                appservice.0,
+                appservice
+                    .1
+                    .try_into()
+                    .expect("Should be validated on registration"),
+            );
+        }
+
+        Ok(Self {
+            db,
+            registration_info: RwLock::new(registration_info),
+        })
+    }
+    /// Registers an appservice and returns the ID to the caller.
     pub async fn register_appservice(&self, yaml: Registration) -> Result<String> {
         services()
             .appservice
@@ -111,7 +131,7 @@ impl Service {
         self.db.register_appservice(yaml)
     }
 
-    /// Remove an appservice registration
+    /// Removes an appservice registration.
     ///
     /// # Arguments
     ///
@@ -135,7 +155,12 @@ impl Service {
         self.db.iter_ids()
     }
 
-    pub fn all(&self) -> Result<Vec<(String, Registration)>> {
-        self.db.all()
+    pub async fn all(&self) -> Vec<RegistrationInfo> {
+        self.registration_info
+            .read()
+            .await
+            .values()
+            .cloned()
+            .collect()
     }
 }
