@@ -54,6 +54,11 @@ pub enum Error {
         #[from]
         source: reqwest::Error,
     },
+    #[error("Could build regular expression: {source}")]
+    RegexError {
+        #[from]
+        source: regex::Error,
+    },
     #[error("{0}")]
     FederationError(OwnedServerName, RumaError),
     #[error("Could not do this io: {source}")]

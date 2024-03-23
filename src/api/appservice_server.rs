@@ -1,23 +1,29 @@
 use crate::{services, utils, Error, Result};
 use bytes::BytesMut;
-use ruma::api::{IncomingResponse, MatrixVersion, OutgoingRequest, SendAccessToken};
+use ruma::api::{
+    appservice::Registration, IncomingResponse, MatrixVersion, OutgoingRequest, SendAccessToken,
+};
 use std::{fmt::Debug, mem, time::Duration};
 use tracing::warn;
 
+/// Sends a request to an appservice
+///
+/// Only returns None if there is no url specified in the appservice registration file
 #[tracing::instrument(skip(request))]
 pub(crate) async fn send_request<T: OutgoingRequest>(
-    registration: serde_yaml::Value,
+    registration: Registration,
     request: T,
-) -> Result<T::IncomingResponse>
+) -> Option<Result<T::IncomingResponse>>
 where
     T: Debug,
 {
-    let destination = registration.get("url").unwrap().as_str().unwrap();
-    let hs_token = registration.get("hs_token").unwrap().as_str().unwrap();
+    let destination = registration.url?;
+
+    let hs_token = registration.hs_token.as_str();
 
     let mut http_request = request
         .try_into_http_request::<BytesMut>(
-            destination,
+            &destination,
             SendAccessToken::IfRequired(hs_token),
             &[MatrixVersion::V1_0],
         )
@@ -55,11 +61,9 @@ where
         Err(e) => {
             warn!(
                 "Could not send request to appservice {:?} at {}: {}",
-                registration.get("id"),
-                destination,
-                e
+                registration.id, destination, e
             );
-            return Err(e.into());
+            return Some(Err(e.into()));
         }
     };
 
@@ -95,11 +99,12 @@ where
             .body(body)
             .expect("reqwest body is valid http body"),
     );
-    response.map_err(|_| {
+
+    Some(response.map_err(|_| {
         warn!(
             "Appservice returned invalid response bytes {}\n{}",
             destination, url
         );
         Error::BadServerResponse("Server returned bad response.")
-    })
+    }))
 }

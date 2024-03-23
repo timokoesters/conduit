@@ -57,7 +57,7 @@ impl Services {
         config: Config,
     ) -> Result<Self> {
         Ok(Self {
-            appservice: appservice::Service { db },
+            appservice: appservice::Service::build(db)?,
             pusher: pusher::Service { db },
             rooms: rooms::Service {
                 alias: rooms::alias::Service { db },

@@ -8,6 +8,7 @@ use std::{
 use clap::Parser;
 use regex::Regex;
 use ruma::{
+    api::appservice::Registration,
     events::{
         room::{
             canonical_alias::RoomCanonicalAliasEventContent,
@@ -335,10 +336,9 @@ impl Service {
                 if body.len() > 2 && body[0].trim() == "```" && body.last().unwrap().trim() == "```"
                 {
                     let appservice_config = body[1..body.len() - 1].join("\n");
-                    let parsed_config =
-                        serde_yaml::from_str::<serde_yaml::Value>(&appservice_config);
+                    let parsed_config = serde_yaml::from_str::<Registration>(&appservice_config);
                     match parsed_config {
-                        Ok(yaml) => match services().appservice.register_appservice(yaml) {
+                        Ok(yaml) => match services().appservice.register_appservice(yaml).await {
                             Ok(id) => RoomMessageEventContent::text_plain(format!(
                                 "Appservice registered with ID: {id}."
                             )),
@@ -361,6 +361,7 @@ impl Service {
             } => match services()
                 .appservice
                 .unregister_appservice(&appservice_identifier)
+                .await
             {
                 Ok(()) => RoomMessageEventContent::text_plain("Appservice unregistered."),
                 Err(e) => RoomMessageEventContent::text_plain(format!(
@@ -368,25 +369,13 @@ impl Service {
                 )),
             },
             AdminCommand::ListAppservices => {
-                if let Ok(appservices) = services()
-                    .appservice
-                    .iter_ids()
-                    .map(|ids| ids.collect::<Vec<_>>())
-                {
-                    let count = appservices.len();
-                    let output = format!(
-                        "Appservices ({}): {}",
-                        count,
-                        appservices
-                            .into_iter()
-                            .filter_map(|r| r.ok())
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    );
-                    RoomMessageEventContent::text_plain(output)
-                } else {
-                    RoomMessageEventContent::text_plain("Failed to get appservices.")
-                }
+                let appservices = services().appservice.iter_ids().await;
+                let output = format!(
+                    "Appservices ({}): {}",
+                    appservices.len(),
+                    appservices.join(", ")
+                );
+                RoomMessageEventContent::text_plain(output)
             }
             AdminCommand::ListRooms => {
                 let room_ids = services().rooms.metadata.iter_ids();
