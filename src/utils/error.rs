@@ -85,6 +85,8 @@ pub enum Error {
     #[cfg(feature = "conduit_bin")]
     #[error("{0}")]
     PathError(#[from] axum::extract::rejection::PathRejection),
+    #[error("{0}")]
+    AdminCommand(&'static str),
 }
 
 impl Error {
