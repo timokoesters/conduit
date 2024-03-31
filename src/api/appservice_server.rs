@@ -13,11 +13,16 @@ use tracing::warn;
 pub(crate) async fn send_request<T: OutgoingRequest>(
     registration: Registration,
     request: T,
-) -> Option<Result<T::IncomingResponse>>
+) -> Result<Option<T::IncomingResponse>>
 where
     T: Debug,
 {
-    let destination = registration.url?;
+    let destination = match registration.url {
+        Some(url) => url,
+        None => {
+            return Ok(None);
+        }
+    };
 
     let hs_token = registration.hs_token.as_str();
 
@@ -45,8 +50,7 @@ where
     );
     *http_request.uri_mut() = parts.try_into().expect("our manipulation is always valid");
 
-    let mut reqwest_request = reqwest::Request::try_from(http_request)
-        .expect("all http requests are valid reqwest requests");
+    let mut reqwest_request = reqwest::Request::try_from(http_request)?;
 
     *reqwest_request.timeout_mut() = Some(Duration::from_secs(30));
 
@@ -63,7 +67,7 @@ where
                 "Could not send request to appservice {:?} at {}: {}",
                 registration.id, destination, e
             );
-            return Some(Err(e.into()));
+            return Err(e.into());
         }
     };
 
@@ -100,11 +104,11 @@ where
             .expect("reqwest body is valid http body"),
     );
 
-    Some(response.map_err(|_| {
+    response.map(Some).map_err(|_| {
         warn!(
             "Appservice returned invalid response bytes {}\n{}",
             destination, url
         );
         Error::BadServerResponse("Server returned bad response.")
-    }))
+    })
 }

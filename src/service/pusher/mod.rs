@@ -66,8 +66,7 @@ impl Service {
             })?
             .map(|body| body.freeze());
 
-        let reqwest_request = reqwest::Request::try_from(http_request)
-            .expect("all http requests are valid reqwest requests");
+        let reqwest_request = reqwest::Request::try_from(http_request)?;
 
         // TODO: we could keep this very short and let expo backoff do it's thing...
         //*reqwest_request.timeout_mut() = Some(Duration::from_secs(5));
