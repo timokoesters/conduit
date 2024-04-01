@@ -555,6 +555,13 @@ impl Service {
                     }
                 };
 
+                // Checks if user is local
+                if user_id.server_name() != services().globals.server_name() {
+                    return Ok(RoomMessageEventContent::text_plain(
+                        "The specified user is not from this server!",
+                    ));
+                };
+
                 // Check if the specified user is valid
                 if !services().users.exists(&user_id)?
                     || user_id
@@ -658,7 +665,15 @@ impl Service {
                 user_id,
             } => {
                 let user_id = Arc::<UserId>::from(user_id);
-                if services().users.exists(&user_id)? {
+                if !services().users.exists(&user_id)? {
+                    RoomMessageEventContent::text_plain(format!(
+                        "User {user_id} doesn't exist on this server"
+                    ))
+                } else if user_id.server_name() != services().globals.server_name() {
+                    RoomMessageEventContent::text_plain(format!(
+                        "User {user_id} is not from this server"
+                    ))
+                } else {
                     RoomMessageEventContent::text_plain(format!(
                         "Making {user_id} leave all rooms before deactivation..."
                     ));
@@ -672,28 +687,74 @@ impl Service {
                     RoomMessageEventContent::text_plain(format!(
                         "User {user_id} has been deactivated"
                     ))
-                } else {
-                    RoomMessageEventContent::text_plain(format!(
-                        "User {user_id} doesn't exist on this server"
-                    ))
                 }
             }
             AdminCommand::DeactivateAll { leave_rooms, force } => {
                 if body.len() > 2 && body[0].trim() == "```" && body.last().unwrap().trim() == "```"
                 {
-                    let usernames = body.clone().drain(1..body.len() - 1).collect::<Vec<_>>();
+                    let users = body.clone().drain(1..body.len() - 1).collect::<Vec<_>>();
 
-                    let mut user_ids: Vec<&UserId> = Vec::new();
+                    let mut user_ids = Vec::new();
+                    let mut remote_ids = Vec::new();
+                    let mut non_existant_ids = Vec::new();
+                    let mut invalid_users = Vec::new();
 
-                    for &username in &usernames {
-                        match <&UserId>::try_from(username) {
-                            Ok(user_id) => user_ids.push(user_id),
+                    for &user in &users {
+                        match <&UserId>::try_from(user) {
+                            Ok(user_id) => {
+                                if user_id.server_name() != services().globals.server_name() {
+                                    remote_ids.push(user_id)
+                                } else if !services().users.exists(user_id)? {
+                                    non_existant_ids.push(user_id)
+                                } else {
+                                    user_ids.push(user_id)
+                                }
+                            }
                             Err(_) => {
-                                return Ok(RoomMessageEventContent::text_plain(format!(
-                                    "{username} is not a valid username"
-                                )))
+                                invalid_users.push(user);
                             }
                         }
+                    }
+
+                    let mut markdown_message = String::new();
+                    let mut html_message = String::new();
+                    if !invalid_users.is_empty() {
+                        markdown_message.push_str("The following user ids are not valid:\n```\n");
+                        html_message.push_str("The following user ids are not valid:\n<pre>\n");
+                        for invalid_user in invalid_users {
+                            markdown_message.push_str(&format!("{invalid_user}\n"));
+                            html_message.push_str(&format!("{invalid_user}\n"));
+                        }
+                        markdown_message.push_str("```\n\n");
+                        html_message.push_str("</pre>\n\n");
+                    }
+                    if !remote_ids.is_empty() {
+                        markdown_message
+                            .push_str("The following users are not from this server:\n```\n");
+                        html_message
+                            .push_str("The following users are not from this server:\n<pre>\n");
+                        for remote_id in remote_ids {
+                            markdown_message.push_str(&format!("{remote_id}\n"));
+                            html_message.push_str(&format!("{remote_id}\n"));
+                        }
+                        markdown_message.push_str("```\n\n");
+                        html_message.push_str("</pre>\n\n");
+                    }
+                    if !non_existant_ids.is_empty() {
+                        markdown_message.push_str("The following users do not exist:\n```\n");
+                        html_message.push_str("The following users do not exist:\n<pre>\n");
+                        for non_existant_id in non_existant_ids {
+                            markdown_message.push_str(&format!("{non_existant_id}\n"));
+                            html_message.push_str(&format!("{non_existant_id}\n"));
+                        }
+                        markdown_message.push_str("```\n\n");
+                        html_message.push_str("</pre>\n\n");
+                    }
+                    if !markdown_message.is_empty() {
+                        return Ok(RoomMessageEventContent::text_html(
+                            markdown_message,
+                            html_message,
+                        ));
                     }
 
                     let mut deactivation_count = 0;
