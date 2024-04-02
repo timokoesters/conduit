@@ -110,7 +110,8 @@ where
                 (
                     AuthScheme::AccessToken
                     | AuthScheme::AppserviceToken
-                    | AuthScheme::AccessTokenOptional,
+                    | AuthScheme::AccessTokenOptional
+                    | AuthScheme::None,
                     Token::Appservice(info),
                 ) => {
                     let user_id = query_params
@@ -144,7 +145,7 @@ where
                     ));
                 }
                 (
-                    AuthScheme::AccessToken | AuthScheme::AccessTokenOptional,
+                    AuthScheme::AccessToken | AuthScheme::AccessTokenOptional | AuthScheme::None,
                     Token::User((user_id, device_id)),
                 ) => (Some(user_id), Some(device_id), None, false),
                 (AuthScheme::ServerSignatures, Token::None) => {
@@ -259,13 +260,10 @@ where
                     | AuthScheme::AccessTokenOptional,
                     Token::None,
                 ) => (None, None, None, false),
-                (
-                    AuthScheme::ServerSignatures | AuthScheme::None,
-                    Token::Appservice(_) | Token::User(_),
-                ) => {
+                (AuthScheme::ServerSignatures, Token::Appservice(_) | Token::User(_)) => {
                     return Err(Error::BadRequest(
                         ErrorKind::Unauthorized,
-                        "Access tokens should not be used on this endpoint.",
+                        "Only server signatures should be used on this endpoint.",
                     ));
                 }
                 (AuthScheme::AppserviceToken, Token::User(_)) => {
