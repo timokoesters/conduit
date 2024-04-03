@@ -270,6 +270,7 @@ pub async fn ban_user_route(body: Ruma<ban_user::v3::Request>) -> Result<ban_use
                 serde_json::from_str(event.content.get())
                     .map(|event: RoomMemberEventContent| RoomMemberEventContent {
                         membership: MembershipState::Ban,
+                        join_authorized_via_users_server: None,
                         ..event
                     })
                     .map_err(|_| Error::bad_database("Invalid member event in database."))
@@ -1465,6 +1466,7 @@ pub async fn leave_room(user_id: &UserId, room_id: &RoomId, reason: Option<Strin
 
         event.membership = MembershipState::Leave;
         event.reason = reason;
+        event.join_authorized_via_users_server = None;
 
         services()
             .rooms
