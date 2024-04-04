@@ -18,9 +18,10 @@ use ruma::{
     },
     EventId, JsOption, OwnedServerName, OwnedUserId, RoomId, ServerName, UserId,
 };
-use tracing::error;
+use serde_json::value::to_raw_value;
+use tracing::{error, warn};
 
-use crate::{services, Error, PduEvent, Result};
+use crate::{service::pdu::PduBuilder, services, Error, PduEvent, Result};
 
 pub struct Service {
     pub db: &'static dyn Data,
@@ -299,6 +300,41 @@ impl Service {
                 serde_json::from_str(s.content.get())
                     .map_err(|_| Error::bad_database("Invalid room avatar event in database."))
             })
+    }
+
+    pub async fn user_can_invite(
+        &self,
+        room_id: &RoomId,
+        sender: &UserId,
+        target_user: &UserId,
+    ) -> Result<bool> {
+        let content = to_raw_value(&RoomMemberEventContent::new(MembershipState::Invite))
+            .expect("Event content always serializes");
+
+        let new_event = PduBuilder {
+            event_type: ruma::events::TimelineEventType::RoomMember,
+            content,
+            unsigned: None,
+            state_key: Some(target_user.into()),
+            redacts: None,
+        };
+
+        let mutex_state = Arc::clone(
+            services()
+                .globals
+                .roomid_mutex_state
+                .write()
+                .await
+                .entry(room_id.to_owned())
+                .or_default(),
+        );
+        let state_lock = mutex_state.lock().await;
+
+        Ok(services()
+            .rooms
+            .timeline
+            .create_hash_and_sign_event(new_event, sender, room_id, &state_lock)
+            .is_ok())
     }
 
     pub fn get_member(
