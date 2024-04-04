@@ -125,7 +125,7 @@ features = [
 ]
 
 [target.'cfg(unix)'.dependencies]
-nix = { version = "0.26.2", features = ["resource"] }
+nix = { version = "0.28", features = ["resource"] }
 
 [features]
 default = ["conduit_bin", "backend_sqlite", "backend_rocksdb", "systemd"]
