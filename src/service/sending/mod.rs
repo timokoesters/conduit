@@ -512,10 +512,8 @@ impl Service {
                 )
                 .await
                 {
-                    None => Ok(kind.clone()),
-                    Some(op_resp) => op_resp
-                        .map(|_response| kind.clone())
-                        .map_err(|e| (kind.clone(), e)),
+                    Ok(_) => Ok(kind.clone()),
+                    Err(e) => Err((kind.clone(), e)),
                 };
 
                 drop(permit);
@@ -710,7 +708,7 @@ impl Service {
         &self,
         registration: Registration,
         request: T,
-    ) -> Option<Result<T::IncomingResponse>>
+    ) -> Result<Option<T::IncomingResponse>>
     where
         T: Debug,
     {

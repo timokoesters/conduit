@@ -102,20 +102,18 @@ pub(crate) async fn get_alias_helper(
         None => {
             for appservice in services().appservice.read().await.values() {
                 if appservice.aliases.is_match(room_alias.as_str())
-                    && if let Some(opt_result) = services()
-                        .sending
-                        .send_appservice_request(
-                            appservice.registration.clone(),
-                            appservice::query::query_room_alias::v1::Request {
-                                room_alias: room_alias.clone(),
-                            },
-                        )
-                        .await
-                    {
-                        opt_result.is_ok()
-                    } else {
-                        false
-                    }
+                    && matches!(
+                        services()
+                            .sending
+                            .send_appservice_request(
+                                appservice.registration.clone(),
+                                appservice::query::query_room_alias::v1::Request {
+                                    room_alias: room_alias.clone(),
+                                },
+                            )
+                            .await,
+                        Ok(Some(_opt_result))
+                    )
                 {
                     room_id = Some(
                         services()

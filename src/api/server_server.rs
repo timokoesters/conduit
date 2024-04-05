@@ -233,8 +233,7 @@ where
         }
     }
 
-    let reqwest_request = reqwest::Request::try_from(http_request)
-        .expect("all http requests are valid reqwest requests");
+    let reqwest_request = reqwest::Request::try_from(http_request)?;
 
     let url = reqwest_request.url().clone();
 
