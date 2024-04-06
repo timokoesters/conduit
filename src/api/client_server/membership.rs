@@ -1398,8 +1398,10 @@ pub async fn leave_all_rooms(user_id: &UserId) -> Result<()> {
 
 pub async fn leave_room(user_id: &UserId, room_id: &RoomId, reason: Option<String>) -> Result<()> {
     // Ask a remote server if we don't have this room
-    if !services().rooms.metadata.exists(room_id)?
-        && room_id.server_name() != Some(services().globals.server_name())
+    if !services()
+        .rooms
+        .state_cache
+        .server_in_room(services().globals.server_name(), room_id)?
     {
         if let Err(e) = remote_leave_room(user_id, room_id).await {
             warn!("Failed to leave room {} remotely: {}", user_id, e);
