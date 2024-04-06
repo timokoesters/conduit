@@ -1,5 +1,6 @@
 use crate::{
-    service::rooms::timeline::PduCount, services, Error, PduEvent, Result, Ruma, RumaResponse,
+    service::{pdu::EventHash, rooms::timeline::PduCount},
+    services, utils, Error, PduEvent, Result, Ruma, RumaResponse,
 };
 
 use ruma::{
@@ -21,7 +22,7 @@ use ruma::{
         StateEventType, TimelineEventType,
     },
     serde::Raw,
-    uint, DeviceId, JsOption, OwnedDeviceId, OwnedUserId, RoomId, UInt, UserId,
+    uint, DeviceId, EventId, JsOption, OwnedDeviceId, OwnedUserId, RoomId, UInt, UserId,
 };
 use std::{
     collections::{hash_map::Entry, BTreeMap, BTreeSet, HashMap, HashSet},
@@ -296,8 +297,6 @@ async fn sync_helper(
     for result in all_left_rooms {
         let (room_id, _) = result?;
 
-        let mut left_state_events = Vec::new();
-
         {
             // Get and drop the lock to wait for remaining operations to finish
             let mutex_insert = Arc::clone(
@@ -325,8 +324,47 @@ async fn sync_helper(
 
         if !services().rooms.metadata.exists(&room_id)? {
             // This is just a rejected invite, not a room we know
+            let event = PduEvent {
+                event_id: EventId::new(services().globals.server_name()).into(),
+                sender: sender_user.clone(),
+                origin_server_ts: utils::millis_since_unix_epoch()
+                    .try_into()
+                    .expect("Timestamp is valid js_int value"),
+                kind: TimelineEventType::RoomMember,
+                content: serde_json::from_str(r#"{ "membership": "leave"}"#).unwrap(),
+                state_key: Some(sender_user.to_string()),
+                unsigned: None,
+                // The following keys are dropped on conversion
+                room_id: room_id.clone(),
+                prev_events: vec![],
+                depth: uint!(1),
+                auth_events: vec![],
+                redacts: None,
+                hashes: EventHash {
+                    sha256: String::new(),
+                },
+                signatures: None,
+            };
+
+            left_rooms.insert(
+                room_id,
+                LeftRoom {
+                    account_data: RoomAccountData { events: Vec::new() },
+                    timeline: Timeline {
+                        limited: false,
+                        prev_batch: Some(next_batch_string.clone()),
+                        events: Vec::new(),
+                    },
+                    state: State {
+                        events: vec![event.to_sync_state_event()],
+                    },
+                },
+            );
+
             continue;
         }
+
+        let mut left_state_events = Vec::new();
 
         let since_shortstatehash = services()
             .rooms
