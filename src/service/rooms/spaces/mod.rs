@@ -408,7 +408,7 @@ impl Service {
                     debug!("User is not allowed to see room {room_id}");
                     // This error will be caught later
                     return Err(Error::BadRequest(
-                        ErrorKind::Forbidden,
+                        ErrorKind::forbidden(),
                         "User is not allowed to see the room",
                     ));
                 }

@@ -72,7 +72,7 @@ pub async fn create_room_route(
         && !services().users.is_admin(sender_user)?
     {
         return Err(Error::BadRequest(
-            ErrorKind::Forbidden,
+            ErrorKind::forbidden(),
             "Room creation has been disabled.",
         ));
     }
@@ -522,7 +522,7 @@ pub async fn get_room_event_route(
         &body.event_id,
     )? {
         return Err(Error::BadRequest(
-            ErrorKind::Forbidden,
+            ErrorKind::forbidden(),
             "You don't have permission to view this event.",
         ));
     }
@@ -551,7 +551,7 @@ pub async fn get_room_aliases_route(
         .is_joined(sender_user, &body.room_id)?
     {
         return Err(Error::BadRequest(
-            ErrorKind::Forbidden,
+            ErrorKind::forbidden(),
             "You don't have permission to view this room.",
         ));
     }

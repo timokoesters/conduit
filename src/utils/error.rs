@@ -128,7 +128,7 @@ impl Error {
                 kind.clone(),
                 match kind {
                     WrongRoomKeysVersion { .. }
-                    | Forbidden
+                    | Forbidden { .. }
                     | GuestAccessForbidden
                     | ThreepidAuthFailed
                     | ThreepidDenied => StatusCode::FORBIDDEN,

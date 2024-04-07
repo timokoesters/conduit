@@ -12,7 +12,7 @@ use ruma::{
                 Ephemeral, Filter, GlobalAccountData, InviteState, InvitedRoom, JoinedRoom,
                 LeftRoom, Presence, RoomAccountData, RoomSummary, Rooms, State, Timeline, ToDevice,
             },
-            v4::SlidingOp,
+            v4::{SlidingOp, SlidingSyncRoomHero},
             DeviceLists, UnreadNotificationsCount,
         },
         uiaa::UiaaResponse,
@@ -716,7 +716,7 @@ async fn load_joined_room(
                                         .state_cache
                                         .is_invited(&user_id, room_id)?)
                                 {
-                                    Ok::<_, Error>(Some(state_key.clone()))
+                                    Ok::<_, Error>(Some(user_id))
                                 } else {
                                     Ok(None)
                                 }
@@ -1572,7 +1572,7 @@ pub async fn sync_events_v4_route(
             sender_user.clone(),
             sender_device.clone(),
             conn_id.clone(),
-            body.room_subscriptions,
+            body.room_subscriptions.clone(),
         );
     }
 
@@ -1638,33 +1638,37 @@ pub async fn sync_events_v4_route(
                     .get_member(room_id, &member)
                     .ok()
                     .flatten()
-                    .map(|memberevent| {
-                        (
-                            memberevent
-                                .displayname
-                                .unwrap_or_else(|| member.to_string()),
-                            memberevent.avatar_url,
-                        )
+                    .map(|memberevent| SlidingSyncRoomHero {
+                        user_id: member,
+                        name: memberevent.displayname,
+                        avatar: memberevent.avatar_url,
                     })
             })
             .take(5)
             .collect::<Vec<_>>();
         let name = match &heroes[..] {
             [] => None,
-            [only] => Some(only.0.clone()),
+            [only] => Some(
+                only.name
+                    .clone()
+                    .unwrap_or_else(|| only.user_id.to_string()),
+            ),
             [firsts @ .., last] => Some(
                 firsts
                     .iter()
-                    .map(|h| h.0.clone())
+                    .map(|h| h.name.clone().unwrap_or_else(|| h.user_id.to_string()))
                     .collect::<Vec<_>>()
                     .join(", ")
                     + " and "
-                    + &last.0,
+                    + &last
+                        .name
+                        .clone()
+                        .unwrap_or_else(|| last.user_id.to_string()),
             ),
         };
 
         let avatar = if let [only] = &heroes[..] {
-            only.1.clone()
+            only.avatar.clone()
         } else {
             None
         };
@@ -1725,6 +1729,16 @@ pub async fn sync_events_v4_route(
                 ),
                 num_live: None, // Count events in timeline greater than global sync counter
                 timestamp: None,
+                heroes: if body
+                    .room_subscriptions
+                    .get(room_id)
+                    .map(|sub| sub.include_heroes.unwrap_or_default())
+                    .unwrap_or_default()
+                {
+                    Some(heroes)
+                } else {
+                    None
+                },
             },
         );
     }

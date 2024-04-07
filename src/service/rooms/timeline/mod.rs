@@ -762,7 +762,7 @@ impl Service {
 
         if !auth_check {
             return Err(Error::BadRequest(
-                ErrorKind::Forbidden,
+                ErrorKind::forbidden(),
                 "Event is not authorized.",
             ));
         }
@@ -842,7 +842,7 @@ impl Service {
                     TimelineEventType::RoomEncryption => {
                         warn!("Encryption is not allowed in the admins room");
                         return Err(Error::BadRequest(
-                            ErrorKind::Forbidden,
+                            ErrorKind::forbidden(),
                             "Encryption is not allowed in the admins room.",
                         ));
                     }
@@ -865,7 +865,7 @@ impl Service {
                             if target == server_user {
                                 warn!("Conduit user cannot leave from admins room");
                                 return Err(Error::BadRequest(
-                                    ErrorKind::Forbidden,
+                                    ErrorKind::forbidden(),
                                     "Conduit user cannot leave from admins room.",
                                 ));
                             }
@@ -881,7 +881,7 @@ impl Service {
                             if count < 2 {
                                 warn!("Last admin cannot leave from admins room");
                                 return Err(Error::BadRequest(
-                                    ErrorKind::Forbidden,
+                                    ErrorKind::forbidden(),
                                     "Last admin cannot leave from admins room.",
                                 ));
                             }
@@ -891,7 +891,7 @@ impl Service {
                             if target == server_user {
                                 warn!("Conduit user cannot be banned in admins room");
                                 return Err(Error::BadRequest(
-                                    ErrorKind::Forbidden,
+                                    ErrorKind::forbidden(),
                                     "Conduit user cannot be banned in admins room.",
                                 ));
                             }
@@ -907,7 +907,7 @@ impl Service {
                             if count < 2 {
                                 warn!("Last admin cannot be banned in admins room");
                                 return Err(Error::BadRequest(
-                                    ErrorKind::Forbidden,
+                                    ErrorKind::forbidden(),
                                     "Last admin cannot be banned in admins room.",
                                 ));
                             }
@@ -939,7 +939,7 @@ impl Service {
                             false,
                         )? {
                             return Err(Error::BadRequest(
-                                ErrorKind::Forbidden,
+                                ErrorKind::forbidden(),
                                 "User cannot redact this event.",
                             ));
                         }
@@ -960,7 +960,7 @@ impl Service {
                             false,
                         )? {
                             return Err(Error::BadRequest(
-                                ErrorKind::Forbidden,
+                                ErrorKind::forbidden(),
                                 "User cannot redact this event.",
                             ));
                         }

@@ -17,7 +17,7 @@ pub async fn create_typing_event_route(
         .is_joined(sender_user, &body.room_id)?
     {
         return Err(Error::BadRequest(
-            ErrorKind::Forbidden,
+            ErrorKind::forbidden(),
             "You are not in this room.",
         ));
     }

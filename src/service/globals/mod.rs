@@ -10,11 +10,8 @@ use crate::api::server_server::FedDest;
 use crate::{services, Config, Error, Result};
 use futures_util::FutureExt;
 use hickory_resolver::TokioAsyncResolver;
-use hyper::{
-    client::connect::dns::{GaiResolver, Name},
-    service::Service as HyperService,
-};
-use reqwest::dns::{Addrs, Resolve, Resolving};
+use hyper_util::client::legacy::connect::dns::{GaiResolver, Name as HyperName};
+use reqwest::dns::{Addrs, Name, Resolve, Resolving};
 use ruma::{
     api::{
         client::sync::sync_events,
@@ -22,6 +19,7 @@ use ruma::{
     },
     DeviceId, RoomVersionId, ServerName, UserId,
 };
+use std::str::FromStr;
 use std::{
     collections::{BTreeMap, HashMap},
     error::Error as StdError,
@@ -37,6 +35,7 @@ use std::{
     time::{Duration, Instant},
 };
 use tokio::sync::{broadcast, watch::Receiver, Mutex, RwLock, Semaphore};
+use tower_service::Service as TowerService;
 use tracing::{error, info};
 
 use base64::{engine::general_purpose, Engine as _};
@@ -139,11 +138,19 @@ impl Resolve for Resolver {
             })
             .unwrap_or_else(|| {
                 let this = &mut self.inner.clone();
-                Box::pin(HyperService::<Name>::call(this, name).map(|result| {
-                    result
-                        .map(|addrs| -> Addrs { Box::new(addrs) })
-                        .map_err(|err| -> Box<dyn StdError + Send + Sync> { Box::new(err) })
-                }))
+                Box::pin(
+                    TowerService::<HyperName>::call(
+                        this,
+                        // Beautiful hack, please remove this in the future.
+                        HyperName::from_str(name.as_str())
+                            .expect("reqwest Name is just wrapper for hyper-util Name"),
+                    )
+                    .map(|result| {
+                        result
+                            .map(|addrs| -> Addrs { Box::new(addrs) })
+                            .map_err(|err| -> Box<dyn StdError + Send + Sync> { Box::new(err) })
+                    }),
+                )
             })
     }
 }
