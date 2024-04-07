@@ -23,7 +23,10 @@ use ruma::{
             },
             event::{get_event, get_missing_events, get_room_state, get_room_state_ids},
             keys::{claim_keys, get_keys},
-            membership::{create_invite, create_join_event, prepare_join_event},
+            membership::{
+                create_invite, create_join_event, create_leave_event, prepare_join_event,
+                prepare_leave_event,
+            },
             openid::get_openid_userinfo,
             query::{get_profile_information, get_room_information},
             transactions::{
@@ -1635,6 +1638,176 @@ pub async fn create_join_event_v2_route(
     };
 
     Ok(create_join_event::v2::Response { room_state })
+}
+
+/// # `PUT /_matrix/federation/v1/make_leave/{roomId}/{eventId}`
+///
+/// Creates a leave template.
+pub async fn create_leave_event_template_route(
+    body: Ruma<prepare_leave_event::v1::Request>,
+) -> Result<prepare_leave_event::v1::Response> {
+    let sender_servername = body
+        .sender_servername
+        .as_ref()
+        .expect("server is authenticated");
+
+    services()
+        .rooms
+        .event_handler
+        .acl_check(sender_servername, &body.room_id)?;
+
+    let room_version_id = services().rooms.state.get_room_version(&body.room_id)?;
+
+    let mutex_state = Arc::clone(
+        services()
+            .globals
+            .roomid_mutex_state
+            .write()
+            .await
+            .entry(body.room_id.to_owned())
+            .or_default(),
+    );
+    let state_lock = mutex_state.lock().await;
+
+    let content = to_raw_value(&RoomMemberEventContent {
+        avatar_url: None,
+        blurhash: None,
+        displayname: None,
+        is_direct: None,
+        membership: MembershipState::Leave,
+        third_party_invite: None,
+        reason: None,
+        join_authorized_via_users_server: None,
+    })
+    .expect("member event is valid value");
+
+    let (_pdu, mut pdu_json) = services().rooms.timeline.create_hash_and_sign_event(
+        PduBuilder {
+            event_type: TimelineEventType::RoomMember,
+            content,
+            unsigned: None,
+            state_key: Some(body.user_id.to_string()),
+            redacts: None,
+        },
+        &body.user_id,
+        &body.room_id,
+        &state_lock,
+    )?;
+
+    drop(state_lock);
+
+    pdu_json.remove("event_id");
+
+    Ok(prepare_leave_event::v1::Response {
+        room_version: Some(room_version_id),
+        event: to_raw_value(&pdu_json).expect("CanonicalJson can be serialized to JSON"),
+    })
+}
+
+async fn create_leave_event(
+    sender_servername: &ServerName,
+    room_id: &RoomId,
+    pdu: &RawJsonValue,
+) -> Result<()> {
+    if !services().rooms.metadata.exists(room_id)? {
+        return Err(Error::BadRequest(
+            ErrorKind::NotFound,
+            "Room is unknown to this server.",
+        ));
+    }
+
+    services()
+        .rooms
+        .event_handler
+        .acl_check(sender_servername, room_id)?;
+
+    let pub_key_map = RwLock::new(BTreeMap::new());
+
+    // We do not add the event_id field to the pdu here because of signature and hashes checks
+    let room_version_id = services().rooms.state.get_room_version(room_id)?;
+    let (event_id, value) = match gen_event_id_canonical_json(pdu, &room_version_id) {
+        Ok(t) => t,
+        Err(_) => {
+            // Event could not be converted to canonical json
+            return Err(Error::BadRequest(
+                ErrorKind::InvalidParam,
+                "Could not convert event to canonical json.",
+            ));
+        }
+    };
+
+    let origin: OwnedServerName = serde_json::from_value(
+        serde_json::to_value(value.get("origin").ok_or(Error::BadRequest(
+            ErrorKind::InvalidParam,
+            "Event needs an origin field.",
+        ))?)
+        .expect("CanonicalJson is valid json value"),
+    )
+    .map_err(|_| Error::BadRequest(ErrorKind::InvalidParam, "Origin field is invalid."))?;
+
+    let mutex = Arc::clone(
+        services()
+            .globals
+            .roomid_mutex_federation
+            .write()
+            .await
+            .entry(room_id.to_owned())
+            .or_default(),
+    );
+    let mutex_lock = mutex.lock().await;
+    let pdu_id: Vec<u8> = services()
+        .rooms
+        .event_handler
+        .handle_incoming_pdu(&origin, &event_id, room_id, value, true, &pub_key_map)
+        .await?
+        .ok_or(Error::BadRequest(
+            ErrorKind::InvalidParam,
+            "Could not accept incoming PDU as timeline event.",
+        ))?;
+    drop(mutex_lock);
+
+    let servers = services()
+        .rooms
+        .state_cache
+        .room_servers(room_id)
+        .filter_map(|r| r.ok())
+        .filter(|server| &**server != services().globals.server_name());
+
+    services().sending.send_pdu(servers, &pdu_id)?;
+
+    Ok(())
+}
+
+/// # `PUT /_matrix/federation/v1/send_leave/{roomId}/{eventId}`
+///
+/// Submits a signed leave event.
+pub async fn create_leave_event_v1_route(
+    body: Ruma<create_leave_event::v1::Request>,
+) -> Result<create_leave_event::v1::Response> {
+    let sender_servername = body
+        .sender_servername
+        .as_ref()
+        .expect("server is authenticated");
+
+    create_leave_event(sender_servername, &body.room_id, &body.pdu).await?;
+
+    Ok(create_leave_event::v1::Response::new())
+}
+
+/// # `PUT /_matrix/federation/v2/send_leave/{roomId}/{eventId}`
+///
+/// Submits a signed leave event.
+pub async fn create_leave_event_v2_route(
+    body: Ruma<create_leave_event::v2::Request>,
+) -> Result<create_leave_event::v2::Response> {
+    let sender_servername = body
+        .sender_servername
+        .as_ref()
+        .expect("server is authenticated");
+
+    create_leave_event(sender_servername, &body.room_id, &body.pdu).await?;
+
+    Ok(create_leave_event::v2::Response::new())
 }
 
 /// # `PUT /_matrix/federation/v2/invite/{roomId}/{eventId}`
