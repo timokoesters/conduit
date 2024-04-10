@@ -15,6 +15,7 @@ pub trait Data: Send + Sync {
         user_id: &UserId,
         room_id: &RoomId,
         last_state: Option<Vec<Raw<AnyStrippedStateEvent>>>,
+        invite_via: Option<Vec<OwnedServerName>>,
     ) -> Result<()>;
     fn mark_as_left(&self, user_id: &UserId, room_id: &RoomId) -> Result<()>;
 
@@ -106,4 +107,14 @@ pub trait Data: Send + Sync {
     fn is_invited(&self, user_id: &UserId, room_id: &RoomId) -> Result<bool>;
 
     fn is_left(&self, user_id: &UserId, room_id: &RoomId) -> Result<bool>;
+
+    /// Gets the servers to either accept or decline invites via for a given room.
+    fn servers_invite_via(&self, room_id: &RoomId) -> Result<Option<Vec<OwnedServerName>>>;
+
+    /// Add the given servers the list to accept or decline invites via for a given room.
+    fn add_servers_invite_via(
+        &self,
+        room_id: &RoomId,
+        servers: &Vec<OwnedServerName>,
+    ) -> Result<()>;
 }

@@ -392,6 +392,7 @@ dependencies = [
  "http",
  "hyper",
  "image",
+ "itertools 0.12.1",
  "jsonwebtoken",
  "lazy_static",
  "lru-cache",

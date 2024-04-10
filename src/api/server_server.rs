@@ -1669,6 +1669,15 @@ pub async fn create_invite_route(
         ));
     }
 
+    if let Some(via) = &body.via {
+        if via.is_empty() {
+            return Err(Error::BadRequest(
+                ErrorKind::InvalidParam,
+                "via field must not be empty.",
+            ));
+        }
+    }
+
     let mut signed_event = utils::to_canonical_object(&body.event)
         .map_err(|_| Error::BadRequest(ErrorKind::InvalidParam, "Invite event is invalid."))?;
 
@@ -1744,6 +1753,7 @@ pub async fn create_invite_route(
             MembershipState::Invite,
             &sender,
             Some(invite_state),
+            body.via,
             true,
         )?;
     }

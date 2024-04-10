@@ -427,6 +427,7 @@ impl Service {
                         content.membership,
                         &pdu.sender,
                         invite_state,
+                        None,
                         true,
                     )?;
                 }
