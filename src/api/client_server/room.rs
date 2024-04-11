@@ -147,7 +147,7 @@ pub async fn create_room_route(
                     );
                 }
                 RoomVersionId::V11 => {} // V11 removed the "creator" key
-                _ => panic!("Unexpected room version {}", room_version),
+                _ => unreachable!("Validity of room version already checked"),
             }
 
             content.insert(
@@ -172,7 +172,7 @@ pub async fn create_room_route(
                 | RoomVersionId::V9
                 | RoomVersionId::V10 => RoomCreateEventContent::new_v1(sender_user.clone()),
                 RoomVersionId::V11 => RoomCreateEventContent::new_v11(),
-                _ => panic!("Unexpected room version {}", room_version),
+                _ => unreachable!("Validity of room version already checked"),
             };
             let mut content = serde_json::from_str::<CanonicalJsonObject>(
                 to_raw_value(&content)
@@ -633,7 +633,7 @@ pub async fn upgrade_room_route(
             // "creator" key no longer exists in V11 rooms
             create_event_content.remove("creator");
         }
-        _ => panic!("Unexpected room version {}", body.new_version)
+        _ => unreachable!("Validity of room version already checked")
     }
     create_event_content.insert(
         "room_version".into(),

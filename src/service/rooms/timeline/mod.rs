@@ -400,11 +400,7 @@ impl Service {
                         }
                     }
                     RoomVersionId::V11 => {
-                        #[derive(Deserialize)]
-                        struct Redaction {
-                            redacts: Option<OwnedEventId>,
-                        }
-                        let content = serde_json::from_str::<Redaction>(pdu.content.get())
+                        let content = serde_json::from_str::<RoomRedactionEventContent>(pdu.content.get())
                             .map_err(|_| {
                                 Error::bad_database("Invalid content in redaction pdu.")
                             })?;
@@ -680,11 +676,7 @@ impl Service {
             .get_room_version(room_id)
             .or_else(|_| {
                 if event_type == TimelineEventType::RoomCreate {
-                    #[derive(Deserialize)]
-                    struct RoomCreate {
-                        room_version: RoomVersionId,
-                    }
-                    let content = serde_json::from_str::<RoomCreate>(content.get())
+                    let content = serde_json::from_str::<RoomCreateEventContent>(content.get())
                         .expect("Invalid content in RoomCreate pdu.");
                     Ok(content.room_version)
                 } else {
