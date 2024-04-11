@@ -73,6 +73,7 @@
       });
 
       env = pkgs: {
+        CONDUIT_VERSION_EXTRA = self.shortRev or self.dirtyShortRev;
         ROCKSDB_INCLUDE_DIR = "${rocksdb' pkgs}/include";
         ROCKSDB_LIB_DIR = "${rocksdb' pkgs}/lib";
       }
