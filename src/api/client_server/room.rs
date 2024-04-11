@@ -159,7 +159,6 @@ pub async fn create_room_route(
             content
         }
         None => {
-            // TODO: Add correct value for v11
             let content = match room_version {
                 RoomVersionId::V1
                 | RoomVersionId::V2
