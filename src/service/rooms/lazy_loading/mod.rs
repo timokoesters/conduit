@@ -1,11 +1,9 @@
 mod data;
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Mutex,
-};
+use std::collections::{HashMap, HashSet};
 
 pub use data::Data;
 use ruma::{DeviceId, OwnedDeviceId, OwnedRoomId, OwnedUserId, RoomId, UserId};
+use tokio::sync::Mutex;
 
 use crate::Result;
 
@@ -14,6 +12,7 @@ use super::timeline::PduCount;
 pub struct Service {
     pub db: &'static dyn Data,
 
+    #[allow(clippy::type_complexity)]
     pub lazy_load_waiting:
         Mutex<HashMap<(OwnedUserId, OwnedDeviceId, OwnedRoomId, PduCount), HashSet<OwnedUserId>>>,
 }
@@ -32,7 +31,7 @@ impl Service {
     }
 
     #[tracing::instrument(skip(self))]
-    pub fn lazy_load_mark_sent(
+    pub async fn lazy_load_mark_sent(
         &self,
         user_id: &UserId,
         device_id: &DeviceId,
@@ -40,7 +39,7 @@ impl Service {
         lazy_load: HashSet<OwnedUserId>,
         count: PduCount,
     ) {
-        self.lazy_load_waiting.lock().unwrap().insert(
+        self.lazy_load_waiting.lock().await.insert(
             (
                 user_id.to_owned(),
                 device_id.to_owned(),
@@ -52,14 +51,14 @@ impl Service {
     }
 
     #[tracing::instrument(skip(self))]
-    pub fn lazy_load_confirm_delivery(
+    pub async fn lazy_load_confirm_delivery(
         &self,
         user_id: &UserId,
         device_id: &DeviceId,
         room_id: &RoomId,
         since: PduCount,
     ) -> Result<()> {
-        if let Some(user_ids) = self.lazy_load_waiting.lock().unwrap().remove(&(
+        if let Some(user_ids) = self.lazy_load_waiting.lock().await.remove(&(
             user_id.to_owned(),
             device_id.to_owned(),
             room_id.to_owned(),

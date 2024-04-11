@@ -1,0 +1,53 @@
+# Conduit
+version: '3'
+
+services:
+    homeserver:
+        ### If you already built the Conduit image with 'docker build' or want to use a registry image,
+        ### then you are ready to go.
+        image: matrixconduit/matrix-conduit:latest
+        ### If you want to build a fresh image from the sources, then comment the image line and uncomment the
+        ### build lines. If you want meaningful labels in your built Conduit image, you should run docker-compose like this:
+        ### CREATED=$(date -u +'%Y-%m-%dT%H:%M:%SZ') VERSION=$(grep -m1 -o '[0-9].[0-9].[0-9]' Cargo.toml) docker-compose up -d
+        # build:
+        #     context: .
+        #     args:
+        #         CREATED: '2021-03-16T08:18:27Z'
+        #         VERSION: '0.1.0'
+        #         LOCAL: 'false'
+        #         GIT_REF: origin/master
+        restart: unless-stopped
+        ports:
+            - 8448:6167
+        volumes:
+            - db:/var/lib/matrix-conduit/
+        environment:
+            CONDUIT_SERVER_NAME: your.server.name # EDIT THIS
+            CONDUIT_DATABASE_PATH: /var/lib/matrix-conduit/
+            CONDUIT_DATABASE_BACKEND: rocksdb
+            CONDUIT_PORT: 6167
+            CONDUIT_MAX_REQUEST_SIZE: 20_000_000 # in bytes, ~20 MB
+            CONDUIT_ALLOW_REGISTRATION: 'true'
+            CONDUIT_ALLOW_FEDERATION: 'true'
+            CONDUIT_ALLOW_CHECK_FOR_UPDATES: 'true'
+            CONDUIT_TRUSTED_SERVERS: '["matrix.org"]'
+            #CONDUIT_MAX_CONCURRENT_REQUESTS: 100
+            CONDUIT_ADDRESS: 0.0.0.0
+            CONDUIT_CONFIG: '' # Ignore this
+    #
+    ### Uncomment if you want to use your own Element-Web App.
+    ### Note: You need to provide a config.json for Element and you also need a second
+    ###       Domain or Subdomain for the communication between Element and Conduit
+    ### Config-Docs: https://github.com/vector-im/element-web/blob/develop/docs/config.md
+    # element-web:
+    #     image: vectorim/element-web:latest
+    #     restart: unless-stopped
+    #     ports:
+    #         - 8009:80
+    #     volumes:
+    #         - ./element_config.json:/app/config.json
+    #     depends_on:
+    #         - homeserver
+
+volumes:
+    db:

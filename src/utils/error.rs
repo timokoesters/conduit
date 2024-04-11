@@ -54,6 +54,11 @@ pub enum Error {
         #[from]
         source: reqwest::Error,
     },
+    #[error("Could build regular expression: {source}")]
+    RegexError {
+        #[from]
+        source: regex::Error,
+    },
     #[error("{0}")]
     FederationError(OwnedServerName, RumaError),
     #[error("Could not do this io: {source}")]
@@ -80,6 +85,8 @@ pub enum Error {
     #[cfg(feature = "conduit_bin")]
     #[error("{0}")]
     PathError(#[from] axum::extract::rejection::PathRejection),
+    #[error("{0}")]
+    AdminCommand(&'static str),
     #[error("from {0}: {1}")]
     RedactionError(OwnedServerName, ruma::canonical_json::RedactionError),
     #[error("{0} in {1}")]
@@ -120,9 +127,11 @@ impl Error {
             Self::BadRequest(kind, _) => (
                 kind.clone(),
                 match kind {
-                    Forbidden | GuestAccessForbidden | ThreepidAuthFailed | ThreepidDenied => {
-                        StatusCode::FORBIDDEN
-                    }
+                    WrongRoomKeysVersion { .. }
+                    | Forbidden
+                    | GuestAccessForbidden
+                    | ThreepidAuthFailed
+                    | ThreepidDenied => StatusCode::FORBIDDEN,
                     Unauthorized | UnknownToken { .. } | MissingToken => StatusCode::UNAUTHORIZED,
                     NotFound | Unrecognized => StatusCode::NOT_FOUND,
                     LimitExceeded { .. } => StatusCode::TOO_MANY_REQUESTS,

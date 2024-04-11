@@ -1,13 +1,3 @@
-#![warn(
-    rust_2018_idioms,
-    unused_qualifications,
-    clippy::cloned_instead_of_copied,
-    clippy::str_to_string,
-    clippy::future_not_send
-)]
-#![allow(clippy::suspicious_else_formatting)]
-#![deny(clippy::dbg_macro)]
-
 use std::{future::Future, io, net::SocketAddr, sync::atomic, time::Duration};
 
 use axum::{
@@ -54,6 +44,8 @@ static GLOBAL: Jemalloc = Jemalloc;
 
 #[tokio::main]
 async fn main() {
+    clap::parse();
+
     // Initialize config
     let raw_config =
         Figment::new()
@@ -75,8 +67,6 @@ async fn main() {
 
     config.warn_deprecated();
 
-    let log = format!("{},ruma_state_res=error,_=off,sled=off", config.log);
-
     if config.allow_jaeger {
         opentelemetry::global::set_text_map_propagator(opentelemetry_jaeger::Propagator::new());
         let tracer = opentelemetry_jaeger::new_agent_pipeline()
@@ -86,7 +76,7 @@ async fn main() {
             .unwrap();
         let telemetry = tracing_opentelemetry::layer().with_tracer(tracer);
 
-        let filter_layer = match EnvFilter::try_new(&log) {
+        let filter_layer = match EnvFilter::try_new(&config.log) {
             Ok(s) => s,
             Err(e) => {
                 eprintln!(
@@ -113,7 +103,7 @@ async fn main() {
     } else {
         let registry = tracing_subscriber::Registry::default();
         let fmt_layer = tracing_subscriber::fmt::Layer::new();
-        let filter_layer = match EnvFilter::try_new(&log) {
+        let filter_layer = match EnvFilter::try_new(&config.log) {
             Ok(s) => s,
             Err(e) => {
                 eprintln!("It looks like your config is invalid. The following error occured while parsing it: {e}");
@@ -238,7 +228,7 @@ async fn spawn_task<B: Send + 'static>(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
-async fn unrecognized_method<B>(
+async fn unrecognized_method<B: Send>(
     req: axum::http::Request<B>,
     next: axum::middleware::Next<B>,
 ) -> std::result::Result<axum::response::Response, StatusCode> {

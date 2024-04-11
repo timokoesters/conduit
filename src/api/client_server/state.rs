@@ -85,7 +85,7 @@ pub async fn get_state_events_route(
     if !services()
         .rooms
         .state_accessor
-        .user_can_see_state_events(&sender_user, &body.room_id)?
+        .user_can_see_state_events(sender_user, &body.room_id)?
     {
         return Err(Error::BadRequest(
             ErrorKind::Forbidden,
@@ -118,7 +118,7 @@ pub async fn get_state_events_for_key_route(
     if !services()
         .rooms
         .state_accessor
-        .user_can_see_state_events(&sender_user, &body.room_id)?
+        .user_can_see_state_events(sender_user, &body.room_id)?
     {
         return Err(Error::BadRequest(
             ErrorKind::Forbidden,
@@ -157,7 +157,7 @@ pub async fn get_state_events_for_empty_key_route(
     if !services()
         .rooms
         .state_accessor
-        .user_can_see_state_events(&sender_user, &body.room_id)?
+        .user_can_see_state_events(sender_user, &body.room_id)?
     {
         return Err(Error::BadRequest(
             ErrorKind::Forbidden,
@@ -227,24 +227,28 @@ async fn send_state_event_for_key_helper(
             .globals
             .roomid_mutex_state
             .write()
-            .unwrap()
+            .await
             .entry(room_id.to_owned())
             .or_default(),
     );
     let state_lock = mutex_state.lock().await;
 
-    let event_id = services().rooms.timeline.build_and_append_pdu(
-        PduBuilder {
-            event_type: event_type.to_string().into(),
-            content: serde_json::from_str(json.json().get()).expect("content is valid json"),
-            unsigned: None,
-            state_key: Some(state_key),
-            redacts: None,
-        },
-        sender_user,
-        room_id,
-        &state_lock,
-    )?;
+    let event_id = services()
+        .rooms
+        .timeline
+        .build_and_append_pdu(
+            PduBuilder {
+                event_type: event_type.to_string().into(),
+                content: serde_json::from_str(json.json().get()).expect("content is valid json"),
+                unsigned: None,
+                state_key: Some(state_key),
+                redacts: None,
+            },
+            sender_user,
+            room_id,
+            &state_lock,
+        )
+        .await?;
 
     Ok(event_id)
 }

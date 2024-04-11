@@ -8,6 +8,7 @@ use crate::{
 use abstraction::{KeyValueDatabaseEngine, KvTree};
 use directories::ProjectDirs;
 use lru_cache::LruCache;
+
 use ruma::{
     events::{
         push_rules::{PushRulesEvent, PushRulesEventContent},
@@ -70,8 +71,6 @@ pub struct KeyValueDatabase {
     pub(super) readreceiptid_readreceipt: Arc<dyn KvTree>, // ReadReceiptId = RoomId + Count + UserId
     pub(super) roomuserid_privateread: Arc<dyn KvTree>, // RoomUserId = Room + User, PrivateRead = Count
     pub(super) roomuserid_lastprivatereadupdate: Arc<dyn KvTree>, // LastPrivateReadUpdate = Count
-    pub(super) typingid_userid: Arc<dyn KvTree>,        // TypingId = RoomId + TimeoutTime + Count
-    pub(super) roomid_lasttypingupdate: Arc<dyn KvTree>, // LastRoomTypingUpdate = Count
     pub(super) presenceid_presence: Arc<dyn KvTree>,    // PresenceId = RoomId + Count + UserId
     pub(super) userid_lastpresenceupdate: Arc<dyn KvTree>, // LastPresenceUpdate = Count
 
@@ -162,7 +161,6 @@ pub struct KeyValueDatabase {
     //pub pusher: pusher::PushData,
     pub(super) senderkey_pusher: Arc<dyn KvTree>,
 
-    pub(super) cached_registrations: Arc<RwLock<HashMap<String, serde_yaml::Value>>>,
     pub(super) pdu_cache: Mutex<LruCache<OwnedEventId, Arc<PduEvent>>>,
     pub(super) shorteventid_cache: Mutex<LruCache<u64, Arc<EventId>>>,
     pub(super) auth_chain_cache: Mutex<LruCache<Vec<u64>, Arc<HashSet<u64>>>>,
@@ -301,8 +299,6 @@ impl KeyValueDatabase {
             roomuserid_privateread: builder.open_tree("roomuserid_privateread")?, // "Private" read receipt
             roomuserid_lastprivatereadupdate: builder
                 .open_tree("roomuserid_lastprivatereadupdate")?,
-            typingid_userid: builder.open_tree("typingid_userid")?,
-            roomid_lasttypingupdate: builder.open_tree("roomid_lasttypingupdate")?,
             presenceid_presence: builder.open_tree("presenceid_presence")?,
             userid_lastpresenceupdate: builder.open_tree("userid_lastpresenceupdate")?,
             pduid_pdu: builder.open_tree("pduid_pdu")?,
@@ -372,7 +368,6 @@ impl KeyValueDatabase {
             global: builder.open_tree("global")?,
             server_signingkeys: builder.open_tree("server_signingkeys")?,
 
-            cached_registrations: Arc::new(RwLock::new(HashMap::new())),
             pdu_cache: Mutex::new(LruCache::new(
                 config
                     .pdu_cache_capacity
@@ -852,7 +847,9 @@ impl KeyValueDatabase {
                         if rule.is_some() {
                             let mut rule = rule.unwrap().clone();
                             rule.rule_id = content_rule_transformation[1].to_owned();
-                            rules_list.content.remove(content_rule_transformation[0]);
+                            rules_list
+                                .content
+                                .shift_remove(content_rule_transformation[0]);
                             rules_list.content.insert(rule);
                         }
                     }
@@ -875,7 +872,7 @@ impl KeyValueDatabase {
                             if let Some(rule) = rule {
                                 let mut rule = rule.clone();
                                 rule.rule_id = transformation[1].to_owned();
-                                rules_list.underride.remove(transformation[0]);
+                                rules_list.underride.shift_remove(transformation[0]);
                                 rules_list.underride.insert(rule);
                             }
                         }

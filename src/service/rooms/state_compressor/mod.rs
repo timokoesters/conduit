@@ -16,6 +16,7 @@ use self::data::StateDiff;
 pub struct Service {
     pub db: &'static dyn Data,
 
+    #[allow(clippy::type_complexity)]
     pub stateinfo_cache: Mutex<
         LruCache<
             u64,
@@ -33,6 +34,7 @@ pub type CompressedStateEvent = [u8; 2 * size_of::<u64>()];
 
 impl Service {
     /// Returns a stack with info on shortstatehash, full state, added diff and removed diff for the selected shortstatehash and each parent layer.
+    #[allow(clippy::type_complexity)]
     #[tracing::instrument(skip(self))]
     pub fn load_shortstatehash_info(
         &self,
@@ -131,6 +133,7 @@ impl Service {
     /// * `statediffremoved` - Removed from base. Each vec is shortstatekey+shorteventid
     /// * `diff_to_sibling` - Approximately how much the diff grows each time for this layer
     /// * `parent_states` - A stack with info on shortstatehash, full state, added diff and removed diff for each parent layer
+    #[allow(clippy::type_complexity)]
     #[tracing::instrument(skip(
         self,
         statediffnew,
@@ -164,7 +167,7 @@ impl Service {
             for removed in statediffremoved.iter() {
                 if !parent_new.remove(removed) {
                     // It was not added in the parent and we removed it
-                    parent_removed.insert(removed.clone());
+                    parent_removed.insert(*removed);
                 }
                 // Else it was added in the parent and we removed it again. We can forget this change
             }
@@ -172,7 +175,7 @@ impl Service {
             for new in statediffnew.iter() {
                 if !parent_removed.remove(new) {
                     // It was not touched in the parent and we added it
-                    parent_new.insert(new.clone());
+                    parent_new.insert(*new);
                 }
                 // Else it was removed in the parent and we added it again. We can forget this change
             }
@@ -217,7 +220,7 @@ impl Service {
             for removed in statediffremoved.iter() {
                 if !parent_new.remove(removed) {
                     // It was not added in the parent and we removed it
-                    parent_removed.insert(removed.clone());
+                    parent_removed.insert(*removed);
                 }
                 // Else it was added in the parent and we removed it again. We can forget this change
             }
@@ -225,7 +228,7 @@ impl Service {
             for new in statediffnew.iter() {
                 if !parent_removed.remove(new) {
                     // It was not touched in the parent and we added it
-                    parent_new.insert(new.clone());
+                    parent_new.insert(*new);
                 }
                 // Else it was removed in the parent and we added it again. We can forget this change
             }
@@ -253,6 +256,7 @@ impl Service {
     }
 
     /// Returns the new shortstatehash, and the state diff from the previous room state
+    #[allow(clippy::type_complexity)]
     pub fn save_state(
         &self,
         room_id: &RoomId,

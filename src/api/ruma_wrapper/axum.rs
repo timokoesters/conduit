@@ -15,13 +15,20 @@ use bytes::{Buf, BufMut, Bytes, BytesMut};
 use http::{Request, StatusCode};
 use ruma::{
     api::{client::error::ErrorKind, AuthScheme, IncomingRequest, OutgoingResponse},
-    CanonicalJsonValue, OwnedDeviceId, OwnedServerName, UserId,
+    CanonicalJsonValue, OwnedDeviceId, OwnedServerName, OwnedUserId, UserId,
 };
 use serde::Deserialize;
 use tracing::{debug, error, warn};
 
 use super::{Ruma, RumaResponse};
-use crate::{services, Error, Result};
+use crate::{service::appservice::RegistrationInfo, services, Error, Result};
+
+enum Token {
+    Appservice(Box<RegistrationInfo>),
+    User((OwnedUserId, OwnedDeviceId)),
+    Invalid,
+    None,
+}
 
 #[async_trait]
 impl<T, S, B> FromRequest<S, B> for Ruma<T>
@@ -78,179 +85,192 @@ where
             None => query_params.access_token.as_deref(),
         };
 
+        let token = if let Some(token) = token {
+            if let Some(reg_info) = services().appservice.find_from_token(token).await {
+                Token::Appservice(Box::new(reg_info.clone()))
+            } else if let Some((user_id, device_id)) = services().users.find_from_token(token)? {
+                Token::User((user_id, OwnedDeviceId::from(device_id)))
+            } else {
+                Token::Invalid
+            }
+        } else {
+            Token::None
+        };
+
         let mut json_body = serde_json::from_slice::<CanonicalJsonValue>(&body).ok();
 
-        let appservices = services().appservice.all().unwrap();
-        let appservice_registration = appservices.iter().find(|(_id, registration)| {
-            registration
-                .get("as_token")
-                .and_then(|as_token| as_token.as_str())
-                .map_or(false, |as_token| token == Some(as_token))
-        });
-
         let (sender_user, sender_device, sender_servername, from_appservice) =
-            if let Some((_id, registration)) = appservice_registration {
-                match metadata.authentication {
-                    AuthScheme::AccessToken => {
-                        let user_id = query_params.user_id.map_or_else(
+            match (metadata.authentication, token) {
+                (_, Token::Invalid) => {
+                    return Err(Error::BadRequest(
+                        ErrorKind::UnknownToken { soft_logout: false },
+                        "Unknown access token.",
+                    ))
+                }
+                (
+                    AuthScheme::AccessToken
+                    | AuthScheme::AppserviceToken
+                    | AuthScheme::AccessTokenOptional
+                    | AuthScheme::None,
+                    Token::Appservice(info),
+                ) => {
+                    let user_id = query_params
+                        .user_id
+                        .map_or_else(
                             || {
                                 UserId::parse_with_server_name(
-                                    registration
-                                        .get("sender_localpart")
-                                        .unwrap()
-                                        .as_str()
-                                        .unwrap(),
+                                    info.registration.sender_localpart.as_str(),
                                     services().globals.server_name(),
                                 )
-                                .unwrap()
                             },
-                            |s| UserId::parse(s).unwrap(),
-                        );
+                            UserId::parse,
+                        )
+                        .map_err(|_| {
+                            Error::BadRequest(ErrorKind::InvalidUsername, "Username is invalid.")
+                        })?;
+                    if !services().users.exists(&user_id)? {
+                        return Err(Error::BadRequest(
+                            ErrorKind::Forbidden,
+                            "User does not exist.",
+                        ));
+                    }
 
-                        if !services().users.exists(&user_id).unwrap() {
+                    // TODO: Check if appservice is allowed to be that user
+                    (Some(user_id), None, None, true)
+                }
+                (AuthScheme::AccessToken, Token::None) => {
+                    return Err(Error::BadRequest(
+                        ErrorKind::MissingToken,
+                        "Missing access token.",
+                    ));
+                }
+                (
+                    AuthScheme::AccessToken | AuthScheme::AccessTokenOptional | AuthScheme::None,
+                    Token::User((user_id, device_id)),
+                ) => (Some(user_id), Some(device_id), None, false),
+                (AuthScheme::ServerSignatures, Token::None) => {
+                    if !services().globals.allow_federation() {
+                        return Err(Error::bad_config("Federation is disabled."));
+                    }
+
+                    let TypedHeader(Authorization(x_matrix)) = parts
+                        .extract::<TypedHeader<Authorization<XMatrix>>>()
+                        .await
+                        .map_err(|e| {
+                            warn!("Missing or invalid Authorization header: {}", e);
+
+                            let msg = match e.reason() {
+                                TypedHeaderRejectionReason::Missing => {
+                                    "Missing Authorization header."
+                                }
+                                TypedHeaderRejectionReason::Error(_) => {
+                                    "Invalid X-Matrix signatures."
+                                }
+                                _ => "Unknown header-related error",
+                            };
+
+                            Error::BadRequest(ErrorKind::Forbidden, msg)
+                        })?;
+
+                    let origin_signatures = BTreeMap::from_iter([(
+                        x_matrix.key.clone(),
+                        CanonicalJsonValue::String(x_matrix.sig),
+                    )]);
+
+                    let signatures = BTreeMap::from_iter([(
+                        x_matrix.origin.as_str().to_owned(),
+                        CanonicalJsonValue::Object(origin_signatures),
+                    )]);
+
+                    let mut request_map = BTreeMap::from_iter([
+                        (
+                            "method".to_owned(),
+                            CanonicalJsonValue::String(parts.method.to_string()),
+                        ),
+                        (
+                            "uri".to_owned(),
+                            CanonicalJsonValue::String(parts.uri.to_string()),
+                        ),
+                        (
+                            "origin".to_owned(),
+                            CanonicalJsonValue::String(x_matrix.origin.as_str().to_owned()),
+                        ),
+                        (
+                            "destination".to_owned(),
+                            CanonicalJsonValue::String(
+                                services().globals.server_name().as_str().to_owned(),
+                            ),
+                        ),
+                        (
+                            "signatures".to_owned(),
+                            CanonicalJsonValue::Object(signatures),
+                        ),
+                    ]);
+
+                    if let Some(json_body) = &json_body {
+                        request_map.insert("content".to_owned(), json_body.clone());
+                    };
+
+                    let keys_result = services()
+                        .rooms
+                        .event_handler
+                        .fetch_signing_keys(&x_matrix.origin, vec![x_matrix.key.to_owned()])
+                        .await;
+
+                    let keys = match keys_result {
+                        Ok(b) => b,
+                        Err(e) => {
+                            warn!("Failed to fetch signing keys: {}", e);
                             return Err(Error::BadRequest(
                                 ErrorKind::Forbidden,
-                                "User does not exist.",
+                                "Failed to fetch signing keys.",
                             ));
                         }
+                    };
 
-                        // TODO: Check if appservice is allowed to be that user
-                        (Some(user_id), None, None, true)
-                    }
-                    AuthScheme::ServerSignatures => (None, None, None, true),
-                    AuthScheme::None => (None, None, None, true),
-                }
-            } else {
-                match metadata.authentication {
-                    AuthScheme::AccessToken => {
-                        let token = match token {
-                            Some(token) => token,
-                            _ => {
-                                return Err(Error::BadRequest(
-                                    ErrorKind::MissingToken,
-                                    "Missing access token.",
-                                ))
-                            }
-                        };
+                    let pub_key_map =
+                        BTreeMap::from_iter([(x_matrix.origin.as_str().to_owned(), keys)]);
 
-                        match services().users.find_from_token(token).unwrap() {
-                            None => {
-                                return Err(Error::BadRequest(
-                                    ErrorKind::UnknownToken { soft_logout: false },
-                                    "Unknown access token.",
-                                ))
-                            }
-                            Some((user_id, device_id)) => (
-                                Some(user_id),
-                                Some(OwnedDeviceId::from(device_id)),
-                                None,
-                                false,
-                            ),
-                        }
-                    }
-                    AuthScheme::ServerSignatures => {
-                        let TypedHeader(Authorization(x_matrix)) = parts
-                            .extract::<TypedHeader<Authorization<XMatrix>>>()
-                            .await
-                            .map_err(|e| {
-                                warn!("Missing or invalid Authorization header: {}", e);
+                    match ruma::signatures::verify_json(&pub_key_map, &request_map) {
+                        Ok(()) => (None, None, Some(x_matrix.origin), false),
+                        Err(e) => {
+                            warn!(
+                                "Failed to verify json request from {}: {}\n{:?}",
+                                x_matrix.origin, e, request_map
+                            );
 
-                                let msg = match e.reason() {
-                                    TypedHeaderRejectionReason::Missing => {
-                                        "Missing Authorization header."
-                                    }
-                                    TypedHeaderRejectionReason::Error(_) => {
-                                        "Invalid X-Matrix signatures."
-                                    }
-                                    _ => "Unknown header-related error",
-                                };
-
-                                Error::BadRequest(ErrorKind::Forbidden, msg)
-                            })?;
-
-                        let origin_signatures = BTreeMap::from_iter([(
-                            x_matrix.key.clone(),
-                            CanonicalJsonValue::String(x_matrix.sig),
-                        )]);
-
-                        let signatures = BTreeMap::from_iter([(
-                            x_matrix.origin.as_str().to_owned(),
-                            CanonicalJsonValue::Object(origin_signatures),
-                        )]);
-
-                        let mut request_map = BTreeMap::from_iter([
-                            (
-                                "method".to_owned(),
-                                CanonicalJsonValue::String(parts.method.to_string()),
-                            ),
-                            (
-                                "uri".to_owned(),
-                                CanonicalJsonValue::String(parts.uri.to_string()),
-                            ),
-                            (
-                                "origin".to_owned(),
-                                CanonicalJsonValue::String(x_matrix.origin.as_str().to_owned()),
-                            ),
-                            (
-                                "destination".to_owned(),
-                                CanonicalJsonValue::String(
-                                    services().globals.server_name().as_str().to_owned(),
-                                ),
-                            ),
-                            (
-                                "signatures".to_owned(),
-                                CanonicalJsonValue::Object(signatures),
-                            ),
-                        ]);
-
-                        if let Some(json_body) = &json_body {
-                            request_map.insert("content".to_owned(), json_body.clone());
-                        };
-
-                        let keys_result = services()
-                            .rooms
-                            .event_handler
-                            .fetch_signing_keys(&x_matrix.origin, vec![x_matrix.key.to_owned()])
-                            .await;
-
-                        let keys = match keys_result {
-                            Ok(b) => b,
-                            Err(e) => {
-                                warn!("Failed to fetch signing keys: {}", e);
-                                return Err(Error::BadRequest(
-                                    ErrorKind::Forbidden,
-                                    "Failed to fetch signing keys.",
-                                ));
-                            }
-                        };
-
-                        let pub_key_map =
-                            BTreeMap::from_iter([(x_matrix.origin.as_str().to_owned(), keys)]);
-
-                        match ruma::signatures::verify_json(&pub_key_map, &request_map) {
-                            Ok(()) => (None, None, Some(x_matrix.origin), false),
-                            Err(e) => {
+                            if parts.uri.to_string().contains('@') {
                                 warn!(
-                                    "Failed to verify json request from {}: {}\n{:?}",
-                                    x_matrix.origin, e, request_map
-                                );
-
-                                if parts.uri.to_string().contains('@') {
-                                    warn!(
-                                        "Request uri contained '@' character. Make sure your \
+                                    "Request uri contained '@' character. Make sure your \
                                          reverse proxy gives Conduit the raw uri (apache: use \
                                          nocanon)"
-                                    );
-                                }
-
-                                return Err(Error::BadRequest(
-                                    ErrorKind::Forbidden,
-                                    "Failed to verify X-Matrix signatures.",
-                                ));
+                                );
                             }
+
+                            return Err(Error::BadRequest(
+                                ErrorKind::Forbidden,
+                                "Failed to verify X-Matrix signatures.",
+                            ));
                         }
                     }
-                    AuthScheme::None => (None, None, None, false),
+                }
+                (
+                    AuthScheme::None
+                    | AuthScheme::AppserviceToken
+                    | AuthScheme::AccessTokenOptional,
+                    Token::None,
+                ) => (None, None, None, false),
+                (AuthScheme::ServerSignatures, Token::Appservice(_) | Token::User(_)) => {
+                    return Err(Error::BadRequest(
+                        ErrorKind::Unauthorized,
+                        "Only server signatures should be used on this endpoint.",
+                    ));
+                }
+                (AuthScheme::AppserviceToken, Token::User(_)) => {
+                    return Err(Error::BadRequest(
+                        ErrorKind::Unauthorized,
+                        "Only appservice access tokens should be used on this endpoint.",
+                    ));
                 }
             };
 

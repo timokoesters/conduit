@@ -34,6 +34,7 @@ pub struct SlidingSyncCache {
 
 pub struct Service {
     pub db: &'static dyn Data,
+    #[allow(clippy::type_complexity)]
     pub connections:
         Mutex<BTreeMap<(OwnedUserId, OwnedDeviceId, String), Arc<Mutex<SlidingSyncCache>>>>,
 }
@@ -137,12 +138,18 @@ impl Service {
             cached.lists.insert(list_id.clone(), list.clone());
         }
 
-        cached
-            .subscriptions
-            .extend(request.room_subscriptions.clone().into_iter());
-        request
-            .room_subscriptions
-            .extend(cached.subscriptions.clone().into_iter());
+        cached.subscriptions.extend(
+            request
+                .room_subscriptions
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone())),
+        );
+        request.room_subscriptions.extend(
+            cached
+                .subscriptions
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone())),
+        );
 
         request.extensions.e2ee.enabled = request
             .extensions

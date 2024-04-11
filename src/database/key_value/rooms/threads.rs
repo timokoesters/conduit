@@ -10,7 +10,7 @@ impl service::rooms::threads::Data for KeyValueDatabase {
         user_id: &'a UserId,
         room_id: &'a RoomId,
         until: u64,
-        include: &'a IncludeThreads,
+        _include: &'a IncludeThreads,
     ) -> Result<Box<dyn Iterator<Item = Result<(u64, PduEvent)>> + 'a>> {
         let prefix = services()
             .rooms
@@ -27,7 +27,7 @@ impl service::rooms::threads::Data for KeyValueDatabase {
             self.threadid_userids
                 .iter_from(&current, true)
                 .take_while(move |(k, _)| k.starts_with(&prefix))
-                .map(move |(pduid, users)| {
+                .map(move |(pduid, _users)| {
                     let count = utils::u64_from_bytes(&pduid[(mem::size_of::<u64>())..])
                         .map_err(|_| Error::bad_database("Invalid pduid in threadid_userids."))?;
                     let mut pdu = services()
@@ -52,13 +52,13 @@ impl service::rooms::threads::Data for KeyValueDatabase {
             .collect::<Vec<_>>()
             .join(&[0xff][..]);
 
-        self.threadid_userids.insert(&root_id, &users)?;
+        self.threadid_userids.insert(root_id, &users)?;
 
         Ok(())
     }
 
     fn get_participants(&self, root_id: &[u8]) -> Result<Option<Vec<OwnedUserId>>> {
-        if let Some(users) = self.threadid_userids.get(&root_id)? {
+        if let Some(users) = self.threadid_userids.get(root_id)? {
             Ok(Some(
                 users
                     .split(|b| *b == 0xff)

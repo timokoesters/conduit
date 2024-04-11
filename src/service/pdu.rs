@@ -365,7 +365,7 @@ impl PartialEq for PduEvent {
 }
 impl PartialOrd for PduEvent {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.event_id.partial_cmp(&other.event_id)
+        Some(self.cmp(other))
     }
 }
 impl Ord for PduEvent {

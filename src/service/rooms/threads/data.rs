@@ -2,6 +2,7 @@ use crate::{PduEvent, Result};
 use ruma::{api::client::threads::get_threads::v1::IncludeThreads, OwnedUserId, RoomId, UserId};
 
 pub trait Data: Send + Sync {
+    #[allow(clippy::type_complexity)]
     fn threads_until<'a>(
         &'a self,
         user_id: &'a UserId,

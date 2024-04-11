@@ -1,0 +1,18 @@
+[book]
+title = "Conduit"
+description = "Conduit is a simple, fast and reliable chat server for the Matrix protocol"
+language = "en"
+multilingual = false
+src = "docs"
+
+[build]
+build-dir = "public"
+create-missing = true
+
+[output.html]
+git-repository-url = "https://gitlab.com/famedly/conduit"
+edit-url-template = "https://gitlab.com/famedly/conduit/-/edit/next/{path}"
+git-repository-icon = "fa-git-square"
+
+[output.html.search]
+limit-results = 15

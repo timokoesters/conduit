@@ -2,92 +2,316 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs?ref=nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
+    nix-filter.url = "github:numtide/nix-filter";
+    flake-compat = {
+      url = "github:edolstra/flake-compat";
+      flake = false;
+    };
 
     fenix = {
       url = "github:nix-community/fenix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
     crane = {
-      url = "github:ipetkov/crane";
+      # Pin latest crane that's not affected by the following bugs:
+      #
+      # * <https://github.com/ipetkov/crane/issues/527#issuecomment-1978079140>
+      # * <https://github.com/toml-rs/toml/issues/691>
+      # * <https://github.com/toml-rs/toml/issues/267>
+      url = "github:ipetkov/crane?rev=2c653e4478476a52c6aa3ac0495e4dea7449ea0e";
       inputs.nixpkgs.follows = "nixpkgs";
-      inputs.flake-utils.follows = "flake-utils";
     };
+    attic.url = "github:zhaofengli/attic?ref=main";
   };
 
   outputs =
     { self
     , nixpkgs
     , flake-utils
+    , nix-filter
 
     , fenix
     , crane
+    , ...
     }: flake-utils.lib.eachDefaultSystem (system:
     let
-      pkgs = nixpkgs.legacyPackages.${system};
-
-      # Use mold on Linux
-      stdenv = if pkgs.stdenv.isLinux then
-        pkgs.stdenvAdapters.useMoldLinker pkgs.stdenv
-      else
-        pkgs.stdenv;
+      pkgsHost = nixpkgs.legacyPackages.${system};
 
       # Nix-accessible `Cargo.toml`
       cargoToml = builtins.fromTOML (builtins.readFile ./Cargo.toml);
 
       # The Rust toolchain to use
-      toolchain = fenix.packages.${system}.toolchainOf {
-        # Use the Rust version defined in `Cargo.toml`
-        channel = cargoToml.package.rust-version;
+      toolchain = fenix.packages.${system}.fromToolchainFile {
+        file = ./rust-toolchain.toml;
 
-        # THE rust-version HASH
-        sha256 = "sha256-gdYqng0y9iHYzYPAdkC/ka3DRny3La/S5G8ASj0Ayyc=";
+        # See also `rust-toolchain.toml`
+        sha256 = "sha256-SXRtAuO4IqNOQq+nLbrsDFbVk+3aVA8NNpSZsKlVH/8=";
       };
 
-      # The system's RocksDB
-      ROCKSDB_INCLUDE_DIR = "${pkgs.rocksdb}/include";
-      ROCKSDB_LIB_DIR = "${pkgs.rocksdb}/lib";
+      builder = pkgs:
+        ((crane.mkLib pkgs).overrideToolchain toolchain).buildPackage;
 
-      # Shared between the package and the devShell
-      nativeBuildInputs = (with pkgs.rustPlatform; [
-        bindgenHook
-      ]);
+      nativeBuildInputs = pkgs: [
+        # bindgen needs the build platform's libclang. Apparently due to
+        # "splicing weirdness", pkgs.rustPlatform.bindgenHook on its own doesn't
+        # quite do the right thing here.
+        pkgs.pkgsBuildHost.rustPlatform.bindgenHook
+      ];
 
-      builder =
-        ((crane.mkLib pkgs).overrideToolchain toolchain.toolchain).buildPackage;
+      rocksdb' = pkgs:
+      let
+        version = "8.11.3";
+      in
+      pkgs.rocksdb.overrideAttrs (old: {
+        inherit version;
+        src = pkgs.fetchFromGitHub {
+          owner = "facebook";
+          repo = "rocksdb";
+          rev = "v${version}";
+          hash = "sha256-OpEiMwGxZuxb9o3RQuSrwZMQGLhe9xLT1aa3HpI4KPs=";
+        };
+      });
+
+      env = pkgs: {
+        CONDUIT_VERSION_EXTRA = self.shortRev or self.dirtyShortRev;
+        ROCKSDB_INCLUDE_DIR = "${rocksdb' pkgs}/include";
+        ROCKSDB_LIB_DIR = "${rocksdb' pkgs}/lib";
+      }
+      // pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isStatic {
+        ROCKSDB_STATIC = "";
+      }
+      // {
+        CARGO_BUILD_RUSTFLAGS = let inherit (pkgs) lib stdenv; in
+          lib.concatStringsSep " " ([]
+            ++ lib.optionals
+              # This disables PIE for static builds, which isn't great in terms
+              # of security. Unfortunately, my hand is forced because nixpkgs'
+              # `libstdc++.a` is built without `-fPIE`, which precludes us from
+              # leaving PIE enabled.
+              stdenv.hostPlatform.isStatic
+              ["-C" "relocation-model=static"]
+            ++ lib.optionals
+              (stdenv.buildPlatform.config != stdenv.hostPlatform.config)
+              ["-l" "c"]
+            ++ lib.optionals
+              # This check has to match the one [here][0]. We only need to set
+              # these flags when using a different linker. Don't ask me why,
+              # though, because I don't know. All I know is it breaks otherwise.
+              #
+              # [0]: https://github.com/NixOS/nixpkgs/blob/5cdb38bb16c6d0a38779db14fcc766bc1b2394d6/pkgs/build-support/rust/lib/default.nix#L37-L40
+              (
+                # Nixpkgs doesn't check for x86_64 here but we do, because I
+                # observed a failure building statically for x86_64 without
+                # including it here. Linkers are weird.
+                (stdenv.hostPlatform.isAarch64 || stdenv.hostPlatform.isx86_64)
+                  && stdenv.hostPlatform.isStatic
+                  && !stdenv.isDarwin
+                  && !stdenv.cc.bintools.isLLVM
+              )
+              [
+                "-l"
+                "stdc++"
+                "-L"
+                "${stdenv.cc.cc.lib}/${stdenv.hostPlatform.config}/lib"
+              ]
+          );
+      }
+
+      # What follows is stolen from [here][0]. Its purpose is to properly
+      # configure compilers and linkers for various stages of the build, and
+      # even covers the case of build scripts that need native code compiled and
+      # run on the build platform (I think).
+      #
+      # [0]: https://github.com/NixOS/nixpkgs/blob/5cdb38bb16c6d0a38779db14fcc766bc1b2394d6/pkgs/build-support/rust/lib/default.nix#L57-L80
+      // (
+        let
+          inherit (pkgs.rust.lib) envVars;
+        in
+        pkgs.lib.optionalAttrs
+          (pkgs.stdenv.targetPlatform.rust.rustcTarget
+            != pkgs.stdenv.hostPlatform.rust.rustcTarget)
+          (
+            let
+              inherit (pkgs.stdenv.targetPlatform.rust) cargoEnvVarTarget;
+            in
+            {
+              "CC_${cargoEnvVarTarget}" = envVars.ccForTarget;
+              "CXX_${cargoEnvVarTarget}" = envVars.cxxForTarget;
+              "CARGO_TARGET_${cargoEnvVarTarget}_LINKER" =
+                envVars.linkerForTarget;
+            }
+          )
+      // (
+        let
+          inherit (pkgs.stdenv.hostPlatform.rust) cargoEnvVarTarget rustcTarget;
+        in
+        {
+          "CC_${cargoEnvVarTarget}" = envVars.ccForHost;
+          "CXX_${cargoEnvVarTarget}" = envVars.cxxForHost;
+          "CARGO_TARGET_${cargoEnvVarTarget}_LINKER" = envVars.linkerForHost;
+          CARGO_BUILD_TARGET = rustcTarget;
+        }
+      )
+      // (
+        let
+          inherit (pkgs.stdenv.buildPlatform.rust) cargoEnvVarTarget;
+        in
+        {
+          "CC_${cargoEnvVarTarget}" = envVars.ccForBuild;
+          "CXX_${cargoEnvVarTarget}" = envVars.cxxForBuild;
+          "CARGO_TARGET_${cargoEnvVarTarget}_LINKER" = envVars.linkerForBuild;
+          HOST_CC = "${pkgs.pkgsBuildHost.stdenv.cc}/bin/cc";
+          HOST_CXX = "${pkgs.pkgsBuildHost.stdenv.cc}/bin/c++";
+        }
+      ));
+
+      package = pkgs: builder pkgs {
+        src = nix-filter {
+          root = ./.;
+          include = [
+            "src"
+            "Cargo.toml"
+            "Cargo.lock"
+          ];
+        };
+
+        # This is redundant with CI
+        doCheck = false;
+
+        env = env pkgs;
+        nativeBuildInputs = nativeBuildInputs pkgs;
+
+        meta.mainProgram = cargoToml.package.name;
+      };
+
+      mkOciImage = pkgs: package:
+        pkgs.dockerTools.buildImage {
+          name = package.pname;
+          tag = "next";
+          copyToRoot = [
+            pkgs.dockerTools.caCertificates
+          ];
+          config = {
+            # Use the `tini` init system so that signals (e.g. ctrl+c/SIGINT)
+            # are handled as expected
+            Entrypoint = [
+              "${pkgs.lib.getExe' pkgs.tini "tini"}"
+              "--"
+            ];
+            Cmd = [
+              "${pkgs.lib.getExe package}"
+            ];
+          };
+        };
     in
     {
-      packages.default = builder {
-        src = ./.;
+      packages = {
+        default = package pkgsHost;
+        oci-image = mkOciImage pkgsHost self.packages.${system}.default;
 
-        inherit
-          stdenv
-          nativeBuildInputs
-          ROCKSDB_INCLUDE_DIR
-          ROCKSDB_LIB_DIR;
-      };
+        book =
+        let
+          package = self.packages.${system}.default;
+        in
+        pkgsHost.stdenv.mkDerivation {
+          pname = "${package.pname}-book";
+          version = package.version;
 
-      devShells.default = (pkgs.mkShell.override { inherit stdenv; }) {
-        # Rust Analyzer needs to be able to find the path to default crate
-        # sources, and it can read this environment variable to do so
-        RUST_SRC_PATH = "${toolchain.rust-src}/lib/rustlib/src/rust/library";
+          src = nix-filter {
+            root = ./.;
+            include = [
+              "book.toml"
+              "conduit-example.toml"
+              "README.md"
+              "debian/README.md"
+              "docs"
+            ];
+          };
 
-        inherit
-          ROCKSDB_INCLUDE_DIR
-          ROCKSDB_LIB_DIR;
+          nativeBuildInputs = (with pkgsHost; [
+            mdbook
+          ]);
+
+          buildPhase = ''
+            mdbook build
+            mv public $out
+          '';
+        };
+      }
+      //
+      builtins.listToAttrs
+        (builtins.concatLists
+          (builtins.map
+            (crossSystem:
+              let
+                binaryName = "static-${crossSystem}";
+                pkgsCrossStatic =
+                  (import nixpkgs {
+                    inherit system;
+                    crossSystem = {
+                      config = crossSystem;
+                    };
+                  }).pkgsStatic;
+              in
+              [
+                # An output for a statically-linked binary
+                {
+                  name = binaryName;
+                  value = package pkgsCrossStatic;
+                }
+
+                # An output for an OCI image based on that binary
+                {
+                  name = "oci-image-${crossSystem}";
+                  value = mkOciImage
+                    pkgsCrossStatic
+                    self.packages.${system}.${binaryName};
+                }
+              ]
+            )
+            [
+              "x86_64-unknown-linux-musl"
+              "aarch64-unknown-linux-musl"
+            ]
+          )
+        );
+
+      devShells.default = pkgsHost.mkShell {
+        env = env pkgsHost // {
+          # Rust Analyzer needs to be able to find the path to default crate
+          # sources, and it can read this environment variable to do so. The
+          # `rust-src` component is required in order for this to work.
+          RUST_SRC_PATH = "${toolchain}/lib/rustlib/src/rust/library";
+        };
 
         # Development tools
-        nativeBuildInputs = nativeBuildInputs ++ (with toolchain; [
-          cargo
-          clippy
-          rust-src
-          rustc
-          rustfmt
-        ]);
-      };
+        nativeBuildInputs = nativeBuildInputs pkgsHost ++ [
+          # Always use nightly rustfmt because most of its options are unstable
+          #
+          # This needs to come before `toolchain` in this list, otherwise
+          # `$PATH` will have stable rustfmt instead.
+          fenix.packages.${system}.latest.rustfmt
 
-      checks = {
-        packagesDefault = self.packages.${system}.default;
-        devShellsDefault = self.devShells.${system}.default;
+          toolchain
+        ] ++ (with pkgsHost; [
+          engage
+
+          # Needed for producing Debian packages
+          cargo-deb
+
+          # Needed for Complement
+          go
+          olm
+
+          # Needed for our script for Complement
+          jq
+
+          # Needed for finding broken markdown links
+          lychee
+
+          # Useful for editing the book locally
+          mdbook
+        ]);
       };
     });
 }

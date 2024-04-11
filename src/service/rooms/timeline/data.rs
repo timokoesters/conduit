@@ -66,6 +66,7 @@ pub trait Data: Send + Sync {
 
     /// Returns an iterator over all events and their tokens in a room that happened before the
     /// event with id `until` in reverse-chronological order.
+    #[allow(clippy::type_complexity)]
     fn pdus_until<'a>(
         &'a self,
         user_id: &UserId,
@@ -75,6 +76,7 @@ pub trait Data: Send + Sync {
 
     /// Returns an iterator over all events in a room that happened after the event with id `from`
     /// in chronological order.
+    #[allow(clippy::type_complexity)]
     fn pdus_after<'a>(
         &'a self,
         user_id: &UserId,

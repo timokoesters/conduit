@@ -1,6 +1,6 @@
 mod data;
 pub use data::Data;
-use ruma::events::AnySyncTimelineEvent;
+use ruma::{events::AnySyncTimelineEvent, push::PushConditionPowerLevelsCtx};
 
 use crate::{services, Error, PduEvent, Result};
 use bytes::BytesMut;
@@ -66,8 +66,7 @@ impl Service {
             })?
             .map(|body| body.freeze());
 
-        let reqwest_request = reqwest::Request::try_from(http_request)
-            .expect("all http requests are valid reqwest requests");
+        let reqwest_request = reqwest::Request::try_from(http_request)?;
 
         // TODO: we could keep this very short and let expo backoff do it's thing...
         //*reqwest_request.timeout_mut() = Some(Duration::from_secs(5));
@@ -193,6 +192,12 @@ impl Service {
         pdu: &Raw<AnySyncTimelineEvent>,
         room_id: &RoomId,
     ) -> Result<&'a [Action]> {
+        let power_levels = PushConditionPowerLevelsCtx {
+            users: power_levels.users.clone(),
+            users_default: power_levels.users_default,
+            notifications: power_levels.notifications.clone(),
+        };
+
         let ctx = PushConditionRoomCtx {
             room_id: room_id.to_owned(),
             member_count: 10_u32.into(), // TODO: get member count efficiently
@@ -201,9 +206,7 @@ impl Service {
                 .users
                 .displayname(user)?
                 .unwrap_or_else(|| user.localpart().to_owned()),
-            users_power_levels: power_levels.users.clone(),
-            default_power_level: power_levels.users_default,
-            notification_power_levels: power_levels.notifications.clone(),
+            power_levels: Some(power_levels),
         };
 
         Ok(ruleset.get_actions(pdu, &ctx))

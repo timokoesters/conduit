@@ -18,23 +18,28 @@ services:
         #         GIT_REF: origin/master
         restart: unless-stopped
         volumes:
-            - db:/var/lib/matrix-conduit/
+            - db:/srv/conduit/.local/share/conduit
+            ### Uncomment if you want to use conduit.toml to configure Conduit
+            ### Note: Set env vars will override conduit.toml values
+            # - ./conduit.toml:/srv/conduit/conduit.toml
         networks:
             - proxy
         environment:
-            CONDUIT_SERVER_NAME: your.server.name # EDIT THIS
-            CONDUIT_DATABASE_PATH: /var/lib/matrix-conduit/
-            CONDUIT_DATABASE_BACKEND: rocksdb
-            CONDUIT_PORT: 6167
-            CONDUIT_MAX_REQUEST_SIZE: 20_000_000 # in bytes, ~20 MB
-            CONDUIT_ALLOW_REGISTRATION: 'true'
-            CONDUIT_ALLOW_FEDERATION: 'true'
-            CONDUIT_ALLOW_CHECK_FOR_UPDATES: 'true'
+            CONDUIT_SERVER_NAME: localhost:6167  # replace with your own name
             CONDUIT_TRUSTED_SERVERS: '["matrix.org"]'
-            #CONDUIT_MAX_CONCURRENT_REQUESTS: 100
-            #CONDUIT_LOG: warn,rocket=off,_=off,sled=off
-            CONDUIT_ADDRESS: 0.0.0.0
-            CONDUIT_CONFIG: '' # Ignore this
+            CONDUIT_ALLOW_REGISTRATION : 'true'
+            ### Uncomment and change values as desired
+            # CONDUIT_ADDRESS: 0.0.0.0
+            # CONDUIT_PORT: 6167
+            # CONDUIT_CONFIG: '/srv/conduit/conduit.toml'  # if you want to configure purely by env vars, set this to an empty string ''
+            # Available levels are: error, warn, info, debug, trace - more info at: https://docs.rs/env_logger/*/env_logger/#enabling-logging
+            # CONDUIT_ALLOW_JAEGER: 'false'
+            # CONDUIT_ALLOW_ENCRYPTION: 'true'
+            # CONDUIT_ALLOW_FEDERATION: 'true'
+            # CONDUIT_ALLOW_CHECK_FOR_UPDATES: 'true'
+            # CONDUIT_DATABASE_PATH: /srv/conduit/.local/share/conduit
+            # CONDUIT_WORKERS: 10
+            # CONDUIT_MAX_REQUEST_SIZE: 20_000_000  # in bytes, ~20 MB
 
     # We need some way to server the client and server .well-known json. The simplest way is to use a nginx container
     # to serve those two as static files. If you want to use a different way, delete or comment the below service, here
@@ -45,6 +50,7 @@ services:
         volumes:
             - ./nginx/matrix.conf:/etc/nginx/conf.d/matrix.conf # the config to serve the .well-known/matrix files
             - ./nginx/www:/var/www/ # location of the client and server .well-known-files
+
     ### Uncomment if you want to use your own Element-Web App.
     ### Note: You need to provide a config.json for Element and you also need a second
     ###       Domain or Subdomain for the communication between Element and Conduit
@@ -59,11 +65,33 @@ services:
     #     depends_on:
     #         - homeserver
 
+    traefik:
+        image: "traefik:latest"
+        container_name: "traefik"
+        restart: "unless-stopped"
+        ports:
+            - "80:80"
+            - "443:443"
+        volumes:
+            - "/var/run/docker.sock:/var/run/docker.sock"
+            # - "./traefik_config:/etc/traefik"
+            - "acme:/etc/traefik/acme"
+        labels:
+            - "traefik.enable=true"
+
+            # middleware redirect
+            - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
+            # global redirect to https
+            - "traefik.http.routers.redirs.rule=hostregexp(`{host:.+}`)"
+            - "traefik.http.routers.redirs.entrypoints=http"
+            - "traefik.http.routers.redirs.middlewares=redirect-to-https"
+
+        networks:
+            - proxy
+
 volumes:
     db:
+    acme:
 
 networks:
-    # This is the network Traefik listens to, if your network has a different
-    # name, don't forget to change it here and in the docker-compose.override.yml
     proxy:
-        external: true

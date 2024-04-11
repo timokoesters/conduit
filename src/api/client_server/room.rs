@@ -61,7 +61,7 @@ pub async fn create_room_route(
             .globals
             .roomid_mutex_state
             .write()
-            .unwrap()
+            .await
             .entry(room_id.clone())
             .or_default(),
     );
@@ -204,42 +204,50 @@ pub async fn create_room_route(
     }
 
     // 1. The room create event
-    services().rooms.timeline.build_and_append_pdu(
-        PduBuilder {
-            event_type: TimelineEventType::RoomCreate,
-            content: to_raw_value(&content).expect("event is valid, we just created it"),
-            unsigned: None,
-            state_key: Some("".to_owned()),
-            redacts: None,
-        },
-        sender_user,
-        &room_id,
-        &state_lock,
-    )?;
+    services()
+        .rooms
+        .timeline
+        .build_and_append_pdu(
+            PduBuilder {
+                event_type: TimelineEventType::RoomCreate,
+                content: to_raw_value(&content).expect("event is valid, we just created it"),
+                unsigned: None,
+                state_key: Some("".to_owned()),
+                redacts: None,
+            },
+            sender_user,
+            &room_id,
+            &state_lock,
+        )
+        .await?;
 
     // 2. Let the room creator join
-    services().rooms.timeline.build_and_append_pdu(
-        PduBuilder {
-            event_type: TimelineEventType::RoomMember,
-            content: to_raw_value(&RoomMemberEventContent {
-                membership: MembershipState::Join,
-                displayname: services().users.displayname(sender_user)?,
-                avatar_url: services().users.avatar_url(sender_user)?,
-                is_direct: Some(body.is_direct),
-                third_party_invite: None,
-                blurhash: services().users.blurhash(sender_user)?,
-                reason: None,
-                join_authorized_via_users_server: None,
-            })
-            .expect("event is valid, we just created it"),
-            unsigned: None,
-            state_key: Some(sender_user.to_string()),
-            redacts: None,
-        },
-        sender_user,
-        &room_id,
-        &state_lock,
-    )?;
+    services()
+        .rooms
+        .timeline
+        .build_and_append_pdu(
+            PduBuilder {
+                event_type: TimelineEventType::RoomMember,
+                content: to_raw_value(&RoomMemberEventContent {
+                    membership: MembershipState::Join,
+                    displayname: services().users.displayname(sender_user)?,
+                    avatar_url: services().users.avatar_url(sender_user)?,
+                    is_direct: Some(body.is_direct),
+                    third_party_invite: None,
+                    blurhash: services().users.blurhash(sender_user)?,
+                    reason: None,
+                    join_authorized_via_users_server: None,
+                })
+                .expect("event is valid, we just created it"),
+                unsigned: None,
+                state_key: Some(sender_user.to_string()),
+                redacts: None,
+            },
+            sender_user,
+            &room_id,
+            &state_lock,
+        )
+        .await?;
 
     // 3. Power levels
 
@@ -276,30 +284,14 @@ pub async fn create_room_route(
         }
     }
 
-    services().rooms.timeline.build_and_append_pdu(
-        PduBuilder {
-            event_type: TimelineEventType::RoomPowerLevels,
-            content: to_raw_value(&power_levels_content)
-                .expect("to_raw_value always works on serde_json::Value"),
-            unsigned: None,
-            state_key: Some("".to_owned()),
-            redacts: None,
-        },
-        sender_user,
-        &room_id,
-        &state_lock,
-    )?;
-
-    // 4. Canonical room alias
-    if let Some(room_alias_id) = &alias {
-        services().rooms.timeline.build_and_append_pdu(
+    services()
+        .rooms
+        .timeline
+        .build_and_append_pdu(
             PduBuilder {
-                event_type: TimelineEventType::RoomCanonicalAlias,
-                content: to_raw_value(&RoomCanonicalAliasEventContent {
-                    alias: Some(room_alias_id.to_owned()),
-                    alt_aliases: vec![],
-                })
-                .expect("We checked that alias earlier, it must be fine"),
+                event_type: TimelineEventType::RoomPowerLevels,
+                content: to_raw_value(&power_levels_content)
+                    .expect("to_raw_value always works on serde_json::Value"),
                 unsigned: None,
                 state_key: Some("".to_owned()),
                 redacts: None,
@@ -307,64 +299,100 @@ pub async fn create_room_route(
             sender_user,
             &room_id,
             &state_lock,
-        )?;
+        )
+        .await?;
+
+    // 4. Canonical room alias
+    if let Some(room_alias_id) = &alias {
+        services()
+            .rooms
+            .timeline
+            .build_and_append_pdu(
+                PduBuilder {
+                    event_type: TimelineEventType::RoomCanonicalAlias,
+                    content: to_raw_value(&RoomCanonicalAliasEventContent {
+                        alias: Some(room_alias_id.to_owned()),
+                        alt_aliases: vec![],
+                    })
+                    .expect("We checked that alias earlier, it must be fine"),
+                    unsigned: None,
+                    state_key: Some("".to_owned()),
+                    redacts: None,
+                },
+                sender_user,
+                &room_id,
+                &state_lock,
+            )
+            .await?;
     }
 
     // 5. Events set by preset
 
     // 5.1 Join Rules
-    services().rooms.timeline.build_and_append_pdu(
-        PduBuilder {
-            event_type: TimelineEventType::RoomJoinRules,
-            content: to_raw_value(&RoomJoinRulesEventContent::new(match preset {
-                RoomPreset::PublicChat => JoinRule::Public,
-                // according to spec "invite" is the default
-                _ => JoinRule::Invite,
-            }))
-            .expect("event is valid, we just created it"),
-            unsigned: None,
-            state_key: Some("".to_owned()),
-            redacts: None,
-        },
-        sender_user,
-        &room_id,
-        &state_lock,
-    )?;
+    services()
+        .rooms
+        .timeline
+        .build_and_append_pdu(
+            PduBuilder {
+                event_type: TimelineEventType::RoomJoinRules,
+                content: to_raw_value(&RoomJoinRulesEventContent::new(match preset {
+                    RoomPreset::PublicChat => JoinRule::Public,
+                    // according to spec "invite" is the default
+                    _ => JoinRule::Invite,
+                }))
+                .expect("event is valid, we just created it"),
+                unsigned: None,
+                state_key: Some("".to_owned()),
+                redacts: None,
+            },
+            sender_user,
+            &room_id,
+            &state_lock,
+        )
+        .await?;
 
     // 5.2 History Visibility
-    services().rooms.timeline.build_and_append_pdu(
-        PduBuilder {
-            event_type: TimelineEventType::RoomHistoryVisibility,
-            content: to_raw_value(&RoomHistoryVisibilityEventContent::new(
-                HistoryVisibility::Shared,
-            ))
-            .expect("event is valid, we just created it"),
-            unsigned: None,
-            state_key: Some("".to_owned()),
-            redacts: None,
-        },
-        sender_user,
-        &room_id,
-        &state_lock,
-    )?;
+    services()
+        .rooms
+        .timeline
+        .build_and_append_pdu(
+            PduBuilder {
+                event_type: TimelineEventType::RoomHistoryVisibility,
+                content: to_raw_value(&RoomHistoryVisibilityEventContent::new(
+                    HistoryVisibility::Shared,
+                ))
+                .expect("event is valid, we just created it"),
+                unsigned: None,
+                state_key: Some("".to_owned()),
+                redacts: None,
+            },
+            sender_user,
+            &room_id,
+            &state_lock,
+        )
+        .await?;
 
     // 5.3 Guest Access
-    services().rooms.timeline.build_and_append_pdu(
-        PduBuilder {
-            event_type: TimelineEventType::RoomGuestAccess,
-            content: to_raw_value(&RoomGuestAccessEventContent::new(match preset {
-                RoomPreset::PublicChat => GuestAccess::Forbidden,
-                _ => GuestAccess::CanJoin,
-            }))
-            .expect("event is valid, we just created it"),
-            unsigned: None,
-            state_key: Some("".to_owned()),
-            redacts: None,
-        },
-        sender_user,
-        &room_id,
-        &state_lock,
-    )?;
+    services()
+        .rooms
+        .timeline
+        .build_and_append_pdu(
+            PduBuilder {
+                event_type: TimelineEventType::RoomGuestAccess,
+                content: to_raw_value(&RoomGuestAccessEventContent::new(match preset {
+                    RoomPreset::PublicChat => GuestAccess::Forbidden,
+                    _ => GuestAccess::CanJoin,
+                }))
+                .expect("event is valid, we just created it"),
+                unsigned: None,
+                state_key: Some("".to_owned()),
+                redacts: None,
+            },
+            sender_user,
+            &room_id,
+            &state_lock,
+        )
+        .await?;
 
     // 6. Events listed in initial_state
     for event in &body.initial_state {
@@ -383,47 +411,54 @@ pub async fn create_room_route(
             continue;
         }
 
-        services().rooms.timeline.build_and_append_pdu(
-            pdu_builder,
-            sender_user,
-            &room_id,
-            &state_lock,
-        )?;
+        services()
+            .rooms
+            .timeline
+            .build_and_append_pdu(pdu_builder, sender_user, &room_id, &state_lock)
+            .await?;
     }
 
     // 7. Events implied by name and topic
     if let Some(name) = &body.name {
-        services().rooms.timeline.build_and_append_pdu(
-            PduBuilder {
-                event_type: TimelineEventType::RoomName,
-                content: to_raw_value(&RoomNameEventContent::new(Some(name.clone())))
-                    .expect("event is valid, we just created it"),
-                unsigned: None,
-                state_key: Some("".to_owned()),
-                redacts: None,
-            },
-            sender_user,
-            &room_id,
-            &state_lock,
-        )?;
+        services()
+            .rooms
+            .timeline
+            .build_and_append_pdu(
+                PduBuilder {
+                    event_type: TimelineEventType::RoomName,
+                    content: to_raw_value(&RoomNameEventContent::new(name.clone()))
+                        .expect("event is valid, we just created it"),
+                    unsigned: None,
+                    state_key: Some("".to_owned()),
+                    redacts: None,
+                },
+                sender_user,
+                &room_id,
+                &state_lock,
+            )
+            .await?;
     }
 
     if let Some(topic) = &body.topic {
-        services().rooms.timeline.build_and_append_pdu(
-            PduBuilder {
-                event_type: TimelineEventType::RoomTopic,
-                content: to_raw_value(&RoomTopicEventContent {
-                    topic: topic.clone(),
-                })
-                .expect("event is valid, we just created it"),
-                unsigned: None,
-                state_key: Some("".to_owned()),
-                redacts: None,
-            },
-            sender_user,
-            &room_id,
-            &state_lock,
-        )?;
+        services()
+            .rooms
+            .timeline
+            .build_and_append_pdu(
+                PduBuilder {
+                    event_type: TimelineEventType::RoomTopic,
+                    content: to_raw_value(&RoomTopicEventContent {
+                        topic: topic.clone(),
+                    })
+                    .expect("event is valid, we just created it"),
+                    unsigned: None,
+                    state_key: Some("".to_owned()),
+                    redacts: None,
+                },
+                sender_user,
+                &room_id,
+                &state_lock,
+            )
+            .await?;
     }
 
     // 8. Events implied by invite (and TODO: invite_3pid)
@@ -553,7 +588,7 @@ pub async fn upgrade_room_route(
             .globals
             .roomid_mutex_state
             .write()
-            .unwrap()
+            .await
             .entry(body.room_id.clone())
             .or_default(),
     );
@@ -561,22 +596,26 @@ pub async fn upgrade_room_route(
 
     // Send a m.room.tombstone event to the old room to indicate that it is not intended to be used any further
     // Fail if the sender does not have the required permissions
-    let tombstone_event_id = services().rooms.timeline.build_and_append_pdu(
-        PduBuilder {
-            event_type: TimelineEventType::RoomTombstone,
-            content: to_raw_value(&RoomTombstoneEventContent {
-                body: "This room has been replaced".to_owned(),
-                replacement_room: replacement_room.clone(),
-            })
-            .expect("event is valid, we just created it"),
-            unsigned: None,
-            state_key: Some("".to_owned()),
-            redacts: None,
-        },
-        sender_user,
-        &body.room_id,
-        &state_lock,
-    )?;
+    let tombstone_event_id = services()
+        .rooms
+        .timeline
+        .build_and_append_pdu(
+            PduBuilder {
+                event_type: TimelineEventType::RoomTombstone,
+                content: to_raw_value(&RoomTombstoneEventContent {
+                    body: "This room has been replaced".to_owned(),
+                    replacement_room: replacement_room.clone(),
+                })
+                .expect("event is valid, we just created it"),
+                unsigned: None,
+                state_key: Some("".to_owned()),
+                redacts: None,
+            },
+            sender_user,
+            &body.room_id,
+            &state_lock,
+        )
+        .await?;
 
     // Change lock to replacement room
     drop(state_lock);
@@ -585,7 +624,7 @@ pub async fn upgrade_room_route(
             .globals
             .roomid_mutex_state
             .write()
-            .unwrap()
+            .await
             .entry(replacement_room.clone())
             .or_default(),
     );
@@ -661,43 +700,51 @@ pub async fn upgrade_room_route(
         ));
     }
 
-    services().rooms.timeline.build_and_append_pdu(
-        PduBuilder {
-            event_type: TimelineEventType::RoomCreate,
-            content: to_raw_value(&create_event_content)
-                .expect("event is valid, we just created it"),
-            unsigned: None,
-            state_key: Some("".to_owned()),
-            redacts: None,
-        },
-        sender_user,
-        &replacement_room,
-        &state_lock,
-    )?;
+    services()
+        .rooms
+        .timeline
+        .build_and_append_pdu(
+            PduBuilder {
+                event_type: TimelineEventType::RoomCreate,
+                content: to_raw_value(&create_event_content)
+                    .expect("event is valid, we just created it"),
+                unsigned: None,
+                state_key: Some("".to_owned()),
+                redacts: None,
+            },
+            sender_user,
+            &replacement_room,
+            &state_lock,
+        )
+        .await?;
 
     // Join the new room
-    services().rooms.timeline.build_and_append_pdu(
-        PduBuilder {
-            event_type: TimelineEventType::RoomMember,
-            content: to_raw_value(&RoomMemberEventContent {
-                membership: MembershipState::Join,
-                displayname: services().users.displayname(sender_user)?,
-                avatar_url: services().users.avatar_url(sender_user)?,
-                is_direct: None,
-                third_party_invite: None,
-                blurhash: services().users.blurhash(sender_user)?,
-                reason: None,
-                join_authorized_via_users_server: None,
-            })
-            .expect("event is valid, we just created it"),
-            unsigned: None,
-            state_key: Some(sender_user.to_string()),
-            redacts: None,
-        },
-        sender_user,
-        &replacement_room,
-        &state_lock,
-    )?;
+    services()
+        .rooms
+        .timeline
+        .build_and_append_pdu(
+            PduBuilder {
+                event_type: TimelineEventType::RoomMember,
+                content: to_raw_value(&RoomMemberEventContent {
+                    membership: MembershipState::Join,
+                    displayname: services().users.displayname(sender_user)?,
+                    avatar_url: services().users.avatar_url(sender_user)?,
+                    is_direct: None,
+                    third_party_invite: None,
+                    blurhash: services().users.blurhash(sender_user)?,
+                    reason: None,
+                    join_authorized_via_users_server: None,
+                })
+                .expect("event is valid, we just created it"),
+                unsigned: None,
+                state_key: Some(sender_user.to_string()),
+                redacts: None,
+            },
+            sender_user,
+            &replacement_room,
+            &state_lock,
+        )
+        .await?;
 
     // Recommended transferable state events list from the specs
     let transferable_state_events = vec![
@@ -724,18 +771,22 @@ pub async fn upgrade_room_route(
                 None => continue, // Skipping missing events.
             };
 
-        services().rooms.timeline.build_and_append_pdu(
-            PduBuilder {
-                event_type: event_type.to_string().into(),
-                content: event_content,
-                unsigned: None,
-                state_key: Some("".to_owned()),
-                redacts: None,
-            },
-            sender_user,
-            &replacement_room,
-            &state_lock,
-        )?;
+        services()
+            .rooms
+            .timeline
+            .build_and_append_pdu(
+                PduBuilder {
+                    event_type: event_type.to_string().into(),
+                    content: event_content,
+                    unsigned: None,
+                    state_key: Some("".to_owned()),
+                    redacts: None,
+                },
+                sender_user,
+                &replacement_room,
+                &state_lock,
+            )
+            .await?;
     }
 
     // Moves any local aliases to the new room
@@ -769,19 +820,23 @@ pub async fn upgrade_room_route(
     power_levels_event_content.invite = new_level;
 
     // Modify the power levels in the old room to prevent sending of events and inviting new users
-    let _ = services().rooms.timeline.build_and_append_pdu(
-        PduBuilder {
-            event_type: TimelineEventType::RoomPowerLevels,
-            content: to_raw_value(&power_levels_event_content)
-                .expect("event is valid, we just created it"),
-            unsigned: None,
-            state_key: Some("".to_owned()),
-            redacts: None,
-        },
-        sender_user,
-        &body.room_id,
-        &state_lock,
-    )?;
+    let _ = services()
+        .rooms
+        .timeline
+        .build_and_append_pdu(
+            PduBuilder {
+                event_type: TimelineEventType::RoomPowerLevels,
+                content: to_raw_value(&power_levels_event_content)
+                    .expect("event is valid, we just created it"),
+                unsigned: None,
+                state_key: Some("".to_owned()),
+                redacts: None,
+            },
+            sender_user,
+            &body.room_id,
+            &state_lock,
+        )
+        .await?;
 
     drop(state_lock);
 

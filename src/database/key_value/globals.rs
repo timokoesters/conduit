@@ -94,7 +94,9 @@ impl service::globals::Data for KeyValueDatabase {
             futures.push(self.pduid_pdu.watch_prefix(&short_roomid));
 
             // EDUs
-            futures.push(self.roomid_lasttypingupdate.watch_prefix(&roomid_bytes));
+            futures.push(Box::into_pin(Box::new(async move {
+                let _result = services().rooms.edus.typing.wait_for_update(&room_id).await;
+            })));
 
             futures.push(self.readreceiptid_readreceipt.watch_prefix(&roomid_prefix));
 
@@ -256,8 +258,8 @@ lasttimelinecount_cache: {lasttimelinecount_cache}\n"
             ..
         } = new_keys;
 
-        keys.verify_keys.extend(verify_keys.into_iter());
-        keys.old_verify_keys.extend(old_verify_keys.into_iter());
+        keys.verify_keys.extend(verify_keys);
+        keys.old_verify_keys.extend(old_verify_keys);
 
         self.server_signingkeys.insert(
             origin.as_bytes(),

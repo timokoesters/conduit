@@ -3,7 +3,8 @@ use crate::{api::client_server, services, utils, Error, Result, Ruma};
 use ruma::{
     api::client::{
         account::{
-            change_password, deactivate, get_3pids, get_username_availability, register,
+            change_password, deactivate, get_3pids, get_username_availability,
+            register::{self, LoginType},
             request_3pid_management_token_via_email, request_3pid_management_token_via_msisdn,
             whoami, ThirdPartyIdRemovalStatus,
         },
@@ -81,6 +82,13 @@ pub async fn register_route(body: Ruma<register::v3::Request>) -> Result<registe
         return Err(Error::BadRequest(
             ErrorKind::Forbidden,
             "Registration has been disabled.",
+        ));
+    }
+
+    if body.body.login_type == Some(LoginType::ApplicationService) && !body.from_appservice {
+        return Err(Error::BadRequest(
+            ErrorKind::MissingToken,
+            "Missing appservice token.",
         ));
     }
 
@@ -239,13 +247,22 @@ pub async fn register_route(body: Ruma<register::v3::Request>) -> Result<registe
 
     // If this is the first real user, grant them admin privileges
     // Note: the server user, @conduit:servername, is generated first
-    if services().users.count()? == 2 {
-        services()
-            .admin
-            .make_user_admin(&user_id, displayname)
-            .await?;
+    if !is_guest {
+        if let Some(admin_room) = services().admin.get_admin_room()? {
+            if services()
+                .rooms
+                .state_cache
+                .room_joined_count(&admin_room)?
+                == Some(1)
+            {
+                services()
+                    .admin
+                    .make_user_admin(&user_id, displayname)
+                    .await?;
 
-        warn!("Granting {} admin privileges as the first user", user_id);
+                warn!("Granting {} admin privileges as the first user", user_id);
+            }
+        }
     }
 
     Ok(register::v3::Response {

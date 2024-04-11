@@ -5,6 +5,7 @@ use crate::Result;
 use super::{OutgoingKind, SendingEventType};
 
 pub trait Data: Send + Sync {
+    #[allow(clippy::type_complexity)]
     fn active_requests<'a>(
         &'a self,
     ) -> Box<dyn Iterator<Item = Result<(Vec<u8>, OutgoingKind, SendingEventType)>> + 'a>;

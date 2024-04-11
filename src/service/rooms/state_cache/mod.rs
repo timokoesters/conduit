@@ -16,7 +16,7 @@ use ruma::{
 };
 use tracing::warn;
 
-use crate::{services, Error, Result};
+use crate::{service::appservice::RegistrationInfo, services, Error, Result};
 
 pub struct Service {
     pub db: &'static dyn Data,
@@ -205,7 +205,7 @@ impl Service {
     pub fn appservice_in_room(
         &self,
         room_id: &RoomId,
-        appservice: &(String, serde_yaml::Value),
+        appservice: &RegistrationInfo,
     ) -> Result<bool> {
         self.db.appservice_in_room(room_id, appservice)
     }

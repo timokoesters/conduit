@@ -41,7 +41,7 @@ impl Service {
             services()
                 .rooms
                 .state_compressor
-                .parse_compressed_state_event(&new)
+                .parse_compressed_state_event(new)
                 .ok()
                 .map(|(_, id)| id)
         }) {
@@ -95,7 +95,7 @@ impl Service {
                         .spaces
                         .roomid_spacechunk_cache
                         .lock()
-                        .unwrap()
+                        .await
                         .remove(&pdu.room_id);
                 }
                 _ => continue,
@@ -412,7 +412,7 @@ impl Service {
                 services()
                     .rooms
                     .state_compressor
-                    .parse_compressed_state_event(&compressed)
+                    .parse_compressed_state_event(compressed)
                     .ok()
             })
             .filter_map(|(shortstatekey, event_id)| {

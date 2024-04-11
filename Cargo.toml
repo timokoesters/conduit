@@ -1,3 +1,14 @@
+# Keep alphabetically sorted
+[workspace.lints.rust]
+explicit_outlives_requirements = "warn"
+unused_qualifications = "warn"
+
+# Keep alphabetically sorted
+[workspace.lints.clippy]
+cloned_instead_of_copied = "warn"
+dbg_macro = "warn"
+str_to_string = "warn"
+
 [package]
 name = "conduit"
 description = "A Matrix homeserver written in Rust"
@@ -9,13 +20,13 @@ readme = "README.md"
 version = "0.7.0-alpha"
 edition = "2021"
 
-# When changing this, make sure to update the `flake.lock` file by running
-# `nix flake update`. If you don't have Nix installed or otherwise don't know
-# how to do this, ping `@charles:computer.surgery` or `@dusk:gaze.systems` in
-# the matrix room.
-rust-version = "1.70.0"
+# See also `rust-toolchain.toml`
+rust-version = "1.75.0"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lints]
+workspace = true
 
 [dependencies]
 # Web framework
@@ -26,7 +37,7 @@ tower-http = { version = "0.4.1", features = ["add-extension", "cors", "sensitiv
 
 # Used for matrix spec type definitions and helpers
 #ruma = { version = "0.4.0", features = ["compat", "rand", "appservice-api-c", "client-api", "federation-api", "push-gateway-api-c", "state-res", "unstable-pre-spec", "unstable-exhaustive-types"] }
-ruma = { git = "https://github.com/ruma/ruma", rev = "b4853aa8fa5e3a24e3689fc88044de9915f6ab67", features = ["compat", "rand", "appservice-api-c", "client-api", "federation-api", "push-gateway-api-c", "state-res", "unstable-msc2448", "unstable-msc3575", "unstable-exhaustive-types", "ring-compat", "unstable-unspecified" ] }
+ruma = { git = "https://github.com/ruma/ruma", rev = "5495b85aa311c2805302edb0a7de40399e22b397", features = ["compat", "rand", "appservice-api-c", "client-api", "federation-api", "push-gateway-api-c", "state-res", "unstable-msc2448", "unstable-msc3575", "unstable-exhaustive-types", "ring-compat", "unstable-unspecified" ] }
 #ruma = { git = "https://github.com/timokoesters/ruma", rev = "4ec9c69bb7e09391add2382b3ebac97b6e8f4c64", features = ["compat", "rand", "appservice-api-c", "client-api", "federation-api", "push-gateway-api-c", "state-res", "unstable-msc2448", "unstable-msc3575", "unstable-exhaustive-types", "ring-compat", "unstable-unspecified" ] }
 #ruma = { path = "../ruma/crates/ruma", features = ["compat", "rand", "appservice-api-c", "client-api", "federation-api", "push-gateway-api-c", "state-res", "unstable-msc2448", "unstable-msc3575", "unstable-exhaustive-types", "ring-compat", "unstable-unspecified" ] }
 
@@ -53,7 +64,8 @@ rand = "0.8.5"
 # Used to hash passwords
 rust-argon2 = "1.0.0"
 # Used to send requests
-reqwest = { default-features = false, features = ["rustls-tls-native-roots", "socks"], git = "https://github.com/timokoesters/reqwest", rev = "57b7cf4feb921573dfafad7d34b9ac6e44ead0bd" }
+hyper = "0.14.26"
+reqwest = { version = "0.11.18", default-features = false, features = ["rustls-tls-native-roots", "socks"] }
 # Used for conduit::Error type
 thiserror = "1.0.40"
 # Used to generate thumbnails for images
@@ -61,13 +73,13 @@ image = { version = "0.24.6", default-features = false, features = ["jpeg", "png
 # Used to encode server public key
 base64 = "0.21.2"
 # Used when hashing the state
-ring = "0.16.20"
+ring = "0.17.7"
 # Used when querying the SRV record of other servers
 trust-dns-resolver = "0.22.0"
 # Used to find matching events for appservices
 regex = "1.8.1"
 # jwt jsonwebtokens
-jsonwebtoken = "8.3.0"
+jsonwebtoken = "9.2.0"
 # Performance measurements
 tracing = { version = "0.1.37", features = [] }
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
@@ -78,21 +90,19 @@ tracing-opentelemetry = "0.18.0"
 lru-cache = "0.1.2"
 rusqlite = { version = "0.29.0", optional = true, features = ["bundled"] }
 parking_lot = { version = "0.12.1", optional = true }
-crossbeam = { version = "0.8.2", optional = true }
+# crossbeam = { version = "0.8.2", optional = true }
 num_cpus = "1.15.0"
 threadpool = "1.8.1"
-heed = { git = "https://github.com/timokoesters/heed.git", rev = "f6f825da7fb2c758867e05ad973ef800a6fe1d5d", optional = true }
+# heed = { git = "https://github.com/timokoesters/heed.git", rev = "f6f825da7fb2c758867e05ad973ef800a6fe1d5d", optional = true }
 # Used for ruma wrapper
 serde_html_form = "0.2.0"
-
-rocksdb = { version = "0.21.0", default-features = true, features = ["multi-threaded-cf", "zstd"], optional = true }
 
 thread_local = "1.1.7"
 # used for TURN server authentication
 hmac = "0.12.1"
 sha-1 = "0.10.1"
 # used for conduit's CLI and admin room command parsing
-clap = { version = "4.3.0", default-features = false, features = ["std", "derive", "help", "usage", "error-context"] }
+clap = { version = "4.3.0", default-features = false, features = ["std", "derive", "help", "usage", "error-context", "string"] }
 futures-util = { version = "0.3.28", default-features = false }
 # Used for reading the configuration from conduit.toml & environment variables
 figment = { version = "0.10.8", features = ["env", "toml"] }
@@ -104,15 +114,25 @@ async-trait = "0.1.68"
 
 sd-notify = { version = "0.4.1", optional = true }
 
+[dependencies.rocksdb]
+package = "rust-rocksdb"
+version = "0.22.7"
+optional = true
+features = [
+    "multi-threaded-cf",
+    "zstd",
+    "lz4",
+]
+
 [target.'cfg(unix)'.dependencies]
-nix = { version = "0.26.2", features = ["resource"] }
+nix = { version = "0.28", features = ["resource"] }
 
 [features]
 default = ["conduit_bin", "backend_sqlite", "backend_rocksdb", "systemd"]
 #backend_sled = ["sled"]
 backend_persy = ["persy", "parking_lot"]
 backend_sqlite = ["sqlite"]
-backend_heed = ["heed", "crossbeam"]
+#backend_heed = ["heed", "crossbeam"]
 backend_rocksdb = ["rocksdb"]
 jemalloc = ["tikv-jemalloc-ctl", "tikv-jemallocator"]
 sqlite = ["rusqlite", "parking_lot", "tokio/signal"]
