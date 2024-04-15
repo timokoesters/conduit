@@ -108,10 +108,7 @@ where
                     ))
                 }
                 (
-                    AuthScheme::AccessToken
-                    | AuthScheme::AppserviceToken
-                    | AuthScheme::AccessTokenOptional
-                    | AuthScheme::None,
+                    AuthScheme::AccessToken | AuthScheme::AccessTokenOptional,
                     Token::Appservice(info),
                 ) => {
                     let user_id = query_params
@@ -137,6 +134,9 @@ where
 
                     // TODO: Check if appservice is allowed to be that user
                     (Some(user_id), None, None, true)
+                }
+                (AuthScheme::None | AuthScheme::AppserviceToken, Token::Appservice(_)) => {
+                    (None, None, None, true)
                 }
                 (AuthScheme::AccessToken, Token::None) => {
                     return Err(Error::BadRequest(
