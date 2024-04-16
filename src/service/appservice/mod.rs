@@ -6,7 +6,10 @@ pub use data::Data;
 
 use futures_util::Future;
 use regex::RegexSet;
-use ruma::api::appservice::{Namespace, Registration};
+use ruma::{
+    api::appservice::{Namespace, Registration},
+    RoomAliasId, RoomId, UserId,
+};
 use tokio::sync::RwLock;
 
 use crate::{services, Result};
@@ -83,6 +86,18 @@ pub struct RegistrationInfo {
     pub rooms: NamespaceRegex,
 }
 
+impl RegistrationInfo {
+    pub fn is_user_match(&self, user_id: &UserId) -> bool {
+        self.users.is_match(user_id.as_str())
+            || self.registration.sender_localpart == user_id.localpart()
+    }
+
+    pub fn is_exclusive_user_match(&self, user_id: &UserId) -> bool {
+        self.users.is_exclusive_match(user_id.as_str())
+            || self.registration.sender_localpart == user_id.localpart()
+    }
+}
+
 impl TryFrom<Registration> for RegistrationInfo {
     fn try_from(value: Registration) -> Result<RegistrationInfo, regex::Error> {
         Ok(RegistrationInfo {
@@ -122,6 +137,7 @@ impl Service {
     }
     /// Registers an appservice and returns the ID to the caller.
     pub async fn register_appservice(&self, yaml: Registration) -> Result<String> {
+        //TODO: Check for collisions between exclusive appservice namespaces
         services()
             .appservice
             .registration_info
@@ -173,6 +189,30 @@ impl Service {
             .values()
             .find(|info| info.registration.as_token == token)
             .cloned()
+    }
+
+    // Checks if a given user id matches any exclusive appservice regex
+    pub async fn is_exclusive_user_id(&self, user_id: &UserId) -> bool {
+        self.read()
+            .await
+            .values()
+            .any(|info| info.is_exclusive_user_match(user_id))
+    }
+
+    // Checks if a given room alias matches any exclusive appservice regex
+    pub async fn is_exclusive_alias(&self, alias: &RoomAliasId) -> bool {
+        self.read()
+            .await
+            .values()
+            .any(|info| info.aliases.is_exclusive_match(alias.as_str()))
+    }
+
+    // Checks if a given room id matches any exclusive appservice regex
+    pub async fn is_exclusive_room_id(&self, room_id: &RoomId) -> bool {
+        self.read()
+            .await
+            .values()
+            .any(|info| info.rooms.is_exclusive_match(room_id.as_str()))
     }
 
     pub fn read(

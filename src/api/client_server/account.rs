@@ -75,17 +75,10 @@ pub async fn get_register_available_route(
 /// - Creates a new account and populates it with default account data
 /// - If `inhibit_login` is false: Creates a device and returns device id and access_token
 pub async fn register_route(body: Ruma<register::v3::Request>) -> Result<register::v3::Response> {
-    if !services().globals.allow_registration() && !body.from_appservice {
+    if !services().globals.allow_registration() && body.appservice_info.is_none() {
         return Err(Error::BadRequest(
             ErrorKind::Forbidden,
             "Registration has been disabled.",
-        ));
-    }
-
-    if body.body.login_type == Some(LoginType::ApplicationService) && !body.from_appservice {
-        return Err(Error::BadRequest(
-            ErrorKind::MissingToken,
-            "Missing appservice token.",
         ));
     }
 
@@ -126,10 +119,30 @@ pub async fn register_route(body: Ruma<register::v3::Request>) -> Result<registe
         },
     };
 
+    if body.body.login_type == Some(LoginType::ApplicationService) {
+        if let Some(ref info) = body.appservice_info {
+            if !info.is_user_match(&user_id) {
+                return Err(Error::BadRequest(
+                    ErrorKind::Exclusive,
+                    "User is not in namespace.",
+                ));
+            }
+        } else {
+            return Err(Error::BadRequest(
+                ErrorKind::MissingToken,
+                "Missing appservice token.",
+            ));
+        }
+    } else if services().appservice.is_exclusive_user_id(&user_id).await {
+        return Err(Error::BadRequest(
+            ErrorKind::Exclusive,
+            "User id reserved by appservice.",
+        ));
+    }
+
     // UIAA
     let mut uiaainfo;
-    let skip_auth;
-    if services().globals.config.registration_token.is_some() {
+    let skip_auth = if services().globals.config.registration_token.is_some() {
         // Registration token required
         uiaainfo = UiaaInfo {
             flows: vec![AuthFlow {
@@ -140,7 +153,7 @@ pub async fn register_route(body: Ruma<register::v3::Request>) -> Result<registe
             session: None,
             auth_error: None,
         };
-        skip_auth = body.from_appservice;
+        body.appservice_info.is_some()
     } else {
         // No registration token necessary, but clients must still go through the flow
         uiaainfo = UiaaInfo {
@@ -152,8 +165,8 @@ pub async fn register_route(body: Ruma<register::v3::Request>) -> Result<registe
             session: None,
             auth_error: None,
         };
-        skip_auth = body.from_appservice || is_guest;
-    }
+        body.appservice_info.is_some() || is_guest
+    };
 
     if !skip_auth {
         if let Some(auth) = &body.auth {
@@ -248,7 +261,7 @@ pub async fn register_route(body: Ruma<register::v3::Request>) -> Result<registe
     )?;
 
     info!("New user {} registered on this server.", user_id);
-    if !body.from_appservice && !is_guest {
+    if body.appservice_info.is_none() && !is_guest {
         services()
             .admin
             .send_message(RoomMessageEventContent::notice_plain(format!(
@@ -372,7 +385,7 @@ pub async fn whoami_route(body: Ruma<whoami::v3::Request>) -> Result<whoami::v3:
     Ok(whoami::v3::Response {
         user_id: sender_user.clone(),
         device_id,
-        is_guest: services().users.is_deactivated(sender_user)? && !body.from_appservice,
+        is_guest: services().users.is_deactivated(sender_user)? && body.appservice_info.is_none(),
     })
 }
 
