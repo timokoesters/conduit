@@ -2,7 +2,8 @@ use crate::Error;
 use ruma::{
     canonical_json::redact_content_in_place,
     events::{
-        room::member::RoomMemberEventContent, space::child::HierarchySpaceChildEvent,
+        room::{member::RoomMemberEventContent, redaction::RoomRedactionEventContent},
+        space::child::HierarchySpaceChildEvent,
         AnyEphemeralRoomEvent, AnyMessageLikeEvent, AnyStateEvent, AnyStrippedStateEvent,
         AnySyncStateEvent, AnySyncTimelineEvent, AnyTimelineEvent, StateEvent, TimelineEventType,
     },
@@ -25,7 +26,7 @@ pub struct EventHash {
     pub sha256: String,
 }
 
-#[derive(Clone, Deserialize, Serialize, Debug)]
+#[derive(Clone, Deserialize, Debug, Serialize)]
 pub struct PduEvent {
     pub event_id: Arc<EventId>,
     pub room_id: OwnedRoomId,
@@ -96,10 +97,31 @@ impl PduEvent {
         Ok(())
     }
 
+    pub fn copy_redacts(&self) -> (Option<Arc<EventId>>, Box<RawJsonValue>) {
+        if self.kind == TimelineEventType::RoomRedaction {
+            if let Ok(mut content) =
+                serde_json::from_str::<RoomRedactionEventContent>(self.content.get())
+            {
+                if let Some(redacts) = content.redacts {
+                    return (Some(redacts.into()), self.content.clone());
+                } else if let Some(redacts) = self.redacts.clone() {
+                    content.redacts = Some(redacts.into());
+                    return (
+                        self.redacts.clone(),
+                        to_raw_value(&content).expect("Must be valid, we only added redacts field"),
+                    );
+                }
+            }
+        }
+
+        (self.redacts.clone(), self.content.clone())
+    }
+
     #[tracing::instrument(skip(self))]
     pub fn to_sync_room_event(&self) -> Raw<AnySyncTimelineEvent> {
+        let (redacts, content) = self.copy_redacts();
         let mut json = json!({
-            "content": self.content,
+            "content": content,
             "type": self.kind,
             "event_id": self.event_id,
             "sender": self.sender,
@@ -112,7 +134,7 @@ impl PduEvent {
         if let Some(state_key) = &self.state_key {
             json["state_key"] = json!(state_key);
         }
-        if let Some(redacts) = &self.redacts {
+        if let Some(redacts) = &redacts {
             json["redacts"] = json!(redacts);
         }
 
@@ -146,8 +168,9 @@ impl PduEvent {
 
     #[tracing::instrument(skip(self))]
     pub fn to_room_event(&self) -> Raw<AnyTimelineEvent> {
+        let (redacts, content) = self.copy_redacts();
         let mut json = json!({
-            "content": self.content,
+            "content": content,
             "type": self.kind,
             "event_id": self.event_id,
             "sender": self.sender,
@@ -161,7 +184,7 @@ impl PduEvent {
         if let Some(state_key) = &self.state_key {
             json["state_key"] = json!(state_key);
         }
-        if let Some(redacts) = &self.redacts {
+        if let Some(redacts) = &redacts {
             json["redacts"] = json!(redacts);
         }
 
@@ -170,8 +193,9 @@ impl PduEvent {
 
     #[tracing::instrument(skip(self))]
     pub fn to_message_like_event(&self) -> Raw<AnyMessageLikeEvent> {
+        let (redacts, content) = self.copy_redacts();
         let mut json = json!({
-            "content": self.content,
+            "content": content,
             "type": self.kind,
             "event_id": self.event_id,
             "sender": self.sender,
@@ -185,7 +209,7 @@ impl PduEvent {
         if let Some(state_key) = &self.state_key {
             json["state_key"] = json!(state_key);
         }
-        if let Some(redacts) = &self.redacts {
+        if let Some(redacts) = &redacts {
             json["redacts"] = json!(redacts);
         }
 

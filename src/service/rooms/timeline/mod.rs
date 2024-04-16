@@ -399,15 +399,16 @@ impl Service {
                         }
                     }
                     RoomVersionId::V11 => {
-                        let content = serde_json::from_str::<RoomRedactionEventContent>(pdu.content.get())
-                            .map_err(|_| {
-                                Error::bad_database("Invalid content in redaction pdu.")
-                            })?;
+                        let content =
+                            serde_json::from_str::<RoomRedactionEventContent>(pdu.content.get())
+                                .map_err(|_| {
+                                    Error::bad_database("Invalid content in redaction pdu.")
+                                })?;
                         if let Some(redact_id) = &content.redacts {
                             self.redact_pdu(redact_id, pdu)?;
                         }
                     }
-                    _ => unreachable!("Validity of room version already checked")
+                    _ => unreachable!("Validity of room version already checked"),
                 };
             }
             TimelineEventType::SpaceChild => {
@@ -1015,10 +1016,7 @@ impl Service {
             let mut pdu = self
                 .get_pdu_from_id(&pdu_id)?
                 .ok_or_else(|| Error::bad_database("PDU ID points to invalid PDU."))?;
-            let room_version_id = services()
-                .rooms
-                .state
-                .get_room_version(&pdu.room_id)?;
+            let room_version_id = services().rooms.state.get_room_version(&pdu.room_id)?;
             pdu.redact(room_version_id, reason)?;
             self.replace_pdu(
                 &pdu_id,

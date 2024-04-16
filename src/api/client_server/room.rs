@@ -671,7 +671,7 @@ pub async fn upgrade_room_route(
             // "creator" key no longer exists in V11 rooms
             create_event_content.remove("creator");
         }
-        _ => unreachable!("Validity of room version already checked")
+        _ => unreachable!("Validity of room version already checked"),
     }
     create_event_content.insert(
         "room_version".into(),
