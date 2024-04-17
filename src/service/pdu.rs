@@ -97,6 +97,14 @@ impl PduEvent {
         Ok(())
     }
 
+    /// Copies the `redacts` property of the event to the `content` dict
+    ///
+    /// This follows the specification's
+    /// [recommendation](https://spec.matrix.org/v1.10/rooms/v11/#moving-the-redacts-property-of-mroomredaction-events-to-a-content-property):
+    ///
+    /// > For backwards-compatibility with older clients, servers should add a redacts
+    /// > property to the top level of m.room.redaction events in when serving such events
+    /// > over the Client-Server API.
     pub fn copy_redacts(&self) -> (Option<Arc<EventId>>, Box<RawJsonValue>) {
         if self.kind == TimelineEventType::RoomRedaction {
             if let Ok(mut content) =
