@@ -21,7 +21,6 @@ pub struct Config {
     pub tls: Option<TlsConfig>,
 
     pub server_name: OwnedServerName,
-    #[serde(default = "default_database_backend")]
     pub database_backend: String,
     pub database_path: String,
     #[serde(default = "default_db_cache_capacity_mb")]
@@ -221,10 +220,6 @@ fn default_address() -> IpAddr {
 
 fn default_port() -> u16 {
     8000
-}
-
-fn default_database_backend() -> String {
-    "sqlite".to_owned()
 }
 
 fn default_db_cache_capacity_mb() -> f64 {
