@@ -55,10 +55,10 @@ static GLOBAL: Jemalloc = Jemalloc;
 async fn main() {
     let cli = clap::parse();
 
-    let path =
+    let path = cli.config.unwrap_or_else(|| {
         Env::var("CONDUIT_CONFIG")
             .expect("The config path must either be set via the -c/--config flag or the CONDUIT_CONFIG env var. Example: /etc/conduit.toml")
-    ;
+    });
 
     match cli.command {
         Some(Commands::GenerateConfig) => {

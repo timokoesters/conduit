@@ -22,6 +22,10 @@ fn version() -> String {
 pub struct Args {
     #[command(subcommand)]
     pub command: Option<Commands>,
+
+    /// Path to the config file
+    #[arg(short, long, value_name = "PATH")]
+    pub config: Option<String>,
 }
 
 #[derive(Subcommand)]
