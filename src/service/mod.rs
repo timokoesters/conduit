@@ -114,6 +114,7 @@ impl Services {
             users: users::Service {
                 db,
                 connections: StdMutex::new(BTreeMap::new()),
+                device_last_seen: Mutex::new(BTreeMap::new()),
             },
             account_data: account_data::Service { db },
             admin: admin::Service::build(),

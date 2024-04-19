@@ -41,7 +41,7 @@ impl service::users::Data for KeyValueDatabase {
     }
 
     /// Find out which user an access token belongs to.
-    fn find_from_token(&self, token: &str) -> Result<Option<(OwnedUserId, String)>> {
+    fn find_from_token(&self, token: &str) -> Result<Option<(OwnedUserId, OwnedDeviceId)>> {
         self.token_userdeviceid
             .get(token.as_bytes())?
             .map_or(Ok(None), |bytes| {
@@ -60,9 +60,11 @@ impl service::users::Data for KeyValueDatabase {
                     .map_err(|_| {
                         Error::bad_database("User ID in token_userdeviceid is invalid.")
                     })?,
-                    utils::string_from_bytes(device_bytes).map_err(|_| {
-                        Error::bad_database("Device ID in token_userdeviceid is invalid.")
-                    })?,
+                    utils::string_from_bytes(device_bytes)
+                        .map_err(|_| {
+                            Error::bad_database("Device ID in token_userdeviceid is invalid.")
+                        })?
+                        .into(),
                 )))
             })
     }
@@ -896,7 +898,7 @@ impl service::users::Data for KeyValueDatabase {
             })
     }
 
-    fn all_devices_metadata<'a>(
+    fn all_user_devices_metadata<'a>(
         &'a self,
         user_id: &UserId,
     ) -> Box<dyn Iterator<Item = Result<Device>> + 'a> {
@@ -910,6 +912,46 @@ impl service::users::Data for KeyValueDatabase {
                     serde_json::from_slice::<Device>(&bytes).map_err(|_| {
                         Error::bad_database("Device in userdeviceid_metadata is invalid.")
                     })
+                }),
+        )
+    }
+
+    fn all_devices_metadata<'a>(
+        &'a self,
+    ) -> Box<dyn Iterator<Item = Result<(OwnedUserId, Device)>> + 'a> {
+        Box::new(self.userdeviceid_metadata.iter().map(|(user, bytes)| {
+            let binding = user.split(|&b| b == 0xff).collect::<Vec<_>>();
+            let user = binding
+                .first()
+                .ok_or_else(|| Error::bad_database("User ID in token_userdeviceid is invalid."))?
+                .to_vec();
+
+            if let (Ok(Ok(u)), Ok(d)) = (
+                utils::string_from_bytes(&user).map(UserId::parse),
+                serde_json::from_slice::<Device>(&bytes),
+            ) {
+                Ok((u, d))
+            } else {
+                Err(Error::bad_database(
+                    "Device and/or User in userdeviceid_metadata is invalid.",
+                ))
+            }
+        }))
+    }
+
+    fn set_devices_last_seen<'a>(
+        &'a self,
+        devices: &'a BTreeMap<OwnedDeviceId, MilliSecondsSinceUnixEpoch>,
+    ) -> Box<dyn Iterator<Item = Result<()>> + 'a> {
+        Box::new(
+            self.all_devices_metadata()
+                .filter_map(Result::ok)
+                .filter_map(|(u, mut d)| {
+                    d.last_seen_ts = Some(*devices.get(&d.device_id)?);
+                    Some((u, d))
+                })
+                .map(|(user, device)| {
+                    self.update_device_metadata(&user, &device.device_id, &device)
                 }),
         )
     }

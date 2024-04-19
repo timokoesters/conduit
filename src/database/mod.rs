@@ -1069,6 +1069,7 @@ impl KeyValueDatabase {
         services().sending.start_handler();
 
         Self::start_cleanup_task().await;
+        Self::start_device_last_seen_update_task();
         if services().globals.allow_check_for_updates() {
             Self::start_check_for_updates_task();
         }
@@ -1085,6 +1086,24 @@ impl KeyValueDatabase {
         debug!("flush: took {:?}", start.elapsed());
 
         res
+    }
+
+    #[tracing::instrument]
+    pub fn start_device_last_seen_update_task() {
+        tokio::spawn(async move {
+            let timer_interval = Duration::from_secs(60);
+            let mut i = interval(timer_interval);
+            loop {
+                i.tick().await;
+                let _ = Self::try_update_device_last_seen().await;
+            }
+        });
+    }
+
+    async fn try_update_device_last_seen() {
+        for error in services().users.write_cached_last_seen().await {
+            warn!("Error writing last seen timestamp of device to database: {error}");
+        }
     }
 
     #[tracing::instrument]

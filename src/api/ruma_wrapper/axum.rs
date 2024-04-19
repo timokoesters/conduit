@@ -87,7 +87,12 @@ where
             if let Some(reg_info) = services().appservice.find_from_token(token).await {
                 Token::Appservice(Box::new(reg_info.clone()))
             } else if let Some((user_id, device_id)) = services().users.find_from_token(token)? {
-                Token::User((user_id, OwnedDeviceId::from(device_id)))
+                services()
+                    .users
+                    .update_device_last_seen(device_id.clone())
+                    .await;
+
+                Token::User((user_id, device_id))
             } else {
                 Token::Invalid
             }

@@ -17,8 +17,8 @@ pub async fn get_devices_route(
 
     let devices: Vec<device::Device> = services()
         .users
-        .all_devices_metadata(sender_user)
-        .filter_map(|r| r.ok()) // Filter out buggy devices
+        .all_user_devices_metadata(sender_user)
+        .await
         .collect();
 
     Ok(get_devices::v3::Response { devices })
