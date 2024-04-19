@@ -41,7 +41,7 @@ impl service::users::Data for KeyValueDatabase {
     }
 
     /// Find out which user an access token belongs to.
-    fn find_from_token(&self, token: &str) -> Result<Option<(OwnedUserId, String)>> {
+    fn find_from_token(&self, token: &str) -> Result<Option<(OwnedUserId, OwnedDeviceId)>> {
         self.token_userdeviceid
             .get(token.as_bytes())?
             .map_or(Ok(None), |bytes| {
@@ -60,9 +60,11 @@ impl service::users::Data for KeyValueDatabase {
                     .map_err(|_| {
                         Error::bad_database("User ID in token_userdeviceid is invalid.")
                     })?,
-                    utils::string_from_bytes(device_bytes).map_err(|_| {
-                        Error::bad_database("Device ID in token_userdeviceid is invalid.")
-                    })?,
+                    utils::string_from_bytes(device_bytes)
+                        .map_err(|_| {
+                            Error::bad_database("Device ID in token_userdeviceid is invalid.")
+                        })?
+                        .into(),
                 )))
             })
     }
@@ -894,7 +896,7 @@ impl service::users::Data for KeyValueDatabase {
             })
     }
 
-    fn all_devices_metadata<'a>(
+    fn all_user_devices_metadata<'a>(
         &'a self,
         user_id: &UserId,
     ) -> Box<dyn Iterator<Item = Result<Device>> + 'a> {
@@ -910,6 +912,38 @@ impl service::users::Data for KeyValueDatabase {
                     })
                 }),
         )
+    }
+
+    fn set_devices_last_seen<'a>(
+        &'a self,
+        devices: &'a BTreeMap<(OwnedUserId, OwnedDeviceId), MilliSecondsSinceUnixEpoch>,
+    ) -> Box<dyn Iterator<Item = Result<()>> + 'a> {
+        Box::new(devices.iter().map(|((user, device), timestamp)| {
+            let mut key = user.as_bytes().to_vec();
+            key.push(0xff);
+            key.extend_from_slice(device.as_bytes());
+
+            // Device may have been removed since last db write
+            if let Some(mut device_metadata) = self
+                .userdeviceid_metadata
+                .get(&key)?
+                .map(|bytes| {
+                    serde_json::from_slice::<Device>(&bytes).map_err(|_| {
+                        Error::bad_database("Device in userdeviceid_metadata is invalid.")
+                    })
+                })
+                .transpose()?
+            {
+                device_metadata.last_seen_ts = Some(*timestamp);
+
+                self.userdeviceid_metadata.insert(
+                    &key,
+                    &serde_json::to_vec(&device_metadata).expect("Device always serializes"),
+                )?;
+            }
+
+            Ok(())
+        }))
     }
 
     /// Creates a new sync filter. Returns the filter id.

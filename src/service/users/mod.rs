@@ -2,7 +2,8 @@ mod data;
 use std::{
     collections::{BTreeMap, BTreeSet},
     mem,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex as StdMutex},
+    time::Duration,
 };
 
 pub use data::Data;
@@ -15,9 +16,11 @@ use ruma::{
     encryption::{CrossSigningKey, DeviceKeys, OneTimeKey},
     events::AnyToDeviceEvent,
     serde::Raw,
-    DeviceId, OneTimeKeyAlgorithm, OwnedDeviceId, OwnedMxcUri, OwnedOneTimeKeyId, OwnedRoomId,
-    OwnedUserId, UInt, UserId,
+    DeviceId, MilliSecondsSinceUnixEpoch, OneTimeKeyAlgorithm, OwnedDeviceId, OwnedMxcUri,
+    OwnedOneTimeKeyId, OwnedRoomId, OwnedUserId, UInt, UserId,
 };
+use tokio::{sync::Mutex, time::interval};
+use tracing::{debug, warn};
 
 use crate::{services, Error, Result};
 
@@ -32,10 +35,59 @@ pub struct Service {
     pub db: &'static dyn Data,
     #[allow(clippy::type_complexity)]
     pub connections:
-        Mutex<BTreeMap<(OwnedUserId, OwnedDeviceId, String), Arc<Mutex<SlidingSyncCache>>>>,
+        StdMutex<BTreeMap<(OwnedUserId, OwnedDeviceId, String), Arc<StdMutex<SlidingSyncCache>>>>,
+    pub device_last_seen: Mutex<BTreeMap<(OwnedUserId, OwnedDeviceId), MilliSecondsSinceUnixEpoch>>,
 }
 
 impl Service {
+    pub fn start_device_last_seen_update_task(self: &Arc<Self>) {
+        let self2 = Arc::clone(self);
+        tokio::spawn(async move {
+            // Actually writes the new device times to the database every 55 minutes.
+            // The device times are always returned fresh from memory
+            // if they have been changed after the last write.
+            let timer_interval = Duration::from_secs(60 * 5);
+            let mut i = interval(timer_interval);
+            loop {
+                i.tick().await;
+                let _ = self2.try_update_device_last_seen().await;
+            }
+        });
+    }
+
+    pub async fn try_update_device_last_seen(&self) {
+        debug!("Writing cached device last-seens to database");
+        for error in self.write_cached_last_seen().await {
+            warn!("Error writing last seen timestamp of device to database: {error}");
+        }
+    }
+
+    /// Writes all the currently cached last seen timestamps of devices to the database,
+    /// clearing the cache in the process
+    async fn write_cached_last_seen(&self) -> Vec<Error> {
+        let mut guard = self.device_last_seen.lock().await;
+        if !guard.is_empty() {
+            // TODO: Replace with `replace` once/if `tokio::sync::Mutex` implements the equivalent
+            // method from `std`: https://doc.rust-lang.org/std/sync/struct.Mutex.html#method.replace
+            // i.e. instead of the `let mut guard` above:
+            //let map = self.device_last_seen.replace(BTreeMap::new()).await;
+            // We do a clone instead as we don't want start having a backlog of awaiting `lock`s
+            // for all these DB fetches and writes, which admittedly, might not even be a big deal.
+            let map = guard.clone();
+            guard.clear();
+            drop(guard);
+
+            let result = self
+                .db
+                .set_devices_last_seen(&map)
+                .filter_map(Result::err)
+                .collect();
+            result
+        } else {
+            Vec::new()
+        }
+    }
+
     /// Check if a user has an account on this homeserver.
     pub fn exists(&self, user_id: &UserId) -> Result<bool> {
         self.db.exists(user_id)
@@ -68,7 +120,7 @@ impl Service {
             cache
                 .entry((user_id, device_id, conn_id))
                 .or_insert_with(|| {
-                    Arc::new(Mutex::new(SlidingSyncCache {
+                    Arc::new(StdMutex::new(SlidingSyncCache {
                         lists: BTreeMap::new(),
                         subscriptions: BTreeMap::new(),
                         known_rooms: BTreeMap::new(),
@@ -161,7 +213,7 @@ impl Service {
             cache
                 .entry((user_id, device_id, conn_id))
                 .or_insert_with(|| {
-                    Arc::new(Mutex::new(SlidingSyncCache {
+                    Arc::new(StdMutex::new(SlidingSyncCache {
                         lists: BTreeMap::new(),
                         subscriptions: BTreeMap::new(),
                         known_rooms: BTreeMap::new(),
@@ -189,7 +241,7 @@ impl Service {
             cache
                 .entry((user_id, device_id, conn_id))
                 .or_insert_with(|| {
-                    Arc::new(Mutex::new(SlidingSyncCache {
+                    Arc::new(StdMutex::new(SlidingSyncCache {
                         lists: BTreeMap::new(),
                         subscriptions: BTreeMap::new(),
                         known_rooms: BTreeMap::new(),
@@ -245,7 +297,7 @@ impl Service {
     }
 
     /// Find out which user an access token belongs to.
-    pub fn find_from_token(&self, token: &str) -> Result<Option<(OwnedUserId, String)>> {
+    pub fn find_from_token(&self, token: &str) -> Result<Option<(OwnedUserId, OwnedDeviceId)>> {
         self.db.find_from_token(token)
     }
 
@@ -519,11 +571,25 @@ impl Service {
         self.db.get_devicelist_version(user_id)
     }
 
-    pub fn all_devices_metadata<'a>(
+    pub async fn all_user_devices_metadata<'a>(
         &'a self,
-        user_id: &UserId,
-    ) -> impl Iterator<Item = Result<Device>> + 'a {
-        self.db.all_devices_metadata(user_id)
+        user_id: &'a UserId,
+    ) -> impl Iterator<Item = Device> + 'a {
+        let all_devices: Vec<_> = self
+            .db
+            .all_user_devices_metadata(user_id)
+            .filter_map(Result::ok)
+            // RumaHandler trait complains if we don't collect
+            .collect();
+        let device_last_seen = self.device_last_seen.lock().await;
+
+        // Updates the timestamps with the cached ones
+        all_devices.into_iter().map(move |mut d| {
+            if let Some(ts) = device_last_seen.get(&(user_id.to_owned(), d.device_id.clone())) {
+                d.last_seen_ts = Some(*ts);
+            };
+            d
+        })
     }
 
     /// Deactivate account
@@ -563,6 +629,14 @@ impl Service {
     /// Find out which user an OpenID access token belongs to.
     pub fn find_from_openid_token(&self, token: &str) -> Result<Option<OwnedUserId>> {
         self.db.find_from_openid_token(token)
+    }
+
+    /// Sets the device_last_seen timestamp of a given device to now
+    pub async fn update_device_last_seen(&self, user_id: OwnedUserId, device_id: OwnedDeviceId) {
+        self.device_last_seen
+            .lock()
+            .await
+            .insert((user_id, device_id), MilliSecondsSinceUnixEpoch::now());
     }
 }
 

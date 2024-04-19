@@ -71,6 +71,17 @@ pub async fn sync_events_route(
 ) -> Result<sync_events::v3::Response, RumaResponse<UiaaResponse>> {
     let sender_user = body.sender_user.expect("user is authenticated");
     let sender_device = body.sender_device.expect("user is authenticated");
+
+    let cloned_sender_user = sender_user.clone();
+    let cloned_sender_device = sender_device.clone();
+    // No need to block sync on device last-seen update
+    tokio::spawn(async move {
+        services()
+            .users
+            .update_device_last_seen(cloned_sender_user, cloned_sender_device)
+            .await;
+    });
+
     let body = body.body;
 
     let mut rx = match services()
@@ -1274,6 +1285,17 @@ pub async fn sync_events_v5_route(
 ) -> Result<sync_events::v5::Response, RumaResponse<UiaaResponse>> {
     let sender_user = body.sender_user.expect("user is authenticated");
     let sender_device = body.sender_device.expect("user is authenticated");
+
+    let cloned_sender_user = sender_user.clone();
+    let cloned_sender_device = sender_device.clone();
+    // No need to block sync on device last-seen update
+    tokio::spawn(async move {
+        services()
+            .users
+            .update_device_last_seen(cloned_sender_user, cloned_sender_device)
+            .await;
+    });
+
     let mut body = body.body;
     // Setup watchers, so if there's no response, we can wait for them
     let watcher = services().globals.watch(&sender_user, &sender_device);

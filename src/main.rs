@@ -543,7 +543,7 @@ async fn shutdown_signal(handle: ServerHandle) {
     warn!("Received {}, shutting down...", sig);
     handle.graceful_shutdown(Some(Duration::from_secs(30)));
 
-    services().globals.shutdown();
+    services().globals.shutdown().await;
 
     #[cfg(feature = "systemd")]
     let _ = sd_notify::notify(true, &[sd_notify::NotifyState::Stopping]);

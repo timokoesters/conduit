@@ -2351,8 +2351,8 @@ pub async fn get_devices_route(
             .expect("version will not grow that large"),
         devices: services()
             .users
-            .all_devices_metadata(&body.user_id)
-            .filter_map(|r| r.ok())
+            .all_user_devices_metadata(&body.user_id)
+            .await
             .filter_map(|metadata| {
                 Some(UserDevice {
                     keys: services()

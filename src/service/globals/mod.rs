@@ -512,11 +512,13 @@ impl Service {
         Ok(r)
     }
 
-    pub fn shutdown(&self) {
+    pub async fn shutdown(&self) {
         self.shutdown.store(true, atomic::Ordering::Relaxed);
         // On shutdown
         info!(target: "shutdown-sync", "Received shutdown notification, notifying sync helpers...");
         services().globals.rotate.fire();
+        // Force write before shutdown
+        services().users.try_update_device_last_seen().await;
     }
 }
 

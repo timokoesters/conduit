@@ -29,7 +29,7 @@ pub struct Services {
     pub rooms: rooms::Service,
     pub transaction_ids: transaction_ids::Service,
     pub uiaa: uiaa::Service,
-    pub users: users::Service,
+    pub users: Arc<users::Service>,
     pub account_data: account_data::Service,
     pub admin: Arc<admin::Service>,
     pub globals: globals::Service,
@@ -112,10 +112,11 @@ impl Services {
             },
             transaction_ids: transaction_ids::Service { db },
             uiaa: uiaa::Service { db },
-            users: users::Service {
+            users: Arc::new(users::Service {
                 db,
                 connections: StdMutex::new(BTreeMap::new()),
-            },
+                device_last_seen: Mutex::new(BTreeMap::new()),
+            }),
             account_data: account_data::Service { db },
             admin: admin::Service::build(),
             key_backups: key_backups::Service { db },

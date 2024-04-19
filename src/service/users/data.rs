@@ -4,8 +4,8 @@ use ruma::{
     encryption::{CrossSigningKey, DeviceKeys, OneTimeKey},
     events::AnyToDeviceEvent,
     serde::Raw,
-    DeviceId, OneTimeKeyAlgorithm, OwnedDeviceId, OwnedMxcUri, OwnedOneTimeKeyId, OwnedUserId,
-    UInt, UserId,
+    DeviceId, MilliSecondsSinceUnixEpoch, OneTimeKeyAlgorithm, OwnedDeviceId, OwnedMxcUri,
+    OwnedOneTimeKeyId, OwnedUserId, UInt, UserId,
 };
 use std::collections::BTreeMap;
 
@@ -20,7 +20,7 @@ pub trait Data: Send + Sync {
     fn count(&self) -> Result<usize>;
 
     /// Find out which user an access token belongs to.
-    fn find_from_token(&self, token: &str) -> Result<Option<(OwnedUserId, String)>>;
+    fn find_from_token(&self, token: &str) -> Result<Option<(OwnedUserId, OwnedDeviceId)>>;
 
     /// Returns an iterator over all users on this homeserver.
     fn iter<'a>(&'a self) -> Box<dyn Iterator<Item = Result<OwnedUserId>> + 'a>;
@@ -202,10 +202,15 @@ pub trait Data: Send + Sync {
 
     fn get_devicelist_version(&self, user_id: &UserId) -> Result<Option<u64>>;
 
-    fn all_devices_metadata<'a>(
+    fn all_user_devices_metadata<'a>(
         &'a self,
         user_id: &UserId,
     ) -> Box<dyn Iterator<Item = Result<Device>> + 'a>;
+
+    fn set_devices_last_seen<'a>(
+        &'a self,
+        devices: &'a BTreeMap<(OwnedUserId, OwnedDeviceId), MilliSecondsSinceUnixEpoch>,
+    ) -> Box<dyn Iterator<Item = Result<()>> + 'a>;
 
     /// Creates a new sync filter. Returns the filter id.
     fn create_filter(&self, user_id: &UserId, filter: &FilterDefinition) -> Result<String>;
