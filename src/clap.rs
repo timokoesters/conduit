@@ -1,6 +1,6 @@
 //! Integration with `clap`
 
-use clap::Parser;
+use clap::{Parser, Subcommand};
 
 /// Returns the current version of the crate with extra info if supplied
 ///
@@ -19,7 +19,16 @@ fn version() -> String {
 /// Command line arguments
 #[derive(Parser)]
 #[clap(about, version = version())]
-pub struct Args {}
+pub struct Args {
+    #[command(subcommand)]
+    pub command: Option<Commands>,
+}
+
+#[derive(Subcommand)]
+pub enum Commands {
+    /// Generates a default config file
+    GenerateConfig,
+}
 
 /// Parse command line arguments into structured data
 pub fn parse() -> Args {

@@ -7,7 +7,11 @@ use axum::{
     Router,
 };
 use axum_server::{bind, bind_rustls, tls_rustls::RustlsConfig, Handle as ServerHandle};
-use conduit::api::{client_server, server_server};
+use conduit::{
+    api::{client_server, server_server},
+    clap::Commands,
+    utils::random_string,
+};
 use figment::{
     providers::{Env, Format, Toml},
     Figment,
@@ -23,7 +27,12 @@ use ruma::api::{
     },
     IncomingRequest,
 };
-use tokio::signal;
+use tokio::{
+    fs::{try_exists, File},
+    io::AsyncWriteExt,
+    signal,
+};
+use toml_edit::DocumentMut;
 use tower::ServiceBuilder;
 use tower_http::{
     cors::{self, CorsLayer},
@@ -44,100 +53,128 @@ static GLOBAL: Jemalloc = Jemalloc;
 
 #[tokio::main]
 async fn main() {
-    clap::parse();
+    let cli = clap::parse();
 
-    // Initialize config
-    let raw_config =
-        Figment::new()
-            .merge(
-                Toml::file(Env::var("CONDUIT_CONFIG").expect(
-                    "The CONDUIT_CONFIG env var needs to be set. Example: /etc/conduit.toml",
-                ))
-                .nested(),
-            )
-            .merge(Env::prefixed("CONDUIT_").global());
+    let path =
+        Env::var("CONDUIT_CONFIG")
+            .expect("The config path must either be set via the -c/--config flag or the CONDUIT_CONFIG env var. Example: /etc/conduit.toml")
+    ;
 
-    let config = match raw_config.extract::<Config>() {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("It looks like your config is invalid. The following error occurred: {e}");
-            std::process::exit(1);
+    match cli.command {
+        Some(Commands::GenerateConfig) => {
+            let toml = include_str!("../conduit-example.toml");
+            let mut doc = toml.parse::<DocumentMut>().expect("invalid doc");
+            doc["global"]["registration_token"] = toml_edit::value(random_string(64));
+
+            if let Ok(true) = try_exists(path.clone()).await {
+                panic!("Error: file '{}' already exists", path);
+                // Any possible error should be caught on creation
+            } else {
+                match File::create(path).await {
+                    Ok(mut file) => match file.write(&doc.to_string().into_bytes()).await {
+                        Err(e) => panic!("Error writing config file: {e}"),
+                        Ok(_) => {
+                            println!("Successfully generated config file");
+                        }
+                    },
+                    Err(e) => panic!("Error creating config file: {e}"),
+                }
+            }
         }
-    };
+        None => {
+            // Initialize config
+            let raw_config = Figment::new()
+                .merge(Toml::file(path).nested())
+                .merge(Env::prefixed("CONDUIT_").global());
 
-    config.warn_deprecated();
+            let config = match raw_config.extract::<Config>() {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!(
+                        "It looks like your config is invalid. The following error occurred: {e}"
+                    );
+                    std::process::exit(1);
+                }
+            };
 
-    if config.allow_jaeger {
-        opentelemetry::global::set_text_map_propagator(opentelemetry_jaeger::Propagator::new());
-        let tracer = opentelemetry_jaeger::new_agent_pipeline()
-            .with_auto_split_batch(true)
-            .with_service_name("conduit")
-            .install_batch(opentelemetry::runtime::Tokio)
-            .unwrap();
-        let telemetry = tracing_opentelemetry::layer().with_tracer(tracer);
+            config.warn_deprecated();
 
-        let filter_layer = match EnvFilter::try_new(&config.log) {
-            Ok(s) => s,
-            Err(e) => {
-                eprintln!(
+            if config.allow_jaeger {
+                opentelemetry::global::set_text_map_propagator(
+                    opentelemetry_jaeger::Propagator::new(),
+                );
+                let tracer = opentelemetry_jaeger::new_agent_pipeline()
+                    .with_auto_split_batch(true)
+                    .with_service_name("conduit")
+                    .install_batch(opentelemetry::runtime::Tokio)
+                    .unwrap();
+                let telemetry = tracing_opentelemetry::layer().with_tracer(tracer);
+
+                let filter_layer = match EnvFilter::try_new(&config.log) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        eprintln!(
                     "It looks like your log config is invalid. The following error occurred: {e}"
                 );
-                EnvFilter::try_new("warn").unwrap()
+                        EnvFilter::try_new("warn").unwrap()
+                    }
+                };
+
+                let subscriber = tracing_subscriber::Registry::default()
+                    .with(filter_layer)
+                    .with(telemetry);
+                tracing::subscriber::set_global_default(subscriber).unwrap();
+            } else if config.tracing_flame {
+                let registry = tracing_subscriber::Registry::default();
+                let (flame_layer, _guard) =
+                    tracing_flame::FlameLayer::with_file("./tracing.folded").unwrap();
+                let flame_layer = flame_layer.with_empty_samples(false);
+
+                let filter_layer = EnvFilter::new("trace,h2=off");
+
+                let subscriber = registry.with(filter_layer).with(flame_layer);
+                tracing::subscriber::set_global_default(subscriber).unwrap();
+            } else {
+                let registry = tracing_subscriber::Registry::default();
+                let fmt_layer = tracing_subscriber::fmt::Layer::new();
+                let filter_layer = match EnvFilter::try_new(&config.log) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        eprintln!("It looks like your config is invalid. The following error occured while parsing it: {e}");
+                        EnvFilter::try_new("warn").unwrap()
+                    }
+                };
+
+                let subscriber = registry.with(filter_layer).with(fmt_layer);
+                tracing::subscriber::set_global_default(subscriber).unwrap();
             }
-        };
 
-        let subscriber = tracing_subscriber::Registry::default()
-            .with(filter_layer)
-            .with(telemetry);
-        tracing::subscriber::set_global_default(subscriber).unwrap();
-    } else if config.tracing_flame {
-        let registry = tracing_subscriber::Registry::default();
-        let (flame_layer, _guard) =
-            tracing_flame::FlameLayer::with_file("./tracing.folded").unwrap();
-        let flame_layer = flame_layer.with_empty_samples(false);
+            // This is needed for opening lots of file descriptors, which tends to
+            // happen more often when using RocksDB and making lots of federation
+            // connections at startup. The soft limit is usually 1024, and the hard
+            // limit is usually 512000; I've personally seen it hit >2000.
+            //
+            // * https://www.freedesktop.org/software/systemd/man/systemd.exec.html#id-1.12.2.1.17.6
+            // * https://github.com/systemd/systemd/commit/0abf94923b4a95a7d89bc526efc84e7ca2b71741
+            #[cfg(unix)]
+            maximize_fd_limit()
+                .expect("should be able to increase the soft limit to the hard limit");
 
-        let filter_layer = EnvFilter::new("trace,h2=off");
+            info!("Loading database");
+            if let Err(error) = KeyValueDatabase::load_or_create(config).await {
+                error!(?error, "The database couldn't be loaded or created");
 
-        let subscriber = registry.with(filter_layer).with(flame_layer);
-        tracing::subscriber::set_global_default(subscriber).unwrap();
-    } else {
-        let registry = tracing_subscriber::Registry::default();
-        let fmt_layer = tracing_subscriber::fmt::Layer::new();
-        let filter_layer = match EnvFilter::try_new(&config.log) {
-            Ok(s) => s,
-            Err(e) => {
-                eprintln!("It looks like your config is invalid. The following error occured while parsing it: {e}");
-                EnvFilter::try_new("warn").unwrap()
+                std::process::exit(1);
+            };
+            let config = &services().globals.config;
+
+            info!("Starting server");
+            run_server().await.unwrap();
+
+            if config.allow_jaeger {
+                opentelemetry::global::shutdown_tracer_provider();
             }
-        };
-
-        let subscriber = registry.with(filter_layer).with(fmt_layer);
-        tracing::subscriber::set_global_default(subscriber).unwrap();
-    }
-
-    // This is needed for opening lots of file descriptors, which tends to
-    // happen more often when using RocksDB and making lots of federation
-    // connections at startup. The soft limit is usually 1024, and the hard
-    // limit is usually 512000; I've personally seen it hit >2000.
-    //
-    // * https://www.freedesktop.org/software/systemd/man/systemd.exec.html#id-1.12.2.1.17.6
-    // * https://github.com/systemd/systemd/commit/0abf94923b4a95a7d89bc526efc84e7ca2b71741
-    #[cfg(unix)]
-    maximize_fd_limit().expect("should be able to increase the soft limit to the hard limit");
-
-    info!("Loading database");
-    if let Err(error) = KeyValueDatabase::load_or_create(config).await {
-        error!(?error, "The database couldn't be loaded or created");
-
-        std::process::exit(1);
-    };
-    let config = &services().globals.config;
-
-    info!("Starting server");
-    run_server().await.unwrap();
-
-    if config.allow_jaeger {
-        opentelemetry::global::shutdown_tracer_provider();
+        }
     }
 }
 

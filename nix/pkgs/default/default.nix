@@ -54,6 +54,7 @@ let
       include = [
         "Cargo.lock"
         "Cargo.toml"
+        "conduit-example.toml"
         "src"
       ];
     };
