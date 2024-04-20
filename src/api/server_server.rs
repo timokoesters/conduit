@@ -527,10 +527,6 @@ async fn request_well_known(destination: &str) -> Option<String> {
 pub async fn get_server_version_route(
     _body: Ruma<get_server_version::v1::Request>,
 ) -> Result<get_server_version::v1::Response> {
-    if !services().globals.allow_federation() {
-        return Err(Error::bad_config("Federation is disabled."));
-    }
-
     Ok(get_server_version::v1::Response {
         server: Some(get_server_version::v1::Server {
             name: Some("Conduit".to_owned()),
@@ -547,10 +543,6 @@ pub async fn get_server_version_route(
 /// forever.
 // Response type for this endpoint is Json because we need to calculate a signature for the response
 pub async fn get_server_keys_route() -> Result<impl IntoResponse> {
-    if !services().globals.allow_federation() {
-        return Err(Error::bad_config("Federation is disabled."));
-    }
-
     let mut verify_keys: BTreeMap<OwnedServerSigningKeyId, VerifyKey> = BTreeMap::new();
     verify_keys.insert(
         format!("ed25519:{}", services().globals.keypair().version())

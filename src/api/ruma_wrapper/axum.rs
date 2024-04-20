@@ -149,10 +149,6 @@ where
                     Token::User((user_id, device_id)),
                 ) => (Some(user_id), Some(device_id), None, false),
                 (AuthScheme::ServerSignatures, Token::None) => {
-                    if !services().globals.allow_federation() {
-                        return Err(Error::bad_config("Federation is disabled."));
-                    }
-
                     let TypedHeader(Authorization(x_matrix)) = parts
                         .extract::<TypedHeader<Authorization<XMatrix>>>()
                         .await
