@@ -13,12 +13,7 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
     crane = {
-      # Pin latest crane that's not affected by the following bugs:
-      #
-      # * <https://github.com/ipetkov/crane/issues/527#issuecomment-1978079140>
-      # * <https://github.com/toml-rs/toml/issues/691>
-      # * <https://github.com/toml-rs/toml/issues/267>
-      url = "github:ipetkov/crane?rev=2c653e4478476a52c6aa3ac0495e4dea7449ea0e";
+      url = "github:ipetkov/crane?ref=master";
       inputs.nixpkgs.follows = "nixpkgs";
     };
     attic.url = "github:zhaofengli/attic?ref=main";
