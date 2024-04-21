@@ -13,12 +13,7 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
     crane = {
-      # Pin latest crane that's not affected by the following bugs:
-      #
-      # * <https://github.com/ipetkov/crane/issues/527#issuecomment-1978079140>
-      # * <https://github.com/toml-rs/toml/issues/691>
-      # * <https://github.com/toml-rs/toml/issues/267>
-      url = "github:ipetkov/crane?rev=2c653e4478476a52c6aa3ac0495e4dea7449ea0e";
+      url = "github:ipetkov/crane?ref=master";
       inputs.nixpkgs.follows = "nixpkgs";
     };
     attic.url = "github:zhaofengli/attic?ref=main";
@@ -60,7 +55,7 @@
 
       rocksdb' = pkgs:
       let
-        version = "8.11.3";
+        version = "9.1.0";
       in
       pkgs.rocksdb.overrideAttrs (old: {
         inherit version;
@@ -68,7 +63,7 @@
           owner = "facebook";
           repo = "rocksdb";
           rev = "v${version}";
-          hash = "sha256-OpEiMwGxZuxb9o3RQuSrwZMQGLhe9xLT1aa3HpI4KPs=";
+          hash = "sha256-vRPyrXkXVVhP56n5FVYef8zbIsnnanQSpElmQLZ7mh8=";
         };
       });
 
