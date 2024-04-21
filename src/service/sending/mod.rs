@@ -1,6 +1,7 @@
 mod data;
 
 pub use data::Data;
+use serde_json::value::to_raw_value;
 
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
@@ -79,8 +80,9 @@ impl OutgoingKind {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SendingEventType {
+    Event(Box<PduEvent>),
     Pdu(Vec<u8>), // pduid
     Edu(Vec<u8>), // pdu json
 }
@@ -440,6 +442,18 @@ impl Service {
         Ok(())
     }
 
+    #[tracing::instrument(skip(self))]
+    pub fn send_event_appservice(&self, appservice_id: String, event: PduEvent) -> Result<()> {
+        let outgoing_kind = OutgoingKind::Appservice(appservice_id);
+        let event = SendingEventType::Event(Box::new(event));
+        let keys = self.db.queue_requests(&[(&outgoing_kind, event.clone())])?;
+        self.sender
+            .send((outgoing_kind, event, keys.into_iter().next().unwrap()))
+            .unwrap();
+
+        Ok(())
+    }
+
     /// Cleanup event data
     /// Used for instance after we remove an appservice registration
     ///
@@ -476,6 +490,9 @@ impl Service {
                                 })?
                                 .to_room_event())
                         }
+                        SendingEventType::Event(event) => {
+                            pdu_jsons.push(event.to_room_event());
+                        }
                         SendingEventType::Edu(_) => {
                             // Appservices don't need EDUs (?)
                         }
@@ -504,6 +521,7 @@ impl Service {
                                 .iter()
                                 .map(|e| match e {
                                     SendingEventType::Edu(b) | SendingEventType::Pdu(b) => &**b,
+                                    SendingEventType::Event(b) => b.event_id.as_bytes(),
                                 })
                                 .collect::<Vec<_>>(),
                         )))
@@ -541,6 +559,7 @@ impl Service {
                                     })?,
                             );
                         }
+                        SendingEventType::Event(event) => pdus.push(*event.clone()),
                         SendingEventType::Edu(_) => {
                             // Push gateways don't need EDUs (?)
                         }
@@ -631,6 +650,11 @@ impl Service {
                                 edu_jsons.push(raw);
                             }
                         }
+                        SendingEventType::Event(event) => {
+                            pdu_jsons.push(
+                                to_raw_value(event).expect("To raw value always succeeds for pdus"),
+                            );
+                        }
                     }
                 }
 
@@ -649,6 +673,7 @@ impl Service {
                                     .iter()
                                     .map(|e| match e {
                                         SendingEventType::Edu(b) | SendingEventType::Pdu(b) => &**b,
+                                        SendingEventType::Event(b) => b.event_id.as_bytes(),
                                     })
                                     .collect::<Vec<_>>(),
                             ),

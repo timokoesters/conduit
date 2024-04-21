@@ -43,7 +43,7 @@ use ruma::{
     to_device::DeviceIdOrAllDevices,
     uint, user_id, CanonicalJsonObject, CanonicalJsonValue, EventId, MilliSecondsSinceUnixEpoch,
     OwnedEventId, OwnedRoomId, OwnedServerName, OwnedServerSigningKeyId, OwnedUserId, RoomId,
-    ServerName,
+    ServerName, UserId,
 };
 use serde_json::value::{to_raw_value, RawValue as RawJsonValue};
 use std::{
@@ -1715,7 +1715,10 @@ pub async fn create_invite_route(
     let mut event: JsonObject = serde_json::from_str(body.event.get())
         .map_err(|_| Error::BadRequest(ErrorKind::InvalidParam, "Invalid invite event bytes."))?;
 
-    event.insert("event_id".to_owned(), "$dummy".into());
+    event.insert(
+        "event_id".to_owned(),
+        serde_json::Value::String(EventId::new(services().globals.server_name()).to_string()),
+    );
 
     let pdu: PduEvent = serde_json::from_value(event.into()).map_err(|e| {
         warn!("Invalid invite event: {}", e);
@@ -1738,6 +1741,22 @@ pub async fn create_invite_route(
             Some(invite_state),
             true,
         )?;
+
+        if let Some(Ok(user)) = pdu.state_key.as_ref().map(UserId::parse) {
+            let lock = services().appservice.read().await;
+            for id in lock
+                .iter()
+                .filter(|(_, info)| info.users.is_match(user.as_str()))
+                .map(|(id, _)| id)
+            {
+                if let Err(e) = services()
+                    .sending
+                    .send_event_appservice(id.to_string(), pdu.clone())
+                {
+                    error!("Failed to send invite event to appservice: {}", e);
+                }
+            }
+        }
     }
 
     Ok(create_invite::v2::Response {
