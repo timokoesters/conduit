@@ -107,10 +107,7 @@ where
                         "Unknown access token.",
                     ))
                 }
-                (
-                    AuthScheme::AccessToken | AuthScheme::AccessTokenOptional,
-                    Token::Appservice(info),
-                ) => {
+                (AuthScheme::AccessToken, Token::Appservice(info)) => {
                     let user_id = query_params
                         .user_id
                         .map_or_else(
@@ -135,9 +132,12 @@ where
                     // TODO: Check if appservice is allowed to be that user
                     (Some(user_id), None, None, true)
                 }
-                (AuthScheme::None | AuthScheme::AppserviceToken, Token::Appservice(_)) => {
-                    (None, None, None, true)
-                }
+                (
+                    AuthScheme::None
+                    | AuthScheme::AppserviceToken
+                    | AuthScheme::AccessTokenOptional,
+                    Token::Appservice(_),
+                ) => (None, None, None, true),
                 (AuthScheme::AccessToken, Token::None) => {
                     return Err(Error::BadRequest(
                         ErrorKind::MissingToken,
