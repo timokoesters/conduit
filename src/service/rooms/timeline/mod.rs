@@ -395,7 +395,14 @@ impl Service {
                     | RoomVersionId::V9
                     | RoomVersionId::V10 => {
                         if let Some(redact_id) = &pdu.redacts {
-                            self.redact_pdu(redact_id, pdu)?;
+                            if services().rooms.state_accessor.user_can_redact(
+                                redact_id,
+                                &pdu.sender,
+                                &pdu.room_id,
+                                false,
+                            )? {
+                                self.redact_pdu(redact_id, pdu)?;
+                            }
                         }
                     }
                     RoomVersionId::V11 => {
@@ -405,7 +412,14 @@ impl Service {
                                     Error::bad_database("Invalid content in redaction pdu.")
                                 })?;
                         if let Some(redact_id) = &content.redacts {
-                            self.redact_pdu(redact_id, pdu)?;
+                            if services().rooms.state_accessor.user_can_redact(
+                                redact_id,
+                                &pdu.sender,
+                                &pdu.room_id,
+                                false,
+                            )? {
+                                self.redact_pdu(redact_id, pdu)?;
+                            }
                         }
                     }
                     _ => unreachable!("Validity of room version already checked"),
@@ -884,6 +898,23 @@ impl Service {
                 }
             }
         }
+
+        // If redaction event is not authorized, do not append it to the timeline
+        if let Some(redact_id) = &pdu.redacts {
+            if pdu.kind == TimelineEventType::RoomRedaction
+                && !services().rooms.state_accessor.user_can_redact(
+                    redact_id,
+                    &pdu.sender,
+                    &pdu.room_id,
+                    false,
+                )?
+            {
+                return Err(Error::BadRequest(
+                    ErrorKind::Forbidden,
+                    "User cannot redact this event.",
+                ));
+            }
+        };
 
         // We append to state before appending the pdu, so we don't have a moment in time with the
         // pdu without it's state. This is okay because append_pdu can't fail.

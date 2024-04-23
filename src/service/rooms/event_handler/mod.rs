@@ -24,7 +24,7 @@ use ruma::{
     },
     events::{
         room::{create::RoomCreateEventContent, server_acl::RoomServerAclEventContent},
-        StateEventType,
+        StateEventType, TimelineEventType,
     },
     int,
     serde::Base64,
@@ -796,7 +796,18 @@ impl Service {
             None::<PduEvent>,
             |k, s| auth_events.get(&(k.clone(), s.to_owned())),
         )
-        .map_err(|_e| Error::BadRequest(ErrorKind::InvalidParam, "Auth check failed."))?;
+        .map_err(|_e| Error::BadRequest(ErrorKind::InvalidParam, "Auth check failed."))?
+            || if let Some(redact_id) = &incoming_pdu.redacts {
+                incoming_pdu.kind == TimelineEventType::RoomRedaction
+                    && !services().rooms.state_accessor.user_can_redact(
+                        redact_id,
+                        &incoming_pdu.sender,
+                        &incoming_pdu.room_id,
+                        true,
+                    )?
+            } else {
+                false
+            };
 
         // 13. Use state resolution to find new room state
 
