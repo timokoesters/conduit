@@ -18,7 +18,7 @@ services:
 
     # We need some way to server the client and server .well-known json. The simplest way is to use a nginx container
     # to serve those two as static files. If you want to use a different way, delete or comment the below service, here
-    # and in the docker-compose file.
+    # and in the docker compose file.
     well-known:
         labels:
             - "traefik.enable=true"

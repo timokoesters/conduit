@@ -7,8 +7,8 @@ services:
         ### then you are ready to go.
         image: matrixconduit/matrix-conduit:latest
         ### If you want to build a fresh image from the sources, then comment the image line and uncomment the
-        ### build lines. If you want meaningful labels in your built Conduit image, you should run docker-compose like this:
-        ### CREATED=$(date -u +'%Y-%m-%dT%H:%M:%SZ') VERSION=$(grep -m1 -o '[0-9].[0-9].[0-9]' Cargo.toml) docker-compose up -d
+        ### build lines. If you want meaningful labels in your built Conduit image, you should run docker compose like this:
+        ### CREATED=$(date -u +'%Y-%m-%dT%H:%M:%SZ') VERSION=$(grep -m1 -o '[0-9].[0-9].[0-9]' Cargo.toml) docker compose up -d
         # build:
         #     context: .
         #     args:
@@ -43,7 +43,7 @@ services:
 
     # We need some way to server the client and server .well-known json. The simplest way is to use a nginx container
     # to serve those two as static files. If you want to use a different way, delete or comment the below service, here
-    # and in the docker-compose override file.
+    # and in the docker compose override file.
     well-known:
         image: nginx:latest
         restart: unless-stopped
