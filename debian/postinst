@@ -72,9 +72,22 @@ max_request_size = 20_000_000 # in bytes
 # Enables registration. If set to false, no users can register on this server.
 allow_registration = true
 
+# A static registration token that new users will have to provide when creating
+# an account.
+# - Insert a password that users will have to enter on registration
+# - Start the line with '#' to remove the condition
+#registration_token = ""
+
 allow_federation = true
 allow_check_for_updates = true
 
+# Enable the display name lightning bolt on registration.
+enable_lightning_bolt = true
+
+# Servers listed here will be used to gather public keys of other servers.
+# Generally, copying this exactly should be enough. (Currently, Conduit doesn't
+# support batched key requests, so this list should only contain Synapse
+# servers.)
 trusted_servers = ["matrix.org"]
 
 #max_concurrent_requests = 100 # How many requests Conduit sends to other servers at the same time

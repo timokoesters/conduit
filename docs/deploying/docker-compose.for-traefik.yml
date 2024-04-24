@@ -28,6 +28,7 @@ services:
             CONDUIT_PORT: 6167
             CONDUIT_MAX_REQUEST_SIZE: 20_000_000 # in bytes, ~20 MB
             CONDUIT_ALLOW_REGISTRATION: 'true'
+            #CONDUIT_REGISTRATION_TOKEN: '' # require password for registration
             CONDUIT_ALLOW_FEDERATION: 'true'
             CONDUIT_ALLOW_CHECK_FOR_UPDATES: 'true'
             CONDUIT_TRUSTED_SERVERS: '["matrix.org"]'
