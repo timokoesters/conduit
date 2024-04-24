@@ -356,7 +356,9 @@ impl Service {
 
     /// Checks if a given user can redact a given event
     ///
-    /// If federation is true, it allows redaction events from any user of the same server as the original event sender
+    /// If `federation` is `true`, it allows redaction events from any user of the same server
+    /// as the original event sender, [as required by room versions >=
+    /// v3](https://spec.matrix.org/v1.10/rooms/v11/#handling-redactions)
     pub fn user_can_redact(
         &self,
         redacts: &EventId,
