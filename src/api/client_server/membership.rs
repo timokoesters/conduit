@@ -15,7 +15,6 @@ use ruma::{
         room::{
             join_rules::{AllowRule, JoinRule, RoomJoinRulesEventContent},
             member::{MembershipState, RoomMemberEventContent},
-            power_levels::RoomPowerLevelsEventContent,
         },
         StateEventType, TimelineEventType,
     },
@@ -858,11 +857,6 @@ async fn join_room_by_id_helper(
             &StateEventType::RoomJoinRules,
             "",
         )?;
-        let power_levels_event = services().rooms.state_accessor.room_state_get(
-            room_id,
-            &StateEventType::RoomPowerLevels,
-            "",
-        )?;
 
         let join_rules_event_content: Option<RoomJoinRulesEventContent> = join_rules_event
             .as_ref()
@@ -870,15 +864,6 @@ async fn join_room_by_id_helper(
                 serde_json::from_str(join_rules_event.content.get()).map_err(|e| {
                     warn!("Invalid join rules event: {}", e);
                     Error::bad_database("Invalid join rules event in db.")
-                })
-            })
-            .transpose()?;
-        let power_levels_event_content: Option<RoomPowerLevelsEventContent> = power_levels_event
-            .as_ref()
-            .map(|power_levels_event| {
-                serde_json::from_str(power_levels_event.content.get()).map_err(|e| {
-                    warn!("Invalid power levels event: {}", e);
-                    Error::bad_database("Invalid power levels event in db.")
                 })
             })
             .transpose()?;
@@ -900,47 +885,37 @@ async fn join_room_by_id_helper(
             _ => Vec::new(),
         };
 
-        let authorized_user = restriction_rooms
-            .iter()
-            .find_map(|restriction_room_id| {
-                if !services()
-                    .rooms
-                    .state_cache
-                    .is_joined(sender_user, restriction_room_id)
-                    .ok()?
+        let authorized_user = if restriction_rooms.iter().any(|restriction_room_id| {
+            services()
+                .rooms
+                .state_cache
+                .is_joined(sender_user, restriction_room_id)
+                .unwrap_or(false)
+        }) {
+            let mut auth_user = None;
+            for user in services()
+                .rooms
+                .state_cache
+                .room_members(room_id)
+                .filter_map(Result::ok)
+                .collect::<Vec<_>>()
+            {
+                if user.server_name() == services().globals.server_name()
+                    && services()
+                        .rooms
+                        .state_accessor
+                        .user_can_invite(room_id, &user, sender_user, &state_lock)
+                        .await
+                        .unwrap_or(false)
                 {
-                    return None;
+                    auth_user = Some(user);
+                    break;
                 }
-                let authorized_user = power_levels_event_content
-                    .as_ref()
-                    .and_then(|c| {
-                        c.users
-                            .iter()
-                            .filter(|(uid, i)| {
-                                uid.server_name() == services().globals.server_name()
-                                    && **i > ruma::int!(0)
-                                    && services()
-                                        .rooms
-                                        .state_cache
-                                        .is_joined(uid, restriction_room_id)
-                                        .unwrap_or(false)
-                            })
-                            .max_by_key(|(_, i)| *i)
-                            .map(|(u, _)| u.to_owned())
-                    })
-                    .or_else(|| {
-                        // TODO: Check here if user is actually allowed to invite. Currently the auth
-                        // check will just fail in this case.
-                        services()
-                            .rooms
-                            .state_cache
-                            .room_members(restriction_room_id)
-                            .filter_map(|r| r.ok())
-                            .find(|uid| uid.server_name() == services().globals.server_name())
-                    });
-                Some(authorized_user)
-            })
-            .flatten();
+            }
+            auth_user
+        } else {
+            None
+        };
 
         let event = RoomMemberEventContent {
             membership: MembershipState::Join,
@@ -978,9 +953,7 @@ async fn join_room_by_id_helper(
         if !restriction_rooms.is_empty()
             && servers
                 .iter()
-                .filter(|s| *s != services().globals.server_name())
-                .count()
-                > 0
+                .any(|s| *s != services().globals.server_name())
         {
             info!(
                 "We couldn't do the join locally, maybe federation can help to satisfy the restricted join requirements"
