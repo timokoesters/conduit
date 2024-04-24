@@ -23,7 +23,10 @@ use ruma::{
         },
     },
     events::{
-        room::{create::RoomCreateEventContent, server_acl::RoomServerAclEventContent},
+        room::{
+            create::RoomCreateEventContent, redaction::RoomRedactionEventContent,
+            server_acl::RoomServerAclEventContent,
+        },
         StateEventType, TimelineEventType,
     },
     int,
@@ -797,17 +800,50 @@ impl Service {
             |k, s| auth_events.get(&(k.clone(), s.to_owned())),
         )
         .map_err(|_e| Error::BadRequest(ErrorKind::InvalidParam, "Auth check failed."))?
-            || if let Some(redact_id) = &incoming_pdu.redacts {
-                incoming_pdu.kind == TimelineEventType::RoomRedaction
-                    && !services().rooms.state_accessor.user_can_redact(
-                        redact_id,
-                        &incoming_pdu.sender,
-                        &incoming_pdu.room_id,
-                        true,
-                    )?
-            } else {
-                false
-            };
+            || incoming_pdu.kind == TimelineEventType::RoomRedaction
+                && match room_version_id {
+                    RoomVersionId::V1
+                    | RoomVersionId::V2
+                    | RoomVersionId::V3
+                    | RoomVersionId::V4
+                    | RoomVersionId::V5
+                    | RoomVersionId::V6
+                    | RoomVersionId::V7
+                    | RoomVersionId::V8
+                    | RoomVersionId::V9
+                    | RoomVersionId::V10 => {
+                        if let Some(redact_id) = &incoming_pdu.redacts {
+                            !services().rooms.state_accessor.user_can_redact(
+                                redact_id,
+                                &incoming_pdu.sender,
+                                &incoming_pdu.room_id,
+                                true,
+                            )?
+                        } else {
+                            false
+                        }
+                    }
+                    RoomVersionId::V11 => {
+                        let content = serde_json::from_str::<RoomRedactionEventContent>(
+                            incoming_pdu.content.get(),
+                        )
+                        .map_err(|_| Error::bad_database("Invalid content in redaction pdu."))?;
+
+                        if let Some(redact_id) = &content.redacts {
+                            !services().rooms.state_accessor.user_can_redact(
+                                redact_id,
+                                &incoming_pdu.sender,
+                                &incoming_pdu.room_id,
+                                true,
+                            )?
+                        } else {
+                            false
+                        }
+                    }
+                    _ => {
+                        unreachable!("Validity of room version already checked")
+                    }
+                };
 
         // 13. Use state resolution to find new room state
 
