@@ -21,6 +21,7 @@ use ruma::{
     EventId, JsOption, OwnedServerName, OwnedUserId, RoomId, ServerName, UserId,
 };
 use serde_json::value::to_raw_value;
+use tokio::sync::MutexGuard;
 use tracing::{error, warn};
 
 use crate::{service::pdu::PduBuilder, services, Error, PduEvent, Result};
@@ -309,6 +310,7 @@ impl Service {
         room_id: &RoomId,
         sender: &UserId,
         target_user: &UserId,
+        state_lock: &MutexGuard<'_, ()>,
     ) -> Result<bool> {
         let content = to_raw_value(&RoomMemberEventContent::new(MembershipState::Invite))
             .expect("Event content always serializes");
@@ -321,21 +323,10 @@ impl Service {
             redacts: None,
         };
 
-        let mutex_state = Arc::clone(
-            services()
-                .globals
-                .roomid_mutex_state
-                .write()
-                .await
-                .entry(room_id.to_owned())
-                .or_default(),
-        );
-        let state_lock = mutex_state.lock().await;
-
         Ok(services()
             .rooms
             .timeline
-            .create_hash_and_sign_event(new_event, sender, room_id, &state_lock)
+            .create_hash_and_sign_event(new_event, sender, room_id, state_lock)
             .is_ok())
     }
 
