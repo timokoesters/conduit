@@ -15,7 +15,7 @@ use ruma::{
         push_rules::PushRulesEvent,
         room::{
             create::RoomCreateEventContent, encrypted::Relation, member::MembershipState,
-            power_levels::RoomPowerLevelsEventContent,
+            power_levels::RoomPowerLevelsEventContent, redaction::RoomRedactionEventContent,
         },
         GlobalAccountDataEventType, StateEventType, TimelineEventType,
     },
@@ -23,7 +23,7 @@ use ruma::{
     serde::Base64,
     state_res::{self, Event, RoomVersion},
     uint, user_id, CanonicalJsonObject, CanonicalJsonValue, EventId, OwnedEventId, OwnedRoomId,
-    OwnedServerName, RoomId, ServerName, UserId,
+    OwnedServerName, RoomId, RoomVersionId, ServerName, UserId,
 };
 use serde::Deserialize;
 use serde_json::value::{to_raw_value, RawValue as RawJsonValue};
@@ -382,9 +382,48 @@ impl Service {
 
         match pdu.kind {
             TimelineEventType::RoomRedaction => {
-                if let Some(redact_id) = &pdu.redacts {
-                    self.redact_pdu(redact_id, pdu)?;
-                }
+                let room_version_id = services().rooms.state.get_room_version(&pdu.room_id)?;
+                match room_version_id {
+                    RoomVersionId::V1
+                    | RoomVersionId::V2
+                    | RoomVersionId::V3
+                    | RoomVersionId::V4
+                    | RoomVersionId::V5
+                    | RoomVersionId::V6
+                    | RoomVersionId::V7
+                    | RoomVersionId::V8
+                    | RoomVersionId::V9
+                    | RoomVersionId::V10 => {
+                        if let Some(redact_id) = &pdu.redacts {
+                            if services().rooms.state_accessor.user_can_redact(
+                                redact_id,
+                                &pdu.sender,
+                                &pdu.room_id,
+                                false,
+                            )? {
+                                self.redact_pdu(redact_id, pdu)?;
+                            }
+                        }
+                    }
+                    RoomVersionId::V11 => {
+                        let content =
+                            serde_json::from_str::<RoomRedactionEventContent>(pdu.content.get())
+                                .map_err(|_| {
+                                    Error::bad_database("Invalid content in redaction pdu.")
+                                })?;
+                        if let Some(redact_id) = &content.redacts {
+                            if services().rooms.state_accessor.user_can_redact(
+                                redact_id,
+                                &pdu.sender,
+                                &pdu.room_id,
+                                false,
+                            )? {
+                                self.redact_pdu(redact_id, pdu)?;
+                            }
+                        }
+                    }
+                    _ => unreachable!("Validity of room version already checked"),
+                };
             }
             TimelineEventType::SpaceChild => {
                 if let Some(_state_key) = &pdu.state_key {
@@ -608,28 +647,24 @@ impl Service {
             .take(20)
             .collect();
 
-        let create_event = services().rooms.state_accessor.room_state_get(
-            room_id,
-            &StateEventType::RoomCreate,
-            "",
-        )?;
+        // If there was no create event yet, assume we are creating a room
+        let room_version_id = services()
+            .rooms
+            .state
+            .get_room_version(room_id)
+            .or_else(|_| {
+                if event_type == TimelineEventType::RoomCreate {
+                    let content = serde_json::from_str::<RoomCreateEventContent>(content.get())
+                        .expect("Invalid content in RoomCreate pdu.");
+                    Ok(content.room_version)
+                } else {
+                    Err(Error::InconsistentRoomState(
+                        "non-create event for room of unknown version",
+                        room_id.to_owned(),
+                    ))
+                }
+            })?;
 
-        let create_event_content: Option<RoomCreateEventContent> = create_event
-            .as_ref()
-            .map(|create_event| {
-                serde_json::from_str(create_event.content.get()).map_err(|e| {
-                    warn!("Invalid create event: {}", e);
-                    Error::bad_database("Invalid create event in db.")
-                })
-            })
-            .transpose()?;
-
-        // If there was no create event yet, assume we are creating a room with the default
-        // version right now
-        let room_version_id = create_event_content
-            .map_or(services().globals.default_room_version(), |create_event| {
-                create_event.room_version
-            });
         let room_version = RoomVersion::new(&room_version_id).expect("room version is supported");
 
         let auth_events = services().rooms.state.get_auth_events(
@@ -864,6 +899,63 @@ impl Service {
             }
         }
 
+        // If redaction event is not authorized, do not append it to the timeline
+        if pdu.kind == TimelineEventType::RoomRedaction {
+            match services().rooms.state.get_room_version(&pdu.room_id)? {
+                RoomVersionId::V1
+                | RoomVersionId::V2
+                | RoomVersionId::V3
+                | RoomVersionId::V4
+                | RoomVersionId::V5
+                | RoomVersionId::V6
+                | RoomVersionId::V7
+                | RoomVersionId::V8
+                | RoomVersionId::V9
+                | RoomVersionId::V10 => {
+                    if let Some(redact_id) = &pdu.redacts {
+                        if !services().rooms.state_accessor.user_can_redact(
+                            redact_id,
+                            &pdu.sender,
+                            &pdu.room_id,
+                            false,
+                        )? {
+                            return Err(Error::BadRequest(
+                                ErrorKind::Forbidden,
+                                "User cannot redact this event.",
+                            ));
+                        }
+                    };
+                }
+                RoomVersionId::V11 => {
+                    let content =
+                        serde_json::from_str::<RoomRedactionEventContent>(pdu.content.get())
+                            .map_err(|_| {
+                                Error::bad_database("Invalid content in redaction pdu.")
+                            })?;
+
+                    if let Some(redact_id) = &content.redacts {
+                        if !services().rooms.state_accessor.user_can_redact(
+                            redact_id,
+                            &pdu.sender,
+                            &pdu.room_id,
+                            false,
+                        )? {
+                            return Err(Error::BadRequest(
+                                ErrorKind::Forbidden,
+                                "User cannot redact this event.",
+                            ));
+                        }
+                    }
+                }
+                _ => {
+                    return Err(Error::BadRequest(
+                        ErrorKind::UnsupportedRoomVersion,
+                        "Unsupported room version",
+                    ));
+                }
+            }
+        }
+
         // We append to state before appending the pdu, so we don't have a moment in time with the
         // pdu without it's state. This is okay because append_pdu can't fail.
         let statehashid = services().rooms.state.append_to_state(&pdu)?;
@@ -995,7 +1087,8 @@ impl Service {
             let mut pdu = self
                 .get_pdu_from_id(&pdu_id)?
                 .ok_or_else(|| Error::bad_database("PDU ID points to invalid PDU."))?;
-            pdu.redact(reason)?;
+            let room_version_id = services().rooms.state.get_room_version(&pdu.room_id)?;
+            pdu.redact(room_version_id, reason)?;
             self.replace_pdu(
                 &pdu_id,
                 &utils::to_canonical_object(&pdu).expect("PDU is an object"),

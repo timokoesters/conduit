@@ -13,9 +13,11 @@ use ruma::{
             history_visibility::{HistoryVisibility, RoomHistoryVisibilityEventContent},
             member::{MembershipState, RoomMemberEventContent},
             name::RoomNameEventContent,
+            power_levels::{RoomPowerLevels, RoomPowerLevelsEventContent},
         },
         StateEventType,
     },
+    state_res::Event,
     EventId, JsOption, OwnedServerName, OwnedUserId, RoomId, ServerName, UserId,
 };
 use serde_json::value::to_raw_value;
@@ -349,6 +351,57 @@ impl Service {
             .map_or(Ok(None), |s| {
                 serde_json::from_str(s.content.get())
                     .map_err(|_| Error::bad_database("Invalid room member event in database."))
+            })
+    }
+
+    /// Checks if a given user can redact a given event
+    ///
+    /// If `federation` is `true`, it allows redaction events from any user of the same server
+    /// as the original event sender, [as required by room versions >=
+    /// v3](https://spec.matrix.org/v1.10/rooms/v11/#handling-redactions)
+    pub fn user_can_redact(
+        &self,
+        redacts: &EventId,
+        sender: &UserId,
+        room_id: &RoomId,
+        federation: bool,
+    ) -> Result<bool> {
+        self.room_state_get(room_id, &StateEventType::RoomPowerLevels, "")?
+            .map(|e| {
+                serde_json::from_str(e.content.get())
+                    .map(|c: RoomPowerLevelsEventContent| c.into())
+                    .map(|e: RoomPowerLevels| {
+                        e.user_can_redact_event_of_other(sender)
+                            || e.user_can_redact_own_event(sender)
+                                && if let Ok(Some(pdu)) = services().rooms.timeline.get_pdu(redacts)
+                                {
+                                    if federation {
+                                        pdu.sender().server_name() == sender.server_name()
+                                    } else {
+                                        pdu.sender == sender
+                                    }
+                                } else {
+                                    false
+                                }
+                    })
+                    .map_err(|_| {
+                        Error::bad_database("Invalid m.room.power_levels event in database")
+                    })
+            })
+            // Falling back on m.room.create to judge power levels
+            .unwrap_or_else(|| {
+                if let Some(pdu) = self.room_state_get(room_id, &StateEventType::RoomCreate, "")? {
+                    Ok(pdu.sender == sender
+                        || if let Ok(Some(pdu)) = services().rooms.timeline.get_pdu(redacts) {
+                            pdu.sender == sender
+                        } else {
+                            false
+                        })
+                } else {
+                    Err(Error::bad_database(
+                        "No m.room.power_levels or m.room.create events in database for room",
+                    ))
+                }
             })
     }
 }
