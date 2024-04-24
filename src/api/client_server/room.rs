@@ -68,7 +68,7 @@ pub async fn create_room_route(
     let state_lock = mutex_state.lock().await;
 
     if !services().globals.allow_room_creation()
-        && !body.from_appservice
+        && body.appservice_info.is_none()
         && !services().users.is_admin(sender_user)?
     {
         return Err(Error::BadRequest(
@@ -103,6 +103,22 @@ pub async fn create_room_route(
                     Ok(Some(alias))
                 }
             })?;
+
+    if let Some(ref alias) = alias {
+        if let Some(ref info) = body.appservice_info {
+            if !info.aliases.is_match(alias.as_str()) {
+                return Err(Error::BadRequest(
+                    ErrorKind::Exclusive,
+                    "Room alias is not in namespace.",
+                ));
+            }
+        } else if services().appservice.is_exclusive_alias(alias).await {
+            return Err(Error::BadRequest(
+                ErrorKind::Exclusive,
+                "Room alias reserved by appservice.",
+            ));
+        }
+    }
 
     let room_version = match body.room_version.clone() {
         Some(room_version) => {
