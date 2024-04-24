@@ -17,7 +17,7 @@ authors = ["timokoesters <timo@koesters.xyz>"]
 homepage = "https://conduit.rs"
 repository = "https://gitlab.com/famedly/conduit"
 readme = "README.md"
-version = "0.7.0-alpha"
+version = "0.7.0"
 edition = "2021"
 
 # See also `rust-toolchain.toml`
