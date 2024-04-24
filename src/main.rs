@@ -1,19 +1,9 @@
-#![warn(
-    rust_2018_idioms,
-    unused_qualifications,
-    clippy::cloned_instead_of_copied,
-    clippy::str_to_string,
-    clippy::future_not_send
-)]
-#![allow(clippy::suspicious_else_formatting)]
-#![deny(clippy::dbg_macro)]
-
 use std::{future::Future, io, net::SocketAddr, sync::atomic, time::Duration};
 
 use axum::{
     extract::{DefaultBodyLimit, FromRequestParts, MatchedPath},
     response::IntoResponse,
-    routing::{get, on, MethodFilter},
+    routing::{any, get, on, MethodFilter},
     Router,
 };
 use axum_server::{bind, bind_rustls, tls_rustls::RustlsConfig, Handle as ServerHandle};
@@ -54,6 +44,8 @@ static GLOBAL: Jemalloc = Jemalloc;
 
 #[tokio::main]
 async fn main() {
+    clap::parse();
+
     // Initialize config
     let raw_config =
         Figment::new()
@@ -75,8 +67,6 @@ async fn main() {
 
     config.warn_deprecated();
 
-    let log = format!("{},ruma_state_res=error,_=off,sled=off", config.log);
-
     if config.allow_jaeger {
         opentelemetry::global::set_text_map_propagator(opentelemetry_jaeger::Propagator::new());
         let tracer = opentelemetry_jaeger::new_agent_pipeline()
@@ -86,7 +76,7 @@ async fn main() {
             .unwrap();
         let telemetry = tracing_opentelemetry::layer().with_tracer(tracer);
 
-        let filter_layer = match EnvFilter::try_new(&log) {
+        let filter_layer = match EnvFilter::try_new(&config.log) {
             Ok(s) => s,
             Err(e) => {
                 eprintln!(
@@ -113,7 +103,7 @@ async fn main() {
     } else {
         let registry = tracing_subscriber::Registry::default();
         let fmt_layer = tracing_subscriber::fmt::Layer::new();
-        let filter_layer = match EnvFilter::try_new(&log) {
+        let filter_layer = match EnvFilter::try_new(&config.log) {
             Ok(s) => s,
             Err(e) => {
                 eprintln!("It looks like your config is invalid. The following error occured while parsing it: {e}");
@@ -198,7 +188,7 @@ async fn run_server() -> io::Result<()> {
                 .expect("failed to convert max request size"),
         ));
 
-    let app = routes().layer(middlewares).into_make_service();
+    let app = routes(config).layer(middlewares).into_make_service();
     let handle = ServerHandle::new();
 
     tokio::spawn(shutdown_signal(handle.clone()));
@@ -238,7 +228,7 @@ async fn spawn_task<B: Send + 'static>(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
-async fn unrecognized_method<B>(
+async fn unrecognized_method<B: Send>(
     req: axum::http::Request<B>,
     next: axum::middleware::Next<B>,
 ) -> std::result::Result<axum::response::Response, StatusCode> {
@@ -259,8 +249,8 @@ async fn unrecognized_method<B>(
     Ok(inner)
 }
 
-fn routes() -> Router {
-    Router::new()
+fn routes(config: &Config) -> Router {
+    let router = Router::new()
         .ruma_route(client_server::get_supported_versions_route)
         .ruma_route(client_server::get_register_available_route)
         .ruma_route(client_server::register_route)
@@ -400,33 +390,6 @@ fn routes() -> Router {
         .ruma_route(client_server::get_relating_events_with_rel_type_route)
         .ruma_route(client_server::get_relating_events_route)
         .ruma_route(client_server::get_hierarchy_route)
-        .ruma_route(server_server::get_server_version_route)
-        .route(
-            "/_matrix/key/v2/server",
-            get(server_server::get_server_keys_route),
-        )
-        .route(
-            "/_matrix/key/v2/server/:key_id",
-            get(server_server::get_server_keys_deprecated_route),
-        )
-        .ruma_route(server_server::get_public_rooms_route)
-        .ruma_route(server_server::get_public_rooms_filtered_route)
-        .ruma_route(server_server::send_transaction_message_route)
-        .ruma_route(server_server::get_event_route)
-        .ruma_route(server_server::get_backfill_route)
-        .ruma_route(server_server::get_missing_events_route)
-        .ruma_route(server_server::get_event_authorization_route)
-        .ruma_route(server_server::get_room_state_route)
-        .ruma_route(server_server::get_room_state_ids_route)
-        .ruma_route(server_server::create_join_event_template_route)
-        .ruma_route(server_server::create_join_event_v1_route)
-        .ruma_route(server_server::create_join_event_v2_route)
-        .ruma_route(server_server::create_invite_route)
-        .ruma_route(server_server::get_devices_route)
-        .ruma_route(server_server::get_room_information_route)
-        .ruma_route(server_server::get_profile_information_route)
-        .ruma_route(server_server::get_keys_route)
-        .ruma_route(server_server::claim_keys_route)
         .route(
             "/_matrix/client/r0/rooms/:room_id/initialSync",
             get(initial_sync),
@@ -436,7 +399,42 @@ fn routes() -> Router {
             get(initial_sync),
         )
         .route("/", get(it_works))
-        .fallback(not_found)
+        .fallback(not_found);
+
+    if config.allow_federation {
+        router
+            .ruma_route(server_server::get_server_version_route)
+            .route(
+                "/_matrix/key/v2/server",
+                get(server_server::get_server_keys_route),
+            )
+            .route(
+                "/_matrix/key/v2/server/:key_id",
+                get(server_server::get_server_keys_deprecated_route),
+            )
+            .ruma_route(server_server::get_public_rooms_route)
+            .ruma_route(server_server::get_public_rooms_filtered_route)
+            .ruma_route(server_server::send_transaction_message_route)
+            .ruma_route(server_server::get_event_route)
+            .ruma_route(server_server::get_backfill_route)
+            .ruma_route(server_server::get_missing_events_route)
+            .ruma_route(server_server::get_event_authorization_route)
+            .ruma_route(server_server::get_room_state_route)
+            .ruma_route(server_server::get_room_state_ids_route)
+            .ruma_route(server_server::create_join_event_template_route)
+            .ruma_route(server_server::create_join_event_v1_route)
+            .ruma_route(server_server::create_join_event_v2_route)
+            .ruma_route(server_server::create_invite_route)
+            .ruma_route(server_server::get_devices_route)
+            .ruma_route(server_server::get_room_information_route)
+            .ruma_route(server_server::get_profile_information_route)
+            .ruma_route(server_server::get_keys_route)
+            .ruma_route(server_server::claim_keys_route)
+    } else {
+        router
+            .route("/_matrix/federation/*path", any(federation_disabled))
+            .route("/_matrix/key/*path", any(federation_disabled))
+    }
 }
 
 async fn shutdown_signal(handle: ServerHandle) {
@@ -471,6 +469,10 @@ async fn shutdown_signal(handle: ServerHandle) {
 
     #[cfg(feature = "systemd")]
     let _ = sd_notify::notify(true, &[sd_notify::NotifyState::Stopping]);
+}
+
+async fn federation_disabled(_: Uri) -> impl IntoResponse {
+    Error::bad_config("Federation is disabled.")
 }
 
 async fn not_found(uri: Uri) -> impl IntoResponse {

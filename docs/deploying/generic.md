@@ -1,4 +1,4 @@
-# Deploying Conduit
+# Generic deployment documentation
 
 > ## Getting help
 >
@@ -12,11 +12,13 @@ only offer Linux binaries.
 
 You may simply download the binary that fits your machine. Run `uname -m` to see what you need. Now copy the appropriate url:
 
-| CPU Architecture                            | Download stable version                                         | Download development version                                |
-| ------------------------------------------- | --------------------------------------------------------------- | ----------------------------------------------------------- |
-| x84_64 / amd64 (Most servers and computers) | [Binary][x84_64-glibc-master] / [.deb][x84_64-glibc-master-deb] | [Binary][x84_64-glibc-next] / [.deb][x84_64-glibc-next-deb] |
-| armv7 (e.g. Raspberry Pi by default)        | [Binary][armv7-glibc-master] / [.deb][armv7-glibc-master-deb]   | [Binary][armv7-glibc-next] / [.deb][armv7-glibc-next-deb]   |
-| armv8 / aarch64                             | [Binary][armv8-glibc-master] / [.deb][armv8-glibc-master-deb]   | [Binary][armv8-glibc-next] / [.deb][armv8-glibc-next-deb]   |
+**Stable versions:**
+
+| CPU Architecture                            | Download stable version                                         |
+| ------------------------------------------- | --------------------------------------------------------------- |
+| x84_64 / amd64 (Most servers and computers) | [Binary][x84_64-glibc-master] / [.deb][x84_64-glibc-master-deb] |
+| armv7 (e.g. Raspberry Pi by default)        | [Binary][armv7-glibc-master] / [.deb][armv7-glibc-master-deb]   |
+| armv8 / aarch64                             | [Binary][armv8-glibc-master] / [.deb][armv8-glibc-master-deb]   |
 
 These builds were created on and linked against the glibc version shipped with Debian bullseye.
 If you use a system with an older glibc version (e.g. RHEL8), you might need to compile Conduit yourself.
@@ -24,15 +26,19 @@ If you use a system with an older glibc version (e.g. RHEL8), you might need to 
 [x84_64-glibc-master]: https://gitlab.com/famedly/conduit/-/jobs/artifacts/master/raw/build-output/linux_amd64/conduit?job=docker:master
 [armv7-glibc-master]: https://gitlab.com/famedly/conduit/-/jobs/artifacts/master/raw/build-output/linux_arm_v7/conduit?job=docker:master
 [armv8-glibc-master]: https://gitlab.com/famedly/conduit/-/jobs/artifacts/master/raw/build-output/linux_arm64/conduit?job=docker:master
-[x84_64-glibc-next]: https://gitlab.com/famedly/conduit/-/jobs/artifacts/next/raw/build-output/linux_amd64/conduit?job=docker:next
-[armv7-glibc-next]: https://gitlab.com/famedly/conduit/-/jobs/artifacts/next/raw/build-output/linux_arm_v7/conduit?job=docker:next
-[armv8-glibc-next]: https://gitlab.com/famedly/conduit/-/jobs/artifacts/next/raw/build-output/linux_arm64/conduit?job=docker:next
 [x84_64-glibc-master-deb]: https://gitlab.com/famedly/conduit/-/jobs/artifacts/master/raw/build-output/linux_amd64/conduit.deb?job=docker:master
 [armv7-glibc-master-deb]: https://gitlab.com/famedly/conduit/-/jobs/artifacts/master/raw/build-output/linux_arm_v7/conduit.deb?job=docker:master
 [armv8-glibc-master-deb]: https://gitlab.com/famedly/conduit/-/jobs/artifacts/master/raw/build-output/linux_arm64/conduit.deb?job=docker:master
-[x84_64-glibc-next-deb]: https://gitlab.com/famedly/conduit/-/jobs/artifacts/next/raw/build-output/linux_amd64/conduit.deb?job=docker:next
-[armv7-glibc-next-deb]: https://gitlab.com/famedly/conduit/-/jobs/artifacts/next/raw/build-output/linux_arm_v7/conduit.deb?job=docker:next
-[armv8-glibc-next-deb]: https://gitlab.com/famedly/conduit/-/jobs/artifacts/next/raw/build-output/linux_arm64/conduit.deb?job=docker:next
+
+**Latest versions:**
+
+| Target | Type | Download |
+|-|-|-|
+| `x86_64-unknown-linux-musl` | Statically linked Debian package | [link](https://gitlab.com/api/v4/projects/famedly%2Fconduit/jobs/artifacts/next/raw/x86_64-unknown-linux-musl.deb?job=artifacts) |
+| `x86_64-unknown-linux-musl` | Statically linked binary | [link](https://gitlab.com/api/v4/projects/famedly%2Fconduit/jobs/artifacts/next/raw/x86_64-unknown-linux-musl?job=artifacts) |
+| `aarch64-unknown-linux-musl` | Statically linked binary | [link](https://gitlab.com/api/v4/projects/famedly%2Fconduit/jobs/artifacts/next/raw/aarch64-unknown-linux-musl?job=artifacts) |
+| `x86_64-unknown-linux-gnu` | OCI image | [link](https://gitlab.com/api/v4/projects/famedly%2Fconduit/jobs/artifacts/next/raw/oci-image-amd64.tar.gz?job=artifacts) |
+| `aarch64-unknown-linux-musl` | OCI image | [link](https://gitlab.com/api/v4/projects/famedly%2Fconduit/jobs/artifacts/next/raw/oci-image-arm64v8.tar.gz?job=artifacts) |
 
 ```bash
 $ sudo wget -O /usr/local/bin/matrix-conduit <url>
@@ -52,26 +58,6 @@ Then, `cd` into the source tree of conduit-next and run:
 ```bash
 $ cargo build --release
 ```
-
-If you want to cross compile Conduit to another architecture, read the guide below.
-
-<details>
-<summary>Cross compilation</summary>
-
-As easiest way to compile conduit for another platform [cross-rs](https://github.com/cross-rs/cross) is recommended, so install it first.
-
-In order to use RockDB as storage backend append `-latomic` to linker flags.
-
-For example, to build a binary for Raspberry Pi Zero W (ARMv6) you need `arm-unknown-linux-gnueabihf` as compilation
-target.
-
-```bash
-git clone https://gitlab.com/famedly/conduit.git
-cd conduit
-export RUSTFLAGS='-C link-arg=-lgcc -Clink-arg=-latomic -Clink-arg=-static-libgcc'
-cross build --release --no-default-features --features conduit_bin,backend_rocksdb,jemalloc --target=arm-unknown-linux-gnueabihf
-```
-</details>
 
 ## Adding a Conduit user
 
@@ -133,56 +119,11 @@ $ sudo systemctl daemon-reload
 
 ## Creating the Conduit configuration file
 
-Now we need to create the Conduit's config file in `/etc/matrix-conduit/conduit.toml`. Paste this in **and take a moment
-to read it. You need to change at least the server name.**  
+Now we need to create the Conduit's config file in
+`/etc/matrix-conduit/conduit.toml`. Paste in the contents of
+[`conduit-example.toml`](../configuration.md) **and take a moment to read it.
+You need to change at least the server name.**
 You can also choose to use a different database backend, but right now only `rocksdb` and `sqlite` are recommended.
-
-```toml
-[global]
-# The server_name is the pretty name of this server. It is used as a suffix for user
-# and room ids. Examples: matrix.org, conduit.rs
-
-# The Conduit server needs all /_matrix/ requests to be reachable at
-# https://your.server.name/ on port 443 (client-server) and 8448 (federation).
-
-# If that's not possible for you, you can create /.well-known files to redirect
-# requests. See
-# https://matrix.org/docs/spec/client_server/latest#get-well-known-matrix-client
-# and
-# https://matrix.org/docs/spec/server_server/r0.1.4#get-well-known-matrix-server
-# for more information
-
-# YOU NEED TO EDIT THIS
-#server_name = "your.server.name"
-
-# This is the only directory where Conduit will save its data
-database_path = "/var/lib/matrix-conduit/"
-database_backend = "rocksdb"
-
-# The port Conduit will be running on. You need to set up a reverse proxy in
-# your web server (e.g. apache or nginx), so all requests to /_matrix on port
-# 443 and 8448 will be forwarded to the Conduit instance running on this port
-# Docker users: Don't change this, you'll need to map an external port to this.
-port = 6167
-
-# Max size for uploads
-max_request_size = 20_000_000 # in bytes
-
-# Enables registration. If set to false, no users can register on this server.
-allow_registration = true
-
-allow_federation = true
-allow_check_for_updates = true
-
-# Server to get public keys from. You probably shouldn't change this
-trusted_servers = ["matrix.org"]
-
-#max_concurrent_requests = 100 # How many requests Conduit sends to other servers at the same time
-#log = "warn,state_res=warn,rocket=off,_=off,sled=off"
-
-address = "127.0.0.1" # This makes sure Conduit can only be reached using the reverse proxy
-#address = "0.0.0.0" # If Conduit is running in a container, make sure the reverse proxy (ie. Traefik) can reach it.
-```
 
 ## Setting the correct file permissions
 
@@ -273,7 +214,7 @@ server {
     client_max_body_size 20M;
 
     location /_matrix/ {
-        proxy_pass http://127.0.0.1:6167$request_uri;
+        proxy_pass http://127.0.0.1:6167;
         proxy_set_header Host $http_host;
         proxy_buffering off;
         proxy_read_timeout 5m;
@@ -326,7 +267,7 @@ $ sudo systemctl enable conduit
 
 ## How do I know it works?
 
-You can open <https://app.element.io>, enter your homeserver and try to register.
+You can open [a Matrix client](https://matrix.org/ecosystem/clients), enter your homeserver and try to register. If you are using a registration token, use [Element web](https://app.element.io/), [Nheko](https://matrix.org/ecosystem/clients/nheko/) or [SchildiChat web](https://app.schildi.chat/), as they support this feature.
 
 You can also use these commands as a quick health check.
 
@@ -344,8 +285,8 @@ $ curl https://your.server.name:8448/_matrix/client/versions
 
 ## Audio/Video calls
 
-For Audio/Video call functionality see the [TURN Guide](TURN.md).
+For Audio/Video call functionality see the [TURN Guide](../turn.md).
 
 ## Appservices
 
-If you want to set up an appservice, take a look at the [Appservice Guide](APPSERVICES.md).
+If you want to set up an appservice, take a look at the [Appservice Guide](../appservices.md).

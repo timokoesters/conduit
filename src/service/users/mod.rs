@@ -1,6 +1,6 @@
 mod data;
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     mem,
     sync::{Arc, Mutex},
 };
@@ -28,12 +28,13 @@ use crate::{services, Error, Result};
 pub struct SlidingSyncCache {
     lists: BTreeMap<String, SyncRequestList>,
     subscriptions: BTreeMap<OwnedRoomId, sync_events::v4::RoomSubscription>,
-    known_rooms: BTreeMap<String, BTreeMap<OwnedRoomId, bool>>,
+    known_rooms: BTreeMap<String, BTreeMap<OwnedRoomId, u64>>, // For every room, the roomsince number
     extensions: ExtensionsConfig,
 }
 
 pub struct Service {
     pub db: &'static dyn Data,
+    #[allow(clippy::type_complexity)]
     pub connections:
         Mutex<BTreeMap<(OwnedUserId, OwnedDeviceId, String), Arc<Mutex<SlidingSyncCache>>>>,
 }
@@ -61,7 +62,7 @@ impl Service {
         user_id: OwnedUserId,
         device_id: OwnedDeviceId,
         request: &mut sync_events::v4::Request,
-    ) -> BTreeMap<String, BTreeMap<OwnedRoomId, bool>> {
+    ) -> BTreeMap<String, BTreeMap<OwnedRoomId, u64>> {
         let Some(conn_id) = request.conn_id.clone() else {
             return BTreeMap::new();
         };
@@ -127,6 +128,7 @@ impl Service {
                         }
                     }
                     (_, Some(cached_filters)) => list.filters = Some(cached_filters),
+                    (Some(list_filters), _) => list.filters = Some(list_filters.clone()),
                     (_, _) => {}
                 }
                 if list.bump_event_types.is_empty() {
@@ -136,12 +138,18 @@ impl Service {
             cached.lists.insert(list_id.clone(), list.clone());
         }
 
-        cached
-            .subscriptions
-            .extend(request.room_subscriptions.clone().into_iter());
-        request
-            .room_subscriptions
-            .extend(cached.subscriptions.clone().into_iter());
+        cached.subscriptions.extend(
+            request
+                .room_subscriptions
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone())),
+        );
+        request.room_subscriptions.extend(
+            cached
+                .subscriptions
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone())),
+        );
 
         request.extensions.e2ee.enabled = request
             .extensions
@@ -210,7 +218,8 @@ impl Service {
         device_id: OwnedDeviceId,
         conn_id: String,
         list_id: String,
-        new_cached_rooms: BTreeMap<OwnedRoomId, bool>,
+        new_cached_rooms: BTreeSet<OwnedRoomId>,
+        globalsince: u64,
     ) {
         let mut cache = self.connections.lock().unwrap();
         let cached = Arc::clone(
@@ -228,7 +237,20 @@ impl Service {
         let cached = &mut cached.lock().unwrap();
         drop(cache);
 
-        cached.known_rooms.insert(list_id, new_cached_rooms);
+        for (roomid, lastsince) in cached
+            .known_rooms
+            .entry(list_id.clone())
+            .or_default()
+            .iter_mut()
+        {
+            if !new_cached_rooms.contains(roomid) {
+                *lastsince = 0;
+            }
+        }
+        let list = cached.known_rooms.entry(list_id).or_default();
+        for roomid in new_cached_rooms {
+            list.insert(roomid, globalsince);
+        }
     }
 
     /// Check if account is deactivated

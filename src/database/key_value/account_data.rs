@@ -123,13 +123,12 @@ impl service::account_data::Data for KeyValueDatabase {
             .take_while(move |(k, _)| k.starts_with(&prefix))
             .map(|(k, v)| {
                 Ok::<_, Error>((
-                    RoomAccountDataEventType::try_from(
+                    RoomAccountDataEventType::from(
                         utils::string_from_bytes(k.rsplit(|&b| b == 0xff).next().ok_or_else(
                             || Error::bad_database("RoomUserData ID in db is invalid."),
                         )?)
                         .map_err(|_| Error::bad_database("RoomUserData ID in db is invalid."))?,
-                    )
-                    .map_err(|_| Error::bad_database("RoomUserData ID in db is invalid."))?,
+                    ),
                     serde_json::from_slice::<Raw<AnyEphemeralRoomEvent>>(&v).map_err(|_| {
                         Error::bad_database("Database contains invalid account data.")
                     })?,

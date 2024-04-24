@@ -1,4 +1,4 @@
-# Deploy using Docker
+# Conduit for Docker
 
 > **Note:** To run and use Conduit you should probably use it with a Domain or Subdomain behind a reverse proxy (like Nginx, Traefik, Apache, ...) with a Lets Encrypt certificate.
 
@@ -64,19 +64,18 @@ docker run -d -p 8448:6167 \
   -e CONDUIT_MAX_REQUEST_SIZE="20_000_000" \
   -e CONDUIT_TRUSTED_SERVERS="[\"matrix.org\"]" \
   -e CONDUIT_MAX_CONCURRENT_REQUESTS="100" \
-  -e CONDUIT_LOG="warn,rocket=off,_=off,sled=off" \
   --name conduit <link>
 ```
 
 or you can use [docker-compose](#docker-compose).
 
-The `-d` flag lets the container run in detached mode. You now need to supply a `conduit.toml` config file, an example can be found [here](../conduit-example.toml).
+The `-d` flag lets the container run in detached mode. You now need to supply a `conduit.toml` config file, an example can be found [here](../configuration.md).
 You can pass in different env vars to change config values on the fly. You can even configure Conduit completely by using env vars, but for that you need
 to pass `-e CONDUIT_CONFIG=""` into your container. For an overview of possible values, please take a look at the `docker-compose.yml` file.
 
 If you just want to test Conduit for a short time, you can use the `--rm` flag, which will clean up everything related to your container after you stop it.
 
-## Docker-compose
+### Docker-compose
 
 If the `docker run` command is not for you or your setup, you can also use one of the provided `docker-compose` files.
 
@@ -88,8 +87,7 @@ Depending on your proxy setup, you can use one of the following files;
 When picking the traefik-related compose file, rename it so it matches `docker-compose.yml`, and
 rename the override file to `docker-compose.override.yml`. Edit the latter with the values you want
 for your server.
-
-Additional info about deploying Conduit can be found [here](../DEPLOY.md).
+Additional info about deploying Conduit can be found [here](generic.md).
 
 ### Build
 
@@ -131,7 +129,7 @@ So...step by step:
 1. Copy [`docker-compose.for-traefik.yml`](docker-compose.for-traefik.yml) (or
 [`docker-compose.with-traefik.yml`](docker-compose.with-traefik.yml)) and [`docker-compose.override.yml`](docker-compose.override.yml) from the repository and remove `.for-traefik` (or `.with-traefik`) from the filename.
 2. Open both files and modify/adjust them to your needs. Meaning, change the `CONDUIT_SERVER_NAME` and the volume host mappings according to your needs.
-3. Create the `conduit.toml` config file, an example can be found [here](../conduit-example.toml), or set `CONDUIT_CONFIG=""` and configure Conduit per env vars.
+3. Create the `conduit.toml` config file, an example can be found [here](../configuration.md), or set `CONDUIT_CONFIG=""` and configure Conduit per env vars.
 4. Uncomment the `element-web` service if you want to host your own Element Web Client and create a `element_config.json`.
 5. Create the files needed by the `well-known` service.
 
@@ -161,3 +159,58 @@ So...step by step:
 
 6. Run `docker-compose up -d`
 7. Connect to your homeserver with your preferred client and create a user. You should do this immediately after starting Conduit, because the first created user is the admin.
+
+
+
+
+## Voice communication
+
+In order to make or receive calls, a TURN server is required. Conduit suggests using [Coturn](https://github.com/coturn/coturn) for this purpose, which is also available as a Docker image. Before proceeding with the software installation, it is essential to have the necessary configurations in place.
+
+### Configuration
+
+Create a configuration file called `coturn.conf` containing:
+
+```conf
+use-auth-secret
+static-auth-secret=<a secret key>
+realm=<your server domain>
+```
+A common way to generate a suitable alphanumeric secret key is by using `pwgen -s 64 1`.
+
+These same values need to be set in conduit. You can either modify conduit.toml to include these lines:
+```
+turn_uris = ["turn:<your server domain>?transport=udp", "turn:<your server domain>?transport=tcp"]
+turn_secret = "<secret key from coturn configuration>"
+```
+or append the following to the docker environment variables dependig on which configuration method you used earlier:
+```yml
+CONDUIT_TURN_URIS: '["turn:<your server domain>?transport=udp", "turn:<your server domain>?transport=tcp"]'
+CONDUIT_TURN_SECRET: "<secret key from coturn configuration>"
+```
+Restart Conduit to apply these changes.
+
+### Run
+Run the [Coturn](https://hub.docker.com/r/coturn/coturn) image using 
+```bash
+docker run -d --network=host -v $(pwd)/coturn.conf:/etc/coturn/turnserver.conf coturn/coturn
+```
+
+or docker-compose. For the latter, paste the following section into a file called `docker-compose.yml`
+and run `docker-compose up -d` in the same directory.
+
+```yml
+version: 3
+services:
+    turn:
+      container_name: coturn-server
+      image: docker.io/coturn/coturn
+      restart: unless-stopped
+      network_mode: "host"
+      volumes:
+        - ./coturn.conf:/etc/coturn/turnserver.conf
+```
+
+To understand why the host networking mode is used and explore alternative configuration options, please visit the following link: https://github.com/coturn/coturn/blob/master/docker/coturn/README.md.
+For security recommendations see Synapse's [Coturn documentation](https://github.com/matrix-org/synapse/blob/develop/docs/setup/turn/coturn.md#configuration).
+

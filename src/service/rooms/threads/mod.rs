@@ -26,7 +26,7 @@ impl Service {
         self.db.threads_until(user_id, room_id, until, include)
     }
 
-    pub fn add_to_thread<'a>(&'a self, root_event_id: &EventId, pdu: &PduEvent) -> Result<()> {
+    pub fn add_to_thread(&self, root_event_id: &EventId, pdu: &PduEvent) -> Result<()> {
         let root_id = &services()
             .rooms
             .timeline
@@ -103,7 +103,7 @@ impl Service {
         }
 
         let mut users = Vec::new();
-        if let Some(userids) = self.db.get_participants(&root_id)? {
+        if let Some(userids) = self.db.get_participants(root_id)? {
             users.extend_from_slice(&userids);
             users.push(pdu.sender.clone());
         } else {

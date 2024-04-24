@@ -1,13 +1,14 @@
 use std::{
     collections::BTreeMap,
     convert::{TryFrom, TryInto},
-    sync::{Arc, RwLock},
+    sync::Arc,
     time::Instant,
 };
 
 use clap::Parser;
 use regex::Regex;
 use ruma::{
+    api::appservice::Registration,
     events::{
         room::{
             canonical_alias::RoomCanonicalAliasEventContent,
@@ -23,10 +24,10 @@ use ruma::{
         },
         TimelineEventType,
     },
-    EventId, OwnedRoomAliasId, RoomAliasId, RoomId, RoomVersionId, ServerName, UserId,
+    EventId, OwnedRoomAliasId, OwnedRoomId, RoomAliasId, RoomId, RoomVersionId, ServerName, UserId,
 };
 use serde_json::value::to_raw_value;
-use tokio::sync::{mpsc, Mutex, MutexGuard};
+use tokio::sync::{mpsc, Mutex, RwLock};
 
 use crate::{
     api::client_server::{leave_all_rooms, AUTO_GEN_PASSWORD_LENGTH},
@@ -50,7 +51,7 @@ enum AdminCommand {
     /// Registering a new bridge using the ID of an existing bridge will replace
     /// the old one.
     ///
-    /// [commandbody]
+    /// [commandbody]()
     /// # ```
     /// # yaml content here
     /// # ```
@@ -96,7 +97,7 @@ enum AdminCommand {
     /// Removing a mass amount of users from a room may cause a significant amount of leave events.
     /// The time to leave rooms may depend significantly on joined rooms and servers.
     ///
-    /// [commandbody]
+    /// [commandbody]()
     /// # ```
     /// # User list here
     /// # ```
@@ -121,7 +122,7 @@ enum AdminCommand {
     /// The PDU event is only checked for validity and is not added to the
     /// database.
     ///
-    /// [commandbody]
+    /// [commandbody]()
     /// # ```
     /// # PDU json content here
     /// # ```
@@ -165,14 +166,14 @@ enum AdminCommand {
     EnableRoom { room_id: Box<RoomId> },
 
     /// Verify json signatures
-    /// [commandbody]
+    /// [commandbody]()
     /// # ```
     /// # json here
     /// # ```
     SignJson,
 
     /// Verify json signatures
-    /// [commandbody]
+    /// [commandbody]()
     /// # ```
     /// # json here
     /// # ```
@@ -214,60 +215,44 @@ impl Service {
         let conduit_user = UserId::parse(format!("@conduit:{}", services().globals.server_name()))
             .expect("@conduit:server_name is valid");
 
-        let conduit_room = services()
-            .rooms
-            .alias
-            .resolve_local_alias(
-                format!("#admins:{}", services().globals.server_name())
-                    .as_str()
-                    .try_into()
-                    .expect("#admins:server_name is a valid room alias"),
-            )
-            .expect("Database data for admin room alias must be valid")
-            .expect("Admin room must exist");
+        if let Ok(Some(conduit_room)) = services().admin.get_admin_room() {
+            loop {
+                tokio::select! {
+                    Some(event) = receiver.recv() => {
+                        let message_content = match event {
+                            AdminRoomEvent::SendMessage(content) => content,
+                            AdminRoomEvent::ProcessMessage(room_message) => self.process_admin_message(room_message).await
+                        };
 
-        let send_message = |message: RoomMessageEventContent, mutex_lock: &MutexGuard<'_, ()>| {
-            services()
-                .rooms
-                .timeline
-                .build_and_append_pdu(
-                    PduBuilder {
-                        event_type: TimelineEventType::RoomMessage,
-                        content: to_raw_value(&message)
-                            .expect("event is valid, we just created it"),
-                        unsigned: None,
-                        state_key: None,
-                        redacts: None,
-                    },
-                    &conduit_user,
-                    &conduit_room,
-                    mutex_lock,
-                )
-                .unwrap();
-        };
+                        let mutex_state = Arc::clone(
+                            services().globals
+                                .roomid_mutex_state
+                                .write()
+                                .await
+                                .entry(conduit_room.to_owned())
+                                .or_default(),
+                        );
 
-        loop {
-            tokio::select! {
-                Some(event) = receiver.recv() => {
-                    let message_content = match event {
-                        AdminRoomEvent::SendMessage(content) => content,
-                        AdminRoomEvent::ProcessMessage(room_message) => self.process_admin_message(room_message).await
-                    };
+                        let state_lock = mutex_state.lock().await;
 
-                    let mutex_state = Arc::clone(
-                        services().globals
-                            .roomid_mutex_state
-                            .write()
-                            .unwrap()
-                            .entry(conduit_room.to_owned())
-                            .or_default(),
-                    );
-
-                    let state_lock = mutex_state.lock().await;
-
-                    send_message(message_content, &state_lock);
-
-                    drop(state_lock);
+                        services()
+                            .rooms
+                            .timeline
+                            .build_and_append_pdu(
+                                PduBuilder {
+                                    event_type: TimelineEventType::RoomMessage,
+                                    content: to_raw_value(&message_content)
+                                        .expect("event is valid, we just created it"),
+                                    unsigned: None,
+                                    state_key: None,
+                                    redacts: None,
+                                },
+                                &conduit_user,
+                                &conduit_room,
+                                &state_lock,
+                            )
+                            .await.unwrap();
+                    }
                 }
             }
         }
@@ -351,10 +336,9 @@ impl Service {
                 if body.len() > 2 && body[0].trim() == "```" && body.last().unwrap().trim() == "```"
                 {
                     let appservice_config = body[1..body.len() - 1].join("\n");
-                    let parsed_config =
-                        serde_yaml::from_str::<serde_yaml::Value>(&appservice_config);
+                    let parsed_config = serde_yaml::from_str::<Registration>(&appservice_config);
                     match parsed_config {
-                        Ok(yaml) => match services().appservice.register_appservice(yaml) {
+                        Ok(yaml) => match services().appservice.register_appservice(yaml).await {
                             Ok(id) => RoomMessageEventContent::text_plain(format!(
                                 "Appservice registered with ID: {id}."
                             )),
@@ -377,6 +361,7 @@ impl Service {
             } => match services()
                 .appservice
                 .unregister_appservice(&appservice_identifier)
+                .await
             {
                 Ok(()) => RoomMessageEventContent::text_plain("Appservice unregistered."),
                 Err(e) => RoomMessageEventContent::text_plain(format!(
@@ -384,25 +369,13 @@ impl Service {
                 )),
             },
             AdminCommand::ListAppservices => {
-                if let Ok(appservices) = services()
-                    .appservice
-                    .iter_ids()
-                    .map(|ids| ids.collect::<Vec<_>>())
-                {
-                    let count = appservices.len();
-                    let output = format!(
-                        "Appservices ({}): {}",
-                        count,
-                        appservices
-                            .into_iter()
-                            .filter_map(|r| r.ok())
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    );
-                    RoomMessageEventContent::text_plain(output)
-                } else {
-                    RoomMessageEventContent::text_plain("Failed to get appservices.")
-                }
+                let appservices = services().appservice.iter_ids().await;
+                let output = format!(
+                    "Appservices ({}): {}",
+                    appservices.len(),
+                    appservices.join(", ")
+                );
+                RoomMessageEventContent::text_plain(output)
             }
             AdminCommand::ListRooms => {
                 let room_ids = services().rooms.metadata.iter_ids();
@@ -434,11 +407,7 @@ impl Service {
                 Err(e) => RoomMessageEventContent::text_plain(e.to_string()),
             },
             AdminCommand::IncomingFederation => {
-                let map = services()
-                    .globals
-                    .roomid_federationhandletime
-                    .read()
-                    .unwrap();
+                let map = services().globals.roomid_federationhandletime.read().await;
                 let mut msg: String = format!("Handling {} incoming pdus:\n", map.len());
 
                 for (r, (e, i)) in map.iter() {
@@ -552,7 +521,7 @@ impl Service {
                 }
             }
             AdminCommand::MemoryUsage => {
-                let response1 = services().memory_usage();
+                let response1 = services().memory_usage().await;
                 let response2 = services().globals.db.memory_usage();
 
                 RoomMessageEventContent::text_plain(format!(
@@ -565,7 +534,7 @@ impl Service {
                 RoomMessageEventContent::text_plain("Done.")
             }
             AdminCommand::ClearServiceCaches { amount } => {
-                services().clear_caches(amount);
+                services().clear_caches(amount).await;
 
                 RoomMessageEventContent::text_plain("Done.")
             }
@@ -584,6 +553,13 @@ impl Service {
                             "The supplied username is not a valid username: {e}"
                         )))
                     }
+                };
+
+                // Checks if user is local
+                if user_id.server_name() != services().globals.server_name() {
+                    return Ok(RoomMessageEventContent::text_plain(
+                        "The specified user is not from this server!",
+                    ));
                 };
 
                 // Check if the specified user is valid
@@ -689,7 +665,15 @@ impl Service {
                 user_id,
             } => {
                 let user_id = Arc::<UserId>::from(user_id);
-                if services().users.exists(&user_id)? {
+                if !services().users.exists(&user_id)? {
+                    RoomMessageEventContent::text_plain(format!(
+                        "User {user_id} doesn't exist on this server"
+                    ))
+                } else if user_id.server_name() != services().globals.server_name() {
+                    RoomMessageEventContent::text_plain(format!(
+                        "User {user_id} is not from this server"
+                    ))
+                } else {
                     RoomMessageEventContent::text_plain(format!(
                         "Making {user_id} leave all rooms before deactivation..."
                     ));
@@ -703,28 +687,74 @@ impl Service {
                     RoomMessageEventContent::text_plain(format!(
                         "User {user_id} has been deactivated"
                     ))
-                } else {
-                    RoomMessageEventContent::text_plain(format!(
-                        "User {user_id} doesn't exist on this server"
-                    ))
                 }
             }
             AdminCommand::DeactivateAll { leave_rooms, force } => {
                 if body.len() > 2 && body[0].trim() == "```" && body.last().unwrap().trim() == "```"
                 {
-                    let usernames = body.clone().drain(1..body.len() - 1).collect::<Vec<_>>();
+                    let users = body.clone().drain(1..body.len() - 1).collect::<Vec<_>>();
 
-                    let mut user_ids: Vec<&UserId> = Vec::new();
+                    let mut user_ids = Vec::new();
+                    let mut remote_ids = Vec::new();
+                    let mut non_existant_ids = Vec::new();
+                    let mut invalid_users = Vec::new();
 
-                    for &username in &usernames {
-                        match <&UserId>::try_from(username) {
-                            Ok(user_id) => user_ids.push(user_id),
+                    for &user in &users {
+                        match <&UserId>::try_from(user) {
+                            Ok(user_id) => {
+                                if user_id.server_name() != services().globals.server_name() {
+                                    remote_ids.push(user_id)
+                                } else if !services().users.exists(user_id)? {
+                                    non_existant_ids.push(user_id)
+                                } else {
+                                    user_ids.push(user_id)
+                                }
+                            }
                             Err(_) => {
-                                return Ok(RoomMessageEventContent::text_plain(format!(
-                                    "{username} is not a valid username"
-                                )))
+                                invalid_users.push(user);
                             }
                         }
+                    }
+
+                    let mut markdown_message = String::new();
+                    let mut html_message = String::new();
+                    if !invalid_users.is_empty() {
+                        markdown_message.push_str("The following user ids are not valid:\n```\n");
+                        html_message.push_str("The following user ids are not valid:\n<pre>\n");
+                        for invalid_user in invalid_users {
+                            markdown_message.push_str(&format!("{invalid_user}\n"));
+                            html_message.push_str(&format!("{invalid_user}\n"));
+                        }
+                        markdown_message.push_str("```\n\n");
+                        html_message.push_str("</pre>\n\n");
+                    }
+                    if !remote_ids.is_empty() {
+                        markdown_message
+                            .push_str("The following users are not from this server:\n```\n");
+                        html_message
+                            .push_str("The following users are not from this server:\n<pre>\n");
+                        for remote_id in remote_ids {
+                            markdown_message.push_str(&format!("{remote_id}\n"));
+                            html_message.push_str(&format!("{remote_id}\n"));
+                        }
+                        markdown_message.push_str("```\n\n");
+                        html_message.push_str("</pre>\n\n");
+                    }
+                    if !non_existant_ids.is_empty() {
+                        markdown_message.push_str("The following users do not exist:\n```\n");
+                        html_message.push_str("The following users do not exist:\n<pre>\n");
+                        for non_existant_id in non_existant_ids {
+                            markdown_message.push_str(&format!("{non_existant_id}\n"));
+                            html_message.push_str(&format!("{non_existant_id}\n"));
+                        }
+                        markdown_message.push_str("```\n\n");
+                        html_message.push_str("</pre>\n\n");
+                    }
+                    if !markdown_message.is_empty() {
+                        return Ok(RoomMessageEventContent::text_html(
+                            markdown_message,
+                            html_message,
+                        ));
                     }
 
                     let mut deactivation_count = 0;
@@ -806,7 +836,7 @@ impl Service {
                                 .fetch_required_signing_keys(&value, &pub_key_map)
                                 .await?;
 
-                            let pub_key_map = pub_key_map.read().unwrap();
+                            let pub_key_map = pub_key_map.read().await;
                             match ruma::signatures::verify_json(&pub_key_map, &value) {
                                 Ok(_) => RoomMessageEventContent::text_plain("Signature correct"),
                                 Err(e) => RoomMessageEventContent::text_plain(format!(
@@ -858,12 +888,15 @@ impl Service {
             .expect("Regex compilation should not fail");
         let text = re.replace_all(&text, "<code>$1</code>: $4");
 
-        // Look for a `[commandbody]` tag. If it exists, use all lines below it that
+        // Look for a `[commandbody]()` tag. If it exists, use all lines below it that
         // start with a `#` in the USAGE section.
         let mut text_lines: Vec<&str> = text.lines().collect();
         let mut command_body = String::new();
 
-        if let Some(line_index) = text_lines.iter().position(|line| *line == "[commandbody]") {
+        if let Some(line_index) = text_lines
+            .iter()
+            .position(|line| *line == "[commandbody]()")
+        {
             text_lines.remove(line_index);
 
             while text_lines
@@ -919,7 +952,7 @@ impl Service {
                 .globals
                 .roomid_mutex_state
                 .write()
-                .unwrap()
+                .await
                 .entry(room_id.clone())
                 .or_default(),
         );
@@ -932,174 +965,241 @@ impl Service {
 
         services().users.create(&conduit_user, None)?;
 
-        let mut content = RoomCreateEventContent::new(conduit_user.clone());
+        let room_version = services().globals.default_room_version();
+        let mut content = match room_version {
+            RoomVersionId::V1
+            | RoomVersionId::V2
+            | RoomVersionId::V3
+            | RoomVersionId::V4
+            | RoomVersionId::V5
+            | RoomVersionId::V6
+            | RoomVersionId::V7
+            | RoomVersionId::V8
+            | RoomVersionId::V9
+            | RoomVersionId::V10 => RoomCreateEventContent::new_v1(conduit_user.clone()),
+            RoomVersionId::V11 => RoomCreateEventContent::new_v11(),
+            _ => unreachable!("Validity of room version already checked"),
+        };
         content.federate = true;
         content.predecessor = None;
-        content.room_version = services().globals.default_room_version();
+        content.room_version = room_version;
 
         // 1. The room create event
-        services().rooms.timeline.build_and_append_pdu(
-            PduBuilder {
-                event_type: TimelineEventType::RoomCreate,
-                content: to_raw_value(&content).expect("event is valid, we just created it"),
-                unsigned: None,
-                state_key: Some("".to_owned()),
-                redacts: None,
-            },
-            &conduit_user,
-            &room_id,
-            &state_lock,
-        )?;
+        services()
+            .rooms
+            .timeline
+            .build_and_append_pdu(
+                PduBuilder {
+                    event_type: TimelineEventType::RoomCreate,
+                    content: to_raw_value(&content).expect("event is valid, we just created it"),
+                    unsigned: None,
+                    state_key: Some("".to_owned()),
+                    redacts: None,
+                },
+                &conduit_user,
+                &room_id,
+                &state_lock,
+            )
+            .await?;
 
         // 2. Make conduit bot join
-        services().rooms.timeline.build_and_append_pdu(
-            PduBuilder {
-                event_type: TimelineEventType::RoomMember,
-                content: to_raw_value(&RoomMemberEventContent {
-                    membership: MembershipState::Join,
-                    displayname: None,
-                    avatar_url: None,
-                    is_direct: None,
-                    third_party_invite: None,
-                    blurhash: None,
-                    reason: None,
-                    join_authorized_via_users_server: None,
-                })
-                .expect("event is valid, we just created it"),
-                unsigned: None,
-                state_key: Some(conduit_user.to_string()),
-                redacts: None,
-            },
-            &conduit_user,
-            &room_id,
-            &state_lock,
-        )?;
+        services()
+            .rooms
+            .timeline
+            .build_and_append_pdu(
+                PduBuilder {
+                    event_type: TimelineEventType::RoomMember,
+                    content: to_raw_value(&RoomMemberEventContent {
+                        membership: MembershipState::Join,
+                        displayname: None,
+                        avatar_url: None,
+                        is_direct: None,
+                        third_party_invite: None,
+                        blurhash: None,
+                        reason: None,
+                        join_authorized_via_users_server: None,
+                    })
+                    .expect("event is valid, we just created it"),
+                    unsigned: None,
+                    state_key: Some(conduit_user.to_string()),
+                    redacts: None,
+                },
+                &conduit_user,
+                &room_id,
+                &state_lock,
+            )
+            .await?;
 
         // 3. Power levels
         let mut users = BTreeMap::new();
         users.insert(conduit_user.clone(), 100.into());
 
-        services().rooms.timeline.build_and_append_pdu(
-            PduBuilder {
-                event_type: TimelineEventType::RoomPowerLevels,
-                content: to_raw_value(&RoomPowerLevelsEventContent {
-                    users,
-                    ..Default::default()
-                })
-                .expect("event is valid, we just created it"),
-                unsigned: None,
-                state_key: Some("".to_owned()),
-                redacts: None,
-            },
-            &conduit_user,
-            &room_id,
-            &state_lock,
-        )?;
+        services()
+            .rooms
+            .timeline
+            .build_and_append_pdu(
+                PduBuilder {
+                    event_type: TimelineEventType::RoomPowerLevels,
+                    content: to_raw_value(&RoomPowerLevelsEventContent {
+                        users,
+                        ..Default::default()
+                    })
+                    .expect("event is valid, we just created it"),
+                    unsigned: None,
+                    state_key: Some("".to_owned()),
+                    redacts: None,
+                },
+                &conduit_user,
+                &room_id,
+                &state_lock,
+            )
+            .await?;
 
         // 4.1 Join Rules
-        services().rooms.timeline.build_and_append_pdu(
-            PduBuilder {
-                event_type: TimelineEventType::RoomJoinRules,
-                content: to_raw_value(&RoomJoinRulesEventContent::new(JoinRule::Invite))
-                    .expect("event is valid, we just created it"),
-                unsigned: None,
-                state_key: Some("".to_owned()),
-                redacts: None,
-            },
-            &conduit_user,
-            &room_id,
-            &state_lock,
-        )?;
+        services()
+            .rooms
+            .timeline
+            .build_and_append_pdu(
+                PduBuilder {
+                    event_type: TimelineEventType::RoomJoinRules,
+                    content: to_raw_value(&RoomJoinRulesEventContent::new(JoinRule::Invite))
+                        .expect("event is valid, we just created it"),
+                    unsigned: None,
+                    state_key: Some("".to_owned()),
+                    redacts: None,
+                },
+                &conduit_user,
+                &room_id,
+                &state_lock,
+            )
+            .await?;
 
         // 4.2 History Visibility
-        services().rooms.timeline.build_and_append_pdu(
-            PduBuilder {
-                event_type: TimelineEventType::RoomHistoryVisibility,
-                content: to_raw_value(&RoomHistoryVisibilityEventContent::new(
-                    HistoryVisibility::Shared,
-                ))
-                .expect("event is valid, we just created it"),
-                unsigned: None,
-                state_key: Some("".to_owned()),
-                redacts: None,
-            },
-            &conduit_user,
-            &room_id,
-            &state_lock,
-        )?;
+        services()
+            .rooms
+            .timeline
+            .build_and_append_pdu(
+                PduBuilder {
+                    event_type: TimelineEventType::RoomHistoryVisibility,
+                    content: to_raw_value(&RoomHistoryVisibilityEventContent::new(
+                        HistoryVisibility::Shared,
+                    ))
+                    .expect("event is valid, we just created it"),
+                    unsigned: None,
+                    state_key: Some("".to_owned()),
+                    redacts: None,
+                },
+                &conduit_user,
+                &room_id,
+                &state_lock,
+            )
+            .await?;
 
         // 4.3 Guest Access
-        services().rooms.timeline.build_and_append_pdu(
-            PduBuilder {
-                event_type: TimelineEventType::RoomGuestAccess,
-                content: to_raw_value(&RoomGuestAccessEventContent::new(GuestAccess::Forbidden))
+        services()
+            .rooms
+            .timeline
+            .build_and_append_pdu(
+                PduBuilder {
+                    event_type: TimelineEventType::RoomGuestAccess,
+                    content: to_raw_value(&RoomGuestAccessEventContent::new(
+                        GuestAccess::Forbidden,
+                    ))
                     .expect("event is valid, we just created it"),
-                unsigned: None,
-                state_key: Some("".to_owned()),
-                redacts: None,
-            },
-            &conduit_user,
-            &room_id,
-            &state_lock,
-        )?;
+                    unsigned: None,
+                    state_key: Some("".to_owned()),
+                    redacts: None,
+                },
+                &conduit_user,
+                &room_id,
+                &state_lock,
+            )
+            .await?;
 
         // 5. Events implied by name and topic
         let room_name = format!("{} Admin Room", services().globals.server_name());
-        services().rooms.timeline.build_and_append_pdu(
-            PduBuilder {
-                event_type: TimelineEventType::RoomName,
-                content: to_raw_value(&RoomNameEventContent::new(Some(room_name)))
-                    .expect("event is valid, we just created it"),
-                unsigned: None,
-                state_key: Some("".to_owned()),
-                redacts: None,
-            },
-            &conduit_user,
-            &room_id,
-            &state_lock,
-        )?;
+        services()
+            .rooms
+            .timeline
+            .build_and_append_pdu(
+                PduBuilder {
+                    event_type: TimelineEventType::RoomName,
+                    content: to_raw_value(&RoomNameEventContent::new(room_name))
+                        .expect("event is valid, we just created it"),
+                    unsigned: None,
+                    state_key: Some("".to_owned()),
+                    redacts: None,
+                },
+                &conduit_user,
+                &room_id,
+                &state_lock,
+            )
+            .await?;
 
-        services().rooms.timeline.build_and_append_pdu(
-            PduBuilder {
-                event_type: TimelineEventType::RoomTopic,
-                content: to_raw_value(&RoomTopicEventContent {
-                    topic: format!("Manage {}", services().globals.server_name()),
-                })
-                .expect("event is valid, we just created it"),
-                unsigned: None,
-                state_key: Some("".to_owned()),
-                redacts: None,
-            },
-            &conduit_user,
-            &room_id,
-            &state_lock,
-        )?;
+        services()
+            .rooms
+            .timeline
+            .build_and_append_pdu(
+                PduBuilder {
+                    event_type: TimelineEventType::RoomTopic,
+                    content: to_raw_value(&RoomTopicEventContent {
+                        topic: format!("Manage {}", services().globals.server_name()),
+                    })
+                    .expect("event is valid, we just created it"),
+                    unsigned: None,
+                    state_key: Some("".to_owned()),
+                    redacts: None,
+                },
+                &conduit_user,
+                &room_id,
+                &state_lock,
+            )
+            .await?;
 
         // 6. Room alias
         let alias: OwnedRoomAliasId = format!("#admins:{}", services().globals.server_name())
             .try_into()
             .expect("#admins:server_name is a valid alias name");
 
-        services().rooms.timeline.build_and_append_pdu(
-            PduBuilder {
-                event_type: TimelineEventType::RoomCanonicalAlias,
-                content: to_raw_value(&RoomCanonicalAliasEventContent {
-                    alias: Some(alias.clone()),
-                    alt_aliases: Vec::new(),
-                })
-                .expect("event is valid, we just created it"),
-                unsigned: None,
-                state_key: Some("".to_owned()),
-                redacts: None,
-            },
-            &conduit_user,
-            &room_id,
-            &state_lock,
-        )?;
+        services()
+            .rooms
+            .timeline
+            .build_and_append_pdu(
+                PduBuilder {
+                    event_type: TimelineEventType::RoomCanonicalAlias,
+                    content: to_raw_value(&RoomCanonicalAliasEventContent {
+                        alias: Some(alias.clone()),
+                        alt_aliases: Vec::new(),
+                    })
+                    .expect("event is valid, we just created it"),
+                    unsigned: None,
+                    state_key: Some("".to_owned()),
+                    redacts: None,
+                },
+                &conduit_user,
+                &room_id,
+                &state_lock,
+            )
+            .await?;
 
         services().rooms.alias.set_alias(&alias, &room_id)?;
 
         Ok(())
+    }
+
+    /// Gets the room ID of the admin room
+    ///
+    /// Errors are propagated from the database, and will have None if there is no admin room
+    pub(crate) fn get_admin_room(&self) -> Result<Option<OwnedRoomId>> {
+        let admin_room_alias: Box<RoomAliasId> =
+            format!("#admins:{}", services().globals.server_name())
+                .try_into()
+                .expect("#admins:server_name is a valid alias name");
+
+        services()
+            .rooms
+            .alias
+            .resolve_local_alias(&admin_room_alias)
     }
 
     /// Invite the user to the conduit admin room.
@@ -1110,102 +1210,105 @@ impl Service {
         user_id: &UserId,
         displayname: String,
     ) -> Result<()> {
-        let admin_room_alias: Box<RoomAliasId> =
-            format!("#admins:{}", services().globals.server_name())
-                .try_into()
-                .expect("#admins:server_name is a valid alias name");
-        let room_id = services()
-            .rooms
-            .alias
-            .resolve_local_alias(&admin_room_alias)?
-            .expect("Admin room must exist");
+        if let Some(room_id) = services().admin.get_admin_room()? {
+            let mutex_state = Arc::clone(
+                services()
+                    .globals
+                    .roomid_mutex_state
+                    .write()
+                    .await
+                    .entry(room_id.clone())
+                    .or_default(),
+            );
+            let state_lock = mutex_state.lock().await;
 
-        let mutex_state = Arc::clone(
+            // Use the server user to grant the new admin's power level
+            let conduit_user =
+                UserId::parse_with_server_name("conduit", services().globals.server_name())
+                    .expect("@conduit:server_name is valid");
+
+            // Invite and join the real user
             services()
-                .globals
-                .roomid_mutex_state
-                .write()
-                .unwrap()
-                .entry(room_id.clone())
-                .or_default(),
-        );
-        let state_lock = mutex_state.lock().await;
+                .rooms
+                .timeline
+                .build_and_append_pdu(
+                    PduBuilder {
+                        event_type: TimelineEventType::RoomMember,
+                        content: to_raw_value(&RoomMemberEventContent {
+                            membership: MembershipState::Invite,
+                            displayname: None,
+                            avatar_url: None,
+                            is_direct: None,
+                            third_party_invite: None,
+                            blurhash: None,
+                            reason: None,
+                            join_authorized_via_users_server: None,
+                        })
+                        .expect("event is valid, we just created it"),
+                        unsigned: None,
+                        state_key: Some(user_id.to_string()),
+                        redacts: None,
+                    },
+                    &conduit_user,
+                    &room_id,
+                    &state_lock,
+                )
+                .await?;
+            services()
+                .rooms
+                .timeline
+                .build_and_append_pdu(
+                    PduBuilder {
+                        event_type: TimelineEventType::RoomMember,
+                        content: to_raw_value(&RoomMemberEventContent {
+                            membership: MembershipState::Join,
+                            displayname: Some(displayname),
+                            avatar_url: None,
+                            is_direct: None,
+                            third_party_invite: None,
+                            blurhash: None,
+                            reason: None,
+                            join_authorized_via_users_server: None,
+                        })
+                        .expect("event is valid, we just created it"),
+                        unsigned: None,
+                        state_key: Some(user_id.to_string()),
+                        redacts: None,
+                    },
+                    user_id,
+                    &room_id,
+                    &state_lock,
+                )
+                .await?;
 
-        // Use the server user to grant the new admin's power level
-        let conduit_user =
-            UserId::parse_with_server_name("conduit", services().globals.server_name())
-                .expect("@conduit:server_name is valid");
+            // Set power level
+            let mut users = BTreeMap::new();
+            users.insert(conduit_user.to_owned(), 100.into());
+            users.insert(user_id.to_owned(), 100.into());
 
-        // Invite and join the real user
-        services().rooms.timeline.build_and_append_pdu(
-            PduBuilder {
-                event_type: TimelineEventType::RoomMember,
-                content: to_raw_value(&RoomMemberEventContent {
-                    membership: MembershipState::Invite,
-                    displayname: None,
-                    avatar_url: None,
-                    is_direct: None,
-                    third_party_invite: None,
-                    blurhash: None,
-                    reason: None,
-                    join_authorized_via_users_server: None,
-                })
-                .expect("event is valid, we just created it"),
-                unsigned: None,
-                state_key: Some(user_id.to_string()),
-                redacts: None,
-            },
-            &conduit_user,
-            &room_id,
-            &state_lock,
-        )?;
-        services().rooms.timeline.build_and_append_pdu(
-            PduBuilder {
-                event_type: TimelineEventType::RoomMember,
-                content: to_raw_value(&RoomMemberEventContent {
-                    membership: MembershipState::Join,
-                    displayname: Some(displayname),
-                    avatar_url: None,
-                    is_direct: None,
-                    third_party_invite: None,
-                    blurhash: None,
-                    reason: None,
-                    join_authorized_via_users_server: None,
-                })
-                .expect("event is valid, we just created it"),
-                unsigned: None,
-                state_key: Some(user_id.to_string()),
-                redacts: None,
-            },
-            user_id,
-            &room_id,
-            &state_lock,
-        )?;
+            services()
+                .rooms
+                .timeline
+                .build_and_append_pdu(
+                    PduBuilder {
+                        event_type: TimelineEventType::RoomPowerLevels,
+                        content: to_raw_value(&RoomPowerLevelsEventContent {
+                            users,
+                            ..Default::default()
+                        })
+                        .expect("event is valid, we just created it"),
+                        unsigned: None,
+                        state_key: Some("".to_owned()),
+                        redacts: None,
+                    },
+                    &conduit_user,
+                    &room_id,
+                    &state_lock,
+                )
+                .await?;
 
-        // Set power level
-        let mut users = BTreeMap::new();
-        users.insert(conduit_user.to_owned(), 100.into());
-        users.insert(user_id.to_owned(), 100.into());
-
-        services().rooms.timeline.build_and_append_pdu(
-            PduBuilder {
-                event_type: TimelineEventType::RoomPowerLevels,
-                content: to_raw_value(&RoomPowerLevelsEventContent {
-                    users,
-                    ..Default::default()
-                })
-                .expect("event is valid, we just created it"),
-                unsigned: None,
-                state_key: Some("".to_owned()),
-                redacts: None,
-            },
-            &conduit_user,
-            &room_id,
-            &state_lock,
-        )?;
-
-        // Send welcome message
-        services().rooms.timeline.build_and_append_pdu(
+            // Send welcome message
+            services().rooms.timeline.build_and_append_pdu(
             PduBuilder {
                 event_type: TimelineEventType::RoomMessage,
                 content: to_raw_value(&RoomMessageEventContent::text_html(
@@ -1220,8 +1323,8 @@ impl Service {
             &conduit_user,
             &room_id,
             &state_lock,
-        )?;
-
+        ).await?;
+        }
         Ok(())
     }
 }

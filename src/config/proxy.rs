@@ -29,7 +29,9 @@ use crate::Result;
 /// would be used for `ordinary.onion`, `matrix.myspecial.onion`, but not `hello.myspecial.onion`.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum ProxyConfig {
+    #[default]
     None,
     Global {
         #[serde(deserialize_with = "crate::utils::deserialize_from_str")]
@@ -46,11 +48,6 @@ impl ProxyConfig {
                 proxies.iter().find_map(|proxy| proxy.for_url(url)).cloned() // first matching proxy
             })),
         })
-    }
-}
-impl Default for ProxyConfig {
-    fn default() -> Self {
-        ProxyConfig::None
     }
 }
 

@@ -1,11 +1,13 @@
 use std::{
     collections::{BTreeMap, HashMap},
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex as StdMutex},
 };
 
 use lru_cache::LruCache;
+use tokio::sync::{broadcast, Mutex};
 
 use crate::{Config, Result};
+use tokio::sync::RwLock;
 
 pub mod account_data;
 pub mod admin;
@@ -55,7 +57,7 @@ impl Services {
         config: Config,
     ) -> Result<Self> {
         Ok(Self {
-            appservice: appservice::Service { db },
+            appservice: appservice::Service::build(db)?,
             pusher: pusher::Service { db },
             rooms: rooms::Service {
                 alias: rooms::alias::Service { db },
@@ -64,7 +66,11 @@ impl Services {
                 edus: rooms::edus::Service {
                     presence: rooms::edus::presence::Service { db },
                     read_receipt: rooms::edus::read_receipt::Service { db },
-                    typing: rooms::edus::typing::Service { db },
+                    typing: rooms::edus::typing::Service {
+                        typing: RwLock::new(BTreeMap::new()),
+                        last_typing_update: RwLock::new(BTreeMap::new()),
+                        typing_update_sender: broadcast::channel(100).0,
+                    },
                 },
                 event_handler: rooms::event_handler::Service,
                 lazy_loading: rooms::lazy_loading::Service {
@@ -79,17 +85,17 @@ impl Services {
                 state: rooms::state::Service { db },
                 state_accessor: rooms::state_accessor::Service {
                     db,
-                    server_visibility_cache: Mutex::new(LruCache::new(
+                    server_visibility_cache: StdMutex::new(LruCache::new(
                         (100.0 * config.conduit_cache_capacity_modifier) as usize,
                     )),
-                    user_visibility_cache: Mutex::new(LruCache::new(
+                    user_visibility_cache: StdMutex::new(LruCache::new(
                         (100.0 * config.conduit_cache_capacity_modifier) as usize,
                     )),
                 },
                 state_cache: rooms::state_cache::Service { db },
                 state_compressor: rooms::state_compressor::Service {
                     db,
-                    stateinfo_cache: Mutex::new(LruCache::new(
+                    stateinfo_cache: StdMutex::new(LruCache::new(
                         (100.0 * config.conduit_cache_capacity_modifier) as usize,
                     )),
                 },
@@ -107,7 +113,7 @@ impl Services {
             uiaa: uiaa::Service { db },
             users: users::Service {
                 db,
-                connections: Mutex::new(BTreeMap::new()),
+                connections: StdMutex::new(BTreeMap::new()),
             },
             account_data: account_data::Service { db },
             admin: admin::Service::build(),
@@ -118,14 +124,8 @@ impl Services {
             globals: globals::Service::load(db, config)?,
         })
     }
-    fn memory_usage(&self) -> String {
-        let lazy_load_waiting = self
-            .rooms
-            .lazy_loading
-            .lazy_load_waiting
-            .lock()
-            .unwrap()
-            .len();
+    async fn memory_usage(&self) -> String {
+        let lazy_load_waiting = self.rooms.lazy_loading.lazy_load_waiting.lock().await.len();
         let server_visibility_cache = self
             .rooms
             .state_accessor
@@ -152,15 +152,9 @@ impl Services {
             .timeline
             .lasttimelinecount_cache
             .lock()
-            .unwrap()
+            .await
             .len();
-        let roomid_spacechunk_cache = self
-            .rooms
-            .spaces
-            .roomid_spacechunk_cache
-            .lock()
-            .unwrap()
-            .len();
+        let roomid_spacechunk_cache = self.rooms.spaces.roomid_spacechunk_cache.lock().await.len();
 
         format!(
             "\
@@ -173,13 +167,13 @@ roomid_spacechunk_cache: {roomid_spacechunk_cache}\
             "
         )
     }
-    fn clear_caches(&self, amount: u32) {
+    async fn clear_caches(&self, amount: u32) {
         if amount > 0 {
             self.rooms
                 .lazy_loading
                 .lazy_load_waiting
                 .lock()
-                .unwrap()
+                .await
                 .clear();
         }
         if amount > 1 {
@@ -211,7 +205,7 @@ roomid_spacechunk_cache: {roomid_spacechunk_cache}\
                 .timeline
                 .lasttimelinecount_cache
                 .lock()
-                .unwrap()
+                .await
                 .clear();
         }
         if amount > 5 {
@@ -219,7 +213,7 @@ roomid_spacechunk_cache: {roomid_spacechunk_cache}\
                 .spaces
                 .roomid_spacechunk_cache
                 .lock()
-                .unwrap()
+                .await
                 .clear();
         }
     }

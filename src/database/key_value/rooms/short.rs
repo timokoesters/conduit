@@ -157,10 +157,9 @@ impl service::rooms::short::Data for KeyValueDatabase {
             .ok_or_else(|| Error::bad_database("Invalid statekey in shortstatekey_statekey."))?;
 
         let event_type =
-            StateEventType::try_from(utils::string_from_bytes(eventtype_bytes).map_err(|_| {
+            StateEventType::from(utils::string_from_bytes(eventtype_bytes).map_err(|_| {
                 Error::bad_database("Event type in shortstatekey_statekey is invalid unicode.")
-            })?)
-            .map_err(|_| Error::bad_database("Event type in shortstatekey_statekey is invalid."))?;
+            })?);
 
         let state_key = utils::string_from_bytes(statekey_bytes).map_err(|_| {
             Error::bad_database("Statekey in shortstatekey_statekey is invalid unicode.")

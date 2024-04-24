@@ -40,6 +40,7 @@ pub async fn set_displayname_route(
                     event_type: TimelineEventType::RoomMember,
                     content: to_raw_value(&RoomMemberEventContent {
                         displayname: body.displayname.clone(),
+                        join_authorized_via_users_server: None,
                         ..serde_json::from_str(
                             services()
                                 .rooms
@@ -77,18 +78,17 @@ pub async fn set_displayname_route(
                 .globals
                 .roomid_mutex_state
                 .write()
-                .unwrap()
+                .await
                 .entry(room_id.clone())
                 .or_default(),
         );
         let state_lock = mutex_state.lock().await;
 
-        let _ = services().rooms.timeline.build_and_append_pdu(
-            pdu_builder,
-            sender_user,
-            &room_id,
-            &state_lock,
-        );
+        let _ = services()
+            .rooms
+            .timeline
+            .build_and_append_pdu(pdu_builder, sender_user, &room_id, &state_lock)
+            .await;
 
         // Presence update
         services().rooms.edus.presence.update_presence(
@@ -175,6 +175,7 @@ pub async fn set_avatar_url_route(
                     event_type: TimelineEventType::RoomMember,
                     content: to_raw_value(&RoomMemberEventContent {
                         avatar_url: body.avatar_url.clone(),
+                        join_authorized_via_users_server: None,
                         ..serde_json::from_str(
                             services()
                                 .rooms
@@ -212,18 +213,17 @@ pub async fn set_avatar_url_route(
                 .globals
                 .roomid_mutex_state
                 .write()
-                .unwrap()
+                .await
                 .entry(room_id.clone())
                 .or_default(),
         );
         let state_lock = mutex_state.lock().await;
 
-        let _ = services().rooms.timeline.build_and_append_pdu(
-            pdu_builder,
-            sender_user,
-            &room_id,
-            &state_lock,
-        );
+        let _ = services()
+            .rooms
+            .timeline
+            .build_and_append_pdu(pdu_builder, sender_user, &room_id, &state_lock)
+            .await;
 
         // Presence update
         services().rooms.edus.presence.update_presence(

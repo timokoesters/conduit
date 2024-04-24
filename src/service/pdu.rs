@@ -1,7 +1,9 @@
 use crate::Error;
 use ruma::{
+    canonical_json::redact_content_in_place,
     events::{
-        room::member::RoomMemberEventContent, space::child::HierarchySpaceChildEvent,
+        room::{member::RoomMemberEventContent, redaction::RoomRedactionEventContent},
+        space::child::HierarchySpaceChildEvent,
         AnyEphemeralRoomEvent, AnyMessageLikeEvent, AnyStateEvent, AnyStrippedStateEvent,
         AnySyncStateEvent, AnySyncTimelineEvent, AnyTimelineEvent, StateEvent, TimelineEventType,
     },
@@ -24,7 +26,7 @@ pub struct EventHash {
     pub sha256: String,
 }
 
-#[derive(Clone, Deserialize, Serialize, Debug)]
+#[derive(Clone, Deserialize, Debug, Serialize)]
 pub struct PduEvent {
     pub event_id: Arc<EventId>,
     pub room_id: OwnedRoomId,
@@ -49,44 +51,23 @@ pub struct PduEvent {
 
 impl PduEvent {
     #[tracing::instrument(skip(self))]
-    pub fn redact(&mut self, reason: &PduEvent) -> crate::Result<()> {
+    pub fn redact(
+        &mut self,
+        room_version_id: RoomVersionId,
+        reason: &PduEvent,
+    ) -> crate::Result<()> {
         self.unsigned = None;
 
-        let allowed: &[&str] = match self.kind {
-            TimelineEventType::RoomMember => &["join_authorised_via_users_server", "membership"],
-            TimelineEventType::RoomCreate => &["creator"],
-            TimelineEventType::RoomJoinRules => &["join_rule"],
-            TimelineEventType::RoomPowerLevels => &[
-                "ban",
-                "events",
-                "events_default",
-                "kick",
-                "redact",
-                "state_default",
-                "users",
-                "users_default",
-            ],
-            TimelineEventType::RoomHistoryVisibility => &["history_visibility"],
-            _ => &[],
-        };
-
-        let mut old_content: BTreeMap<String, serde_json::Value> =
-            serde_json::from_str(self.content.get())
-                .map_err(|_| Error::bad_database("PDU in db has invalid content."))?;
-
-        let mut new_content = serde_json::Map::new();
-
-        for key in allowed {
-            if let Some(value) = old_content.remove(*key) {
-                new_content.insert((*key).to_owned(), value);
-            }
-        }
+        let mut content = serde_json::from_str(self.content.get())
+            .map_err(|_| Error::bad_database("PDU in db has invalid content."))?;
+        redact_content_in_place(&mut content, &room_version_id, self.kind.to_string())
+            .map_err(|e| Error::RedactionError(self.sender.server_name().to_owned(), e))?;
 
         self.unsigned = Some(to_raw_value(&json!({
             "redacted_because": serde_json::to_value(reason).expect("to_value(PduEvent) always works")
         })).expect("to string always works"));
 
-        self.content = to_raw_value(&new_content).expect("to string always works");
+        self.content = to_raw_value(&content).expect("to string always works");
 
         Ok(())
     }
@@ -116,10 +97,43 @@ impl PduEvent {
         Ok(())
     }
 
+    /// Copies the `redacts` property of the event to the `content` dict and vice-versa.
+    ///
+    /// This follows the specification's
+    /// [recommendation](https://spec.matrix.org/v1.10/rooms/v11/#moving-the-redacts-property-of-mroomredaction-events-to-a-content-property):
+    ///
+    /// > For backwards-compatibility with older clients, servers should add a redacts
+    /// > property to the top level of m.room.redaction events in when serving such events
+    /// > over the Client-Server API.
+    /// >
+    /// > For improved compatibility with newer clients, servers should add a redacts property
+    /// > to the content of m.room.redaction events in older room versions when serving
+    /// > such events over the Client-Server API.
+    pub fn copy_redacts(&self) -> (Option<Arc<EventId>>, Box<RawJsonValue>) {
+        if self.kind == TimelineEventType::RoomRedaction {
+            if let Ok(mut content) =
+                serde_json::from_str::<RoomRedactionEventContent>(self.content.get())
+            {
+                if let Some(redacts) = content.redacts {
+                    return (Some(redacts.into()), self.content.clone());
+                } else if let Some(redacts) = self.redacts.clone() {
+                    content.redacts = Some(redacts.into());
+                    return (
+                        self.redacts.clone(),
+                        to_raw_value(&content).expect("Must be valid, we only added redacts field"),
+                    );
+                }
+            }
+        }
+
+        (self.redacts.clone(), self.content.clone())
+    }
+
     #[tracing::instrument(skip(self))]
     pub fn to_sync_room_event(&self) -> Raw<AnySyncTimelineEvent> {
+        let (redacts, content) = self.copy_redacts();
         let mut json = json!({
-            "content": self.content,
+            "content": content,
             "type": self.kind,
             "event_id": self.event_id,
             "sender": self.sender,
@@ -132,7 +146,7 @@ impl PduEvent {
         if let Some(state_key) = &self.state_key {
             json["state_key"] = json!(state_key);
         }
-        if let Some(redacts) = &self.redacts {
+        if let Some(redacts) = &redacts {
             json["redacts"] = json!(redacts);
         }
 
@@ -166,8 +180,9 @@ impl PduEvent {
 
     #[tracing::instrument(skip(self))]
     pub fn to_room_event(&self) -> Raw<AnyTimelineEvent> {
+        let (redacts, content) = self.copy_redacts();
         let mut json = json!({
-            "content": self.content,
+            "content": content,
             "type": self.kind,
             "event_id": self.event_id,
             "sender": self.sender,
@@ -181,7 +196,7 @@ impl PduEvent {
         if let Some(state_key) = &self.state_key {
             json["state_key"] = json!(state_key);
         }
-        if let Some(redacts) = &self.redacts {
+        if let Some(redacts) = &redacts {
             json["redacts"] = json!(redacts);
         }
 
@@ -190,8 +205,9 @@ impl PduEvent {
 
     #[tracing::instrument(skip(self))]
     pub fn to_message_like_event(&self) -> Raw<AnyMessageLikeEvent> {
+        let (redacts, content) = self.copy_redacts();
         let mut json = json!({
-            "content": self.content,
+            "content": content,
             "type": self.kind,
             "event_id": self.event_id,
             "sender": self.sender,
@@ -205,7 +221,7 @@ impl PduEvent {
         if let Some(state_key) = &self.state_key {
             json["state_key"] = json!(state_key);
         }
-        if let Some(redacts) = &self.redacts {
+        if let Some(redacts) = &redacts {
             json["redacts"] = json!(redacts);
         }
 
@@ -385,7 +401,7 @@ impl PartialEq for PduEvent {
 }
 impl PartialOrd for PduEvent {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.event_id.partial_cmp(&other.event_id)
+        Some(self.cmp(other))
     }
 }
 impl Ord for PduEvent {

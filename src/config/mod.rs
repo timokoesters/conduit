@@ -21,7 +21,6 @@ pub struct Config {
     pub tls: Option<TlsConfig>,
 
     pub server_name: OwnedServerName,
-    #[serde(default = "default_database_backend")]
     pub database_backend: String,
     pub database_path: String,
     #[serde(default = "default_db_cache_capacity_mb")]
@@ -223,10 +222,6 @@ fn default_port() -> u16 {
     8000
 }
 
-fn default_database_backend() -> String {
-    "sqlite".to_owned()
-}
-
 fn default_db_cache_capacity_mb() -> f64 {
     300.0
 }
@@ -264,7 +259,7 @@ fn default_trusted_servers() -> Vec<OwnedServerName> {
 }
 
 fn default_log() -> String {
-    "warn,state_res=warn,_=off,sled=off".to_owned()
+    "warn,state_res=warn,_=off".to_owned()
 }
 
 fn default_turn_ttl() -> u64 {
@@ -273,5 +268,5 @@ fn default_turn_ttl() -> u64 {
 
 // I know, it's a great name
 pub fn default_default_room_version() -> RoomVersionId {
-    RoomVersionId::V9
+    RoomVersionId::V10
 }

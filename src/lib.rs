@@ -1,18 +1,13 @@
-#![warn(
-    rust_2018_idioms,
-    unused_qualifications,
-    clippy::cloned_instead_of_copied,
-    clippy::str_to_string
-)]
-#![allow(clippy::suspicious_else_formatting)]
-#![deny(clippy::dbg_macro)]
-
 pub mod api;
+pub mod clap;
 mod config;
 mod database;
 mod service;
 mod utils;
 
+// Not async due to services() being used in many closures, and async closures are not stable as of writing
+// This is the case for every other occurence of sync Mutex/RwLock, except for database related ones, where
+// the current maintainer (Timo) has asked to not modify those
 use std::sync::RwLock;
 
 pub use api::ruma_wrapper::{Ruma, RumaResponse};

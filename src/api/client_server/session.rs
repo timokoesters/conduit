@@ -42,24 +42,38 @@ pub async fn get_login_types_route(
 /// Note: You can use [`GET /_matrix/client/r0/login`](fn.get_supported_versions_route.html) to see
 /// supported login types.
 pub async fn login_route(body: Ruma<login::v3::Request>) -> Result<login::v3::Response> {
+    // To allow deprecated login methods
+    #![allow(deprecated)]
     // Validate login method
     // TODO: Other login methods
     let user_id = match &body.login_info {
         login::v3::LoginInfo::Password(login::v3::Password {
             identifier,
             password,
+            user,
+            address: _,
+            medium: _,
         }) => {
-            let username = if let UserIdentifier::UserIdOrLocalpart(user_id) = identifier {
-                user_id.to_lowercase()
+            let user_id = if let Some(UserIdentifier::UserIdOrLocalpart(user_id)) = identifier {
+                UserId::parse_with_server_name(
+                    user_id.to_lowercase(),
+                    services().globals.server_name(),
+                )
+            } else if let Some(user) = user {
+                UserId::parse(user)
             } else {
                 warn!("Bad login type: {:?}", &body.login_info);
                 return Err(Error::BadRequest(ErrorKind::Forbidden, "Bad login type."));
-            };
-            let user_id =
-                UserId::parse_with_server_name(username, services().globals.server_name())
-                    .map_err(|_| {
-                        Error::BadRequest(ErrorKind::InvalidUsername, "Username is invalid.")
-                    })?;
+            }
+            .map_err(|_| Error::BadRequest(ErrorKind::InvalidUsername, "Username is invalid."))?;
+
+            if services().appservice.is_exclusive_user_id(&user_id).await {
+                return Err(Error::BadRequest(
+                    ErrorKind::Exclusive,
+                    "User id reserved by appservice.",
+                ));
+            }
+
             let hash = services()
                 .users
                 .password_hash(&user_id)?
@@ -95,9 +109,20 @@ pub async fn login_route(body: Ruma<login::v3::Request>) -> Result<login::v3::Re
                 )
                 .map_err(|_| Error::BadRequest(ErrorKind::InvalidUsername, "Token is invalid."))?;
                 let username = token.claims.sub.to_lowercase();
-                UserId::parse_with_server_name(username, services().globals.server_name()).map_err(
-                    |_| Error::BadRequest(ErrorKind::InvalidUsername, "Username is invalid."),
-                )?
+                let user_id =
+                    UserId::parse_with_server_name(username, services().globals.server_name())
+                        .map_err(|_| {
+                            Error::BadRequest(ErrorKind::InvalidUsername, "Username is invalid.")
+                        })?;
+
+                if services().appservice.is_exclusive_user_id(&user_id).await {
+                    return Err(Error::BadRequest(
+                        ErrorKind::Exclusive,
+                        "User id reserved by appservice.",
+                    ));
+                }
+
+                user_id
             } else {
                 return Err(Error::BadRequest(
                     ErrorKind::Unknown,
@@ -105,23 +130,37 @@ pub async fn login_route(body: Ruma<login::v3::Request>) -> Result<login::v3::Re
                 ));
             }
         }
-        login::v3::LoginInfo::ApplicationService(login::v3::ApplicationService { identifier }) => {
-            if !body.from_appservice {
-                return Err(Error::BadRequest(
-                    ErrorKind::Forbidden,
-                    "Forbidden login type.",
-                ));
-            };
-            let username = if let UserIdentifier::UserIdOrLocalpart(user_id) = identifier {
-                user_id.to_lowercase()
+        login::v3::LoginInfo::ApplicationService(login::v3::ApplicationService {
+            identifier,
+            user,
+        }) => {
+            let user_id = if let Some(UserIdentifier::UserIdOrLocalpart(user_id)) = identifier {
+                UserId::parse_with_server_name(
+                    user_id.to_lowercase(),
+                    services().globals.server_name(),
+                )
+            } else if let Some(user) = user {
+                UserId::parse(user)
             } else {
+                warn!("Bad login type: {:?}", &body.login_info);
                 return Err(Error::BadRequest(ErrorKind::Forbidden, "Bad login type."));
-            };
-            let user_id =
-                UserId::parse_with_server_name(username, services().globals.server_name())
-                    .map_err(|_| {
-                        Error::BadRequest(ErrorKind::InvalidUsername, "Username is invalid.")
-                    })?;
+            }
+            .map_err(|_| Error::BadRequest(ErrorKind::InvalidUsername, "Username is invalid."))?;
+
+            if let Some(ref info) = body.appservice_info {
+                if !info.is_user_match(&user_id) {
+                    return Err(Error::BadRequest(
+                        ErrorKind::Exclusive,
+                        "User is not in namespace.",
+                    ));
+                }
+            } else {
+                return Err(Error::BadRequest(
+                    ErrorKind::MissingToken,
+                    "Missing appservice token.",
+                ));
+            }
+
             user_id
         }
         _ => {
@@ -163,6 +202,8 @@ pub async fn login_route(body: Ruma<login::v3::Request>) -> Result<login::v3::Re
 
     info!("{} logged in", user_id);
 
+    // Homeservers are still required to send the `home_server` field
+    #[allow(deprecated)]
     Ok(login::v3::Response {
         user_id,
         access_token: token,
@@ -186,6 +227,15 @@ pub async fn logout_route(body: Ruma<logout::v3::Request>) -> Result<logout::v3:
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
     let sender_device = body.sender_device.as_ref().expect("user is authenticated");
 
+    if let Some(ref info) = body.appservice_info {
+        if !info.is_user_match(sender_user) {
+            return Err(Error::BadRequest(
+                ErrorKind::Exclusive,
+                "User is not in namespace.",
+            ));
+        }
+    }
+
     services().users.remove_device(sender_user, sender_device)?;
 
     Ok(logout::v3::Response::new())
@@ -206,6 +256,20 @@ pub async fn logout_all_route(
     body: Ruma<logout_all::v3::Request>,
 ) -> Result<logout_all::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
+
+    if let Some(ref info) = body.appservice_info {
+        if !info.is_user_match(sender_user) {
+            return Err(Error::BadRequest(
+                ErrorKind::Exclusive,
+                "User is not in namespace.",
+            ));
+        }
+    } else {
+        return Err(Error::BadRequest(
+            ErrorKind::MissingToken,
+            "Missing appservice token.",
+        ));
+    }
 
     for device_id in services().users.all_device_ids(sender_user).flatten() {
         services().users.remove_device(sender_user, &device_id)?;

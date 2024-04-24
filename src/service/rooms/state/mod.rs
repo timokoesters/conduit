@@ -6,6 +6,7 @@ use std::{
 
 pub use data::Data;
 use ruma::{
+    api::client::error::ErrorKind,
     events::{
         room::{create::RoomCreateEventContent, member::MembershipState},
         AnyStrippedStateEvent, StateEventType, TimelineEventType,
@@ -40,7 +41,7 @@ impl Service {
             services()
                 .rooms
                 .state_compressor
-                .parse_compressed_state_event(&new)
+                .parse_compressed_state_event(new)
                 .ok()
                 .map(|(_, id)| id)
         }) {
@@ -94,7 +95,7 @@ impl Service {
                         .spaces
                         .roomid_spacechunk_cache
                         .lock()
-                        .unwrap()
+                        .await
                         .remove(&pdu.room_id);
                 }
                 _ => continue,
@@ -331,7 +332,7 @@ impl Service {
             "",
         )?;
 
-        let create_event_content: Option<RoomCreateEventContent> = create_event
+        let create_event_content: RoomCreateEventContent = create_event
             .as_ref()
             .map(|create_event| {
                 serde_json::from_str(create_event.content.get()).map_err(|e| {
@@ -339,14 +340,10 @@ impl Service {
                     Error::bad_database("Invalid create event in db.")
                 })
             })
-            .transpose()?;
-        let room_version = create_event_content
-            .map(|create_event| create_event.room_version)
-            .ok_or_else(|| {
-                warn!("Invalid room version for room {room_id}");
-                Error::BadDatabase("Invalid room version")
-            })?;
-        Ok(room_version)
+            .transpose()?
+            .ok_or_else(|| Error::BadRequest(ErrorKind::InvalidParam, "No create event found"))?;
+
+        Ok(create_event_content.room_version)
     }
 
     pub fn get_room_shortstatehash(&self, room_id: &RoomId) -> Result<Option<u64>> {
@@ -415,7 +412,7 @@ impl Service {
                 services()
                     .rooms
                     .state_compressor
-                    .parse_compressed_state_event(&compressed)
+                    .parse_compressed_state_event(compressed)
                     .ok()
             })
             .filter_map(|(shortstatekey, event_id)| {

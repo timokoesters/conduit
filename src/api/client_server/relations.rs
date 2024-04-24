@@ -23,7 +23,7 @@ pub async fn get_relating_events_with_rel_type_and_event_type_route(
     let to = body
         .to
         .as_ref()
-        .and_then(|t| PduCount::try_from_string(&t).ok());
+        .and_then(|t| PduCount::try_from_string(t).ok());
 
     // Use limit or else 10, with maximum 100
     let limit = body
@@ -73,7 +73,7 @@ pub async fn get_relating_events_with_rel_type_route(
     let to = body
         .to
         .as_ref()
-        .and_then(|t| PduCount::try_from_string(&t).ok());
+        .and_then(|t| PduCount::try_from_string(t).ok());
 
     // Use limit or else 10, with maximum 100
     let limit = body
@@ -121,7 +121,7 @@ pub async fn get_relating_events_route(
     let to = body
         .to
         .as_ref()
-        .and_then(|t| PduCount::try_from_string(&t).ok());
+        .and_then(|t| PduCount::try_from_string(t).ok());
 
     // Use limit or else 10, with maximum 100
     let limit = body

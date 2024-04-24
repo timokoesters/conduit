@@ -1,6 +1,5 @@
 use crate::{services, Error, Result, Ruma};
 use rand::seq::SliceRandom;
-use regex::Regex;
 use ruma::{
     api::{
         appservice,
@@ -23,6 +22,24 @@ pub async fn create_alias_route(
         return Err(Error::BadRequest(
             ErrorKind::InvalidParam,
             "Alias is from another server.",
+        ));
+    }
+
+    if let Some(ref info) = body.appservice_info {
+        if !info.aliases.is_match(body.room_alias.as_str()) {
+            return Err(Error::BadRequest(
+                ErrorKind::Exclusive,
+                "Room alias is not in namespace.",
+            ));
+        }
+    } else if services()
+        .appservice
+        .is_exclusive_alias(&body.room_alias)
+        .await
+    {
+        return Err(Error::BadRequest(
+            ErrorKind::Exclusive,
+            "Room alias reserved by appservice.",
         ));
     }
 
@@ -56,6 +73,24 @@ pub async fn delete_alias_route(
         return Err(Error::BadRequest(
             ErrorKind::InvalidParam,
             "Alias is from another server.",
+        ));
+    }
+
+    if let Some(ref info) = body.appservice_info {
+        if !info.aliases.is_match(body.room_alias.as_str()) {
+            return Err(Error::BadRequest(
+                ErrorKind::Exclusive,
+                "Room alias is not in namespace.",
+            ));
+        }
+    } else if services()
+        .appservice
+        .is_exclusive_alias(&body.room_alias)
+        .await
+    {
+        return Err(Error::BadRequest(
+            ErrorKind::Exclusive,
+            "Room alias reserved by appservice.",
         ));
     }
 
@@ -101,31 +136,20 @@ pub(crate) async fn get_alias_helper(
     match services().rooms.alias.resolve_local_alias(&room_alias)? {
         Some(r) => room_id = Some(r),
         None => {
-            for (_id, registration) in services().appservice.all()? {
-                let aliases = registration
-                    .get("namespaces")
-                    .and_then(|ns| ns.get("aliases"))
-                    .and_then(|aliases| aliases.as_sequence())
-                    .map_or_else(Vec::new, |aliases| {
-                        aliases
-                            .iter()
-                            .filter_map(|aliases| Regex::new(aliases.get("regex")?.as_str()?).ok())
-                            .collect::<Vec<_>>()
-                    });
-
-                if aliases
-                    .iter()
-                    .any(|aliases| aliases.is_match(room_alias.as_str()))
-                    && services()
-                        .sending
-                        .send_appservice_request(
-                            registration,
-                            appservice::query::query_room_alias::v1::Request {
-                                room_alias: room_alias.clone(),
-                            },
-                        )
-                        .await
-                        .is_ok()
+            for appservice in services().appservice.read().await.values() {
+                if appservice.aliases.is_match(room_alias.as_str())
+                    && matches!(
+                        services()
+                            .sending
+                            .send_appservice_request(
+                                appservice.registration.clone(),
+                                appservice::query::query_room_alias::v1::Request {
+                                    room_alias: room_alias.clone(),
+                                },
+                            )
+                            .await,
+                        Ok(Some(_opt_result))
+                    )
                 {
                     room_id = Some(
                         services()

@@ -8,6 +8,12 @@ use ruma::{
 use crate::api::server_server::FedDest;
 
 use crate::{services, Config, Error, Result};
+use futures_util::FutureExt;
+use hyper::{
+    client::connect::dns::{GaiResolver, Name},
+    service::Service as HyperService,
+};
+use reqwest::dns::{Addrs, Resolve, Resolving};
 use ruma::{
     api::{
         client::sync::sync_events,
@@ -17,17 +23,19 @@ use ruma::{
 };
 use std::{
     collections::{BTreeMap, HashMap},
+    error::Error as StdError,
     fs,
-    future::Future,
+    future::{self, Future},
+    iter,
     net::{IpAddr, SocketAddr},
     path::PathBuf,
     sync::{
         atomic::{self, AtomicBool},
-        Arc, Mutex, RwLock,
+        Arc, RwLock as StdRwLock,
     },
     time::{Duration, Instant},
 };
-use tokio::sync::{broadcast, watch::Receiver, Mutex as TokioMutex, Semaphore};
+use tokio::sync::{broadcast, watch::Receiver, Mutex, RwLock, Semaphore};
 use tracing::{error, info};
 use trust_dns_resolver::TokioAsyncResolver;
 
@@ -45,7 +53,7 @@ pub struct Service {
     pub db: &'static dyn Data,
 
     pub actual_destination_cache: Arc<RwLock<WellKnownMap>>, // actual_destination, host
-    pub tls_name_override: Arc<RwLock<TlsNameMap>>,
+    pub tls_name_override: Arc<StdRwLock<TlsNameMap>>,
     pub config: Config,
     keypair: Arc<ruma::signatures::Ed25519KeyPair>,
     dns_resolver: TokioAsyncResolver,
@@ -56,11 +64,12 @@ pub struct Service {
     pub unstable_room_versions: Vec<RoomVersionId>,
     pub bad_event_ratelimiter: Arc<RwLock<HashMap<OwnedEventId, RateLimitState>>>,
     pub bad_signature_ratelimiter: Arc<RwLock<HashMap<Vec<String>, RateLimitState>>>,
+    pub bad_query_ratelimiter: Arc<RwLock<HashMap<OwnedServerName, RateLimitState>>>,
     pub servername_ratelimiter: Arc<RwLock<HashMap<OwnedServerName, Arc<Semaphore>>>>,
     pub sync_receivers: RwLock<HashMap<(OwnedUserId, OwnedDeviceId), SyncHandle>>,
     pub roomid_mutex_insert: RwLock<HashMap<OwnedRoomId, Arc<Mutex<()>>>>,
-    pub roomid_mutex_state: RwLock<HashMap<OwnedRoomId, Arc<TokioMutex<()>>>>,
-    pub roomid_mutex_federation: RwLock<HashMap<OwnedRoomId, Arc<TokioMutex<()>>>>, // this lock will be held longer
+    pub roomid_mutex_state: RwLock<HashMap<OwnedRoomId, Arc<Mutex<()>>>>,
+    pub roomid_mutex_federation: RwLock<HashMap<OwnedRoomId, Arc<Mutex<()>>>>, // this lock will be held longer
     pub roomid_federationhandletime: RwLock<HashMap<OwnedRoomId, (OwnedEventId, Instant)>>,
     pub stateres_mutex: Arc<Mutex<()>>,
     pub rotate: RotationHandler,
@@ -98,6 +107,45 @@ impl Default for RotationHandler {
     }
 }
 
+pub struct Resolver {
+    inner: GaiResolver,
+    overrides: Arc<StdRwLock<TlsNameMap>>,
+}
+
+impl Resolver {
+    pub fn new(overrides: Arc<StdRwLock<TlsNameMap>>) -> Self {
+        Resolver {
+            inner: GaiResolver::new(),
+            overrides,
+        }
+    }
+}
+
+impl Resolve for Resolver {
+    fn resolve(&self, name: Name) -> Resolving {
+        self.overrides
+            .read()
+            .unwrap()
+            .get(name.as_str())
+            .and_then(|(override_name, port)| {
+                override_name.first().map(|first_name| {
+                    let x: Box<dyn Iterator<Item = SocketAddr> + Send> =
+                        Box::new(iter::once(SocketAddr::new(*first_name, *port)));
+                    let x: Resolving = Box::pin(future::ready(Ok(x)));
+                    x
+                })
+            })
+            .unwrap_or_else(|| {
+                let this = &mut self.inner.clone();
+                Box::pin(HyperService::<Name>::call(this, name).map(|result| {
+                    result
+                        .map(|addrs| -> Addrs { Box::new(addrs) })
+                        .map_err(|err| -> Box<dyn StdError + Send + Sync> { Box::new(err) })
+                }))
+            })
+    }
+}
+
 impl Service {
     pub fn load(db: &'static dyn Data, config: Config) -> Result<Self> {
         let keypair = db.load_keypair();
@@ -111,7 +159,7 @@ impl Service {
             }
         };
 
-        let tls_name_override = Arc::new(RwLock::new(TlsNameMap::new()));
+        let tls_name_override = Arc::new(StdRwLock::new(TlsNameMap::new()));
 
         let jwt_decoding_key = config
             .jwt_secret
@@ -119,14 +167,8 @@ impl Service {
             .map(|secret| jsonwebtoken::DecodingKey::from_secret(secret.as_bytes()));
 
         let default_client = reqwest_client_builder(&config)?.build()?;
-        let name_override = Arc::clone(&tls_name_override);
         let federation_client = reqwest_client_builder(&config)?
-            .resolve_fn(move |domain| {
-                let read_guard = name_override.read().unwrap();
-                let (override_name, port) = read_guard.get(&domain)?;
-                let first_name = override_name.get(0)?;
-                Some(SocketAddr::new(*first_name, *port))
-            })
+            .dns_resolver(Arc::new(Resolver::new(tls_name_override.clone())))
             .build()?;
 
         // Supported and stable room versions
@@ -136,6 +178,7 @@ impl Service {
             RoomVersionId::V8,
             RoomVersionId::V9,
             RoomVersionId::V10,
+            RoomVersionId::V11,
         ];
         // Experimental, partially supported room versions
         let unstable_room_versions = vec![RoomVersionId::V3, RoomVersionId::V4, RoomVersionId::V5];
@@ -160,6 +203,7 @@ impl Service {
             unstable_room_versions,
             bad_event_ratelimiter: Arc::new(RwLock::new(HashMap::new())),
             bad_signature_ratelimiter: Arc::new(RwLock::new(HashMap::new())),
+            bad_query_ratelimiter: Arc::new(RwLock::new(HashMap::new())),
             servername_ratelimiter: Arc::new(RwLock::new(HashMap::new())),
             roomid_mutex_state: RwLock::new(HashMap::new()),
             roomid_mutex_insert: RwLock::new(HashMap::new()),

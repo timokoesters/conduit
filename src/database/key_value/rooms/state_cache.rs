@@ -1,13 +1,16 @@
 use std::{collections::HashSet, sync::Arc};
 
-use regex::Regex;
 use ruma::{
     events::{AnyStrippedStateEvent, AnySyncStateEvent},
     serde::Raw,
     OwnedRoomId, OwnedServerName, OwnedUserId, RoomId, ServerName, UserId,
 };
 
-use crate::{database::KeyValueDatabase, service, services, utils, Error, Result};
+use crate::{
+    database::KeyValueDatabase,
+    service::{self, appservice::RegistrationInfo},
+    services, utils, Error, Result,
+};
 
 impl service::rooms::state_cache::Data for KeyValueDatabase {
     fn mark_as_once_joined(&self, user_id: &UserId, room_id: &RoomId) -> Result<()> {
@@ -184,46 +187,28 @@ impl service::rooms::state_cache::Data for KeyValueDatabase {
     }
 
     #[tracing::instrument(skip(self, room_id, appservice))]
-    fn appservice_in_room(
-        &self,
-        room_id: &RoomId,
-        appservice: &(String, serde_yaml::Value),
-    ) -> Result<bool> {
+    fn appservice_in_room(&self, room_id: &RoomId, appservice: &RegistrationInfo) -> Result<bool> {
         let maybe = self
             .appservice_in_room_cache
             .read()
             .unwrap()
             .get(room_id)
-            .and_then(|map| map.get(&appservice.0))
+            .and_then(|map| map.get(&appservice.registration.id))
             .copied();
 
         if let Some(b) = maybe {
             Ok(b)
-        } else if let Some(namespaces) = appservice.1.get("namespaces") {
-            let users = namespaces
-                .get("users")
-                .and_then(|users| users.as_sequence())
-                .map_or_else(Vec::new, |users| {
-                    users
-                        .iter()
-                        .filter_map(|users| Regex::new(users.get("regex")?.as_str()?).ok())
-                        .collect::<Vec<_>>()
-                });
-
-            let bridge_user_id = appservice
-                .1
-                .get("sender_localpart")
-                .and_then(|string| string.as_str())
-                .and_then(|string| {
-                    UserId::parse_with_server_name(string, services().globals.server_name()).ok()
-                });
+        } else {
+            let bridge_user_id = UserId::parse_with_server_name(
+                appservice.registration.sender_localpart.as_str(),
+                services().globals.server_name(),
+            )
+            .ok();
 
             let in_room = bridge_user_id
                 .map_or(false, |id| self.is_joined(&id, room_id).unwrap_or(false))
                 || self.room_members(room_id).any(|userid| {
-                    userid.map_or(false, |userid| {
-                        users.iter().any(|r| r.is_match(userid.as_str()))
-                    })
+                    userid.map_or(false, |userid| appservice.users.is_match(userid.as_str()))
                 });
 
             self.appservice_in_room_cache
@@ -231,11 +216,9 @@ impl service::rooms::state_cache::Data for KeyValueDatabase {
                 .unwrap()
                 .entry(room_id.to_owned())
                 .or_default()
-                .insert(appservice.0.clone(), in_room);
+                .insert(appservice.registration.id.clone(), in_room);
 
             Ok(in_room)
-        } else {
-            Ok(false)
         }
     }
 
@@ -471,6 +454,7 @@ impl service::rooms::state_cache::Data for KeyValueDatabase {
     }
 
     /// Returns an iterator over all rooms a user was invited to.
+    #[allow(clippy::type_complexity)]
     #[tracing::instrument(skip(self))]
     fn rooms_invited<'a>(
         &'a self,
@@ -549,6 +533,7 @@ impl service::rooms::state_cache::Data for KeyValueDatabase {
     }
 
     /// Returns an iterator over all rooms a user left.
+    #[allow(clippy::type_complexity)]
     #[tracing::instrument(skip(self))]
     fn rooms_left<'a>(
         &'a self,
