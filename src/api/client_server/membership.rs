@@ -187,6 +187,14 @@ pub async fn kick_user_route(
 ) -> Result<kick_user::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
+    if let Ok(true) = services()
+        .rooms
+        .state_cache
+        .is_left(sender_user, &body.room_id)
+    {
+        return Ok(kick_user::v3::Response {});
+    }
+
     let mut event: RoomMemberEventContent = serde_json::from_str(
         services()
             .rooms
@@ -246,6 +254,16 @@ pub async fn kick_user_route(
 /// Tries to send a ban event into the room.
 pub async fn ban_user_route(body: Ruma<ban_user::v3::Request>) -> Result<ban_user::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
+
+    if let Ok(Some(membership_event)) = services()
+        .rooms
+        .state_accessor
+        .get_member(&body.room_id, sender_user)
+    {
+        if membership_event.membership == MembershipState::Ban {
+            return Ok(ban_user::v3::Response {});
+        }
+    }
 
     let event = services()
         .rooms
@@ -317,6 +335,16 @@ pub async fn unban_user_route(
     body: Ruma<unban_user::v3::Request>,
 ) -> Result<unban_user::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
+
+    if let Ok(Some(membership_event)) = services()
+        .rooms
+        .state_accessor
+        .get_member(&body.room_id, sender_user)
+    {
+        if membership_event.membership != MembershipState::Ban {
+            return Ok(unban_user::v3::Response {});
+        }
+    }
 
     let mut event: RoomMemberEventContent = serde_json::from_str(
         services()
@@ -497,6 +525,12 @@ async fn join_room_by_id_helper(
     _third_party_signed: Option<&ThirdPartySigned>,
 ) -> Result<join_room_by_id::v3::Response> {
     let sender_user = sender_user.expect("user is authenticated");
+
+    if let Ok(true) = services().rooms.state_cache.is_joined(sender_user, room_id) {
+        return Ok(join_room_by_id::v3::Response {
+            room_id: room_id.into(),
+        });
+    }
 
     let mutex_state = Arc::clone(
         services()
