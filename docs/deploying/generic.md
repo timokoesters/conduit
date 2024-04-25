@@ -10,27 +10,22 @@
 Although you might be able to compile Conduit for Windows, we do recommend running it on a Linux server. We therefore
 only offer Linux binaries.
 
-You may simply download the binary that fits your machine. Run `uname -m` to see what you need. Now copy the appropriate url:
+You may simply download the binary that fits your machine. Run `uname -m` to see what you need. For `arm`, you should use `aarch`. Now copy the appropriate url:
 
-**Stable versions:**
+**Stable/Main versions:**
 
-| CPU Architecture                            | Download stable version                                         |
-| ------------------------------------------- | --------------------------------------------------------------- |
-| x84_64 / amd64 (Most servers and computers) | [Binary][x84_64-glibc-master] / [.deb][x84_64-glibc-master-deb] |
-| armv7 (e.g. Raspberry Pi by default)        | [Binary][armv7-glibc-master] / [.deb][armv7-glibc-master-deb]   |
-| armv8 / aarch64                             | [Binary][armv8-glibc-master] / [.deb][armv8-glibc-master-deb]   |
+| Target | Type | Download |
+|-|-|-|
+| `x86_64-unknown-linux-musl` | Statically linked Debian package | [link](https://gitlab.com/api/v4/projects/famedly%2Fconduit/jobs/artifacts/master/raw/x86_64-unknown-linux-musl.deb?job=artifacts) |
+| `x86_64-unknown-linux-musl` | Statically linked binary | [link](https://gitlab.com/api/v4/projects/famedly%2Fconduit/jobs/artifacts/master/raw/x86_64-unknown-linux-musl?job=artifacts) |
+| `aarch64-unknown-linux-musl` | Statically linked binary | [link](https://gitlab.com/api/v4/projects/famedly%2Fconduit/jobs/artifacts/master/raw/aarch64-unknown-linux-musl?job=artifacts) |
+| `x86_64-unknown-linux-gnu` | OCI image | [link](https://gitlab.com/api/v4/projects/famedly%2Fconduit/jobs/artifacts/master/raw/oci-image-amd64.tar.gz?job=artifacts) |
+| `aarch64-unknown-linux-musl` | OCI image | [link](https://gitlab.com/api/v4/projects/famedly%2Fconduit/jobs/artifacts/master/raw/oci-image-arm64v8.tar.gz?job=artifacts) |
 
 These builds were created on and linked against the glibc version shipped with Debian bullseye.
 If you use a system with an older glibc version (e.g. RHEL8), you might need to compile Conduit yourself.
 
-[x84_64-glibc-master]: https://gitlab.com/famedly/conduit/-/jobs/artifacts/master/raw/build-output/linux_amd64/conduit?job=docker:master
-[armv7-glibc-master]: https://gitlab.com/famedly/conduit/-/jobs/artifacts/master/raw/build-output/linux_arm_v7/conduit?job=docker:master
-[armv8-glibc-master]: https://gitlab.com/famedly/conduit/-/jobs/artifacts/master/raw/build-output/linux_arm64/conduit?job=docker:master
-[x84_64-glibc-master-deb]: https://gitlab.com/famedly/conduit/-/jobs/artifacts/master/raw/build-output/linux_amd64/conduit.deb?job=docker:master
-[armv7-glibc-master-deb]: https://gitlab.com/famedly/conduit/-/jobs/artifacts/master/raw/build-output/linux_arm_v7/conduit.deb?job=docker:master
-[armv8-glibc-master-deb]: https://gitlab.com/famedly/conduit/-/jobs/artifacts/master/raw/build-output/linux_arm64/conduit.deb?job=docker:master
-
-**Latest versions:**
+**Latest/Next versions:**
 
 | Target | Type | Download |
 |-|-|-|
