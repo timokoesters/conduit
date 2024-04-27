@@ -69,7 +69,7 @@ reqwest = { version = "0.11.18", default-features = false, features = ["rustls-t
 # Used for conduit::Error type
 thiserror = "1.0.40"
 # Used to generate thumbnails for images
-image = { version = "0.24.6", default-features = false, features = ["jpeg", "png", "gif"] }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif"] }
 # Used to encode server public key
 base64 = "0.22"
 # Used when hashing the state
