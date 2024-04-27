@@ -107,9 +107,7 @@ futures-util = { version = "0.3.28", default-features = false }
 # Used for reading the configuration from conduit.toml & environment variables
 figment = { version = "0.10.8", features = ["env", "toml"] }
 
-tikv-jemalloc-ctl = { version = "0.5.0", features = ["use_std"], optional = true }
 tikv-jemallocator = { version = "0.5.0", features = ["unprefixed_malloc_on_supported_platforms"], optional = true }
-lazy_static = "1.4.0"
 async-trait = "0.1.68"
 
 sd-notify = { version = "0.4.1", optional = true }
@@ -134,7 +132,7 @@ backend_persy = ["persy", "parking_lot"]
 backend_sqlite = ["sqlite"]
 #backend_heed = ["heed", "crossbeam"]
 backend_rocksdb = ["rocksdb"]
-jemalloc = ["tikv-jemalloc-ctl", "tikv-jemallocator"]
+jemalloc = ["tikv-jemallocator"]
 sqlite = ["rusqlite", "parking_lot", "tokio/signal"]
 conduit_bin = ["axum"]
 systemd = ["sd-notify"]
