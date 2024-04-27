@@ -9,6 +9,7 @@ use crate::api::server_server::FedDest;
 
 use crate::{services, Config, Error, Result};
 use futures_util::FutureExt;
+use hickory_resolver::TokioAsyncResolver;
 use hyper::{
     client::connect::dns::{GaiResolver, Name},
     service::Service as HyperService,
@@ -37,7 +38,6 @@ use std::{
 };
 use tokio::sync::{broadcast, watch::Receiver, Mutex, RwLock, Semaphore};
 use tracing::{error, info};
-use trust_dns_resolver::TokioAsyncResolver;
 
 use base64::{engine::general_purpose, Engine as _};
 
