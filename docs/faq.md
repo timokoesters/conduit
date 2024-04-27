@@ -22,4 +22,5 @@ You need to add a `org.matrix.msc3575.proxy` field to your `.well-known/matrix/c
 
 ## Can I migrate from Synapse to Conduit?
 
-Not really. You can reuse the domain of your current server with Conduit, but you have to leave all federated rooms first.
+Not really. You can reuse the domain of your current server with Conduit, but you will not be able to migrate accounts automatically.
+Rooms that were federated can be re-joined via the other participating servers, however media and the like may be deleted from remote servers after some time, and hence might not be recoverable.
