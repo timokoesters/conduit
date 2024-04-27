@@ -67,7 +67,7 @@ docker run -d -p 8448:6167 \
   --name conduit <link>
 ```
 
-or you can use [docker-compose](#docker-compose).
+or you can use [docker compose](#docker-compose).
 
 The `-d` flag lets the container run in detached mode. You now need to supply a `conduit.toml` config file, an example can be found [here](../configuration.md).
 You can pass in different env vars to change config values on the fly. You can even configure Conduit completely by using env vars, but for that you need
@@ -75,9 +75,9 @@ to pass `-e CONDUIT_CONFIG=""` into your container. For an overview of possible 
 
 If you just want to test Conduit for a short time, you can use the `--rm` flag, which will clean up everything related to your container after you stop it.
 
-### Docker-compose
+### Docker compose
 
-If the `docker run` command is not for you or your setup, you can also use one of the provided `docker-compose` files.
+If the `docker run` command is not for you or your setup, you can also use one of the provided `docker compose` files.
 
 Depending on your proxy setup, you can use one of the following files;
 - If you already have a `traefik` instance set up, use [`docker-compose.for-traefik.yml`](docker-compose.for-traefik.yml)
@@ -91,10 +91,10 @@ Additional info about deploying Conduit can be found [here](generic.md).
 
 ### Build
 
-To build the Conduit image with docker-compose, you first need to open and modify the `docker-compose.yml` file. There you need to comment the `image:` option and uncomment the `build:` option. Then call docker-compose with:
+To build the Conduit image with docker compose, you first need to open and modify the `docker-compose.yml` file. There you need to comment the `image:` option and uncomment the `build:` option. Then call docker compose with:
 
 ```bash
-docker-compose up
+docker compose up
 ```
 
 This will also start the container right afterwards, so if want it to run in detached mode, you also should use the `-d` flag.
@@ -104,7 +104,7 @@ This will also start the container right afterwards, so if want it to run in det
 If you already have built the image or want to use one from the registries, you can just start the container and everything else in the compose file in detached mode with:
 
 ```bash
-docker-compose up -d
+docker compose up -d
 ```
 
 > **Note:** Don't forget to modify and adjust the compose file to your needs.
@@ -157,7 +157,7 @@ So...step by step:
      }
      ```
 
-6. Run `docker-compose up -d`
+6. Run `docker compose up -d`
 7. Connect to your homeserver with your preferred client and create a user. You should do this immediately after starting Conduit, because the first created user is the admin.
 
 
@@ -196,8 +196,8 @@ Run the [Coturn](https://hub.docker.com/r/coturn/coturn) image using
 docker run -d --network=host -v $(pwd)/coturn.conf:/etc/coturn/turnserver.conf coturn/coturn
 ```
 
-or docker-compose. For the latter, paste the following section into a file called `docker-compose.yml`
-and run `docker-compose up -d` in the same directory.
+or docker compose. For the latter, paste the following section into a file called `docker-compose.yml`
+and run `docker compose up -d` in the same directory.
 
 ```yml
 version: 3
