@@ -10,3 +10,4 @@
     - [NixOS](deploying/nixos.md)
 - [TURN](turn.md)
 - [Appservices](appservices.md)
+- [FAQ](faq.md)
