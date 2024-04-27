@@ -1,4 +1,4 @@
-# Setting up TURN/STURN
+# Setting up TURN/STUN
 
 ## General instructions
 
