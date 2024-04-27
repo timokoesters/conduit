@@ -52,7 +52,7 @@ persy = { version = "1.4.4", optional = true, features = ["background_ops"] }
 bytes = "1.4.0"
 http = "0.2.9"
 # Used to find data directory for default db path
-directories = "4.0.1"
+directories = "5"
 # Used for ruma wrapper
 serde_json = { version = "1.0.96", features = ["raw_value"] }
 # Used for appservice registration files
@@ -62,20 +62,20 @@ serde = { version = "1.0.163", features = ["rc"] }
 # Used for secure identifiers
 rand = "0.8.5"
 # Used to hash passwords
-rust-argon2 = "1.0.0"
+rust-argon2 = "2"
 # Used to send requests
 hyper = "0.14.26"
 reqwest = { version = "0.11.18", default-features = false, features = ["rustls-tls-native-roots", "socks"] }
 # Used for conduit::Error type
 thiserror = "1.0.40"
 # Used to generate thumbnails for images
-image = { version = "0.24.6", default-features = false, features = ["jpeg", "png", "gif"] }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif"] }
 # Used to encode server public key
-base64 = "0.21.2"
+base64 = "0.22"
 # Used when hashing the state
 ring = "0.17.7"
 # Used when querying the SRV record of other servers
-trust-dns-resolver = "0.22.0"
+hickory-resolver = "0.24"
 # Used to find matching events for appservices
 regex = "1.8.1"
 # jwt jsonwebtokens
@@ -88,7 +88,7 @@ opentelemetry = { version = "0.18.0", features = ["rt-tokio"] }
 opentelemetry-jaeger = { version = "0.17.0", features = ["rt-tokio"] }
 tracing-opentelemetry = "0.18.0"
 lru-cache = "0.1.2"
-rusqlite = { version = "0.29.0", optional = true, features = ["bundled"] }
+rusqlite = { version = "0.31", optional = true, features = ["bundled"] }
 parking_lot = { version = "0.12.1", optional = true }
 # crossbeam = { version = "0.8.2", optional = true }
 num_cpus = "1.15.0"
@@ -107,16 +107,14 @@ futures-util = { version = "0.3.28", default-features = false }
 # Used for reading the configuration from conduit.toml & environment variables
 figment = { version = "0.10.8", features = ["env", "toml"] }
 
-tikv-jemalloc-ctl = { version = "0.5.0", features = ["use_std"], optional = true }
 tikv-jemallocator = { version = "0.5.0", features = ["unprefixed_malloc_on_supported_platforms"], optional = true }
-lazy_static = "1.4.0"
 async-trait = "0.1.68"
 
 sd-notify = { version = "0.4.1", optional = true }
 
 [dependencies.rocksdb]
 package = "rust-rocksdb"
-version = "0.24.0"
+version = "0.25"
 optional = true
 features = [
     "multi-threaded-cf",
@@ -134,7 +132,7 @@ backend_persy = ["persy", "parking_lot"]
 backend_sqlite = ["sqlite"]
 #backend_heed = ["heed", "crossbeam"]
 backend_rocksdb = ["rocksdb"]
-jemalloc = ["tikv-jemalloc-ctl", "tikv-jemallocator"]
+jemalloc = ["tikv-jemallocator"]
 sqlite = ["rusqlite", "parking_lot", "tokio/signal"]
 conduit_bin = ["axum"]
 systemd = ["sd-notify"]
