@@ -6,6 +6,13 @@ Here are some of the most frequently asked questions about Conduit, and their an
 
 Conduit doesn't support room versions 1 and 2 at all, and doesn't properly support versions 3-5 currently. You can track the progress of adding support [here](https://gitlab.com/famedly/conduit/-/issues/433).
 
+## How do I backup my server?
+
+To backup your Conduit server, it's very easy.
+You can simply stop Conduit, make a copy or file system snapshot of the database directory, then start Conduit again.
+
+> **Note**: When using a file system snapshot, it is not required that you stop the server, but it is still recommended as it is the safest option and should ensure your database is not left in an inconsistent state.
+
 ## How do I setup sliding sync?
 
 You need to add a `org.matrix.msc3575.proxy` field to your `.well-known/matrix/client` response which points to Conduit. Here is an example:
