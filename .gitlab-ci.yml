@@ -21,8 +21,8 @@ before_script:
   - if command -v nix > /dev/null; then echo "experimental-features = nix-command flakes" >> /etc/nix/nix.conf; fi
 
   # Add our own binary cache
-  - if command -v nix > /dev/null; then echo "extra-substituters = https://nix.computer.surgery/conduit" >> /etc/nix/nix.conf; fi
-  - if command -v nix > /dev/null; then echo "extra-trusted-public-keys = conduit:ZGAf6P6LhNvnoJJ3Me3PRg7tlLSrPxcQ2RiE5LIppjo=" >> /etc/nix/nix.conf; fi
+  - if command -v nix > /dev/null; then echo "extra-substituters = https://attic.conduit.rs/conduit" >> /etc/nix/nix.conf; fi
+  - if command -v nix > /dev/null; then echo "extra-trusted-public-keys = conduit:ddcaWZiWm0l0IXZlO8FERRdWvEufwmd0Negl1P+c0Ns=" >> /etc/nix/nix.conf; fi
 
   # Add alternate binary cache
   - if command -v nix > /dev/null && [ -n "$ATTIC_ENDPOINT" ]; then echo "extra-substituters = $ATTIC_ENDPOINT" >> /etc/nix/nix.conf; fi
