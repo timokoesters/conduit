@@ -49,6 +49,9 @@ ci:
   stage: ci
   image: nixos/nix:2.20.4
   script:
+    # Cache attic client
+    - ./bin/nix-build-and-cache --inputs-from . attic
+
     # Cache the inputs required for the devShell
     - ./bin/nix-build-and-cache .#devShells.x86_64-linux.default.inputDerivation
 
