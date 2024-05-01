@@ -10,6 +10,7 @@
 # Options (keep sorted)
 , default-features ? true
 , features ? []
+, profile ? "release"
 }:
 
 let
@@ -72,6 +73,8 @@ craneLib.buildPackage rec {
     # right thing here.
     pkgsBuildHost.rustPlatform.bindgenHook
   ];
+
+  CARGO_PROFILE = profile;
 
   inherit env;
 
