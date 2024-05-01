@@ -1,4 +1,4 @@
-# Keep sorted
+# Dependencies (keep sorted)
 { craneLib
 , inputs
 , lib
@@ -6,23 +6,34 @@
 , rocksdb
 , rust
 , stdenv
+
+# Options (keep sorted)
+, default-features ? true
+, features ? []
 }:
 
 let
-  env = {
-    CONDUIT_VERSION_EXTRA = inputs.self.shortRev or inputs.self.dirtyShortRev;
-    ROCKSDB_INCLUDE_DIR = "${rocksdb}/include";
-    ROCKSDB_LIB_DIR = "${rocksdb}/lib";
-  }
-  //
-  (import ./cross-compilation-env.nix {
-    # Keep sorted
-    inherit
-      lib
-      pkgsBuildHost
-      rust
-      stdenv;
-  });
+  env =
+    let
+      rocksdb' = rocksdb.override {
+        enableJemalloc = builtins.elem "jemalloc" features;
+      };
+    in
+    {
+      CONDUIT_VERSION_EXTRA =
+        inputs.self.shortRev or inputs.self.dirtyShortRev;
+      ROCKSDB_INCLUDE_DIR = "${rocksdb'}/include";
+      ROCKSDB_LIB_DIR = "${rocksdb'}/lib";
+    }
+    //
+    (import ./cross-compilation-env.nix {
+      # Keep sorted
+      inherit
+        lib
+        pkgsBuildHost
+        rust
+        stdenv;
+    });
 in
 
 craneLib.buildPackage rec {
@@ -43,6 +54,14 @@ craneLib.buildPackage rec {
       "src"
     ];
   };
+
+  cargoExtraArgs = "--locked "
+    + lib.optionalString
+      (!default-features)
+      "--no-default-features "
+    + lib.optionalString
+      (features != [])
+      "--features " + (builtins.concatStringsSep "," features);
 
   # This is redundant with CI
   doCheck = false;
