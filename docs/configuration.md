@@ -56,6 +56,7 @@ The `global` section contains the following fields:
 | `turn_secret` | `string` | The TURN secret | `""` |
 | `turn_ttl` | `integer` | The TURN TTL in seconds | `86400` |
 | `emergency_password` | `string` | Set a password to login as the `conduit` user in case of emergency | N/A |
+| `well_known` | `table` | Used for [delegation](delegation.md) | See [delegation](delegation.md) |
 
 
 ### TLS

@@ -16,3 +16,7 @@ git-repository-icon = "fa-git-square"
 
 [output.html.search]
 limit-results = 15
+
+[output.html.code.hidelines]
+json = "~"
+
