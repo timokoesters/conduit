@@ -390,6 +390,7 @@ fn routes(config: &Config) -> Router {
         .ruma_route(client_server::get_relating_events_with_rel_type_route)
         .ruma_route(client_server::get_relating_events_route)
         .ruma_route(client_server::get_hierarchy_route)
+        .ruma_route(client_server::well_known_client)
         .route(
             "/_matrix/client/r0/rooms/:room_id/initialSync",
             get(initial_sync),
@@ -430,10 +431,12 @@ fn routes(config: &Config) -> Router {
             .ruma_route(server_server::get_profile_information_route)
             .ruma_route(server_server::get_keys_route)
             .ruma_route(server_server::claim_keys_route)
+            .ruma_route(server_server::well_known_server)
     } else {
         router
             .route("/_matrix/federation/*path", any(federation_disabled))
             .route("/_matrix/key/*path", any(federation_disabled))
+            .route("/.well-known/matrix/server", any(federation_disabled))
     }
 }
 

@@ -417,8 +417,12 @@ impl Service {
         r
     }
 
-    pub fn well_known_client(&self) -> &Option<String> {
-        &self.config.well_known_client
+    pub fn well_known_server(&self) -> OwnedServerName {
+        self.config.well_known_server()
+    }
+
+    pub fn well_known_client(&self) -> String {
+        self.config.well_known_client()
     }
 
     pub fn shutdown(&self) {

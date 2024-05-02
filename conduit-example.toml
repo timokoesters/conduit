@@ -17,7 +17,7 @@
 # https://matrix.org/docs/spec/client_server/latest#get-well-known-matrix-client
 # and
 # https://matrix.org/docs/spec/server_server/r0.1.4#get-well-known-matrix-server
-# for more information
+# for more information, or continue below to see how conduit can do this for you.
 
 # YOU NEED TO EDIT THIS
 #server_name = "your.server.name"
@@ -65,3 +65,10 @@ trusted_servers = ["matrix.org"]
 
 address = "127.0.0.1" # This makes sure Conduit can only be reached using the reverse proxy
 #address = "0.0.0.0" # If Conduit is running in a container, make sure the reverse proxy (ie. Traefik) can reach it.
+
+[global.well_known]
+# Conduit handles the /.well-known/matrix/* endpoints, making both clients and servers try to access conduit with the host
+# server_name and port 443 by default.
+# If you want to override these defaults, uncomment and edit the following lines accordingly:
+#server = your.server.name:443
+#client = https://your.server.name
