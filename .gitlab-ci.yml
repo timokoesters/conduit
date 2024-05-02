@@ -6,6 +6,10 @@ stages:
 variables:
   # Makes some things print in color
   TERM: ansi
+  # Faster cache and artifact compression / decompression
+  FF_USE_FASTZIP: true
+  # Print progress reports for cache and artifact transfers
+  TRANSFER_METER_FREQUENCY: 5s
 
 # Avoid duplicate pipelines
 # See: https://docs.gitlab.com/ee/ci/yaml/workflow.html#switch-between-branch-pipelines-and-merge-request-pipelines
