@@ -605,6 +605,14 @@ impl Service {
                         )))
                     }
                 };
+
+                // Checks if user is local
+                if user_id.server_name() != services().globals.server_name() {
+                    return Ok(RoomMessageEventContent::text_plain(
+                        "The specified user is not from this server!",
+                    ));
+                };
+
                 if user_id.is_historical() {
                     return Ok(RoomMessageEventContent::text_plain(format!(
                         "Userid {user_id} is not allowed due to historical"
