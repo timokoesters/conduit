@@ -14,7 +14,8 @@ use ruma::{
     events::{
         push_rules::PushRulesEvent,
         room::{
-            create::RoomCreateEventContent, encrypted::Relation, member::MembershipState,
+            canonical_alias::RoomCanonicalAliasEventContent, create::RoomCreateEventContent,
+            encrypted::Relation, member::MembershipState,
             power_levels::RoomPowerLevelsEventContent, redaction::RoomRedactionEventContent,
         },
         GlobalAccountDataEventType, StateEventType, TimelineEventType,
@@ -32,10 +33,7 @@ use tracing::{error, info, warn};
 
 use crate::{
     api::server_server,
-    service::{
-        appservice::NamespaceRegex,
-        pdu::{EventHash, PduBuilder},
-    },
+    service::pdu::{EventHash, PduBuilder},
     services, utils, Error, PduEvent, Result,
 };
 
@@ -594,26 +592,47 @@ impl Service {
                 }
             }
 
-            let matching_users = |users: &NamespaceRegex| {
-                appservice.users.is_match(pdu.sender.as_str())
+            let matching_users = || {
+                services().globals.server_name() == pdu.sender.server_name()
+                    && appservice.is_user_match(&pdu.sender)
                     || pdu.kind == TimelineEventType::RoomMember
-                        && pdu
-                            .state_key
-                            .as_ref()
-                            .map_or(false, |state_key| users.is_match(state_key))
+                        && pdu.state_key.as_ref().map_or(false, |state_key| {
+                            UserId::parse(state_key).map_or(false, |user_id| {
+                                services().globals.server_name() == user_id.server_name()
+                                    && appservice.is_user_match(&user_id)
+                            })
+                        })
             };
-            let matching_aliases = |aliases: &NamespaceRegex| {
+
+            let matching_aliases = || {
                 services()
                     .rooms
                     .alias
                     .local_aliases_for_room(&pdu.room_id)
-                    .filter_map(|r| r.ok())
-                    .any(|room_alias| aliases.is_match(room_alias.as_str()))
+                    .filter_map(Result::ok)
+                    .any(|room_alias| appservice.aliases.is_match(room_alias.as_str()))
+                    || if let Ok(Some(pdu)) = services().rooms.state_accessor.room_state_get(
+                        &pdu.room_id,
+                        &StateEventType::RoomCanonicalAlias,
+                        "",
+                    ) {
+                        serde_json::from_str::<RoomCanonicalAliasEventContent>(pdu.content.get())
+                            .map_or(false, |content| {
+                                content.alias.map_or(false, |alias| {
+                                    appservice.aliases.is_match(alias.as_str())
+                                }) || content
+                                    .alt_aliases
+                                    .iter()
+                                    .any(|alias| appservice.aliases.is_match(alias.as_str()))
+                            })
+                    } else {
+                        false
+                    }
             };
 
-            if matching_aliases(&appservice.aliases)
+            if matching_aliases()
                 || appservice.rooms.is_match(pdu.room_id.as_str())
-                || matching_users(&appservice.users)
+                || matching_users()
             {
                 services()
                     .sending

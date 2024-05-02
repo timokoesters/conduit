@@ -87,11 +87,13 @@ pub struct RegistrationInfo {
 }
 
 impl RegistrationInfo {
+    /// Checks if a given user ID matches either the users namespace or the localpart specified in the appservice registration
     pub fn is_user_match(&self, user_id: &UserId) -> bool {
         self.users.is_match(user_id.as_str())
             || self.registration.sender_localpart == user_id.localpart()
     }
 
+    /// Checks if a given user ID exclusively matches either the users namespace or the localpart specified in the appservice registration
     pub fn is_exclusive_user_match(&self, user_id: &UserId) -> bool {
         self.users.is_exclusive_match(user_id.as_str())
             || self.registration.sender_localpart == user_id.localpart()
