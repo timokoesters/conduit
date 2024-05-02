@@ -32,6 +32,7 @@ mod typing;
 mod unversioned;
 mod user_directory;
 mod voip;
+mod well_known;
 
 pub use account::*;
 pub use alias::*;
@@ -67,6 +68,7 @@ pub use typing::*;
 pub use unversioned::*;
 pub use user_directory::*;
 pub use voip::*;
+pub use well_known::*;
 
 pub const DEVICE_ID_LENGTH: usize = 10;
 pub const TOKEN_LENGTH: usize = 32;

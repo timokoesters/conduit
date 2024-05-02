@@ -15,12 +15,16 @@ You can simply stop Conduit, make a copy or file system snapshot of the database
 
 ## How do I setup sliding sync?
 
-You need to add a `org.matrix.msc3575.proxy` field to your `.well-known/matrix/client` response which points to Conduit. Here is an example:
+If you use the [automatic method for delegation](delegation.md#automatic-recommended) or just proxy `.well-known/matrix/client` to Conduit, sliding sync should work with no extra configuration.
+If you don't, continue below.
+
+You need to add a `org.matrix.msc3575.proxy` field to your `.well-known/matrix/client` response which contains a url which Conduit is accessible behind.
+Here is an example:
 ```json
 {
-  "m.homeserver": {
-    "base_url": "https://matrix.example.org"
-  },
+~  "m.homeserver": {
+~    "base_url": "https://matrix.example.org"
+~  },
   "org.matrix.msc3575.proxy": {
     "url": "https://matrix.example.org"
   }

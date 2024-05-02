@@ -7,6 +7,7 @@ use std::{
 use ruma::{OwnedServerName, RoomVersionId};
 use serde::{de::IgnoredAny, Deserialize};
 use tracing::warn;
+use url::Url;
 
 mod proxy;
 
@@ -56,7 +57,8 @@ pub struct Config {
     pub allow_unstable_room_versions: bool,
     #[serde(default = "default_default_room_version")]
     pub default_room_version: RoomVersionId,
-    pub well_known_client: Option<String>,
+    #[serde(default)]
+    pub well_known: WellKnownConfig,
     #[serde(default = "false_fn")]
     pub allow_jaeger: bool,
     #[serde(default = "false_fn")]
@@ -91,6 +93,12 @@ pub struct TlsConfig {
     pub key: String,
 }
 
+#[derive(Clone, Debug, Deserialize, Default)]
+pub struct WellKnownConfig {
+    pub client: Option<Url>,
+    pub server: Option<OwnedServerName>,
+}
+
 const DEPRECATED_KEYS: &[&str] = &["cache_capacity"];
 
 impl Config {
@@ -111,9 +119,35 @@ impl Config {
     }
 }
 
+impl Config {
+    pub fn well_known_client(&self) -> String {
+        if let Some(url) = &self.well_known.client {
+            url.to_string()
+        } else {
+            format!("https://{}", self.server_name)
+        }
+    }
+
+    pub fn well_known_server(&self) -> OwnedServerName {
+        match &self.well_known.server {
+            Some(server_name) => server_name.to_owned(),
+            None => {
+                if self.server_name.port().is_some() {
+                    self.server_name.to_owned()
+                } else {
+                    format!("{}:443", self.server_name.host())
+                        .try_into()
+                        .expect("Host from valid hostname + :443 must be valid")
+                }
+            }
+        }
+    }
+}
+
 impl fmt::Display for Config {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Prepare a list of config values to show
+        let well_known_server = self.well_known_server();
         let lines = [
             ("Server name", self.server_name.host()),
             ("Database backend", &self.database_backend),
@@ -194,6 +228,8 @@ impl fmt::Display for Config {
                 }
                 &lst.join(", ")
             }),
+            ("Well-known server name", well_known_server.as_str()),
+            ("Well-known client URL", &self.well_known_client()),
         ];
 
         let mut msg: String = "Active config values:\n\n".to_owned();
