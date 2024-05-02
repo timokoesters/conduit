@@ -175,6 +175,15 @@ where
                             Error::BadRequest(ErrorKind::Forbidden, msg)
                         })?;
 
+                    if let Some(dest) = x_matrix.destination {
+                        if dest != services().globals.server_name() {
+                            return Err(Error::BadRequest(
+                                ErrorKind::Unauthorized,
+                                "X-Matrix destination field does not match server name.",
+                            ));
+                        }
+                    };
+
                     let origin_signatures = BTreeMap::from_iter([(
                         x_matrix.key.clone(),
                         CanonicalJsonValue::String(x_matrix.sig),
@@ -332,6 +341,7 @@ where
 }
 
 struct XMatrix {
+    destination: Option<OwnedServerName>,
     origin: OwnedServerName,
     key: String, // KeyName?
     sig: String,
@@ -353,6 +363,7 @@ impl Credentials for XMatrix {
         let mut origin = None;
         let mut key = None;
         let mut sig = None;
+        let mut destination = None;
 
         for entry in parameters.split_terminator(',') {
             let (name, value) = entry.split_once('=')?;
@@ -369,6 +380,7 @@ impl Credentials for XMatrix {
                 "origin" => origin = Some(value.try_into().ok()?),
                 "key" => key = Some(value.to_owned()),
                 "sig" => sig = Some(value.to_owned()),
+                "destination" => destination = Some(value.try_into().ok()?),
                 _ => debug!(
                     "Unexpected field `{}` in X-Matrix Authorization header",
                     name
@@ -377,6 +389,7 @@ impl Credentials for XMatrix {
         }
 
         Some(Self {
+            destination,
             origin: origin?,
             key: key?,
             sig: sig?,
