@@ -2,25 +2,30 @@
 
 set -euo pipefail
 
-# The first argument must be the desired installable
-INSTALLABLE="$1"
-
-# Build the installable and forward any other arguments too
-nix build "$@"
+# Build the installable and forward any other arguments too. Also, use
+# nix-output-monitor instead if it's available.
+if command -v nom &> /dev/null; then
+    nom build "$@"
+else
+    nix build "$@"
+fi
 
 if [ ! -z ${ATTIC_TOKEN+x} ]; then
     nix run --inputs-from . attic -- \
         login \
         conduit \
-        "${ATTIC_ENDPOINT:-https://nix.computer.surgery/conduit}" \
+        "${ATTIC_ENDPOINT:-https://attic.conduit.rs/conduit}" \
         "$ATTIC_TOKEN"
+
+    readarray -t outputs < <(nix path-info "$@")
+    readarray -t derivations < <(nix path-info "$@" --derivation)
 
     # Push the target installable and its build dependencies
     nix run --inputs-from . attic -- \
         push \
         conduit \
-        "$(nix path-info "$INSTALLABLE" --derivation)" \
-        "$(nix path-info "$INSTALLABLE")"
+        "${outputs[@]}" \
+        "${derivations[@]}"
 else
     echo "\$ATTIC_TOKEN is unset, skipping uploading to the binary cache"
 fi
