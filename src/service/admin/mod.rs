@@ -165,19 +165,15 @@ enum AdminCommand {
     /// Enables incoming federation handling for a room again.
     EnableRoom { room_id: Box<RoomId> },
 
-    /// Verify json signatures
-    /// [commandbody]()
-    /// # ```
-    /// # json here
-    /// # ```
+    /// Sign a json object using Conduit's signing keys, putting the json in a codeblock
     SignJson,
 
-    /// Verify json signatures
-    /// [commandbody]()
-    /// # ```
-    /// # json here
-    /// # ```
+    /// Verify json signatures, putting the json in a codeblock
     VerifyJson,
+
+    /// Parses a JSON object as an event then creates a hash and signs it, putting a room
+    /// version as an argument, and the json in a codeblock
+    HashAndSignEvent { room_version_id: RoomVersionId },
 }
 
 #[derive(Debug)]
@@ -850,6 +846,36 @@ impl Service {
                                 Err(e) => RoomMessageEventContent::text_plain(format!(
                                     "Signature verification failed: {e}"
                                 )),
+                            }
+                        }
+                        Err(e) => RoomMessageEventContent::text_plain(format!("Invalid json: {e}")),
+                    }
+                } else {
+                    RoomMessageEventContent::text_plain(
+                        "Expected code block in command body. Add --help for details.",
+                    )
+                }
+            }
+            AdminCommand::HashAndSignEvent { room_version_id } => {
+                if body.len() > 2
+                    // Language may be specified as part of the codeblock (e.g. "```json")
+                    && body[0].trim().starts_with("```")
+                    && body.last().unwrap().trim() == "```"
+                {
+                    let string = body[1..body.len() - 1].join("\n");
+                    match serde_json::from_str(&string) {
+                        Ok(mut value) => {
+                            if let Err(e) = ruma::signatures::hash_and_sign_event(
+                                services().globals.server_name().as_str(),
+                                services().globals.keypair(),
+                                &mut value,
+                                &room_version_id,
+                            ) {
+                                RoomMessageEventContent::text_plain(format!("Invalid event: {e}"))
+                            } else {
+                                let json_text = serde_json::to_string_pretty(&value)
+                                    .expect("canonical json is valid json");
+                                RoomMessageEventContent::text_plain(json_text)
                             }
                         }
                         Err(e) => RoomMessageEventContent::text_plain(format!("Invalid json: {e}")),
