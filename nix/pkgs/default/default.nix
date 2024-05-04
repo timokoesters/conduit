@@ -36,7 +36,8 @@ let
     });
 
   buildPackageEnv = {
-    CONDUIT_VERSION_EXTRA = inputs.self.shortRev or inputs.self.dirtyShortRev;
+    # Temporarily disabled, see https://gitlab.com/famedly/conduit/-/merge_requests/662#note_1892753424
+    # CONDUIT_VERSION_EXTRA = inputs.self.shortRev or inputs.self.dirtyShortRev;
   } // buildDepsOnlyEnv;
 
   commonAttrs = {
