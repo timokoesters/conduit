@@ -21,6 +21,7 @@ let
       };
     in
     {
+      NIX_OUTPATH_USED_AS_RANDOM_SEED = "randomseed"; # https://crane.dev/faq/rebuilds-bindgen.html
       ROCKSDB_INCLUDE_DIR = "${rocksdb'}/include";
       ROCKSDB_LIB_DIR = "${rocksdb'}/lib";
     }
