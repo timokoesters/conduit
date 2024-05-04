@@ -19,24 +19,15 @@
     attic.url = "github:zhaofengli/attic?ref=main";
   };
 
-  outputs =
-    { self
-    , nixpkgs
-    , flake-utils
-    , nix-filter
-
-    , fenix
-    , crane
-    , ...
-    }: flake-utils.lib.eachDefaultSystem (system:
+  outputs = inputs: inputs.flake-utils.lib.eachDefaultSystem (system:
     let
-      pkgsHost = nixpkgs.legacyPackages.${system};
+      pkgsHost = inputs.nixpkgs.legacyPackages.${system};
 
       # Nix-accessible `Cargo.toml`
       cargoToml = builtins.fromTOML (builtins.readFile ./Cargo.toml);
 
       # The Rust toolchain to use
-      toolchain = fenix.packages.${system}.fromToolchainFile {
+      toolchain = inputs.fenix.packages.${system}.fromToolchainFile {
         file = ./rust-toolchain.toml;
 
         # See also `rust-toolchain.toml`
@@ -44,7 +35,7 @@
       };
 
       builder = pkgs:
-        ((crane.mkLib pkgs).overrideToolchain toolchain).buildPackage;
+        ((inputs.crane.mkLib pkgs).overrideToolchain toolchain).buildPackage;
 
       nativeBuildInputs = pkgs: [
         # bindgen needs the build platform's libclang. Apparently due to
@@ -68,7 +59,8 @@
       });
 
       env = pkgs: {
-        CONDUIT_VERSION_EXTRA = self.shortRev or self.dirtyShortRev;
+        CONDUIT_VERSION_EXTRA =
+          inputs.self.shortRev or inputs.self.dirtyShortRev;
         ROCKSDB_INCLUDE_DIR = "${rocksdb' pkgs}/include";
         ROCKSDB_LIB_DIR = "${rocksdb' pkgs}/lib";
       }
@@ -161,7 +153,7 @@
       ));
 
       package = pkgs: builder pkgs {
-        src = nix-filter {
+        src = inputs.nix-filter {
           root = ./.;
           include = [
             "src"
@@ -202,17 +194,17 @@
     {
       packages = {
         default = package pkgsHost;
-        oci-image = mkOciImage pkgsHost self.packages.${system}.default;
+        oci-image = mkOciImage pkgsHost inputs.self.packages.${system}.default;
 
         book =
         let
-          package = self.packages.${system}.default;
+          package = inputs.self.packages.${system}.default;
         in
         pkgsHost.stdenv.mkDerivation {
           pname = "${package.pname}-book";
           version = package.version;
 
-          src = nix-filter {
+          src = inputs.nix-filter {
             root = ./.;
             include = [
               "book.toml"
@@ -241,7 +233,7 @@
               let
                 binaryName = "static-${crossSystem}";
                 pkgsCrossStatic =
-                  (import nixpkgs {
+                  (import inputs.nixpkgs {
                     inherit system;
                     crossSystem = {
                       config = crossSystem;
@@ -260,7 +252,7 @@
                   name = "oci-image-${crossSystem}";
                   value = mkOciImage
                     pkgsCrossStatic
-                    self.packages.${system}.${binaryName};
+                    inputs.self.packages.${system}.${binaryName};
                 }
               ]
             )
@@ -285,7 +277,7 @@
           #
           # This needs to come before `toolchain` in this list, otherwise
           # `$PATH` will have stable rustfmt instead.
-          fenix.packages.${system}.latest.rustfmt
+          inputs.fenix.packages.${system}.latest.rustfmt
 
           toolchain
         ] ++ (with pkgsHost; [
