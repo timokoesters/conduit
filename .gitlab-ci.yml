@@ -45,13 +45,13 @@ before_script:
   # Set CARGO_HOME to a cacheable path
   - export CARGO_HOME="$(git rev-parse --show-toplevel)/.gitlab-ci.d/cargo"
 
+  # Cache attic client
+  - ./bin/nix-build-and-cache --inputs-from . attic
+
 ci:
   stage: ci
   image: nixos/nix:2.20.4
   script:
-    # Cache attic client
-    - ./bin/nix-build-and-cache --inputs-from . attic
-
     # Cache the inputs required for the devShell
     - ./bin/nix-build-and-cache .#devShells.x86_64-linux.default.inputDerivation
 
