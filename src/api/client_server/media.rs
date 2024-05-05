@@ -22,6 +22,14 @@ pub async fn get_media_config_route(
     })
 }
 
+fn sanitize_content_type(content_type: String) -> String {
+    if content_type == "image/jpeg" || content_type == "image/png" {
+        content_type
+    } else {
+        "application/octet-stream".to_owned()
+    }
+}
+
 /// # `POST /_matrix/media/r0/upload`
 ///
 /// Permanently save media in the server.
@@ -100,20 +108,26 @@ pub async fn get_content_route(
 
     if let Some(FileMeta {
         content_disposition,
-        content_type,
         file,
+        ..
     }) = services().media.get(mxc.clone()).await?
     {
         Ok(get_content::v3::Response {
             file,
-            content_type,
+            content_type: Some("application/octet-stream".to_owned()),
             content_disposition,
             cross_origin_resource_policy: Some("cross-origin".to_owned()),
         })
     } else if &*body.server_name != services().globals.server_name() && body.allow_remote {
         let remote_content_response =
             get_remote_content(&mxc, &body.server_name, body.media_id.clone()).await?;
-        Ok(remote_content_response)
+
+        Ok(get_content::v3::Response {
+            content_disposition: remote_content_response.content_disposition,
+            content_type: Some("application/octet-stream".to_owned()),
+            file: remote_content_response.file,
+            cross_origin_resource_policy: Some("cross-origin".to_owned()),
+        })
     } else {
         Err(Error::BadRequest(ErrorKind::NotFound, "Media not found."))
     }
@@ -129,15 +143,10 @@ pub async fn get_content_as_filename_route(
 ) -> Result<get_content_as_filename::v3::Response> {
     let mxc = format!("mxc://{}/{}", body.server_name, body.media_id);
 
-    if let Some(FileMeta {
-        content_disposition: _,
-        content_type,
-        file,
-    }) = services().media.get(mxc.clone()).await?
-    {
+    if let Some(FileMeta { file, .. }) = services().media.get(mxc.clone()).await? {
         Ok(get_content_as_filename::v3::Response {
             file,
-            content_type,
+            content_type: Some("application/octet-stream".to_owned()),
             content_disposition: Some(format!("inline; filename={}", body.filename)),
             cross_origin_resource_policy: Some("cross-origin".to_owned()),
         })
@@ -147,7 +156,7 @@ pub async fn get_content_as_filename_route(
 
         Ok(get_content_as_filename::v3::Response {
             content_disposition: Some(format!("inline: filename={}", body.filename)),
-            content_type: remote_content_response.content_type,
+            content_type: Some("application/octet-stream".to_owned()),
             file: remote_content_response.file,
             cross_origin_resource_policy: Some("cross-origin".to_owned()),
         })
@@ -167,7 +176,7 @@ pub async fn get_content_thumbnail_route(
     let mxc = format!("mxc://{}/{}", body.server_name, body.media_id);
 
     if let Some(FileMeta {
-        content_type, file, ..
+        file, content_type, ..
     }) = services()
         .media
         .get_thumbnail(
@@ -183,11 +192,11 @@ pub async fn get_content_thumbnail_route(
     {
         Ok(get_content_thumbnail::v3::Response {
             file,
-            content_type,
+            content_type: content_type.map(sanitize_content_type),
             cross_origin_resource_policy: Some("cross-origin".to_owned()),
         })
     } else if &*body.server_name != services().globals.server_name() && body.allow_remote {
-        let get_thumbnail_response = services()
+        let mut get_thumbnail_response = services()
             .sending
             .send_federation_request(
                 &body.server_name,
@@ -215,6 +224,10 @@ pub async fn get_content_thumbnail_route(
                 &get_thumbnail_response.file,
             )
             .await?;
+
+        get_thumbnail_response.content_type = get_thumbnail_response
+            .content_type
+            .map(sanitize_content_type);
 
         Ok(get_thumbnail_response)
     } else {
