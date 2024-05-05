@@ -38,7 +38,6 @@ pub trait KeyValueDatabaseEngine: Send + Sync {
     fn memory_usage(&self) -> Result<String> {
         Ok("Current database engine does not support memory usage reporting.".to_owned())
     }
-    fn clear_caches(&self) {}
 }
 
 pub trait KvTree: Send + Sync {

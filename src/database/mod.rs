@@ -237,7 +237,7 @@ impl KeyValueDatabase {
         Self::check_db_setup(&config)?;
 
         if !Path::new(&config.database_path).exists() {
-            std::fs::create_dir_all(&config.database_path)
+            fs::create_dir_all(&config.database_path)
                 .map_err(|_| Error::BadConfig("Database folder doesn't exists and couldn't be created (e.g. due to missing permissions). Please create the database folder yourself."))?;
         }
 
@@ -846,7 +846,7 @@ impl KeyValueDatabase {
                         let rule = rules_list.content.get(content_rule_transformation[0]);
                         if rule.is_some() {
                             let mut rule = rule.unwrap().clone();
-                            rule.rule_id = content_rule_transformation[1].to_owned();
+                            content_rule_transformation[1].clone_into(&mut rule.rule_id);
                             rules_list
                                 .content
                                 .shift_remove(content_rule_transformation[0]);
@@ -871,7 +871,7 @@ impl KeyValueDatabase {
                             let rule = rules_list.underride.get(transformation[0]);
                             if let Some(rule) = rule {
                                 let mut rule = rule.clone();
-                                rule.rule_id = transformation[1].to_owned();
+                                transformation[1].clone_into(&mut rule.rule_id);
                                 rules_list.underride.shift_remove(transformation[0]);
                                 rules_list.underride.insert(rule);
                             }
@@ -918,7 +918,7 @@ impl KeyValueDatabase {
                     let mut account_data =
                         serde_json::from_str::<PushRulesEvent>(raw_rules_list.get()).unwrap();
 
-                    let user_default_rules = ruma::push::Ruleset::server_default(&user);
+                    let user_default_rules = Ruleset::server_default(&user);
                     account_data
                         .content
                         .global

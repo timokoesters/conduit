@@ -675,13 +675,13 @@ impl Service {
     }
 
     #[tracing::instrument(skip(self, destination, request))]
-    pub async fn send_federation_request<T: OutgoingRequest>(
+    pub async fn send_federation_request<T>(
         &self,
         destination: &ServerName,
         request: T,
     ) -> Result<T::IncomingResponse>
     where
-        T: Debug,
+        T: OutgoingRequest + Debug,
     {
         debug!("Waiting for permit");
         let permit = self.maximum_requests.acquire().await;
@@ -704,13 +704,13 @@ impl Service {
     ///
     /// Only returns None if there is no url specified in the appservice registration file
     #[tracing::instrument(skip(self, registration, request))]
-    pub async fn send_appservice_request<T: OutgoingRequest>(
+    pub async fn send_appservice_request<T>(
         &self,
         registration: Registration,
         request: T,
     ) -> Result<Option<T::IncomingResponse>>
     where
-        T: Debug,
+        T: OutgoingRequest + Debug,
     {
         let permit = self.maximum_requests.acquire().await;
         let response = appservice_server::send_request(registration, request).await;

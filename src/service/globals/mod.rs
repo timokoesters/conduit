@@ -80,12 +80,12 @@ pub struct Service {
 /// Handles "rotation" of long-polling requests. "Rotation" in this context is similar to "rotation" of log files and the like.
 ///
 /// This is utilized to have sync workers return early and release read locks on the database.
-pub struct RotationHandler(broadcast::Sender<()>, broadcast::Receiver<()>);
+pub struct RotationHandler(broadcast::Sender<()>);
 
 impl RotationHandler {
     pub fn new() -> Self {
-        let (s, r) = broadcast::channel(1);
-        Self(s, r)
+        let s = broadcast::channel(1).0;
+        Self(s)
     }
 
     pub fn watch(&self) -> impl Future<Output = ()> {

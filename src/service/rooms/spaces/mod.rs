@@ -482,7 +482,7 @@ impl Service {
         match join_rule {
             JoinRule::Restricted(r) => {
                 for rule in &r.allow {
-                    if let join_rules::AllowRule::RoomMembership(rm) = rule {
+                    if let AllowRule::RoomMembership(rm) = rule {
                         if let Ok(true) = services()
                             .rooms
                             .state_cache

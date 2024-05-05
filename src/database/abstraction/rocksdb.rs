@@ -126,8 +126,6 @@ impl KeyValueDatabaseEngine for Arc<Engine> {
             self.cache.get_pinned_usage() as f64 / 1024.0 / 1024.0,
         ))
     }
-
-    fn clear_caches(&self) {}
 }
 
 impl RocksDbEngineTree<'_> {

@@ -44,13 +44,13 @@ impl Service {
     }
 
     #[tracing::instrument(skip(self, destination, request))]
-    pub async fn send_request<T: OutgoingRequest>(
+    pub async fn send_request<T>(
         &self,
         destination: &str,
         request: T,
     ) -> Result<T::IncomingResponse>
     where
-        T: Debug,
+        T: OutgoingRequest + Debug,
     {
         let destination = destination.replace("/_matrix/push/v1/notify", "");
 
@@ -231,11 +231,11 @@ impl Service {
 
                 let mut device = Device::new(pusher.ids.app_id.clone(), pusher.ids.pushkey.clone());
                 device.data.default_payload = http.default_payload.clone();
-                device.data.format = http.format.clone();
+                device.data.format.clone_from(&http.format);
 
                 // Tweaks are only added if the format is NOT event_id_only
                 if !event_id_only {
-                    device.tweaks = tweaks.clone();
+                    device.tweaks.clone_from(&tweaks);
                 }
 
                 let d = vec![device];
