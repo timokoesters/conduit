@@ -50,7 +50,7 @@ before_script:
   - export CARGO_HOME="$(git rev-parse --show-toplevel)/.gitlab-ci.d/cargo"
 
   # Cache attic client
-  - ./bin/nix-build-and-cache --inputs-from . attic
+  - if command -v nix > /dev/null; then ./bin/nix-build-and-cache --inputs-from . attic; fi
 
 ci:
   stage: ci
