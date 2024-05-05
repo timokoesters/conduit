@@ -186,15 +186,7 @@ pub async fn kick_user_route(
 ) -> Result<kick_user::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
-    if let Ok(true) = services()
-        .rooms
-        .state_cache
-        .is_left(sender_user, &body.room_id)
-    {
-        return Ok(kick_user::v3::Response {});
-    }
-
-    let mut event: RoomMemberEventContent = serde_json::from_str(
+    let event: RoomMemberEventContent = serde_json::from_str(
         services()
             .rooms
             .state_accessor
@@ -205,15 +197,26 @@ pub async fn kick_user_route(
             )?
             .ok_or(Error::BadRequest(
                 ErrorKind::BadState,
-                "Cannot kick member that's not in the room.",
+                "Cannot kick a user who is not in the room.",
             ))?
             .content
             .get(),
     )
     .map_err(|_| Error::bad_database("Invalid member event in database."))?;
 
-    event.membership = MembershipState::Leave;
-    event.reason.clone_from(&body.reason);
+    // If they are already kicked and the reason is unchanged, there isn't any point in sending a new event.
+    if event.membership == MembershipState::Leave && event.reason == body.reason {
+        return Ok(kick_user::v3::Response {});
+    }
+
+    let event = RoomMemberEventContent {
+        is_direct: None,
+        membership: MembershipState::Leave,
+        third_party_invite: None,
+        reason: body.reason.clone(),
+        join_authorized_via_users_server: None,
+        ..event
+    };
 
     let mutex_state = Arc::clone(
         services()
@@ -254,17 +257,7 @@ pub async fn kick_user_route(
 pub async fn ban_user_route(body: Ruma<ban_user::v3::Request>) -> Result<ban_user::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
-    if let Ok(Some(membership_event)) = services()
-        .rooms
-        .state_accessor
-        .get_member(&body.room_id, sender_user)
-    {
-        if membership_event.membership == MembershipState::Ban {
-            return Ok(ban_user::v3::Response {});
-        }
-    }
-
-    let event = services()
+    let event = if let Some(event) = services()
         .rooms
         .state_accessor
         .room_state_get(
@@ -272,27 +265,30 @@ pub async fn ban_user_route(body: Ruma<ban_user::v3::Request>) -> Result<ban_use
             &StateEventType::RoomMember,
             body.user_id.as_ref(),
         )?
-        .map_or(
-            Ok(RoomMemberEventContent {
-                membership: MembershipState::Ban,
-                displayname: services().users.displayname(&body.user_id)?,
-                avatar_url: services().users.avatar_url(&body.user_id)?,
-                is_direct: None,
-                third_party_invite: None,
-                blurhash: services().users.blurhash(&body.user_id)?,
-                reason: body.reason.clone(),
-                join_authorized_via_users_server: None,
-            }),
-            |event| {
-                serde_json::from_str(event.content.get())
-                    .map(|event: RoomMemberEventContent| RoomMemberEventContent {
-                        membership: MembershipState::Ban,
-                        join_authorized_via_users_server: None,
-                        ..event
-                    })
-                    .map_err(|_| Error::bad_database("Invalid member event in database."))
-            },
-        )?;
+        // Even when the previous member content is invalid, we should let the ban go through anyways.
+        .and_then(|event| serde_json::from_str::<RoomMemberEventContent>(event.content.get()).ok())
+    {
+        // If they are already banned and the reason is unchanged, there isn't any point in sending a new event.
+        if event.membership == MembershipState::Ban && event.reason == body.reason {
+            return Ok(ban_user::v3::Response {});
+        }
+
+        RoomMemberEventContent {
+            membership: MembershipState::Ban,
+            join_authorized_via_users_server: None,
+            reason: body.reason.clone(),
+            third_party_invite: None,
+            is_direct: None,
+            avatar_url: event.avatar_url,
+            displayname: event.displayname,
+            blurhash: event.blurhash,
+        }
+    } else {
+        RoomMemberEventContent {
+            reason: body.reason.clone(),
+            ..RoomMemberEventContent::new(MembershipState::Ban)
+        }
+    };
 
     let mutex_state = Arc::clone(
         services()
@@ -335,17 +331,7 @@ pub async fn unban_user_route(
 ) -> Result<unban_user::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
-    if let Ok(Some(membership_event)) = services()
-        .rooms
-        .state_accessor
-        .get_member(&body.room_id, sender_user)
-    {
-        if membership_event.membership != MembershipState::Ban {
-            return Ok(unban_user::v3::Response {});
-        }
-    }
-
-    let mut event: RoomMemberEventContent = serde_json::from_str(
+    let event: RoomMemberEventContent = serde_json::from_str(
         services()
             .rooms
             .state_accessor
@@ -363,8 +349,19 @@ pub async fn unban_user_route(
     )
     .map_err(|_| Error::bad_database("Invalid member event in database."))?;
 
-    event.membership = MembershipState::Leave;
-    event.reason.clone_from(&body.reason);
+    // If they are already unbanned and the reason is unchanged, there isn't any point in sending a new event.
+    if event.membership == MembershipState::Leave && event.reason == body.reason {
+        return Ok(unban_user::v3::Response {});
+    }
+
+    let event = RoomMemberEventContent {
+        is_direct: None,
+        membership: MembershipState::Leave,
+        third_party_invite: None,
+        reason: body.reason.clone(),
+        join_authorized_via_users_server: None,
+        ..event
+    };
 
     let mutex_state = Arc::clone(
         services()
@@ -1319,60 +1316,59 @@ pub(crate) async fn invite_helper<'a>(
             .filter(|server| &**server != services().globals.server_name());
 
         services().sending.send_pdu(servers, &pdu_id)?;
+    } else {
+        if !services()
+            .rooms
+            .state_cache
+            .is_joined(sender_user, room_id)?
+        {
+            return Err(Error::BadRequest(
+                ErrorKind::Forbidden,
+                "You don't have permission to view this room.",
+            ));
+        }
 
-        return Ok(());
-    }
+        let mutex_state = Arc::clone(
+            services()
+                .globals
+                .roomid_mutex_state
+                .write()
+                .await
+                .entry(room_id.to_owned())
+                .or_default(),
+        );
+        let state_lock = mutex_state.lock().await;
 
-    if !services()
-        .rooms
-        .state_cache
-        .is_joined(sender_user, room_id)?
-    {
-        return Err(Error::BadRequest(
-            ErrorKind::Forbidden,
-            "You don't have permission to view this room.",
-        ));
-    }
-
-    let mutex_state = Arc::clone(
         services()
-            .globals
-            .roomid_mutex_state
-            .write()
-            .await
-            .entry(room_id.to_owned())
-            .or_default(),
-    );
-    let state_lock = mutex_state.lock().await;
+            .rooms
+            .timeline
+            .build_and_append_pdu(
+                PduBuilder {
+                    event_type: TimelineEventType::RoomMember,
+                    content: to_raw_value(&RoomMemberEventContent {
+                        membership: MembershipState::Invite,
+                        displayname: services().users.displayname(user_id)?,
+                        avatar_url: services().users.avatar_url(user_id)?,
+                        is_direct: Some(is_direct),
+                        third_party_invite: None,
+                        blurhash: services().users.blurhash(user_id)?,
+                        reason,
+                        join_authorized_via_users_server: None,
+                    })
+                    .expect("event is valid, we just created it"),
+                    unsigned: None,
+                    state_key: Some(user_id.to_string()),
+                    redacts: None,
+                },
+                sender_user,
+                room_id,
+                &state_lock,
+            )
+            .await?;
 
-    services()
-        .rooms
-        .timeline
-        .build_and_append_pdu(
-            PduBuilder {
-                event_type: TimelineEventType::RoomMember,
-                content: to_raw_value(&RoomMemberEventContent {
-                    membership: MembershipState::Invite,
-                    displayname: services().users.displayname(user_id)?,
-                    avatar_url: services().users.avatar_url(user_id)?,
-                    is_direct: Some(is_direct),
-                    third_party_invite: None,
-                    blurhash: services().users.blurhash(user_id)?,
-                    reason,
-                    join_authorized_via_users_server: None,
-                })
-                .expect("event is valid, we just created it"),
-                unsigned: None,
-                state_key: Some(user_id.to_string()),
-                redacts: None,
-            },
-            sender_user,
-            room_id,
-            &state_lock,
-        )
-        .await?;
-
-    drop(state_lock);
+        // Critical point ends
+        drop(state_lock);
+    }
 
     Ok(())
 }
@@ -1470,12 +1466,15 @@ pub async fn leave_room(user_id: &UserId, room_id: &RoomId, reason: Option<Strin
             Some(e) => e,
         };
 
-        let mut event: RoomMemberEventContent = serde_json::from_str(member_event.content.get())
-            .map_err(|_| Error::bad_database("Invalid member event in database."))?;
-
-        event.membership = MembershipState::Leave;
-        event.reason = reason;
-        event.join_authorized_via_users_server = None;
+        let event = RoomMemberEventContent {
+            is_direct: None,
+            membership: MembershipState::Leave,
+            third_party_invite: None,
+            reason,
+            join_authorized_via_users_server: None,
+            ..serde_json::from_str(member_event.content.get())
+                .map_err(|_| Error::bad_database("Invalid member event in database."))?
+        };
 
         services()
             .rooms
