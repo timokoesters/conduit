@@ -59,7 +59,7 @@
             file = ./rust-toolchain.toml;
 
             # See also `rust-toolchain.toml`
-            sha256 = "sha256-SXRtAuO4IqNOQq+nLbrsDFbVk+3aVA8NNpSZsKlVH/8=";
+            sha256 = "sha256-opUgs6ckUQCyDxcB9Wy51pqhd0MPGHUVbwRKKPGiwZU=";
           };
       });
     in

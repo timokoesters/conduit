@@ -13,8 +13,8 @@ use thread_local::ThreadLocal;
 use tracing::debug;
 
 thread_local! {
-    static READ_CONNECTION: RefCell<Option<&'static Connection>> = RefCell::new(None);
-    static READ_CONNECTION_ITERATOR: RefCell<Option<&'static Connection>> = RefCell::new(None);
+    static READ_CONNECTION: RefCell<Option<&'static Connection>> = const { RefCell::new(None) };
+    static READ_CONNECTION_ITERATOR: RefCell<Option<&'static Connection>> = const { RefCell::new(None) };
 }
 
 struct PreparedStatementIterator<'a> {

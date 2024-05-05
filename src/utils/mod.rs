@@ -122,16 +122,14 @@ pub fn deserialize_from_str<
     'de,
     D: serde::de::Deserializer<'de>,
     T: FromStr<Err = E>,
-    E: std::fmt::Display,
+    E: fmt::Display,
 >(
     deserializer: D,
 ) -> Result<T, D::Error> {
     struct Visitor<T: FromStr<Err = E>, E>(std::marker::PhantomData<T>);
-    impl<'de, T: FromStr<Err = Err>, Err: std::fmt::Display> serde::de::Visitor<'de>
-        for Visitor<T, Err>
-    {
+    impl<'de, T: FromStr<Err = Err>, Err: fmt::Display> serde::de::Visitor<'de> for Visitor<T, Err> {
         type Value = T;
-        fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
             write!(formatter, "a parsable string")
         }
         fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>

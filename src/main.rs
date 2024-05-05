@@ -217,7 +217,7 @@ async fn run_server() -> io::Result<()> {
 }
 
 async fn spawn_task<B: Send + 'static>(
-    req: axum::http::Request<B>,
+    req: http::Request<B>,
     next: axum::middleware::Next<B>,
 ) -> std::result::Result<axum::response::Response, StatusCode> {
     if services().globals.shutdown.load(atomic::Ordering::Relaxed) {
@@ -229,13 +229,13 @@ async fn spawn_task<B: Send + 'static>(
 }
 
 async fn unrecognized_method<B: Send>(
-    req: axum::http::Request<B>,
+    req: http::Request<B>,
     next: axum::middleware::Next<B>,
 ) -> std::result::Result<axum::response::Response, StatusCode> {
     let method = req.method().clone();
     let uri = req.uri().clone();
     let inner = next.run(req).await;
-    if inner.status() == axum::http::StatusCode::METHOD_NOT_ALLOWED {
+    if inner.status() == StatusCode::METHOD_NOT_ALLOWED {
         warn!("Method not allowed: {method} {uri}");
         return Ok(RumaResponse(UiaaResponse::MatrixError(RumaError {
             body: ErrorBody::Standard {
