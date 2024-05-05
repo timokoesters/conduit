@@ -1,4 +1,4 @@
-#!/usr/bin/env sh
+#!/usr/bin/env bash
 
 set -euo pipefail
 
@@ -17,15 +17,24 @@ if [ ! -z ${ATTIC_TOKEN+x} ]; then
         "${ATTIC_ENDPOINT:-https://attic.conduit.rs/conduit}" \
         "$ATTIC_TOKEN"
 
-    readarray -t outputs < <(nix path-info "$@")
     readarray -t derivations < <(nix path-info "$@" --derivation)
+    for derivation in "${derivations[@]}"; do
+        cache+=(
+            "$(nix-store --query --requisites --include-outputs "$derivation")"
+        )
+    done
 
-    # Push the target installable and its build dependencies
-    nix run --inputs-from . attic -- \
-        push \
-        conduit \
-        "${outputs[@]}" \
-        "${derivations[@]}"
+    # Upload them to Attic
+    #
+    # Use `xargs` and a here-string because something would probably explode if
+    # several thousand arguments got passed to a command at once. Hopefully no
+    # store paths include a newline in them.
+    (
+        IFS=$'\n'
+        nix shell --inputs-from . attic -c xargs \
+            attic push conduit <<< "${cache[*]}"
+    )
+
 else
     echo "\$ATTIC_TOKEN is unset, skipping uploading to the binary cache"
 fi
