@@ -1,24 +1,22 @@
-# Keep alphabetically sorted
 [workspace.lints.rust]
 explicit_outlives_requirements = "warn"
 unused_qualifications = "warn"
 
-# Keep alphabetically sorted
 [workspace.lints.clippy]
 cloned_instead_of_copied = "warn"
 dbg_macro = "warn"
 str_to_string = "warn"
 
 [package]
-name = "conduit"
-description = "A Matrix homeserver written in Rust"
-license = "Apache-2.0"
 authors = ["timokoesters <timo@koesters.xyz>"]
-homepage = "https://conduit.rs"
-repository = "https://gitlab.com/famedly/conduit"
-readme = "README.md"
-version = "0.8.0-alpha"
+description = "A Matrix homeserver written in Rust"
 edition = "2021"
+homepage = "https://conduit.rs"
+license = "Apache-2.0"
+name = "conduit"
+readme = "README.md"
+repository = "https://gitlab.com/famedly/conduit"
+version = "0.8.0-alpha"
 
 # See also `rust-toolchain.toml`
 rust-version = "1.78.0"
@@ -30,14 +28,40 @@ workspace = true
 
 [dependencies]
 # Web framework
-axum = { version = "0.6.18", default-features = false, features = ["form", "headers", "http1", "http2", "json", "matched-path"], optional = true }
+axum = { version = "0.6.18", default-features = false, features = [
+  "form",
+  "headers",
+  "http1",
+  "http2",
+  "json",
+  "matched-path",
+], optional = true }
 axum-server = { version = "0.5.1", features = ["tls-rustls"] }
 tower = { version = "0.4.13", features = ["util"] }
-tower-http = { version = "0.4.1", features = ["add-extension", "cors", "sensitive-headers", "trace", "util"] }
+tower-http = { version = "0.4.1", features = [
+  "add-extension",
+  "cors",
+  "sensitive-headers",
+  "trace",
+  "util",
+] }
 
 # Used for matrix spec type definitions and helpers
 #ruma = { version = "0.4.0", features = ["compat", "rand", "appservice-api-c", "client-api", "federation-api", "push-gateway-api-c", "state-res", "unstable-pre-spec", "unstable-exhaustive-types"] }
-ruma = { git = "https://github.com/ruma/ruma", rev = "5495b85aa311c2805302edb0a7de40399e22b397", features = ["compat", "rand", "appservice-api-c", "client-api", "federation-api", "push-gateway-api-c", "state-res", "unstable-msc2448", "unstable-msc3575", "unstable-exhaustive-types", "ring-compat", "unstable-unspecified" ] }
+ruma = { git = "https://github.com/ruma/ruma", rev = "5495b85aa311c2805302edb0a7de40399e22b397", features = [
+  "appservice-api-c",
+  "client-api",
+  "compat",
+  "federation-api",
+  "push-gateway-api-c",
+  "rand",
+  "ring-compat",
+  "state-res",
+  "unstable-exhaustive-types",
+  "unstable-msc2448",
+  "unstable-msc3575",
+  "unstable-unspecified",
+] }
 #ruma = { git = "https://github.com/timokoesters/ruma", rev = "4ec9c69bb7e09391add2382b3ebac97b6e8f4c64", features = ["compat", "rand", "appservice-api-c", "client-api", "federation-api", "push-gateway-api-c", "state-res", "unstable-msc2448", "unstable-msc3575", "unstable-exhaustive-types", "ring-compat", "unstable-unspecified" ] }
 #ruma = { path = "../ruma/crates/ruma", features = ["compat", "rand", "appservice-api-c", "client-api", "federation-api", "push-gateway-api-c", "state-res", "unstable-msc2448", "unstable-msc3575", "unstable-exhaustive-types", "ring-compat", "unstable-unspecified" ] }
 
@@ -65,11 +89,18 @@ rand = "0.8.5"
 rust-argon2 = "2"
 # Used to send requests
 hyper = "0.14.26"
-reqwest = { version = "0.11.18", default-features = false, features = ["rustls-tls-native-roots", "socks"] }
+reqwest = { version = "0.11.18", default-features = false, features = [
+  "rustls-tls-native-roots",
+  "socks",
+] }
 # Used for conduit::Error type
 thiserror = "1.0.40"
 # Used to generate thumbnails for images
-image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif"] }
+image = { version = "0.25", default-features = false, features = [
+  "gif",
+  "jpeg",
+  "png",
+] }
 # Used to encode server public key
 base64 = "0.22"
 # Used when hashing the state
@@ -81,15 +112,17 @@ regex = "1.8.1"
 # jwt jsonwebtokens
 jsonwebtoken = "9.2.0"
 # Performance measurements
-tracing = { version = "0.1.37", features = [] }
-tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
-tracing-flame = "0.2.0"
 opentelemetry = { version = "0.18.0", features = ["rt-tokio"] }
 opentelemetry-jaeger = { version = "0.17.0", features = ["rt-tokio"] }
+tracing = { version = "0.1.37", features = [] }
+tracing-flame = "0.2.0"
 tracing-opentelemetry = "0.18.0"
+tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
+
 lru-cache = "0.1.2"
-rusqlite = { version = "0.31", optional = true, features = ["bundled"] }
 parking_lot = { version = "0.12.1", optional = true }
+rusqlite = { version = "0.31", optional = true, features = ["bundled"] }
+
 # crossbeam = { version = "0.8.2", optional = true }
 num_cpus = "1.15.0"
 threadpool = "1.8.1"
@@ -102,7 +135,14 @@ thread_local = "1.1.7"
 hmac = "0.12.1"
 sha-1 = "0.10.1"
 # used for conduit's CLI and admin room command parsing
-clap = { version = "4.3.0", default-features = false, features = ["std", "derive", "help", "usage", "error-context", "string"] }
+clap = { version = "4.3.0", default-features = false, features = [
+  "derive",
+  "error-context",
+  "help",
+  "std",
+  "string",
+  "usage",
+] }
 futures-util = { version = "0.3.28", default-features = false }
 # Used for reading the configuration from conduit.toml & environment variables
 figment = { version = "0.10.8", features = ["env", "toml"] }
@@ -110,34 +150,32 @@ figment = { version = "0.10.8", features = ["env", "toml"] }
 # Validating urls in config
 url = { version = "2", features = ["serde"] }
 
-tikv-jemallocator = { version = "0.5.0", features = ["unprefixed_malloc_on_supported_platforms"], optional = true }
 async-trait = "0.1.68"
+tikv-jemallocator = { version = "0.5.0", features = [
+  "unprefixed_malloc_on_supported_platforms",
+], optional = true }
 
 sd-notify = { version = "0.4.1", optional = true }
 
 [dependencies.rocksdb]
+features = ["lz4", "multi-threaded-cf", "zstd"]
+optional = true
 package = "rust-rocksdb"
 version = "0.25"
-optional = true
-features = [
-    "multi-threaded-cf",
-    "zstd",
-    "lz4",
-]
 
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.28", features = ["resource"] }
 
 [features]
-default = ["conduit_bin", "backend_sqlite", "backend_rocksdb", "systemd"]
+default = ["backend_rocksdb", "backend_sqlite", "conduit_bin", "systemd"]
 #backend_sled = ["sled"]
-backend_persy = ["persy", "parking_lot"]
+backend_persy = ["parking_lot", "persy"]
 backend_sqlite = ["sqlite"]
 #backend_heed = ["heed", "crossbeam"]
 backend_rocksdb = ["rocksdb"]
-jemalloc = ["tikv-jemallocator"]
-sqlite = ["rusqlite", "parking_lot", "tokio/signal"]
 conduit_bin = ["axum"]
+jemalloc = ["tikv-jemallocator"]
+sqlite = ["parking_lot", "rusqlite", "tokio/signal"]
 systemd = ["sd-notify"]
 
 [[bin]]
@@ -150,35 +188,45 @@ name = "conduit"
 path = "src/lib.rs"
 
 [package.metadata.deb]
-name = "matrix-conduit"
-maintainer = "Paul van Tilburg <paul@luon.net>"
+assets = [
+  [
+    "README.md",
+    "usr/share/doc/matrix-conduit/",
+    "644",
+  ],
+  [
+    "debian/README.md",
+    "usr/share/doc/matrix-conduit/README.Debian",
+    "644",
+  ],
+  [
+    "target/release/conduit",
+    "usr/sbin/matrix-conduit",
+    "755",
+  ],
+]
+conf-files = ["/etc/matrix-conduit/conduit.toml"]
 copyright = "2020, Timo Kösters <timo@koesters.xyz>"
-license-file = ["LICENSE", "3"]
 depends = "$auto, ca-certificates"
 extended-description = """\
 A fast Matrix homeserver that is optimized for smaller, personal servers, \
 instead of a server that has high scalability."""
-section = "net"
-priority = "optional"
-assets = [
-  ["debian/README.md", "usr/share/doc/matrix-conduit/README.Debian", "644"],
-  ["README.md", "usr/share/doc/matrix-conduit/", "644"],
-  ["target/release/conduit", "usr/sbin/matrix-conduit", "755"],
-]
-conf-files = [
-  "/etc/matrix-conduit/conduit.toml"
-]
+license-file = ["LICENSE", "3"]
+maintainer = "Paul van Tilburg <paul@luon.net>"
 maintainer-scripts = "debian/"
+name = "matrix-conduit"
+priority = "optional"
+section = "net"
 systemd-units = { unit-name = "matrix-conduit" }
 
 [profile.dev]
-lto = 'off'
 incremental = true
+lto = 'off'
 
 [profile.release]
-lto = 'thin'
+codegen-units = 32
 incremental = true
-codegen-units=32
+lto = 'thin'
 # If you want to make flamegraphs, enable debug info:
 # debug = true
 

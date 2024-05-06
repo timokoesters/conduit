@@ -1,48 +1,48 @@
 interpreter = ["bash", "-euo", "pipefail", "-c"]
 
 [[task]]
-name = "engage"
 group = "versions"
+name = "engage"
 script = "engage --version"
 
 [[task]]
-name = "rustc"
 group = "versions"
+name = "rustc"
 script = "rustc --version"
 
 [[task]]
-name = "cargo"
 group = "versions"
+name = "cargo"
 script = "cargo --version"
 
 [[task]]
-name = "cargo-fmt"
 group = "versions"
+name = "cargo-fmt"
 script = "cargo fmt --version"
 
 [[task]]
-name = "rustdoc"
 group = "versions"
+name = "rustdoc"
 script = "rustdoc --version"
 
 [[task]]
-name = "cargo-clippy"
 group = "versions"
+name = "cargo-clippy"
 script = "cargo clippy -- --version"
 
 [[task]]
-name = "lychee"
 group = "versions"
+name = "lychee"
 script = "lychee --version"
 
 [[task]]
-name = "cargo-fmt"
 group = "lints"
+name = "cargo-fmt"
 script = "cargo fmt --check -- --color=always"
 
 [[task]]
-name = "cargo-doc"
 group = "lints"
+name = "cargo-doc"
 script = """
 RUSTDOCFLAGS="-D warnings" cargo doc \
     --workspace \
@@ -52,18 +52,23 @@ RUSTDOCFLAGS="-D warnings" cargo doc \
 """
 
 [[task]]
-name = "cargo-clippy"
 group = "lints"
+name = "cargo-clippy"
 script = "cargo clippy --workspace --all-targets --color=always -- -D warnings"
 
 [[task]]
-name = "lychee"
 group = "lints"
+name = "taplo-fmt"
+script = "taplo fmt --check --colors always"
+
+[[task]]
+group = "lints"
+name = "lychee"
 script = "lychee --offline docs"
 
 [[task]]
-name = "cargo"
 group = "tests"
+name = "cargo"
 script = """
 cargo test \
     --workspace \

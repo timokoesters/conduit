@@ -7,9 +7,9 @@ server_name = "localhost"
 database_path = "/tmp"
 
 # All the other settings are left at their defaults:
-port = 6167
-max_request_size = 20_000_000
-allow_registration = true
-trusted_servers = ["matrix.org"]
 address = "127.0.0.1"
+allow_registration = true
+max_request_size = 20_000_000
+port = 6167
 proxy = "none"
+trusted_servers = ["matrix.org"]

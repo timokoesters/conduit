@@ -22,9 +22,9 @@
 # YOU NEED TO EDIT THIS
 #server_name = "your.server.name"
 
+database_backend = "rocksdb"
 # This is the only directory where Conduit will save its data
 database_path = "/var/lib/matrix-conduit/"
-database_backend = "rocksdb"
 
 # The port Conduit will be running on. You need to set up a reverse proxy in
 # your web server (e.g. apache or nginx), so all requests to /_matrix on port
@@ -44,8 +44,8 @@ allow_registration = true
 # - Start the line with '#' to remove the condition
 registration_token = ""
 
-allow_federation = true
 allow_check_for_updates = true
+allow_federation = true
 
 # Enable the display name lightning bolt on registration.
 enable_lightning_bolt = true

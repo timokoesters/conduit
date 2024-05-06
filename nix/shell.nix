@@ -10,6 +10,7 @@
 , mkShell
 , olm
 , system
+, taplo
 , toolchain
 }:
 
@@ -29,9 +30,14 @@ mkShell {
     # `$PATH` will have stable rustfmt instead.
     inputs.fenix.packages.${system}.latest.rustfmt
 
-    # Keep sorted
-    engage
+    # rust itself
     toolchain
+
+    # CI tests
+    engage
+
+    # format toml files
+    taplo
 
     # Needed for producing Debian packages
     cargo-deb
