@@ -1,0 +1,24 @@
+exclude = [".**/*.toml"]
+include = ["**/*.toml"]
+[formatting]
+reorder_arrays = true
+reorder_keys = true
+
+# Prevent breaking command and argument order
+[[rule]]
+include = ["engage.toml"]
+# https://github.com/tamasfe/taplo/issues/608
+#keys = ["interpreter"]
+
+[rule.formatting]
+reorder_arrays = false
+
+# Prevent breaking license file order
+[[rule]]
+include = ["Cargo.toml"]
+# https://github.com/tamasfe/taplo/issues/608
+# keys = ["package.metadata.deb.license-file", "package.metadata.deb.assets"]
+keys = ["package.metadata.deb", "package.metadata.deb.assets"]
+
+[rule.formatting]
+reorder_arrays = false

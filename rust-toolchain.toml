@@ -12,11 +12,11 @@
 [toolchain]
 channel = "1.78.0"
 components = [
-    # For rust-analyzer
-    "rust-src",
+  # For rust-analyzer
+  "rust-src",
 ]
 targets = [
-    "x86_64-unknown-linux-gnu",
-    "x86_64-unknown-linux-musl",
-    "aarch64-unknown-linux-musl",
+  "aarch64-unknown-linux-musl",
+  "x86_64-unknown-linux-gnu",
+  "x86_64-unknown-linux-musl",
 ]
