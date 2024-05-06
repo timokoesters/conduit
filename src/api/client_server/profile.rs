@@ -147,7 +147,7 @@ pub async fn get_displayname_route(
 
 /// # `PUT /_matrix/client/r0/profile/{userId}/avatar_url`
 ///
-/// Updates the avatar_url and blurhash.
+/// Updates the `avatar_url` and blurhash.
 ///
 /// - Also makes sure other users receive the update using presence EDUs
 pub async fn set_avatar_url_route(
@@ -252,9 +252,9 @@ pub async fn set_avatar_url_route(
 
 /// # `GET /_matrix/client/r0/profile/{userId}/avatar_url`
 ///
-/// Returns the avatar_url and blurhash of the user.
+/// Returns the `avatar_url` and blurhash of the user.
 ///
-/// - If user is on another server: Fetches avatar_url and blurhash over federation
+/// - If user is on another server: Fetches `avatar_url` and blurhash over federation
 pub async fn get_avatar_url_route(
     body: Ruma<get_avatar_url::v3::Request>,
 ) -> Result<get_avatar_url::v3::Response> {
@@ -284,7 +284,7 @@ pub async fn get_avatar_url_route(
 
 /// # `GET /_matrix/client/r0/profile/{userId}`
 ///
-/// Returns the displayname, avatar_url and blurhash of the user.
+/// Returns the displayname, `avatar_url` and blurhash of the user.
 ///
 /// - If user is on another server: Fetches profile over federation
 pub async fn get_profile_route(

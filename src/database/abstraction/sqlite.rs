@@ -88,6 +88,7 @@ impl KeyValueDatabaseEngine for Arc<Engine> {
         // 1. convert MB to KiB
         // 2. divide by permanent connections + permanent iter connections + write connection
         // 3. round down to nearest integer
+        #[allow(clippy::cast_precision_loss)]
         let cache_size_per_thread: u32 = ((config.db_cache_capacity_mb * 1024.0)
             / ((num_cpus::get().max(1) * 2) + 1) as f64)
             as u32;
@@ -217,8 +218,7 @@ impl KvTree for SqliteTable {
         guard.execute("BEGIN", [])?;
         for key in iter {
             let old = self.get_with_guard(&guard, &key)?;
-            let new = crate::utils::increment(old.as_deref())
-                .expect("utils::increment always returns Some");
+            let new = crate::utils::increment(old.as_deref());
             self.insert_with_guard(&guard, &key, &new)?;
         }
         guard.execute("COMMIT", [])?;
@@ -308,8 +308,7 @@ impl KvTree for SqliteTable {
 
         let old = self.get_with_guard(&guard, key)?;
 
-        let new =
-            crate::utils::increment(old.as_deref()).expect("utils::increment always returns Some");
+        let new = crate::utils::increment(old.as_deref());
 
         self.insert_with_guard(&guard, key, &new)?;
 

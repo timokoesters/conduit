@@ -42,16 +42,16 @@ pub trait Data: Send + Sync {
     /// Sets a new displayname or removes it if displayname is None. You still need to nofify all rooms of this change.
     fn set_displayname(&self, user_id: &UserId, displayname: Option<String>) -> Result<()>;
 
-    /// Get the avatar_url of a user.
+    /// Get the `avatar_url` of a user.
     fn avatar_url(&self, user_id: &UserId) -> Result<Option<OwnedMxcUri>>;
 
-    /// Sets a new avatar_url or removes it if avatar_url is None.
+    /// Sets a new `avatar_url` or removes it if `avatar_url` is None.
     fn set_avatar_url(&self, user_id: &UserId, avatar_url: Option<OwnedMxcUri>) -> Result<()>;
 
     /// Get the blurhash of a user.
     fn blurhash(&self, user_id: &UserId) -> Result<Option<String>>;
 
-    /// Sets a new avatar_url or removes it if avatar_url is None.
+    /// Sets a new `avatar_url` or removes it if `avatar_url` is None.
     fn set_blurhash(&self, user_id: &UserId, blurhash: Option<String>) -> Result<()>;
 
     /// Adds a new device to a user.

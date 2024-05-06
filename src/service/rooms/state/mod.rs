@@ -45,9 +45,8 @@ impl Service {
                 .ok()
                 .map(|(_, id)| id)
         }) {
-            let pdu = match services().rooms.timeline.get_pdu_json(&event_id)? {
-                Some(pdu) => pdu,
-                None => continue,
+            let Some(pdu) = services().rooms.timeline.get_pdu_json(&event_id)? else {
+                continue;
             };
 
             let pdu: PduEvent = match serde_json::from_str(
@@ -70,14 +69,12 @@ impl Service {
                             Err(_) => continue,
                         };
 
-                    let state_key = match pdu.state_key {
-                        Some(k) => k,
-                        None => continue,
+                    let Some(state_key) = pdu.state_key else {
+                        continue;
                     };
 
-                    let user_id = match UserId::parse(state_key) {
-                        Ok(id) => id,
-                        Err(_) => continue,
+                    let Ok(user_id) = UserId::parse(state_key) else {
+                        continue;
                     };
 
                     services().rooms.state_cache.update_membership(
@@ -374,11 +371,7 @@ impl Service {
         state_key: Option<&str>,
         content: &serde_json::value::RawValue,
     ) -> Result<StateMap<Arc<PduEvent>>> {
-        let shortstatehash = if let Some(current_shortstatehash) =
-            services().rooms.state.get_room_shortstatehash(room_id)?
-        {
-            current_shortstatehash
-        } else {
+        let Some(shortstatehash) = services().rooms.state.get_room_shortstatehash(room_id)? else {
             return Ok(HashMap::new());
         };
 

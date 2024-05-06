@@ -84,6 +84,7 @@ pub struct Config {
     pub emergency_password: Option<String>,
 
     #[serde(flatten)]
+    #[allow(clippy::zero_sized_map_values)]
     pub catchall: BTreeMap<String, IgnoredAny>,
 }
 
@@ -133,7 +134,7 @@ impl Config {
             Some(server_name) => server_name.to_owned(),
             None => {
                 if self.server_name.port().is_some() {
-                    self.server_name.to_owned()
+                    self.server_name.clone()
                 } else {
                     format!("{}:443", self.server_name.host())
                         .try_into()

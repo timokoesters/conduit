@@ -15,7 +15,7 @@ impl service::rooms::alias::Data for KeyValueDatabase {
 
     fn remove_alias(&self, alias: &RoomAliasId) -> Result<()> {
         if let Some(room_id) = self.alias_roomid.get(alias.alias().as_bytes())? {
-            let mut prefix = room_id.to_vec();
+            let mut prefix = room_id.clone();
             prefix.push(0xff);
 
             for (key, _) in self.aliasid_alias.scan_prefix(prefix) {

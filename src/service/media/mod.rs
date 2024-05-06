@@ -128,7 +128,7 @@ impl Service {
             Ok(Some(FileMeta {
                 content_disposition,
                 content_type,
-                file: file.to_vec(),
+                file: file.clone(),
             }))
         } else if let Ok((content_disposition, content_type, key)) =
             self.db.search_file_metadata(mxc.clone(), 0, 0)
@@ -145,7 +145,7 @@ impl Service {
                     return Ok(Some(FileMeta {
                         content_disposition,
                         content_type,
-                        file: file.to_vec(),
+                        file: file.clone(),
                     }));
                 }
 
@@ -211,14 +211,14 @@ impl Service {
                 Ok(Some(FileMeta {
                     content_disposition,
                     content_type,
-                    file: thumbnail_bytes.to_vec(),
+                    file: thumbnail_bytes.clone(),
                 }))
             } else {
                 // Couldn't parse file to generate thumbnail, send original
                 Ok(Some(FileMeta {
                     content_disposition,
                     content_type,
-                    file: file.to_vec(),
+                    file: file.clone(),
                 }))
             }
         } else {

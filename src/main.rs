@@ -201,7 +201,7 @@ async fn run_server() -> io::Result<()> {
             #[cfg(feature = "systemd")]
             let _ = sd_notify::notify(true, &[sd_notify::NotifyState::Ready]);
 
-            server.await?
+            server.await?;
         }
         None => {
             let server = bind(addr).handle(handle).serve(app);
@@ -209,7 +209,7 @@ async fn run_server() -> io::Result<()> {
             #[cfg(feature = "systemd")]
             let _ = sd_notify::notify(true, &[sd_notify::NotifyState::Ready]);
 
-            server.await?
+            server.await?;
         }
     }
 
@@ -461,8 +461,8 @@ async fn shutdown_signal(handle: ServerHandle) {
     let sig: &str;
 
     tokio::select! {
-        _ = ctrl_c => { sig = "Ctrl+C"; },
-        _ = terminate => { sig = "SIGTERM"; },
+        () = ctrl_c => { sig = "Ctrl+C"; },
+        () = terminate => { sig = "SIGTERM"; },
     }
 
     warn!("Received {}, shutting down...", sig);

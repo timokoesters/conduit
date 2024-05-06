@@ -63,7 +63,7 @@ impl service::rooms::state::Data for KeyValueDatabase {
         }
 
         for event_id in event_ids {
-            let mut key = prefix.to_owned();
+            let mut key = prefix.clone();
             key.extend_from_slice(event_id.as_bytes());
             self.roomid_pduleaves.insert(&key, event_id.as_bytes())?;
         }

@@ -31,11 +31,10 @@ impl service::rooms::user::Data for KeyValueDatabase {
 
         self.userroomid_notificationcount
             .get(&userroom_id)?
-            .map(|bytes| {
+            .map_or(Ok(0), |bytes| {
                 utils::u64_from_bytes(&bytes)
                     .map_err(|_| Error::bad_database("Invalid notification count in db."))
             })
-            .unwrap_or(Ok(0))
     }
 
     fn highlight_count(&self, user_id: &UserId, room_id: &RoomId) -> Result<u64> {
@@ -45,11 +44,10 @@ impl service::rooms::user::Data for KeyValueDatabase {
 
         self.userroomid_highlightcount
             .get(&userroom_id)?
-            .map(|bytes| {
+            .map_or(Ok(0), |bytes| {
                 utils::u64_from_bytes(&bytes)
                     .map_err(|_| Error::bad_database("Invalid highlight count in db."))
             })
-            .unwrap_or(Ok(0))
     }
 
     fn last_notification_read(&self, user_id: &UserId, room_id: &RoomId) -> Result<u64> {

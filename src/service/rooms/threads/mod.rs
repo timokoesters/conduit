@@ -1,5 +1,7 @@
 mod data;
 
+use std::collections::BTreeMap;
+
 pub use data::Data;
 use ruma::{
     api::client::{error::ErrorKind, threads::get_threads::v1::IncludeThreads},
@@ -56,7 +58,7 @@ impl Service {
 
         if let CanonicalJsonValue::Object(unsigned) = root_pdu_json
             .entry("unsigned".to_owned())
-            .or_insert_with(|| CanonicalJsonValue::Object(Default::default()))
+            .or_insert_with(|| CanonicalJsonValue::Object(BTreeMap::default()))
         {
             if let Some(mut relations) = unsigned
                 .get("m.relations")

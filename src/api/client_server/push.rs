@@ -281,7 +281,7 @@ pub async fn get_pushrule_enabled_route(
     let global = account_data.content.global;
     let enabled = global
         .get(body.kind.clone(), &body.rule_id)
-        .map(|r| r.enabled())
+        .map(ruma::push::AnyPushRuleRef::enabled)
         .ok_or(Error::BadRequest(
             ErrorKind::NotFound,
             "Push rule not found.",

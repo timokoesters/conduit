@@ -17,11 +17,8 @@ pub(crate) async fn send_request<T>(
 where
     T: OutgoingRequest + Debug,
 {
-    let destination = match registration.url {
-        Some(url) => url,
-        None => {
-            return Ok(None);
-        }
+    let Some(destination) = registration.url else {
+        return Ok(None);
     };
 
     let hs_token = registration.hs_token.as_str();
@@ -33,7 +30,7 @@ where
             &[MatrixVersion::V1_0],
         )
         .unwrap()
-        .map(|body| body.freeze());
+        .map(BytesMut::freeze);
 
     let mut parts = http_request.uri().clone().into_parts();
     let old_path_and_query = parts.path_and_query.unwrap().as_str().to_owned();

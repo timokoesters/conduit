@@ -106,7 +106,7 @@ pub async fn upload_signing_keys_route(
             stages: vec![AuthType::Password],
         }],
         completed: Vec::new(),
-        params: Default::default(),
+        params: Box::default(),
         session: None,
         auth_error: None,
     };
@@ -173,7 +173,6 @@ pub async fn upload_signatures_route(
                     "Invalid signature.",
                 ))?
                 .clone()
-                .into_iter()
             {
                 // Signature validation?
                 let signature = (
@@ -401,48 +400,45 @@ pub(crate) async fn get_keys_helper<F: Fn(&UserId) -> bool>(
         .collect();
 
     while let Some((server, response)) = futures.next().await {
-        match response {
-            Ok(Ok(response)) => {
-                for (user, masterkey) in response.master_keys {
-                    let (master_key_id, mut master_key) =
-                        services().users.parse_master_key(&user, &masterkey)?;
+        if let Ok(Ok(response)) = response {
+            for (user, masterkey) in response.master_keys {
+                let (master_key_id, mut master_key) =
+                    services().users.parse_master_key(&user, &masterkey)?;
 
-                    if let Some(our_master_key) = services().users.get_key(
-                        &master_key_id,
-                        sender_user,
-                        &user,
-                        &allowed_signatures,
-                    )? {
-                        let (_, our_master_key) =
-                            services().users.parse_master_key(&user, &our_master_key)?;
-                        master_key.signatures.extend(our_master_key.signatures);
-                    }
-                    let json = serde_json::to_value(master_key).expect("to_value always works");
-                    let raw = serde_json::from_value(json).expect("Raw::from_value always works");
-                    services().users.add_cross_signing_keys(
-                        &user, &raw, &None, &None,
-                        false, // Dont notify. A notification would trigger another key request resulting in an endless loop
-                    )?;
-                    master_keys.insert(user, raw);
+                if let Some(our_master_key) = services().users.get_key(
+                    &master_key_id,
+                    sender_user,
+                    &user,
+                    &allowed_signatures,
+                )? {
+                    let (_, our_master_key) =
+                        services().users.parse_master_key(&user, &our_master_key)?;
+                    master_key.signatures.extend(our_master_key.signatures);
                 }
-
-                self_signing_keys.extend(response.self_signing_keys);
-                device_keys.extend(response.device_keys);
+                let json = serde_json::to_value(master_key).expect("to_value always works");
+                let raw = serde_json::from_value(json).expect("Raw::from_value always works");
+                services().users.add_cross_signing_keys(
+                    &user, &raw, &None, &None,
+                    false, // Dont notify. A notification would trigger another key request resulting in an endless loop
+                )?;
+                master_keys.insert(user, raw);
             }
-            _ => {
-                back_off(server.to_owned()).await;
 
-                failures.insert(server.to_string(), json!({}));
-            }
+            self_signing_keys.extend(response.self_signing_keys);
+            device_keys.extend(response.device_keys);
+        } else {
+            back_off(server.to_owned()).await;
+
+            failures.insert(server.to_string(), json!({}));
         }
     }
 
     Ok(get_keys::v3::Response {
+        failures,
+        device_keys,
         master_keys,
         self_signing_keys,
         user_signing_keys,
-        device_keys,
-        failures,
     })
 }
 

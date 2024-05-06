@@ -110,7 +110,7 @@ pub async fn send_message_event_route(
 /// Allows paginating through room history.
 ///
 /// - Only works if the user is joined (TODO: always allow, but only show events where the user was
-/// joined, depending on history_visibility)
+/// joined, depending on `history_visibility`)
 pub async fn get_message_events_route(
     body: Ruma<get_message_events::v3::Request>,
 ) -> Result<get_message_events::v3::Response> {

@@ -32,7 +32,7 @@ fn db_options(max_open_files: i32, rocksdb_cache: &rocksdb::Cache) -> rocksdb::O
     let mut db_opts = rocksdb::Options::default();
     db_opts.set_block_based_table_factory(&block_based_options);
     db_opts.create_if_missing(true);
-    db_opts.increase_parallelism(num_cpus::get() as i32);
+    db_opts.increase_parallelism(num_cpus::get().try_into().unwrap_or(i32::MAX));
     db_opts.set_max_open_files(max_open_files);
     db_opts.set_compression_type(rocksdb::DBCompressionType::Lz4);
     db_opts.set_bottommost_compression_type(rocksdb::DBCompressionType::Zstd);
@@ -41,7 +41,7 @@ fn db_options(max_open_files: i32, rocksdb_cache: &rocksdb::Cache) -> rocksdb::O
     // https://github.com/facebook/rocksdb/wiki/Setup-Options-and-Basic-Tuning
     db_opts.set_level_compaction_dynamic_level_bytes(true);
     db_opts.set_max_background_jobs(6);
-    db_opts.set_bytes_per_sync(1048576);
+    db_opts.set_bytes_per_sync(1_048_576);
 
     // https://github.com/facebook/rocksdb/issues/849
     db_opts.set_keep_log_file_num(100);
@@ -112,6 +112,7 @@ impl KeyValueDatabaseEngine for Arc<Engine> {
     fn memory_usage(&self) -> Result<String> {
         let stats =
             rocksdb::perf::get_memory_usage_stats(Some(&[&self.rocks]), Some(&[&self.cache]))?;
+        #[allow(clippy::cast_precision_loss)]
         Ok(format!(
             "Approximate memory usage of all the mem-tables: {:.3} MB\n\
              Approximate memory usage of un-flushed mem-tables: {:.3} MB\n\
@@ -219,7 +220,7 @@ impl KvTree for RocksDbEngineTree<'_> {
         let lock = self.write_lock.write().unwrap();
 
         let old = self.db.rocks.get_cf_opt(&self.cf(), key, &readoptions)?;
-        let new = utils::increment(old.as_deref()).unwrap();
+        let new = utils::increment(old.as_deref());
         self.db
             .rocks
             .put_cf_opt(&self.cf(), key, &new, &writeoptions)?;
@@ -236,7 +237,7 @@ impl KvTree for RocksDbEngineTree<'_> {
 
         for key in iter {
             let old = self.db.rocks.get_cf_opt(&self.cf(), &key, &readoptions)?;
-            let new = utils::increment(old.as_deref()).unwrap();
+            let new = utils::increment(old.as_deref());
             self.db
                 .rocks
                 .put_cf_opt(&self.cf(), key, new, &writeoptions)?;

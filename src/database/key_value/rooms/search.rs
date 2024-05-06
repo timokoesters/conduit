@@ -54,12 +54,11 @@ impl service::rooms::search::Data for KeyValueDatabase {
                 .map(move |(key, _)| key[prefix3.len()..].to_vec())
         });
 
-        let common_elements = match utils::common_elements(iterators, |a, b| {
+        let Some(common_elements) = utils::common_elements(iterators, |a, b| {
             // We compare b with a because we reversed the iterator earlier
             b.cmp(a)
-        }) {
-            Some(it) => it,
-            None => return Ok(None),
+        }) else {
+            return Ok(None);
         };
 
         Ok(Some((Box::new(common_elements), words)))

@@ -10,7 +10,7 @@ pub trait Data: Send + Sync {
         event: ReceiptEvent,
     ) -> Result<()>;
 
-    /// Returns an iterator over the most recent read_receipts in a room that happened after the event with id `since`.
+    /// Returns an iterator over the most recent `read_receipts` in a room that happened after the event with id `since`.
     #[allow(clippy::type_complexity)]
     fn readreceipts_since<'a>(
         &'a self,

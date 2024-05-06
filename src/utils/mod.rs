@@ -18,8 +18,8 @@ pub fn millis_since_unix_epoch() -> u64 {
         .as_millis() as u64
 }
 
-pub fn increment(old: Option<&[u8]>) -> Option<Vec<u8>> {
-    let number = match old.map(|bytes| bytes.try_into()) {
+pub fn increment(old: Option<&[u8]>) -> Vec<u8> {
+    let number = match old.map(TryInto::try_into) {
         Some(Ok(bytes)) => {
             let number = u64::from_be_bytes(bytes);
             number + 1
@@ -27,7 +27,7 @@ pub fn increment(old: Option<&[u8]>) -> Option<Vec<u8>> {
         _ => 1, // Start at one. since 0 should return the first event in the db
     };
 
-    Some(number.to_be_bytes().to_vec())
+    number.to_be_bytes().to_vec()
 }
 
 pub fn generate_keypair() -> Vec<u8> {
@@ -83,7 +83,7 @@ pub fn common_elements(
     check_order: impl Fn(&[u8], &[u8]) -> Ordering,
 ) -> Option<impl Iterator<Item = Vec<u8>>> {
     let first_iterator = iterators.next()?;
-    let mut other_iterators = iterators.map(|i| i.peekable()).collect::<Vec<_>>();
+    let mut other_iterators = iterators.map(Iterator::peekable).collect::<Vec<_>>();
 
     Some(first_iterator.filter(move |target| {
         other_iterators.iter_mut().all(|it| {

@@ -10,7 +10,7 @@ pub trait Data: Send + Sync {
         content_type: Option<&str>,
     ) -> Result<Vec<u8>>;
 
-    /// Returns content_disposition, content_type and the metadata key.
+    /// Returns `content_disposition`, `content_type` and the metadata key.
     fn search_file_metadata(
         &self,
         mxc: String,

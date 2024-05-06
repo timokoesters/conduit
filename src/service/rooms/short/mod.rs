@@ -39,7 +39,7 @@ impl Service {
         self.db.get_statekey_from_short(shortstatekey)
     }
 
-    /// Returns (shortstatehash, already_existed)
+    /// Returns (shortstatehash, `already_existed`)
     pub fn get_or_create_shortstatehash(&self, state_hash: &[u8]) -> Result<(u64, bool)> {
         self.db.get_or_create_shortstatehash(state_hash)
     }

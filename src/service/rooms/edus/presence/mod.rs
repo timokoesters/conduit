@@ -10,10 +10,13 @@ pub struct Service {
     pub db: &'static dyn Data,
 }
 
+// TODO: remove when presence is implemented
+#[allow(clippy::unnecessary_wraps)]
+#[allow(clippy::needless_pass_by_value)]
 impl Service {
     /// Adds a presence event which will be saved until a new event replaces it.
     ///
-    /// Note: This method takes a RoomId because presence updates are always bound to rooms to
+    /// Note: This method takes a `RoomId` because presence updates are always bound to rooms to
     /// make sure users outside these rooms can't see them.
     pub fn update_presence(
         &self,

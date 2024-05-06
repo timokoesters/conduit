@@ -34,7 +34,7 @@ use tokio::time::interval;
 use tracing::{debug, error, info, warn};
 
 pub struct KeyValueDatabase {
-    _db: Arc<dyn KeyValueDatabaseEngine>,
+    db: Arc<dyn KeyValueDatabaseEngine>,
 
     //pub globals: globals::Globals,
     pub(super) global: Arc<dyn KvTree>,
@@ -113,7 +113,7 @@ pub struct KeyValueDatabase {
     pub(super) roomsynctoken_shortstatehash: Arc<dyn KvTree>,
     /// Remember the state hash at events in the past.
     pub(super) shorteventid_shortstatehash: Arc<dyn KvTree>,
-    /// StateKey = EventType + StateKey, ShortStateKey = Count
+    /// `StateKey` = `EventType` + `StateKey`, `ShortStateKey` = Count
     pub(super) statekey_shortstatekey: Arc<dyn KvTree>,
     pub(super) shortstatekey_statekey: Arc<dyn KvTree>,
 
@@ -127,14 +127,14 @@ pub struct KeyValueDatabase {
 
     pub(super) shorteventid_authchain: Arc<dyn KvTree>,
 
-    /// RoomId + EventId -> outlier PDU.
+    /// `RoomId` + `EventId` -> outlier PDU.
     /// Any pdu that has passed the steps 1-8 in the incoming event /federation/send/txn.
     pub(super) eventid_outlierpdu: Arc<dyn KvTree>,
     pub(super) softfailedeventids: Arc<dyn KvTree>,
 
-    /// ShortEventId + ShortEventId -> ().
+    /// `ShortEventId` + `ShortEventId` -> ().
     pub(super) tofrom_relation: Arc<dyn KvTree>,
-    /// RoomId + EventId -> Parent PDU EventId.
+    /// `RoomId` + `EventId` -> Parent PDU `EventId`.
     pub(super) referencedevents: Arc<dyn KvTree>,
 
     //pub account_data: account_data::AccountData,
@@ -241,6 +241,8 @@ impl KeyValueDatabase {
                 .map_err(|_| Error::BadConfig("Database folder doesn't exists and couldn't be created (e.g. due to missing permissions). Please create the database folder yourself."))?;
         }
 
+        // Databases which are disabled will trigger this
+        #[allow(clippy::match_same_arms)]
         let builder: Arc<dyn KeyValueDatabaseEngine> = match &*config.database_backend {
             "sqlite" => {
                 #[cfg(not(feature = "sqlite"))]
@@ -274,7 +276,7 @@ impl KeyValueDatabase {
         }
 
         let db_raw = Box::new(Self {
-            _db: builder.clone(),
+            db: builder.clone(),
             userid_password: builder.open_tree("userid_password")?,
             userid_displayname: builder.open_tree("userid_displayname")?,
             userid_avatarurl: builder.open_tree("userid_avatarurl")?,
@@ -428,12 +430,9 @@ impl KeyValueDatabase {
                 for (roomserverid, _) in db.roomserverids.iter() {
                     let mut parts = roomserverid.split(|&b| b == 0xff);
                     let room_id = parts.next().expect("split always returns one element");
-                    let servername = match parts.next() {
-                        Some(s) => s,
-                        None => {
-                            error!("Migration: Invalid roomserverid in db.");
-                            continue;
-                        }
+                    let Some(servername) = parts.next() else {
+                        error!("Migration: Invalid roomserverid in db.");
+                        continue;
                     };
                     let mut serverroomid = servername.to_vec();
                     serverroomid.push(0xff);
@@ -620,7 +619,7 @@ impl KeyValueDatabase {
                         Ok::<_, Error>(())
                     };
 
-                for (k, seventid) in db._db.open_tree("stateid_shorteventid")?.iter() {
+                for (k, seventid) in db.db.open_tree("stateid_shorteventid")?.iter() {
                     let sstatehash = utils::u64_from_bytes(&k[0..size_of::<u64>()])
                         .expect("number of bytes is correct");
                     let sstatekey = k[size_of::<u64>()..].to_vec();
@@ -793,7 +792,7 @@ impl KeyValueDatabase {
                 }
 
                 // Force E2EE device list updates so we can send them over federation
-                for user_id in services().users.iter().filter_map(|r| r.ok()) {
+                for user_id in services().users.iter().filter_map(std::result::Result::ok) {
                     services().users.mark_device_key_update(&user_id)?;
                 }
 
@@ -803,7 +802,7 @@ impl KeyValueDatabase {
             }
 
             if services().globals.database_version()? < 11 {
-                db._db
+                db.db
                     .open_tree("userdevicesessionid_uiaarequest")?
                     .clear()?;
                 services().globals.bump_database_version(11)?;
@@ -979,7 +978,7 @@ impl KeyValueDatabase {
                 error!(
                     "Could not set the configured emergency password for the conduit user: {}",
                     e
-                )
+                );
             }
         };
 
@@ -997,7 +996,7 @@ impl KeyValueDatabase {
     pub fn flush(&self) -> Result<()> {
         let start = std::time::Instant::now();
 
-        let res = self._db.flush();
+        let res = self.db.flush();
 
         debug!("flush: took {:?}", start.elapsed());
 
@@ -1017,23 +1016,23 @@ impl KeyValueDatabase {
     }
 
     async fn try_handle_updates() -> Result<()> {
-        let response = services()
-            .globals
-            .default_client()
-            .get("https://conduit.rs/check-for-updates/stable")
-            .send()
-            .await?;
-
         #[derive(Deserialize)]
         struct CheckForUpdatesResponseEntry {
-            id: u64,
             date: String,
+            id: u64,
             message: String,
         }
         #[derive(Deserialize)]
         struct CheckForUpdatesResponse {
             updates: Vec<CheckForUpdatesResponseEntry>,
         }
+
+        let response = services()
+            .globals
+            .default_client()
+            .get("https://conduit.rs/check-for-updates/stable")
+            .send()
+            .await?;
 
         let response = serde_json::from_str::<CheckForUpdatesResponse>(&response.text().await?)
             .map_err(|_| Error::BadServerResponse("Bad version check response"))?;
@@ -1048,7 +1047,7 @@ impl KeyValueDatabase {
                     .send_message(RoomMessageEventContent::text_plain(format!(
                     "@room: The following is a message from the Conduit developers. It was sent on '{}':\n\n{}",
                     update.date, update.message
-                )))
+                )));
             }
         }
         services()
@@ -1066,7 +1065,7 @@ impl KeyValueDatabase {
         use std::time::{Duration, Instant};
 
         let timer_interval =
-            Duration::from_secs(services().globals.config.cleanup_second_interval as u64);
+            Duration::from_secs(u64::from(services().globals.config.cleanup_second_interval));
 
         tokio::spawn(async move {
             let mut i = interval(timer_interval);

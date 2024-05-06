@@ -17,7 +17,12 @@ pub async fn turn_server_route(
 
     let turn_secret = services().globals.turn_secret().clone();
 
-    let (username, password) = if !turn_secret.is_empty() {
+    let (username, password) = if turn_secret.is_empty() {
+        (
+            services().globals.turn_username().clone(),
+            services().globals.turn_password().clone(),
+        )
+    } else {
         let expiry = SecondsSinceUnixEpoch::from_system_time(
             SystemTime::now() + Duration::from_secs(services().globals.turn_ttl()),
         )
@@ -32,11 +37,6 @@ pub async fn turn_server_route(
         let password: String = general_purpose::STANDARD.encode(mac.finalize().into_bytes());
 
         (username, password)
-    } else {
-        (
-            services().globals.turn_username().clone(),
-            services().globals.turn_password().clone(),
-        )
     };
 
     Ok(get_turn_server_info::v3::Response {

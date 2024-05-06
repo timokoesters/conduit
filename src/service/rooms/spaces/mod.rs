@@ -63,13 +63,13 @@ impl Service {
         let mut results = Vec::new();
 
         while let Some(current_room) = {
-            while stack.last().map_or(false, |s| s.is_empty()) {
+            while stack.last().map_or(false, Vec::is_empty) {
                 stack.pop();
             }
-            if !stack.is_empty() {
-                stack.last_mut().and_then(|s| s.pop())
-            } else {
+            if stack.is_empty() {
                 None
+            } else {
+                stack.last_mut().and_then(Vec::pop)
             }
         } {
             rooms_in_path.push(current_room.clone());
@@ -81,7 +81,7 @@ impl Service {
                 .roomid_spacechunk_cache
                 .lock()
                 .await
-                .get_mut(&current_room.to_owned())
+                .get_mut(&current_room.clone())
                 .as_ref()
             {
                 if let Some(cached) = cached {
@@ -202,7 +202,7 @@ impl Service {
                     .send_federation_request(
                         server,
                         federation::space::get_hierarchy::v1::Request {
-                            room_id: current_room.to_owned(),
+                            room_id: current_room.clone(),
                             suggested_only,
                         },
                     )
@@ -453,8 +453,7 @@ impl Service {
         room_id: &RoomId,
     ) -> Result<bool> {
         let allowed = match join_rule {
-            SpaceRoomJoinRule::Public => true,
-            SpaceRoomJoinRule::Knock => true,
+            SpaceRoomJoinRule::Knock | SpaceRoomJoinRule::Public => true,
             SpaceRoomJoinRule::Invite => services()
                 .rooms
                 .state_cache

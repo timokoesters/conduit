@@ -140,7 +140,7 @@ pub async fn create_receipt_route(
             receipts.insert(ReceiptType::Read, user_receipts);
 
             let mut receipt_content = BTreeMap::new();
-            receipt_content.insert(body.event_id.to_owned(), receipts);
+            receipt_content.insert(body.event_id.clone(), receipts);
 
             services().rooms.edus.read_receipt.readreceipt_update(
                 sender_user,

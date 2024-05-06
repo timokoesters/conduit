@@ -14,14 +14,11 @@ pub async fn report_event_route(
 ) -> Result<report_content::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
-    let pdu = match services().rooms.timeline.get_pdu(&body.event_id)? {
-        Some(pdu) => pdu,
-        _ => {
-            return Err(Error::BadRequest(
-                ErrorKind::InvalidParam,
-                "Invalid Event ID",
-            ))
-        }
+    let Some(pdu) = services().rooms.timeline.get_pdu(&body.event_id)? else {
+        return Err(Error::BadRequest(
+            ErrorKind::InvalidParam,
+            "Invalid Event ID",
+        ));
     };
 
     if let Some(true) = body.score.map(|s| s > int!(0) || s < int!(-100)) {

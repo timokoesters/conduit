@@ -6,7 +6,7 @@ use ruma::{events::presence::PresenceEvent, OwnedUserId, RoomId, UserId};
 pub trait Data: Send + Sync {
     /// Adds a presence event which will be saved until a new event replaces it.
     ///
-    /// Note: This method takes a RoomId because presence updates are always bound to rooms to
+    /// Note: This method takes a `RoomId` because presence updates are always bound to rooms to
     /// make sure users outside these rooms can't see them.
     fn update_presence(
         &self,
@@ -21,7 +21,7 @@ pub trait Data: Send + Sync {
     /// Returns the timestamp of the last presence update of this user in millis since the unix epoch.
     fn last_presence_update(&self, user_id: &UserId) -> Result<Option<u64>>;
 
-    /// Returns the presence event with correct last_active_ago.
+    /// Returns the presence event with correct `last_active_ago`.
     fn get_presence_event(
         &self,
         room_id: &RoomId,

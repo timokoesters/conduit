@@ -12,7 +12,7 @@ impl service::transaction_ids::Data for KeyValueDatabase {
     ) -> Result<()> {
         let mut key = user_id.as_bytes().to_vec();
         key.push(0xff);
-        key.extend_from_slice(device_id.map(|d| d.as_bytes()).unwrap_or_default());
+        key.extend_from_slice(device_id.map(DeviceId::as_bytes).unwrap_or_default());
         key.push(0xff);
         key.extend_from_slice(txn_id.as_bytes());
 
@@ -29,7 +29,7 @@ impl service::transaction_ids::Data for KeyValueDatabase {
     ) -> Result<Option<Vec<u8>>> {
         let mut key = user_id.as_bytes().to_vec();
         key.push(0xff);
-        key.extend_from_slice(device_id.map(|d| d.as_bytes()).unwrap_or_default());
+        key.extend_from_slice(device_id.map(DeviceId::as_bytes).unwrap_or_default());
         key.push(0xff);
         key.extend_from_slice(txn_id.as_bytes());
 

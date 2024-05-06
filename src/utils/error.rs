@@ -71,7 +71,7 @@ pub enum Error {
     #[error("{0}")]
     BadConfig(&'static str),
     #[error("{0}")]
-    /// Don't create this directly. Use Error::bad_database instead.
+    /// Don't create this directly. Use `Error::bad_database` instead.
     BadDatabase(&'static str),
     #[error("uiaa")]
     Uiaa(UiaaInfo),
@@ -107,6 +107,9 @@ impl Error {
 
 impl Error {
     pub fn to_response(&self) -> RumaResponse<UiaaResponse> {
+        #[allow(clippy::enum_glob_use)]
+        use ErrorKind::*;
+
         if let Self::Uiaa(uiaainfo) = self {
             return RumaResponse(UiaaResponse::AuthResponse(uiaainfo.clone()));
         }
@@ -122,20 +125,19 @@ impl Error {
 
         let message = format!("{self}");
 
-        use ErrorKind::*;
         let (kind, status_code) = match self {
             Self::BadRequest(kind, _) => (
                 kind.clone(),
                 match kind {
-                    WrongRoomKeysVersion { .. }
+                    Unauthorized | UnknownToken { .. } | MissingToken => StatusCode::UNAUTHORIZED,
+                    NotFound | Unrecognized => StatusCode::NOT_FOUND,
+                    LimitExceeded { .. } => StatusCode::TOO_MANY_REQUESTS,
+                    UserDeactivated
+                    | WrongRoomKeysVersion { .. }
                     | Forbidden
                     | GuestAccessForbidden
                     | ThreepidAuthFailed
                     | ThreepidDenied => StatusCode::FORBIDDEN,
-                    Unauthorized | UnknownToken { .. } | MissingToken => StatusCode::UNAUTHORIZED,
-                    NotFound | Unrecognized => StatusCode::NOT_FOUND,
-                    LimitExceeded { .. } => StatusCode::TOO_MANY_REQUESTS,
-                    UserDeactivated => StatusCode::FORBIDDEN,
                     TooLarge => StatusCode::PAYLOAD_TOO_LARGE,
                     _ => StatusCode::BAD_REQUEST,
                 },

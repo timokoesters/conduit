@@ -65,7 +65,7 @@ use tracing::{debug, error, warn};
 /// (colon-plus-port if it was specified).
 ///
 /// Note: A `FedDest::Named` might contain an IP address in string form if there
-/// was no port specified to construct a SocketAddr with.
+/// was no port specified to construct a `SocketAddr` with.
 ///
 /// # Examples:
 /// ```rust
@@ -344,7 +344,7 @@ fn add_port_to_hostname(destination_str: &str) -> FedDest {
     FedDest::Named(host.to_owned(), port.to_owned())
 }
 
-/// Returns: actual_destination, host header
+/// Returns: `actual_destination`, host header
 /// Implemented according to the specification at <https://matrix.org/docs/spec/server_server/r0.1.4#resolving-server-names>
 /// Numbers in comments below refer to bullet points in linked section of specification
 async fn find_actual_destination(destination: &'_ ServerName) -> (FedDest, FedDest) {
@@ -363,100 +363,91 @@ async fn find_actual_destination(destination: &'_ ServerName) -> (FedDest, FedDe
                 FedDest::Named(host.to_owned(), port.to_owned())
             } else {
                 debug!("Requesting well known for {destination}");
-                match request_well_known(destination.as_str()).await {
-                    Some(delegated_hostname) => {
-                        debug!("3: A .well-known file is available");
-                        hostname = add_port_to_hostname(&delegated_hostname).into_uri_string();
-                        match get_ip_with_port(&delegated_hostname) {
-                            Some(host_and_port) => host_and_port, // 3.1: IP literal in .well-known file
-                            None => {
-                                if let Some(pos) = delegated_hostname.find(':') {
-                                    debug!("3.2: Hostname with port in .well-known file");
-                                    let (host, port) = delegated_hostname.split_at(pos);
-                                    FedDest::Named(host.to_owned(), port.to_owned())
-                                } else {
-                                    debug!("Delegated hostname has no port in this branch");
-                                    if let Some(hostname_override) =
-                                        query_srv_record(&delegated_hostname).await
+                if let Some(delegated_hostname) = request_well_known(destination.as_str()).await {
+                    debug!("3: A .well-known file is available");
+                    hostname = add_port_to_hostname(&delegated_hostname).into_uri_string();
+                    match get_ip_with_port(&delegated_hostname) {
+                        Some(host_and_port) => host_and_port, // 3.1: IP literal in .well-known file
+                        None => {
+                            if let Some(pos) = delegated_hostname.find(':') {
+                                debug!("3.2: Hostname with port in .well-known file");
+                                let (host, port) = delegated_hostname.split_at(pos);
+                                FedDest::Named(host.to_owned(), port.to_owned())
+                            } else {
+                                debug!("Delegated hostname has no port in this branch");
+                                if let Some(hostname_override) =
+                                    query_srv_record(&delegated_hostname).await
+                                {
+                                    debug!("3.3: SRV lookup successful");
+                                    let force_port = hostname_override.port();
+
+                                    if let Ok(override_ip) = services()
+                                        .globals
+                                        .dns_resolver()
+                                        .lookup_ip(hostname_override.hostname())
+                                        .await
                                     {
-                                        debug!("3.3: SRV lookup successful");
-                                        let force_port = hostname_override.port();
-
-                                        if let Ok(override_ip) = services()
+                                        services()
                                             .globals
-                                            .dns_resolver()
-                                            .lookup_ip(hostname_override.hostname())
-                                            .await
-                                        {
-                                            services()
-                                                .globals
-                                                .tls_name_override
-                                                .write()
-                                                .unwrap()
-                                                .insert(
-                                                    delegated_hostname.clone(),
-                                                    (
-                                                        override_ip.iter().collect(),
-                                                        force_port.unwrap_or(8448),
-                                                    ),
-                                                );
-                                        } else {
-                                            warn!("Using SRV record, but could not resolve to IP");
-                                        }
-
-                                        if let Some(port) = force_port {
-                                            FedDest::Named(delegated_hostname, format!(":{port}"))
-                                        } else {
-                                            add_port_to_hostname(&delegated_hostname)
-                                        }
+                                            .tls_name_override
+                                            .write()
+                                            .unwrap()
+                                            .insert(
+                                                delegated_hostname.clone(),
+                                                (
+                                                    override_ip.iter().collect(),
+                                                    force_port.unwrap_or(8448),
+                                                ),
+                                            );
                                     } else {
-                                        debug!("3.4: No SRV records, just use the hostname from .well-known");
+                                        warn!("Using SRV record, but could not resolve to IP");
+                                    }
+
+                                    if let Some(port) = force_port {
+                                        FedDest::Named(delegated_hostname, format!(":{port}"))
+                                    } else {
                                         add_port_to_hostname(&delegated_hostname)
                                     }
+                                } else {
+                                    debug!("3.4: No SRV records, just use the hostname from .well-known");
+                                    add_port_to_hostname(&delegated_hostname)
                                 }
                             }
                         }
                     }
-                    None => {
-                        debug!("4: No .well-known or an error occured");
-                        match query_srv_record(&destination_str).await {
-                            Some(hostname_override) => {
-                                debug!("4: SRV record found");
-                                let force_port = hostname_override.port();
+                } else {
+                    debug!("4: No .well-known or an error occured");
+                    if let Some(hostname_override) = query_srv_record(&destination_str).await {
+                        debug!("4: SRV record found");
+                        let force_port = hostname_override.port();
 
-                                if let Ok(override_ip) = services()
-                                    .globals
-                                    .dns_resolver()
-                                    .lookup_ip(hostname_override.hostname())
-                                    .await
-                                {
-                                    services()
-                                        .globals
-                                        .tls_name_override
-                                        .write()
-                                        .unwrap()
-                                        .insert(
-                                            hostname.clone(),
-                                            (
-                                                override_ip.iter().collect(),
-                                                force_port.unwrap_or(8448),
-                                            ),
-                                        );
-                                } else {
-                                    warn!("Using SRV record, but could not resolve to IP");
-                                }
-
-                                if let Some(port) = force_port {
-                                    FedDest::Named(hostname.clone(), format!(":{port}"))
-                                } else {
-                                    add_port_to_hostname(&hostname)
-                                }
-                            }
-                            None => {
-                                debug!("5: No SRV record found");
-                                add_port_to_hostname(&destination_str)
-                            }
+                        if let Ok(override_ip) = services()
+                            .globals
+                            .dns_resolver()
+                            .lookup_ip(hostname_override.hostname())
+                            .await
+                        {
+                            services()
+                                .globals
+                                .tls_name_override
+                                .write()
+                                .unwrap()
+                                .insert(
+                                    hostname.clone(),
+                                    (override_ip.iter().collect(), force_port.unwrap_or(8448)),
+                                );
+                        } else {
+                            warn!("Using SRV record, but could not resolve to IP");
                         }
+
+                        if let Some(port) = force_port {
+                            FedDest::Named(hostname.clone(), format!(":{port}"))
+                        } else {
+                            add_port_to_hostname(&hostname)
+                        }
+                    } else {
+                        debug!("5: No SRV record found");
+                        add_port_to_hostname(&destination_str)
                     }
                 }
             }
@@ -660,15 +651,12 @@ pub fn parse_incoming_pdu(
 
     let room_version_id = services().rooms.state.get_room_version(&room_id)?;
 
-    let (event_id, value) = match gen_event_id_canonical_json(pdu, &room_version_id) {
-        Ok(t) => t,
-        Err(_) => {
-            // Event could not be converted to canonical json
-            return Err(Error::BadRequest(
-                ErrorKind::InvalidParam,
-                "Could not convert event to canonical json.",
-            ));
-        }
+    let Ok((event_id, value)) = gen_event_id_canonical_json(pdu, &room_version_id) else {
+        // Event could not be converted to canonical json
+        return Err(Error::BadRequest(
+            ErrorKind::InvalidParam,
+            "Could not convert event to canonical json.",
+        ));
     };
     Ok((event_id, value, room_id))
 }
@@ -731,7 +719,7 @@ pub async fn send_transaction_message_route(
                 .roomid_mutex_federation
                 .write()
                 .await
-                .entry(room_id.to_owned())
+                .entry(room_id.clone())
                 .or_default(),
         );
         let mutex_lock = mutex.lock().await;
@@ -777,7 +765,6 @@ pub async fn send_transaction_message_route(
         .filter_map(|edu| serde_json::from_str::<Edu>(edu.json().get()).ok())
     {
         match edu {
-            Edu::Presence(_) => {}
             Edu::Receipt(receipt) => {
                 for (room_id, room_updates) in receipt.receipts {
                     for (user_id, user_updates) in room_updates.read {
@@ -881,7 +868,7 @@ pub async fn send_transaction_message_route(
                                             "Event is invalid",
                                         )
                                     })?,
-                                )?
+                                )?;
                             }
 
                             DeviceIdOrAllDevices::AllDevices => {
@@ -929,7 +916,7 @@ pub async fn send_transaction_message_route(
                     )?;
                 }
             }
-            Edu::_Custom(_) => {}
+            Edu::_Custom(_) | Edu::Presence(_) => {}
         }
     }
 
@@ -1278,15 +1265,14 @@ pub async fn get_room_state_route(
 
     Ok(get_room_state::v1::Response {
         auth_chain: auth_chain_ids
-            .filter_map(
-                |id| match services().rooms.timeline.get_pdu_json(&id).ok()? {
-                    Some(json) => Some(PduEvent::convert_to_outgoing_federation_event(json)),
-                    None => {
-                        error!("Could not find event json for {id} in db.");
-                        None
-                    }
-                },
-            )
+            .filter_map(|id| {
+                if let Some(json) = services().rooms.timeline.get_pdu_json(&id).ok()? {
+                    Some(PduEvent::convert_to_outgoing_federation_event(json))
+                } else {
+                    error!("Could not find event json for {id} in db.");
+                    None
+                }
+            })
             .collect(),
         pdus,
     })
@@ -1378,7 +1364,7 @@ pub async fn create_join_event_template_route(
             .roomid_mutex_state
             .write()
             .await
-            .entry(body.room_id.to_owned())
+            .entry(body.room_id.clone())
             .or_default(),
     );
     let state_lock = mutex_state.lock().await;
@@ -1518,15 +1504,12 @@ async fn create_join_event(
 
     // We do not add the event_id field to the pdu here because of signature and hashes checks
     let room_version_id = services().rooms.state.get_room_version(room_id)?;
-    let (event_id, value) = match gen_event_id_canonical_json(pdu, &room_version_id) {
-        Ok(t) => t,
-        Err(_) => {
-            // Event could not be converted to canonical json
-            return Err(Error::BadRequest(
-                ErrorKind::InvalidParam,
-                "Could not convert event to canonical json.",
-            ));
-        }
+    let Ok((event_id, value)) = gen_event_id_canonical_json(pdu, &room_version_id) else {
+        // Event could not be converted to canonical json
+        return Err(Error::BadRequest(
+            ErrorKind::InvalidParam,
+            "Could not convert event to canonical json.",
+        ));
     };
 
     let origin: OwnedServerName = serde_json::from_value(
@@ -1841,11 +1824,11 @@ pub async fn get_profile_information_route(
 
     match &body.field {
         Some(ProfileField::DisplayName) => {
-            displayname = services().users.displayname(&body.user_id)?
+            displayname = services().users.displayname(&body.user_id)?;
         }
         Some(ProfileField::AvatarUrl) => {
             avatar_url = services().users.avatar_url(&body.user_id)?;
-            blurhash = services().users.blurhash(&body.user_id)?
+            blurhash = services().users.blurhash(&body.user_id)?;
         }
         // TODO: what to do with custom
         Some(_) => {}
@@ -1857,9 +1840,9 @@ pub async fn get_profile_information_route(
     }
 
     Ok(get_profile_information::v1::Response {
-        blurhash,
         displayname,
         avatar_url,
+        blurhash,
     })
 }
 
@@ -1958,7 +1941,7 @@ mod tests {
         assert_eq!(
             add_port_to_hostname("example.com"),
             FedDest::Named(String::from("example.com"), String::from(":8448"))
-        )
+        );
     }
 
     #[test]
@@ -1966,6 +1949,6 @@ mod tests {
         assert_eq!(
             add_port_to_hostname("example.com:1337"),
             FedDest::Named(String::from("example.com"), String::from(":1337"))
-        )
+        );
     }
 }

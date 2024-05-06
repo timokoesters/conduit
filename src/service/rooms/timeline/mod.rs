@@ -204,6 +204,23 @@ impl Service {
         leaves: Vec<OwnedEventId>,
         state_lock: &MutexGuard<'_, ()>, // Take mutex guard to make sure users get the room state mutex
     ) -> Result<Vec<u8>> {
+        // Update Relationships
+        #[derive(Deserialize)]
+        struct ExtractRelatesTo {
+            #[serde(rename = "m.relates_to")]
+            relates_to: Relation,
+        }
+
+        #[derive(Clone, Debug, Deserialize)]
+        struct ExtractEventId {
+            event_id: OwnedEventId,
+        }
+        #[derive(Clone, Debug, Deserialize)]
+        struct ExtractRelatesToEventId {
+            #[serde(rename = "m.relates_to")]
+            relates_to: ExtractEventId,
+        }
+
         let shortroomid = services()
             .rooms
             .short
@@ -216,7 +233,7 @@ impl Service {
         if let Some(state_key) = &pdu.state_key {
             if let CanonicalJsonValue::Object(unsigned) = pdu_json
                 .entry("unsigned".to_owned())
-                .or_insert_with(|| CanonicalJsonValue::Object(Default::default()))
+                .or_insert_with(|| CanonicalJsonValue::Object(BTreeMap::default()))
             {
                 if let Some(shortstatehash) = services()
                     .rooms
@@ -340,8 +357,10 @@ impl Service {
                         .map_err(|_| Error::bad_database("Invalid push rules event in db."))
                 })
                 .transpose()?
-                .map(|ev: PushRulesEvent| ev.content.global)
-                .unwrap_or_else(|| Ruleset::server_default(user));
+                .map_or_else(
+                    || Ruleset::server_default(user),
+                    |ev: PushRulesEvent| ev.content.global,
+                );
 
             let mut highlight = false;
             let mut notify = false;
@@ -503,23 +522,6 @@ impl Service {
                 }
             }
             _ => {}
-        }
-
-        // Update Relationships
-        #[derive(Deserialize)]
-        struct ExtractRelatesTo {
-            #[serde(rename = "m.relates_to")]
-            relates_to: Relation,
-        }
-
-        #[derive(Clone, Debug, Deserialize)]
-        struct ExtractEventId {
-            event_id: OwnedEventId,
-        }
-        #[derive(Clone, Debug, Deserialize)]
-        struct ExtractRelatesToEventId {
-            #[serde(rename = "m.relates_to")]
-            relates_to: ExtractEventId,
         }
 
         if let Ok(content) = serde_json::from_str::<ExtractRelatesToEventId>(pdu.content.get()) {
@@ -786,7 +788,7 @@ impl Service {
             &mut pdu_json,
             &room_version_id,
         ) {
-            Ok(_) => {}
+            Ok(()) => {}
             Err(e) => {
                 return match e {
                     ruma::signatures::Error::PduSize => Err(Error::BadRequest(
@@ -857,7 +859,7 @@ impl Service {
                             .filter(|v| v.starts_with('@'))
                             .unwrap_or(sender.as_str());
                         let server_name = services().globals.server_name();
-                        let server_user = format!("@conduit:{}", server_name);
+                        let server_user = format!("@conduit:{server_name}");
                         let content = serde_json::from_str::<ExtractMembership>(pdu.content.get())
                             .map_err(|_| Error::bad_database("Invalid content in pdu."))?;
 
@@ -1199,7 +1201,7 @@ impl Service {
                 .roomid_mutex_federation
                 .write()
                 .await
-                .entry(room_id.to_owned())
+                .entry(room_id.clone())
                 .or_default(),
         );
         let mutex_lock = mutex.lock().await;

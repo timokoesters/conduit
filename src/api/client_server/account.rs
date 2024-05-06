@@ -69,11 +69,11 @@ pub async fn get_register_available_route(
 /// to check if the user id is valid and available.
 ///
 /// - Only works if registration is enabled
-/// - If type is guest: ignores all parameters except initial_device_display_name
+/// - If type is guest: ignores all parameters except `initial_device_display_name`
 /// - If sender is not appservice: Requires UIAA (but we only use a dummy stage)
 /// - If type is not guest and no username is given: Always fails after UIAA check
 /// - Creates a new account and populates it with default account data
-/// - If `inhibit_login` is false: Creates a device and returns device id and access_token
+/// - If `inhibit_login` is false: Creates a device and returns device id and `access_token`
 pub async fn register_route(body: Ruma<register::v3::Request>) -> Result<register::v3::Response> {
     if !services().globals.allow_registration() && body.appservice_info.is_none() {
         return Err(Error::BadRequest(
@@ -149,7 +149,7 @@ pub async fn register_route(body: Ruma<register::v3::Request>) -> Result<registe
                 stages: vec![AuthType::RegistrationToken],
             }],
             completed: Vec::new(),
-            params: Default::default(),
+            params: Box::default(),
             session: None,
             auth_error: None,
         };
@@ -161,7 +161,7 @@ pub async fn register_route(body: Ruma<register::v3::Request>) -> Result<registe
                 stages: vec![AuthType::Dummy],
             }],
             completed: Vec::new(),
-            params: Default::default(),
+            params: Box::default(),
             session: None,
             auth_error: None,
         };
@@ -307,7 +307,7 @@ pub async fn register_route(body: Ruma<register::v3::Request>) -> Result<registe
 /// - The password hash is calculated using argon2 with 32 character salt, the plain password is
 /// not saved
 ///
-/// If logout_devices is true it does the following for each device except the sender device:
+/// If `logout_devices` is true it does the following for each device except the sender device:
 /// - Invalidates access token
 /// - Deletes device metadata (device id, device display name, last seen ip, last seen ts)
 /// - Forgets to-device events
@@ -323,7 +323,7 @@ pub async fn change_password_route(
             stages: vec![AuthType::Password],
         }],
         completed: Vec::new(),
-        params: Default::default(),
+        params: Box::default(),
         session: None,
         auth_error: None,
     };
@@ -375,12 +375,12 @@ pub async fn change_password_route(
 
 /// # `GET _matrix/client/r0/account/whoami`
 ///
-/// Get user_id of the sender user.
+/// Get `user_id` of the sender user.
 ///
 /// Note: Also works for Application Services
 pub async fn whoami_route(body: Ruma<whoami::v3::Request>) -> Result<whoami::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
-    let device_id = body.sender_device.as_ref().cloned();
+    let device_id = body.sender_device.clone();
 
     Ok(whoami::v3::Response {
         user_id: sender_user.clone(),
@@ -410,7 +410,7 @@ pub async fn deactivate_route(
             stages: vec![AuthType::Password],
         }],
         completed: Vec::new(),
-        params: Default::default(),
+        params: Box::default(),
         session: None,
         auth_error: None,
     };

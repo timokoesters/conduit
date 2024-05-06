@@ -121,7 +121,7 @@ pub(crate) async fn get_alias_helper(
             .send_federation_request(
                 room_alias.server_name(),
                 federation::query::get_room_information::v1::Request {
-                    room_alias: room_alias.to_owned(),
+                    room_alias: room_alias.clone(),
                 },
             )
             .await?;
@@ -166,14 +166,11 @@ pub(crate) async fn get_alias_helper(
         }
     };
 
-    let room_id = match room_id {
-        Some(room_id) => room_id,
-        None => {
-            return Err(Error::BadRequest(
-                ErrorKind::NotFound,
-                "Room with alias not found.",
-            ))
-        }
+    let Some(room_id) = room_id else {
+        return Err(Error::BadRequest(
+            ErrorKind::NotFound,
+            "Room with alias not found.",
+        ));
     };
 
     Ok(get_alias::v3::Response::new(

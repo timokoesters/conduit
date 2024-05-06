@@ -86,7 +86,7 @@ pub async fn get_backup_info_route(
         etag: services()
             .key_backups
             .get_etag(sender_user, &body.version)?,
-        version: body.version.to_owned(),
+        version: body.version.clone(),
     })
 }
 
@@ -139,7 +139,7 @@ pub async fn add_backup_keys_route(
                 room_id,
                 session_id,
                 key_data,
-            )?
+            )?;
         }
     }
 
@@ -185,7 +185,7 @@ pub async fn add_backup_keys_for_room_route(
             &body.room_id,
             session_id,
             key_data,
-        )?
+        )?;
     }
 
     Ok(add_backup_keys_for_room::v3::Response {

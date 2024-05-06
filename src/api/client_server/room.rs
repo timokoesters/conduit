@@ -34,7 +34,7 @@ use tracing::{info, warn};
 /// Creates a new room.
 ///
 /// - Room ID is randomly generated
-/// - Create alias if room_alias_name is set
+/// - Create alias if `room_alias_name` is set
 /// - Send create event
 /// - Join sender user
 /// - Send power levels event
@@ -228,7 +228,7 @@ pub async fn create_room_route(
                 event_type: TimelineEventType::RoomCreate,
                 content: to_raw_value(&content).expect("event is valid, we just created it"),
                 unsigned: None,
-                state_key: Some("".to_owned()),
+                state_key: Some(String::new()),
                 redacts: None,
             },
             sender_user,
@@ -269,9 +269,10 @@ pub async fn create_room_route(
 
     // Figure out preset. We need it for preset specific events
     let preset = body.preset.clone().unwrap_or(match &body.visibility {
-        room::Visibility::Private => RoomPreset::PrivateChat,
         room::Visibility::Public => RoomPreset::PublicChat,
-        _ => RoomPreset::PrivateChat, // Room visibility should not be custom
+        // Room visibility is set to private, or custom
+        // Room visibility should not be custom
+        _ => RoomPreset::PrivateChat,
     });
 
     let mut users = BTreeMap::new();
@@ -309,7 +310,7 @@ pub async fn create_room_route(
                 content: to_raw_value(&power_levels_content)
                     .expect("to_raw_value always works on serde_json::Value"),
                 unsigned: None,
-                state_key: Some("".to_owned()),
+                state_key: Some(String::new()),
                 redacts: None,
             },
             sender_user,
@@ -332,7 +333,7 @@ pub async fn create_room_route(
                     })
                     .expect("We checked that alias earlier, it must be fine"),
                     unsigned: None,
-                    state_key: Some("".to_owned()),
+                    state_key: Some(String::new()),
                     redacts: None,
                 },
                 sender_user,
@@ -358,7 +359,7 @@ pub async fn create_room_route(
                 }))
                 .expect("event is valid, we just created it"),
                 unsigned: None,
-                state_key: Some("".to_owned()),
+                state_key: Some(String::new()),
                 redacts: None,
             },
             sender_user,
@@ -379,7 +380,7 @@ pub async fn create_room_route(
                 ))
                 .expect("event is valid, we just created it"),
                 unsigned: None,
-                state_key: Some("".to_owned()),
+                state_key: Some(String::new()),
                 redacts: None,
             },
             sender_user,
@@ -401,7 +402,7 @@ pub async fn create_room_route(
                 }))
                 .expect("event is valid, we just created it"),
                 unsigned: None,
-                state_key: Some("".to_owned()),
+                state_key: Some(String::new()),
                 redacts: None,
             },
             sender_user,
@@ -418,7 +419,7 @@ pub async fn create_room_route(
         })?;
 
         // Implicit state key defaults to ""
-        pdu_builder.state_key.get_or_insert_with(|| "".to_owned());
+        pdu_builder.state_key.get_or_insert_with(String::new);
 
         // Silently skip encryption events if they are not allowed
         if pdu_builder.event_type == TimelineEventType::RoomEncryption
@@ -445,7 +446,7 @@ pub async fn create_room_route(
                     content: to_raw_value(&RoomNameEventContent::new(name.clone()))
                         .expect("event is valid, we just created it"),
                     unsigned: None,
-                    state_key: Some("".to_owned()),
+                    state_key: Some(String::new()),
                     redacts: None,
                 },
                 sender_user,
@@ -467,7 +468,7 @@ pub async fn create_room_route(
                     })
                     .expect("event is valid, we just created it"),
                     unsigned: None,
-                    state_key: Some("".to_owned()),
+                    state_key: Some(String::new()),
                     redacts: None,
                 },
                 sender_user,
@@ -539,7 +540,7 @@ pub async fn get_room_event_route(
 ///
 /// Lists all aliases of the room.
 ///
-/// - Only users joined to the room are allowed to call this TODO: Allow any user to call it if history_visibility is world readable
+/// - Only users joined to the room are allowed to call this TODO: Allow any user to call it if `history_visibility` is world readable
 pub async fn get_room_aliases_route(
     body: Ruma<aliases::v3::Request>,
 ) -> Result<aliases::v3::Response> {
@@ -624,7 +625,7 @@ pub async fn upgrade_room_route(
                 })
                 .expect("event is valid, we just created it"),
                 unsigned: None,
-                state_key: Some("".to_owned()),
+                state_key: Some(String::new()),
                 redacts: None,
             },
             sender_user,
@@ -725,7 +726,7 @@ pub async fn upgrade_room_route(
                 content: to_raw_value(&create_event_content)
                     .expect("event is valid, we just created it"),
                 unsigned: None,
-                state_key: Some("".to_owned()),
+                state_key: Some(String::new()),
                 redacts: None,
             },
             sender_user,
@@ -795,7 +796,7 @@ pub async fn upgrade_room_route(
                     event_type: event_type.to_string().into(),
                     content: event_content,
                     unsigned: None,
-                    state_key: Some("".to_owned()),
+                    state_key: Some(String::new()),
                     redacts: None,
                 },
                 sender_user,
@@ -845,7 +846,7 @@ pub async fn upgrade_room_route(
                 content: to_raw_value(&power_levels_event_content)
                     .expect("event is valid, we just created it"),
                 unsigned: None,
-                state_key: Some("".to_owned()),
+                state_key: Some(String::new()),
                 redacts: None,
             },
             sender_user,

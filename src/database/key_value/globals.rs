@@ -136,7 +136,7 @@ impl service::globals::Data for KeyValueDatabase {
     }
 
     fn cleanup(&self) -> Result<()> {
-        self._db.cleanup()
+        self.db.cleanup()
     }
 
     fn memory_usage(&self) -> String {
@@ -160,7 +160,7 @@ our_real_users_cache: {our_real_users_cache}
 appservice_in_room_cache: {appservice_in_room_cache}
 lasttimelinecount_cache: {lasttimelinecount_cache}\n"
         );
-        if let Ok(db_stats) = self._db.memory_usage() {
+        if let Ok(db_stats) = self.db.memory_usage() {
             response += &db_stats;
         }
 
@@ -209,7 +209,7 @@ lasttimelinecount_cache: {lasttimelinecount_cache}\n"
                 self.global.insert(b"keypair", &keypair)?;
                 Ok::<_, Error>(keypair)
             },
-            |s| Ok(s.to_vec()),
+            |s| Ok(s.clone()),
         )?;
 
         let mut parts = keypair_bytes.splitn(2, |&b| b == 0xff);
@@ -285,7 +285,7 @@ lasttimelinecount_cache: {lasttimelinecount_cache}\n"
             .server_signingkeys
             .get(origin.as_bytes())?
             .and_then(|bytes| serde_json::from_slice(&bytes).ok())
-            .map(|keys: ServerSigningKeys| {
+            .map_or_else(BTreeMap::new, |keys: ServerSigningKeys| {
                 let mut tree = keys.verify_keys;
                 tree.extend(
                     keys.old_verify_keys
@@ -293,8 +293,7 @@ lasttimelinecount_cache: {lasttimelinecount_cache}\n"
                         .map(|old| (old.0, VerifyKey::new(old.1.key))),
                 );
                 tree
-            })
-            .unwrap_or_else(BTreeMap::new);
+            });
 
         Ok(signingkeys)
     }

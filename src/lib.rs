@@ -1,7 +1,15 @@
+// All API endpoints must be async
+#[allow(clippy::unused_async)]
+// We expect request users and servers (probably shouldn't tho)
+#[allow(clippy::missing_panics_doc)]
 pub mod api;
 pub mod clap;
 mod config;
+// Results in large capacity if set to a negative number, user's fault really :P
+#[allow(clippy::cast_sign_loss)]
 mod database;
+// `self` is required for easy access to methods
+#[allow(clippy::unused_self)]
 mod service;
 mod utils;
 

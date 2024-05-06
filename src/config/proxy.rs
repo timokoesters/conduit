@@ -67,7 +67,7 @@ impl PartialProxyConfig {
         let mut excluded_because = None; // most specific reason it was excluded
         if self.include.is_empty() {
             // treat empty include list as `*`
-            included_because = Some(&WildCardedDomain::WildCard)
+            included_because = Some(&WildCardedDomain::WildCard);
         }
         for wc_domain in &self.include {
             if wc_domain.matches(domain) {
@@ -127,7 +127,7 @@ impl std::str::FromStr for WildCardedDomain {
         Ok(if s.starts_with("*.") {
             WildCardedDomain::WildCarded(s[1..].to_owned())
         } else if s == "*" {
-            WildCardedDomain::WildCarded("".to_owned())
+            WildCardedDomain::WildCarded(String::new())
         } else {
             WildCardedDomain::Exact(s.to_owned())
         })

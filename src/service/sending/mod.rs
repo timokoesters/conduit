@@ -160,7 +160,9 @@ impl Service {
                             // Find events that have been added since starting the last request
                             let new_events = self.db.queued_requests(&outgoing_kind).filter_map(|r| r.ok()).take(30).collect::<Vec<_>>();
 
-                            if !new_events.is_empty() {
+                            if new_events.is_empty() {
+                                current_transaction_status.remove(&outgoing_kind);
+                            } else {
                                 // Insert pdus we found
                                 self.db.mark_as_active(&new_events)?;
 
@@ -170,8 +172,6 @@ impl Service {
                                         new_events.into_iter().map(|(event, _)| event).collect(),
                                     )
                                 );
-                            } else {
-                                current_transaction_status.remove(&outgoing_kind);
                             }
                         }
                         Err((outgoing_kind, _)) => {
@@ -305,41 +305,38 @@ impl Service {
                 let event: AnySyncEphemeralRoomEvent =
                     serde_json::from_str(read_receipt.json().get())
                         .map_err(|_| Error::bad_database("Invalid edu event in read_receipts."))?;
-                let federation_event = match event {
-                    AnySyncEphemeralRoomEvent::Receipt(r) => {
-                        let mut read = BTreeMap::new();
+                let federation_event = if let AnySyncEphemeralRoomEvent::Receipt(r) = event {
+                    let mut read = BTreeMap::new();
 
-                        let (event_id, mut receipt) = r
-                            .content
-                            .0
-                            .into_iter()
-                            .next()
-                            .expect("we only use one event per read receipt");
-                        let receipt = receipt
-                            .remove(&ReceiptType::Read)
-                            .expect("our read receipts always set this")
-                            .remove(&user_id)
-                            .expect("our read receipts always have the user here");
+                    let (event_id, mut receipt) = r
+                        .content
+                        .0
+                        .into_iter()
+                        .next()
+                        .expect("we only use one event per read receipt");
+                    let receipt = receipt
+                        .remove(&ReceiptType::Read)
+                        .expect("our read receipts always set this")
+                        .remove(&user_id)
+                        .expect("our read receipts always have the user here");
 
-                        read.insert(
-                            user_id,
-                            ReceiptData {
-                                data: receipt.clone(),
-                                event_ids: vec![event_id.clone()],
-                            },
-                        );
+                    read.insert(
+                        user_id,
+                        ReceiptData {
+                            data: receipt.clone(),
+                            event_ids: vec![event_id.clone()],
+                        },
+                    );
 
-                        let receipt_map = ReceiptMap { read };
+                    let receipt_map = ReceiptMap { read };
 
-                        let mut receipts = BTreeMap::new();
-                        receipts.insert(room_id.clone(), receipt_map);
+                    let mut receipts = BTreeMap::new();
+                    receipts.insert(room_id.clone(), receipt_map);
 
-                        Edu::Receipt(ReceiptContent { receipts })
-                    }
-                    _ => {
-                        Error::bad_database("Invalid event type in read_receipts");
-                        continue;
-                    }
+                    Edu::Receipt(ReceiptContent { receipts })
+                } else {
+                    Error::bad_database("Invalid event type in read_receipts");
+                    continue;
                 };
 
                 events.push(serde_json::to_vec(&federation_event).expect("json can be serialized"));
@@ -404,7 +401,7 @@ impl Service {
         )?;
         for ((outgoing_kind, event), key) in requests.into_iter().zip(keys) {
             self.sender
-                .send((outgoing_kind.to_owned(), event, key))
+                .send((outgoing_kind.clone(), event, key))
                 .unwrap();
         }
 
@@ -474,7 +471,7 @@ impl Service {
                                         ),
                                     )
                                 })?
-                                .to_room_event())
+                                .to_room_event());
                         }
                         SendingEventType::Edu(_) => {
                             // Appservices don't need EDUs (?)
@@ -559,13 +556,12 @@ impl Service {
                         }
                     }
 
-                    let pusher = match services()
+                    let Some(pusher) = services()
                         .pusher
                         .get_pusher(userid, pushkey)
                         .map_err(|e| (OutgoingKind::Push(userid.clone(), pushkey.clone()), e))?
-                    {
-                        Some(pusher) => pusher,
-                        None => continue,
+                    else {
+                        continue;
                     };
 
                     let rules_for_user = services()
@@ -577,8 +573,10 @@ impl Service {
                         )
                         .unwrap_or_default()
                         .and_then(|event| serde_json::from_str::<PushRulesEvent>(event.get()).ok())
-                        .map(|ev: PushRulesEvent| ev.content.global)
-                        .unwrap_or_else(|| push::Ruleset::server_default(userid));
+                        .map_or_else(
+                            || push::Ruleset::server_default(userid),
+                            |ev: PushRulesEvent| ev.content.global,
+                        );
 
                     let unread: UInt = services()
                         .rooms

@@ -39,6 +39,8 @@ pub struct Services {
 }
 
 impl Services {
+    // Results in large capacity if set to a negative number, user's fault really :P
+    #[allow(clippy::cast_sign_loss)]
     pub fn build<
         D: appservice::Data
             + pusher::Data

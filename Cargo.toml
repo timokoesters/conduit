@@ -3,15 +3,46 @@ explicit_outlives_requirements = "warn"
 unused_qualifications = "warn"
 
 [workspace.lints.clippy]
+# Restrictions
 cloned_instead_of_copied = "warn"
+create_dir = "warn"
 dbg_macro = "warn"
+get_unwrap = "warn"
+rc_mutex = "warn"
 str_to_string = "warn"
+string_lit_chars_any = "warn"
+
+# Groups
+complexity = "warn"
+perf = "warn"
+style = "warn"
+suspicious = "warn"
+
+# To allow us to override certain lints
+cargo = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+
+# lints we want to allow
+cast_possible_truncation = "allow"           # Not really a good way to handle this issue
+missing_errors_doc = "allow"                 # Becomes highly redundant for functions accessing the database
+missing_panics_doc = "allow"                 # We *should* only ever use unwraps/expects where infallable
+module_name_repetitions = "allow"            # Many things are ex-expored, and in many cases removing repetitions just makes things more confusing
+multiple_crate_versions = "allow"            # Would require quite a lot of effort for minimal gain
+must_use_candidate = "allow"                 # Basically useless, even the docs say it's "Not bad at all"
+redundant_closure_for_method_calls = "allow" # `.ok()` is nicer than `std::result::Result::ok` (which needs to be done where we use our own `Result`)
+struct_excessive_bools = "allow"             # Very easy to spot, and the behaviour it encourages to use is much worse than not using this at all
+too_many_lines = "allow"                     # Some functions are complicated, and won't really be re-used in other places
+
+# fixed in !670
+doc_markdown = "allow"
 
 [package]
 authors = ["timokoesters <timo@koesters.xyz>"]
+categories = ["web-programming::http-server"]
 description = "A Matrix homeserver written in Rust"
 edition = "2021"
 homepage = "https://conduit.rs"
+keywords = ["homeserver", "matrix", "selfhost"]
 license = "Apache-2.0"
 name = "conduit"
 readme = "README.md"

@@ -11,7 +11,7 @@ use tracing::error;
 /// Allows loading room history around an event.
 ///
 /// - Only works if the user is joined (TODO: always allow, but only show events if the user was
-/// joined, depending on history_visibility)
+/// joined, depending on `history_visibility`)
 pub async fn get_context_route(
     body: Ruma<get_context::v3::Request>,
 ) -> Result<get_context::v3::Response> {
@@ -22,7 +22,7 @@ pub async fn get_context_route(
         LazyLoadOptions::Enabled {
             include_redundant_members,
         } => (true, *include_redundant_members),
-        _ => (false, false),
+        LazyLoadOptions::Disabled => (false, false),
     };
 
     let mut lazy_loaded = HashSet::new();
@@ -103,8 +103,7 @@ pub async fn get_context_route(
 
     let start_token = events_before
         .last()
-        .map(|(count, _)| count.stringify())
-        .unwrap_or_else(|| base_token.stringify());
+        .map_or_else(|| base_token.stringify(), |(count, _)| count.stringify());
 
     let events_before: Vec<_> = events_before
         .into_iter()
@@ -159,8 +158,7 @@ pub async fn get_context_route(
 
     let end_token = events_after
         .last()
-        .map(|(count, _)| count.stringify())
-        .unwrap_or_else(|| base_token.stringify());
+        .map_or_else(|| base_token.stringify(), |(count, _)| count.stringify());
 
     let events_after: Vec<_> = events_after
         .into_iter()
@@ -176,21 +174,15 @@ pub async fn get_context_route(
             .get_statekey_from_short(shortstatekey)?;
 
         if event_type != StateEventType::RoomMember {
-            let pdu = match services().rooms.timeline.get_pdu(&id)? {
-                Some(pdu) => pdu,
-                None => {
-                    error!("Pdu in state not found: {}", id);
-                    continue;
-                }
+            let Some(pdu) = services().rooms.timeline.get_pdu(&id)? else {
+                error!("Pdu in state not found: {}", id);
+                continue;
             };
             state.push(pdu.to_state_event());
         } else if !lazy_load_enabled || lazy_loaded.contains(&state_key) {
-            let pdu = match services().rooms.timeline.get_pdu(&id)? {
-                Some(pdu) => pdu,
-                None => {
-                    error!("Pdu in state not found: {}", id);
-                    continue;
-                }
+            let Some(pdu) = services().rooms.timeline.get_pdu(&id)? else {
+                error!("Pdu in state not found: {}", id);
+                continue;
             };
             state.push(pdu.to_state_event());
         }

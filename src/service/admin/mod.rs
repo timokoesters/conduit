@@ -110,7 +110,7 @@ enum AdminCommand {
         force: bool,
     },
 
-    /// Get the auth_chain of a PDU
+    /// Get the `auth_chain` of a PDU
     GetAuthChain {
         /// An event ID (the $ character followed by the base64 reference hash)
         event_id: Box<EventId>,
@@ -229,7 +229,7 @@ impl Service {
                                 .roomid_mutex_state
                                 .write()
                                 .await
-                                .entry(conduit_room.to_owned())
+                                .entry(conduit_room.clone())
                                 .or_default(),
                         );
 
@@ -711,11 +711,11 @@ impl Service {
                         match <&UserId>::try_from(user) {
                             Ok(user_id) => {
                                 if user_id.server_name() != services().globals.server_name() {
-                                    remote_ids.push(user_id)
+                                    remote_ids.push(user_id);
                                 } else if !services().users.exists(user_id)? {
-                                    non_existant_ids.push(user_id)
+                                    non_existant_ids.push(user_id);
                                 } else {
-                                    user_ids.push(user_id)
+                                    user_ids.push(user_id);
                                 }
                             }
                             Err(_) => {
@@ -770,20 +770,21 @@ impl Service {
 
                     if !force {
                         user_ids.retain(|&user_id| match services().users.is_admin(user_id) {
-                            Ok(is_admin) => match is_admin {
-                                true => {
+                            Ok(is_admin) => {
+                                if is_admin {
                                     admins.push(user_id.localpart());
                                     false
+                                } else {
+                                    true
                                 }
-                                false => true,
-                            },
+                            }
                             Err(_) => false,
-                        })
+                        });
                     }
 
                     for &user_id in &user_ids {
                         if services().users.deactivate_account(user_id).is_ok() {
-                            deactivation_count += 1
+                            deactivation_count += 1;
                         }
                     }
 
@@ -846,7 +847,7 @@ impl Service {
 
                             let pub_key_map = pub_key_map.read().await;
                             match ruma::signatures::verify_json(&pub_key_map, &value) {
-                                Ok(_) => RoomMessageEventContent::text_plain("Signature correct"),
+                                Ok(()) => RoomMessageEventContent::text_plain("Signature correct"),
                                 Err(e) => RoomMessageEventContent::text_plain(format!(
                                     "Signature verification failed: {e}"
                                 )),
@@ -909,8 +910,7 @@ impl Service {
 
             while text_lines
                 .get(line_index)
-                .map(|line| line.starts_with('#'))
-                .unwrap_or(false)
+                .is_some_and(|line| line.starts_with('#'))
             {
                 command_body += if text_lines[line_index].starts_with("# ") {
                     &text_lines[line_index][2..]
@@ -1001,7 +1001,7 @@ impl Service {
                     event_type: TimelineEventType::RoomCreate,
                     content: to_raw_value(&content).expect("event is valid, we just created it"),
                     unsigned: None,
-                    state_key: Some("".to_owned()),
+                    state_key: Some(String::new()),
                     redacts: None,
                 },
                 &conduit_user,
@@ -1054,7 +1054,7 @@ impl Service {
                     })
                     .expect("event is valid, we just created it"),
                     unsigned: None,
-                    state_key: Some("".to_owned()),
+                    state_key: Some(String::new()),
                     redacts: None,
                 },
                 &conduit_user,
@@ -1073,7 +1073,7 @@ impl Service {
                     content: to_raw_value(&RoomJoinRulesEventContent::new(JoinRule::Invite))
                         .expect("event is valid, we just created it"),
                     unsigned: None,
-                    state_key: Some("".to_owned()),
+                    state_key: Some(String::new()),
                     redacts: None,
                 },
                 &conduit_user,
@@ -1094,7 +1094,7 @@ impl Service {
                     ))
                     .expect("event is valid, we just created it"),
                     unsigned: None,
-                    state_key: Some("".to_owned()),
+                    state_key: Some(String::new()),
                     redacts: None,
                 },
                 &conduit_user,
@@ -1115,7 +1115,7 @@ impl Service {
                     ))
                     .expect("event is valid, we just created it"),
                     unsigned: None,
-                    state_key: Some("".to_owned()),
+                    state_key: Some(String::new()),
                     redacts: None,
                 },
                 &conduit_user,
@@ -1135,7 +1135,7 @@ impl Service {
                     content: to_raw_value(&RoomNameEventContent::new(room_name))
                         .expect("event is valid, we just created it"),
                     unsigned: None,
-                    state_key: Some("".to_owned()),
+                    state_key: Some(String::new()),
                     redacts: None,
                 },
                 &conduit_user,
@@ -1155,7 +1155,7 @@ impl Service {
                     })
                     .expect("event is valid, we just created it"),
                     unsigned: None,
-                    state_key: Some("".to_owned()),
+                    state_key: Some(String::new()),
                     redacts: None,
                 },
                 &conduit_user,
@@ -1181,7 +1181,7 @@ impl Service {
                     })
                     .expect("event is valid, we just created it"),
                     unsigned: None,
-                    state_key: Some("".to_owned()),
+                    state_key: Some(String::new()),
                     redacts: None,
                 },
                 &conduit_user,
@@ -1291,7 +1291,7 @@ impl Service {
 
             // Set power level
             let mut users = BTreeMap::new();
-            users.insert(conduit_user.to_owned(), 100.into());
+            users.insert(conduit_user.clone(), 100.into());
             users.insert(user_id.to_owned(), 100.into());
 
             services()
@@ -1306,7 +1306,7 @@ impl Service {
                         })
                         .expect("event is valid, we just created it"),
                         unsigned: None,
-                        state_key: Some("".to_owned()),
+                        state_key: Some(String::new()),
                         redacts: None,
                     },
                     &conduit_user,

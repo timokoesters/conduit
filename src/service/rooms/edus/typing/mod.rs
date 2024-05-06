@@ -11,7 +11,7 @@ pub struct Service {
 }
 
 impl Service {
-    /// Sets a user as typing until the timeout timestamp is reached or roomtyping_remove is
+    /// Sets a user as typing until the timeout timestamp is reached or `roomtyping_remove` is
     /// called.
     pub async fn typing_add(&self, user_id: &UserId, room_id: &RoomId, timeout: u64) -> Result<()> {
         self.typing

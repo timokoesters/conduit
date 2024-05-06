@@ -3,7 +3,13 @@ use crate::{services, utils, Error, Result, Ruma};
 use ruma::{
     api::client::{
         error::ErrorKind,
-        session::{get_login_types, login, logout, logout_all},
+        session::{
+            get_login_types::{
+                self,
+                v3::{ApplicationServiceLoginType, PasswordLoginType},
+            },
+            login, logout, logout_all,
+        },
         uiaa::UserIdentifier,
     },
     UserId,
@@ -25,8 +31,8 @@ pub async fn get_login_types_route(
     _body: Ruma<get_login_types::v3::Request>,
 ) -> Result<get_login_types::v3::Response> {
     Ok(get_login_types::v3::Response::new(vec![
-        get_login_types::v3::LoginType::Password(Default::default()),
-        get_login_types::v3::LoginType::ApplicationService(Default::default()),
+        get_login_types::v3::LoginType::Password(PasswordLoginType::default()),
+        get_login_types::v3::LoginType::ApplicationService(ApplicationServiceLoginType::default()),
     ]))
 }
 

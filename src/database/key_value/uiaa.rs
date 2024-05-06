@@ -34,7 +34,7 @@ impl service::uiaa::Data for KeyValueDatabase {
             .read()
             .unwrap()
             .get(&(user_id.to_owned(), device_id.to_owned(), session.to_owned()))
-            .map(|j| j.to_owned())
+            .map(ToOwned::to_owned)
     }
 
     fn update_uiaa_session(

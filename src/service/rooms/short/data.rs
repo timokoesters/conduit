@@ -22,7 +22,7 @@ pub trait Data: Send + Sync {
 
     fn get_statekey_from_short(&self, shortstatekey: u64) -> Result<(StateEventType, String)>;
 
-    /// Returns (shortstatehash, already_existed)
+    /// Returns (shortstatehash, `already_existed`)
     fn get_or_create_shortstatehash(&self, state_hash: &[u8]) -> Result<(u64, bool)>;
 
     fn get_shortroomid(&self, room_id: &RoomId) -> Result<Option<u64>>;

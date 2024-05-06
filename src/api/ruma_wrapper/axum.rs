@@ -226,7 +226,7 @@ where
                     let keys_result = services()
                         .rooms
                         .event_handler
-                        .fetch_signing_keys(&x_matrix.origin, vec![x_matrix.key.to_owned()])
+                        .fetch_signing_keys(&x_matrix.origin, vec![x_matrix.key.clone()])
                         .await;
 
                     let keys = match keys_result {
@@ -334,8 +334,8 @@ where
             sender_user,
             sender_device,
             sender_servername,
-            appservice_info,
             json_body,
+            appservice_info,
         })
     }
 }

@@ -141,7 +141,7 @@ impl service::users::Data for KeyValueDatabase {
         Ok(())
     }
 
-    /// Get the avatar_url of a user.
+    /// Get the `avatar_url` of a user.
     fn avatar_url(&self, user_id: &UserId) -> Result<Option<OwnedMxcUri>> {
         self.userid_avatarurl
             .get(user_id.as_bytes())?
@@ -153,7 +153,7 @@ impl service::users::Data for KeyValueDatabase {
             .transpose()
     }
 
-    /// Sets a new avatar_url or removes it if avatar_url is None.
+    /// Sets a new `avatar_url` or removes it if `avatar_url` is None.
     fn set_avatar_url(&self, user_id: &UserId, avatar_url: Option<OwnedMxcUri>) -> Result<()> {
         if let Some(avatar_url) = avatar_url {
             self.userid_avatarurl
@@ -178,7 +178,7 @@ impl service::users::Data for KeyValueDatabase {
             .transpose()
     }
 
-    /// Sets a new avatar_url or removes it if avatar_url is None.
+    /// Sets a new `avatar_url` or removes it if `avatar_url` is None.
     fn set_blurhash(&self, user_id: &UserId, blurhash: Option<String>) -> Result<()> {
         if let Some(blurhash) = blurhash {
             self.userid_blurhash
@@ -343,12 +343,11 @@ impl service::users::Data for KeyValueDatabase {
     fn last_one_time_keys_update(&self, user_id: &UserId) -> Result<u64> {
         self.userid_lastonetimekeyupdate
             .get(user_id.as_bytes())?
-            .map(|bytes| {
+            .map_or(Ok(0), |bytes| {
                 utils::u64_from_bytes(&bytes).map_err(|_| {
                     Error::bad_database("Count in roomid_lastroomactiveupdate is invalid.")
                 })
             })
-            .unwrap_or(Ok(0))
     }
 
     fn take_one_time_key(
@@ -949,7 +948,7 @@ impl KeyValueDatabase {}
 
 /// Will only return with Some(username) if the password was not empty and the
 /// username could be successfully parsed.
-/// If utils::string_from_bytes(...) returns an error that username will be skipped
+/// If `utils::string_from_bytes`(...) returns an error that username will be skipped
 /// and the error will be logged.
 fn get_username_with_valid_password(username: &[u8], password: &[u8]) -> Option<String> {
     // A valid password is not empty

@@ -67,9 +67,9 @@ impl service::sending::Data for KeyValueDatabase {
         for (outgoing_kind, event) in requests {
             let mut key = outgoing_kind.get_prefix();
             if let SendingEventType::Pdu(value) = &event {
-                key.extend_from_slice(value)
+                key.extend_from_slice(value);
             } else {
-                key.extend_from_slice(&services().globals.next_count()?.to_be_bytes())
+                key.extend_from_slice(&services().globals.next_count()?.to_be_bytes());
             }
             let value = if let SendingEventType::Edu(value) = &event {
                 &**value

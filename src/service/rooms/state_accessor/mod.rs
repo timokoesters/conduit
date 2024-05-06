@@ -85,16 +85,15 @@ impl Service {
     /// The user was a joined member at this state (potentially in the past)
     fn user_was_joined(&self, shortstatehash: u64, user_id: &UserId) -> bool {
         self.user_membership(shortstatehash, user_id)
-            .map(|s| s == MembershipState::Join)
-            .unwrap_or_default() // Return sensible default, i.e. false
+            .is_ok_and(|s| s == MembershipState::Join) // Return sensible default, i.e. false
     }
 
     /// The user was an invited or joined room member at this state (potentially
     /// in the past)
     fn user_was_invited(&self, shortstatehash: u64, user_id: &UserId) -> bool {
         self.user_membership(shortstatehash, user_id)
-            .map(|s| s == MembershipState::Join || s == MembershipState::Invite)
-            .unwrap_or_default() // Return sensible default, i.e. false
+            .is_ok_and(|s| s == MembershipState::Join || s == MembershipState::Invite)
+        // Return sensible default, i.e. false
     }
 
     /// Whether a server is allowed to see an event through federation, based on
@@ -106,9 +105,8 @@ impl Service {
         room_id: &RoomId,
         event_id: &EventId,
     ) -> Result<bool> {
-        let shortstatehash = match self.pdu_shortstatehash(event_id)? {
-            Some(shortstatehash) => shortstatehash,
-            None => return Ok(true),
+        let Some(shortstatehash) = self.pdu_shortstatehash(event_id)? else {
+            return Ok(true);
         };
 
         if let Some(visibility) = self
@@ -170,9 +168,8 @@ impl Service {
         room_id: &RoomId,
         event_id: &EventId,
     ) -> Result<bool> {
-        let shortstatehash = match self.pdu_shortstatehash(event_id)? {
-            Some(shortstatehash) => shortstatehash,
-            None => return Ok(true),
+        let Some(shortstatehash) = self.pdu_shortstatehash(event_id)? else {
+            return Ok(true);
         };
 
         if let Some(visibility) = self
@@ -305,13 +302,13 @@ impl Service {
             })
     }
 
-    pub async fn user_can_invite(
+    pub fn user_can_invite(
         &self,
         room_id: &RoomId,
         sender: &UserId,
         target_user: &UserId,
         state_lock: &MutexGuard<'_, ()>,
-    ) -> Result<bool> {
+    ) -> bool {
         let content = to_raw_value(&RoomMemberEventContent::new(MembershipState::Invite))
             .expect("Event content always serializes");
 
@@ -323,11 +320,11 @@ impl Service {
             redacts: None,
         };
 
-        Ok(services()
+        services()
             .rooms
             .timeline
             .create_hash_and_sign_event(new_event, sender, room_id, state_lock)
-            .is_ok())
+            .is_ok()
     }
 
     pub fn get_member(
@@ -358,41 +355,46 @@ impl Service {
         federation: bool,
     ) -> Result<bool> {
         self.room_state_get(room_id, &StateEventType::RoomPowerLevels, "")?
-            .map(|e| {
-                serde_json::from_str(e.content.get())
-                    .map(|c: RoomPowerLevelsEventContent| c.into())
-                    .map(|e: RoomPowerLevels| {
-                        e.user_can_redact_event_of_other(sender)
-                            || e.user_can_redact_own_event(sender)
-                                && if let Ok(Some(pdu)) = services().rooms.timeline.get_pdu(redacts)
-                                {
-                                    if federation {
-                                        pdu.sender().server_name() == sender.server_name()
+            .map_or_else(
+                // Falling back on m.room.create to judge power levels
+                || {
+                    if let Some(pdu) =
+                        self.room_state_get(room_id, &StateEventType::RoomCreate, "")?
+                    {
+                        Ok(pdu.sender == sender
+                            || if let Ok(Some(pdu)) = services().rooms.timeline.get_pdu(redacts) {
+                                pdu.sender == sender
+                            } else {
+                                false
+                            })
+                    } else {
+                        Err(Error::bad_database(
+                            "No m.room.power_levels or m.room.create events in database for room",
+                        ))
+                    }
+                },
+                |e| {
+                    serde_json::from_str(e.content.get())
+                        .map(|c: RoomPowerLevelsEventContent| c.into())
+                        .map(|e: RoomPowerLevels| {
+                            e.user_can_redact_event_of_other(sender)
+                                || e.user_can_redact_own_event(sender)
+                                    && if let Ok(Some(pdu)) =
+                                        services().rooms.timeline.get_pdu(redacts)
+                                    {
+                                        if federation {
+                                            pdu.sender().server_name() == sender.server_name()
+                                        } else {
+                                            pdu.sender == sender
+                                        }
                                     } else {
-                                        pdu.sender == sender
+                                        false
                                     }
-                                } else {
-                                    false
-                                }
-                    })
-                    .map_err(|_| {
-                        Error::bad_database("Invalid m.room.power_levels event in database")
-                    })
-            })
-            // Falling back on m.room.create to judge power levels
-            .unwrap_or_else(|| {
-                if let Some(pdu) = self.room_state_get(room_id, &StateEventType::RoomCreate, "")? {
-                    Ok(pdu.sender == sender
-                        || if let Ok(Some(pdu)) = services().rooms.timeline.get_pdu(redacts) {
-                            pdu.sender == sender
-                        } else {
-                            false
                         })
-                } else {
-                    Err(Error::bad_database(
-                        "No m.room.power_levels or m.room.create events in database for room",
-                    ))
-                }
-            })
+                        .map_err(|_| {
+                            Error::bad_database("Invalid m.room.power_levels event in database")
+                        })
+                },
+            )
     }
 }
