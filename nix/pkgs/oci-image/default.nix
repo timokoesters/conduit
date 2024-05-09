@@ -1,10 +1,10 @@
 # Keep sorted
-{ default
-, dockerTools
-, lib
-, tini
+{
+  default,
+  dockerTools,
+  lib,
+  tini,
 }:
-
 dockerTools.buildImage {
   name = default.pname;
   tag = "next";

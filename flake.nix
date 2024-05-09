@@ -19,10 +19,10 @@
     attic.url = "github:zhaofengli/attic?ref=main";
   };
 
-  outputs = inputs:
-    let
-      # Keep sorted
-      mkScope = pkgs: pkgs.lib.makeScope pkgs.newScope (self: {
+  outputs = inputs: let
+    # Keep sorted
+    mkScope = pkgs:
+      pkgs.lib.makeScope pkgs.newScope (self: {
         craneLib =
           (inputs.crane.mkLib pkgs).overrideToolchain self.toolchain;
 
@@ -34,24 +34,24 @@
 
         book = self.callPackage ./nix/pkgs/book {};
 
-        rocksdb =
-        let
+        rocksdb = let
           version = "9.1.1";
         in
-        pkgs.rocksdb.overrideAttrs (old: {
-          inherit version;
-          src = pkgs.fetchFromGitHub {
-            owner = "facebook";
-            repo = "rocksdb";
-            rev = "v${version}";
-            hash = "sha256-/Xf0bzNJPclH9IP80QNaABfhj4IAR5LycYET18VFCXc=";
-          };
-        });
+          pkgs.rocksdb.overrideAttrs (old: {
+            inherit version;
+            src = pkgs.fetchFromGitHub {
+              owner = "facebook";
+              repo = "rocksdb";
+              rev = "v${version}";
+              hash = "sha256-/Xf0bzNJPclH9IP80QNaABfhj4IAR5LycYET18VFCXc=";
+            };
+          });
 
         shell = self.callPackage ./nix/shell.nix {};
 
         # The Rust toolchain to use
-        toolchain = inputs
+        toolchain =
+          inputs
           .fenix
           .packages
           .${pkgs.pkgsBuildHost.system}
@@ -62,23 +62,24 @@
             sha256 = "sha256-opUgs6ckUQCyDxcB9Wy51pqhd0MPGHUVbwRKKPGiwZU=";
           };
       });
-    in
-    inputs.flake-utils.lib.eachDefaultSystem (system:
-      let
+  in
+    inputs.flake-utils.lib.eachDefaultSystem (
+      system: let
         pkgs = inputs.nixpkgs.legacyPackages.${system};
-      in
-      {
-        packages = {
-          default = (mkScope pkgs).default;
-          oci-image = (mkScope pkgs).oci-image;
-          book = (mkScope pkgs).book;
-        }
-        //
-        builtins.listToAttrs
-          (builtins.concatLists
-            (builtins.map
-              (crossSystem:
-                let
+      in {
+        packages =
+          {
+            default = (mkScope pkgs).default;
+            oci-image = (mkScope pkgs).oci-image;
+            book = (mkScope pkgs).book;
+          }
+          // builtins.listToAttrs
+          (
+            builtins.concatLists
+            (
+              builtins.map
+              (
+                crossSystem: let
                   binaryName = "static-${crossSystem}";
                   pkgsCrossStatic =
                     (import inputs.nixpkgs {
@@ -86,9 +87,9 @@
                       crossSystem = {
                         config = crossSystem;
                       };
-                    }).pkgsStatic;
-                in
-                [
+                    })
+                    .pkgsStatic;
+                in [
                   # An output for a statically-linked binary
                   {
                     name = binaryName;

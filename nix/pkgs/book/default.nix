@@ -1,27 +1,29 @@
 # Keep sorted
-{ default
-, inputs
-, mdbook
-, stdenv
+{
+  default,
+  inputs,
+  mdbook,
+  stdenv,
 }:
-
 stdenv.mkDerivation {
   pname = "${default.pname}-book";
   version = default.version;
 
+  src = let
+    filter = inputs.nix-filter.lib;
+  in
+    filter {
+      root = inputs.self;
 
-  src = let filter = inputs.nix-filter.lib; in filter {
-    root = inputs.self;
-
-    # Keep sorted
-    include = [
-      "book.toml"
-      "conduit-example.toml"
-      "debian/README.md"
-      "docs"
-      "README.md"
-    ];
-  };
+      # Keep sorted
+      include = [
+        "book.toml"
+        "conduit-example.toml"
+        "debian/README.md"
+        "docs"
+        "README.md"
+      ];
+    };
 
   nativeBuildInputs = [
     mdbook
