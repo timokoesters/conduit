@@ -35,3 +35,7 @@ Here is an example:
 
 Not really. You can reuse the domain of your current server with Conduit, but you will not be able to migrate accounts automatically.
 Rooms that were federated can be re-joined via the other participating servers, however media and the like may be deleted from remote servers after some time, and hence might not be recoverable.
+
+## How do I make someone an admin?
+
+Simply invite them to the admin room. Once joined, they can administer the server by interacting with the `@conduit:<server_name>` user.
