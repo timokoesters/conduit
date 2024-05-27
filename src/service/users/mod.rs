@@ -598,6 +598,16 @@ impl Service {
     ) -> Result<Option<FilterDefinition>> {
         self.db.get_filter(user_id, filter_id)
     }
+
+    // Creates an OpenID token, which can be used to prove that a user has access to an account (primarily for integrations)
+    pub fn create_openid_token(&self, user_id: &UserId) -> Result<(String, u64)> {
+        self.db.create_openid_token(user_id)
+    }
+
+    /// Find out which user an OpenID access token belongs to.
+    pub fn find_from_openid_token(&self, token: &str) -> Result<Option<OwnedUserId>> {
+        self.db.find_from_openid_token(token)
+    }
 }
 
 /// Ensure that a user only sees signatures from themselves and the target user
