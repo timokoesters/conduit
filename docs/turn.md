@@ -7,17 +7,18 @@
 ## Edit/Add a few settings to your existing conduit.toml
 
 ```
+[turn]
 # Refer to your Coturn settings. 
 # `your.turn.url` has to match the REALM setting of your Coturn as well as `transport`.
-turn_uris = ["turn:your.turn.url?transport=udp", "turn:your.turn.url?transport=tcp"]
+uris = ["turn:your.turn.url?transport=udp", "turn:your.turn.url?transport=tcp"]
 
 # static-auth-secret of your turnserver
-turn_secret = "ADD SECRET HERE"
+secret = "ADD SECRET HERE"
 
 # If you have your TURN server configured to use a username and password
 # you can provide these information too. In this case comment out `turn_secret above`!
-#turn_username = ""
-#turn_password = ""
+#username = ""
+#password = ""
 ```
 
 ## Apply settings

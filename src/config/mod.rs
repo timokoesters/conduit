@@ -72,16 +72,14 @@ pub struct Config {
     pub trusted_servers: Vec<OwnedServerName>,
     #[serde(default = "default_log")]
     pub log: String,
-    #[serde(default)]
-    pub turn_username: String,
-    #[serde(default)]
-    pub turn_password: String,
-    #[serde(default = "Vec::new")]
-    pub turn_uris: Vec<String>,
-    #[serde(default)]
-    pub turn_secret: String,
+    pub turn_username: Option<String>,
+    pub turn_password: Option<String>,
+    pub turn_uris: Option<Vec<String>>,
+    pub turn_secret: Option<String>,
     #[serde(default = "default_turn_ttl")]
     pub turn_ttl: u64,
+
+    pub turn: Option<TurnConfig>,
 
     pub emergency_password: Option<String>,
 
@@ -95,6 +93,22 @@ pub struct TlsConfig {
     pub key: String,
 }
 
+#[derive(Clone, Debug, Deserialize)]
+pub struct TurnConfig {
+    pub uris: Vec<String>,
+    #[serde(default = "default_turn_ttl")]
+    pub ttl: u64,
+    #[serde(flatten)]
+    pub auth: TurnAuth,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(untagged)]
+pub enum TurnAuth {
+    UserPass { username: String, password: String },
+    Secret { secret: String },
+}
+
 #[derive(Clone, Debug, Deserialize, Default)]
 pub struct WellKnownConfig {
     #[serde(rename = "well_known_client")]
@@ -103,7 +117,14 @@ pub struct WellKnownConfig {
     pub server: Option<OwnedServerName>,
 }
 
-const DEPRECATED_KEYS: &[&str] = &["cache_capacity"];
+const DEPRECATED_KEYS: &[&str] = &[
+    "cache_capacity",
+    "turn_username",
+    "turn_password",
+    "turn_uris",
+    "turn_secret",
+    "turn_ttl",
+];
 
 impl Config {
     pub fn warn_deprecated(&self) {
@@ -144,6 +165,32 @@ impl Config {
                         .expect("Host from valid hostname + :443 must be valid")
                 }
             }
+        }
+    }
+
+    pub fn turn(&self) -> Option<TurnConfig> {
+        if self.turn.is_some() {
+            self.turn.clone()
+        } else if let Some(uris) = self.turn_uris.clone() {
+            if let Some(secret) = self.turn_secret.clone() {
+                Some(TurnConfig {
+                    uris,
+                    ttl: self.turn_ttl,
+                    auth: TurnAuth::Secret { secret },
+                })
+            } else if let (Some(username), Some(password)) =
+                (self.turn_username.clone(), self.turn_password.clone())
+            {
+                Some(TurnConfig {
+                    uris,
+                    ttl: self.turn_ttl,
+                    auth: TurnAuth::UserPass { username, password },
+                })
+            } else {
+                None
+            }
+        } else {
+            None
         }
     }
 }
@@ -201,36 +248,17 @@ impl fmt::Display for Config {
                 }
                 &lst.join(", ")
             }),
-            (
-                "TURN username",
-                if self.turn_username.is_empty() {
-                    "not set"
+            ("TURN URIs", {
+                if let Some(turn) = self.turn() {
+                    let mut lst = vec![];
+                    for item in turn.uris.iter().cloned().enumerate() {
+                        let (_, uri): (usize, String) = item;
+                        lst.push(uri);
+                    }
+                    &lst.join(", ")
                 } else {
-                    &self.turn_username
-                },
-            ),
-            ("TURN password", {
-                if self.turn_password.is_empty() {
-                    "not set"
-                } else {
-                    "set"
+                    "unset"
                 }
-            }),
-            ("TURN secret", {
-                if self.turn_secret.is_empty() {
-                    "not set"
-                } else {
-                    "set"
-                }
-            }),
-            ("Turn TTL", &self.turn_ttl.to_string()),
-            ("Turn URIs", {
-                let mut lst = vec![];
-                for item in self.turn_uris.iter().cloned().enumerate() {
-                    let (_, uri): (usize, String) = item;
-                    lst.push(uri);
-                }
-                &lst.join(", ")
             }),
             ("Well-known server name", well_known_server.as_str()),
             ("Well-known client URL", &self.well_known_client()),

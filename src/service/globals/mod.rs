@@ -7,7 +7,7 @@ use ruma::{
 
 use crate::api::server_server::DestinationResponse;
 
-use crate::{services, Config, Error, Result};
+use crate::{config::TurnConfig, services, Config, Error, Result};
 use futures_util::FutureExt;
 use hickory_resolver::TokioAsyncResolver;
 use hyper_util::client::legacy::connect::dns::{GaiResolver, Name as HyperName};
@@ -348,32 +348,16 @@ impl Service {
         &self.config.trusted_servers
     }
 
+    pub fn turn(&self) -> Option<TurnConfig> {
+        self.config.turn()
+    }
+
     pub fn dns_resolver(&self) -> &TokioAsyncResolver {
         &self.dns_resolver
     }
 
     pub fn jwt_decoding_key(&self) -> Option<&jsonwebtoken::DecodingKey> {
         self.jwt_decoding_key.as_ref()
-    }
-
-    pub fn turn_password(&self) -> &String {
-        &self.config.turn_password
-    }
-
-    pub fn turn_ttl(&self) -> u64 {
-        self.config.turn_ttl
-    }
-
-    pub fn turn_uris(&self) -> &[String] {
-        &self.config.turn_uris
-    }
-
-    pub fn turn_username(&self) -> &String {
-        &self.config.turn_username
-    }
-
-    pub fn turn_secret(&self) -> &String {
-        &self.config.turn_secret
     }
 
     pub fn emergency_password(&self) -> &Option<String> {
