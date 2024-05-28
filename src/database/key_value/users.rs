@@ -11,6 +11,7 @@ use ruma::{
 use tracing::warn;
 
 use crate::{
+    api::client_server::TOKEN_LENGTH,
     database::KeyValueDatabase,
     service::{self, users::clean_signatures},
     services, utils, Error, Result,
@@ -942,6 +943,52 @@ impl service::users::Data for KeyValueDatabase {
         } else {
             Ok(None)
         }
+    }
+
+    // Creates an OpenID token, which can be used to prove that a user has access to an account (primarily for integrations)
+    fn create_openid_token(&self, user_id: &UserId) -> Result<(String, u64)> {
+        let token = utils::random_string(TOKEN_LENGTH);
+
+        let expires_in = services().globals.config.openid_token_ttl;
+        let expires_at = utils::millis_since_unix_epoch()
+            .checked_add(expires_in * 1000)
+            .expect("time is valid");
+
+        let mut value = expires_at.to_be_bytes().to_vec();
+        value.extend_from_slice(user_id.as_bytes());
+
+        self.openidtoken_expiresatuserid
+            .insert(token.as_bytes(), value.as_slice())?;
+
+        Ok((token, expires_in))
+    }
+
+    /// Find out which user an OpenID access token belongs to.
+    fn find_from_openid_token(&self, token: &str) -> Result<Option<OwnedUserId>> {
+        let Some(value) = self.openidtoken_expiresatuserid.get(token.as_bytes())? else {
+            return Ok(None);
+        };
+        let (expires_at_bytes, user_bytes) = value.split_at(0u64.to_be_bytes().len());
+
+        let expires_at = u64::from_be_bytes(
+            expires_at_bytes
+                .try_into()
+                .map_err(|_| Error::bad_database("expires_at in openid_userid is invalid u64."))?,
+        );
+
+        if expires_at < utils::millis_since_unix_epoch() {
+            self.openidtoken_expiresatuserid.remove(token.as_bytes())?;
+
+            return Ok(None);
+        }
+
+        Some(
+            UserId::parse(utils::string_from_bytes(user_bytes).map_err(|_| {
+                Error::bad_database("User ID in openid_userid is invalid unicode.")
+            })?)
+            .map_err(|_| Error::bad_database("User ID in openid_userid is invalid.")),
+        )
+        .transpose()
     }
 }
 

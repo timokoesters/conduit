@@ -57,6 +57,7 @@ pub struct KeyValueDatabase {
     pub(super) userid_masterkeyid: Arc<dyn KvTree>,
     pub(super) userid_selfsigningkeyid: Arc<dyn KvTree>,
     pub(super) userid_usersigningkeyid: Arc<dyn KvTree>,
+    pub(super) openidtoken_expiresatuserid: Arc<dyn KvTree>, // expiresatuserid  = expiresat + userid
 
     pub(super) userfilterid_filter: Arc<dyn KvTree>, // UserFilterId = UserId + FilterId
 
@@ -290,6 +291,7 @@ impl KeyValueDatabase {
             userid_masterkeyid: builder.open_tree("userid_masterkeyid")?,
             userid_selfsigningkeyid: builder.open_tree("userid_selfsigningkeyid")?,
             userid_usersigningkeyid: builder.open_tree("userid_usersigningkeyid")?,
+            openidtoken_expiresatuserid: builder.open_tree("openidtoken_expiresatuserid")?,
             userfilterid_filter: builder.open_tree("userfilterid_filter")?,
             todeviceid_events: builder.open_tree("todeviceid_events")?,
 

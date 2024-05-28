@@ -47,6 +47,8 @@ pub struct Config {
     #[serde(default = "false_fn")]
     pub allow_registration: bool,
     pub registration_token: Option<String>,
+    #[serde(default = "default_openid_token_ttl")]
+    pub openid_token_ttl: u64,
     #[serde(default = "true_fn")]
     pub allow_encryption: bool,
     #[serde(default = "false_fn")]
@@ -300,6 +302,10 @@ fn default_log() -> String {
 
 fn default_turn_ttl() -> u64 {
     60 * 60 * 24
+}
+
+fn default_openid_token_ttl() -> u64 {
+    60 * 60
 }
 
 // I know, it's a great name

@@ -277,6 +277,7 @@ fn routes(config: &Config) -> Router {
         .ruma_route(client_server::get_room_aliases_route)
         .ruma_route(client_server::get_filter_route)
         .ruma_route(client_server::create_filter_route)
+        .ruma_route(client_server::create_openid_token_route)
         .ruma_route(client_server::set_global_account_data_route)
         .ruma_route(client_server::set_room_account_data_route)
         .ruma_route(client_server::get_global_account_data_route)
@@ -431,6 +432,7 @@ fn routes(config: &Config) -> Router {
             .ruma_route(server_server::get_profile_information_route)
             .ruma_route(server_server::get_keys_route)
             .ruma_route(server_server::claim_keys_route)
+            .ruma_route(server_server::get_openid_userinfo_route)
             .ruma_route(server_server::well_known_server)
     } else {
         router

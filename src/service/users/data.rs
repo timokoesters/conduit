@@ -211,4 +211,10 @@ pub trait Data: Send + Sync {
     fn create_filter(&self, user_id: &UserId, filter: &FilterDefinition) -> Result<String>;
 
     fn get_filter(&self, user_id: &UserId, filter_id: &str) -> Result<Option<FilterDefinition>>;
+
+    // Creates an OpenID token, which can be used to prove that a user has access to an account (primarily for integrations)
+    fn create_openid_token(&self, user_id: &UserId) -> Result<(String, u64)>;
+
+    /// Find out which user an OpenID access token belongs to.
+    fn find_from_openid_token(&self, token: &str) -> Result<Option<OwnedUserId>>;
 }

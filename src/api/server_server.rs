@@ -24,6 +24,7 @@ use ruma::{
             event::{get_event, get_missing_events, get_room_state, get_room_state_ids},
             keys::{claim_keys, get_keys},
             membership::{create_invite, create_join_event, prepare_join_event},
+            openid::get_openid_userinfo,
             query::{get_profile_information, get_room_information},
             transactions::{
                 edu::{DeviceListUpdateContent, DirectDeviceContent, Edu, SigningKeyUpdateContent},
@@ -1912,6 +1913,25 @@ pub async fn claim_keys_route(
     Ok(claim_keys::v1::Response {
         one_time_keys: result.one_time_keys,
     })
+}
+
+/// # `GET /_matrix/federation/v1/openid/userinfo`
+///
+/// Get information about the user that generated the OpenID token.
+pub async fn get_openid_userinfo_route(
+    body: Ruma<get_openid_userinfo::v1::Request>,
+) -> Result<get_openid_userinfo::v1::Response> {
+    Ok(get_openid_userinfo::v1::Response::new(
+        services()
+            .users
+            .find_from_openid_token(&body.access_token)?
+            .ok_or_else(|| {
+                Error::BadRequest(
+                    ErrorKind::Unauthorized,
+                    "OpenID token has expired or does not exist.",
+                )
+            })?,
+    ))
 }
 
 /// # `GET /.well-known/matrix/server`
