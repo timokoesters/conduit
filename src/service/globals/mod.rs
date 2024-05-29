@@ -55,6 +55,7 @@ pub struct Service {
     pub actual_destination_cache: Arc<RwLock<WellKnownMap>>, // actual_destination, host
     pub tls_name_override: Arc<StdRwLock<TlsNameMap>>,
     pub config: Config,
+    allow_registration: RwLock<bool>,
     keypair: Arc<ruma::signatures::Ed25519KeyPair>,
     dns_resolver: TokioAsyncResolver,
     jwt_decoding_key: Option<jsonwebtoken::DecodingKey>,
@@ -184,6 +185,7 @@ impl Service {
         let unstable_room_versions = vec![RoomVersionId::V3, RoomVersionId::V4, RoomVersionId::V5];
 
         let mut s = Self {
+            allow_registration: RwLock::new(config.allow_registration),
             db,
             config,
             keypair: Arc::new(keypair),
@@ -285,8 +287,15 @@ impl Service {
         self.config.max_fetch_prev_events
     }
 
-    pub fn allow_registration(&self) -> bool {
-        self.config.allow_registration
+    /// Allows for the temporary (non-persistant) toggling of registration
+    pub async fn set_registration(&self, status: bool) {
+        let mut lock = self.allow_registration.write().await;
+        *lock = status;
+    }
+
+    /// Checks whether user registration is allowed
+    pub async fn allow_registration(&self) -> bool {
+        *self.allow_registration.read().await
     }
 
     pub fn allow_encryption(&self) -> bool {
