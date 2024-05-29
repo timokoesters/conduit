@@ -77,6 +77,12 @@ enum AdminCommand {
     /// List all rooms we are currently handling an incoming pdu from
     IncomingFederation,
 
+    /// Removes an alias from the server
+    RemoveAlias {
+        /// The alias to be removed
+        alias: Box<RoomAliasId>,
+    },
+
     /// Deactivate a user
     ///
     /// User will not be removed from all rooms by default.
@@ -905,6 +911,23 @@ impl Service {
                     RoomMessageEventContent::text_plain(
                         "Expected code block in command body. Add --help for details.",
                     )
+                }
+            }
+            AdminCommand::RemoveAlias { alias } => {
+                if alias.server_name() != services().globals.server_name() {
+                    RoomMessageEventContent::text_plain(
+                        "Cannot remove alias which is not from this server",
+                    )
+                } else if services()
+                    .rooms
+                    .alias
+                    .resolve_local_alias(&alias)?
+                    .is_none()
+                {
+                    RoomMessageEventContent::text_plain("No such alias exists")
+                } else {
+                    services().rooms.alias.remove_alias(&alias)?;
+                    RoomMessageEventContent::text_plain("Alias removed sucessfully")
                 }
             }
         };
