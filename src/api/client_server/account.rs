@@ -475,7 +475,7 @@ pub async fn request_3pid_management_token_via_email_route(
 ) -> Result<request_3pid_management_token_via_email::v3::Response> {
     Err(Error::BadRequest(
         ErrorKind::ThreepidDenied,
-        "Third party identifier is not allowed",
+        "Third party identifiers are currently unsupported by this server implementation",
     ))
 }
 
@@ -489,6 +489,6 @@ pub async fn request_3pid_management_token_via_msisdn_route(
 ) -> Result<request_3pid_management_token_via_msisdn::v3::Response> {
     Err(Error::BadRequest(
         ErrorKind::ThreepidDenied,
-        "Third party identifier is not allowed",
+        "Third party identifiers are currently unsupported by this server implementation",
     ))
 }
