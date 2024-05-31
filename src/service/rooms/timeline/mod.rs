@@ -483,16 +483,16 @@ impl Service {
                         .search
                         .index_pdu(shortroomid, &pdu_id, &body)?;
 
-                    let server_user = format!("@conduit:{}", services().globals.server_name());
+                    let server_user = services().globals.server_user();
 
                     let to_conduit = body.starts_with(&format!("{server_user}: "))
                         || body.starts_with(&format!("{server_user} "))
                         || body == format!("{server_user}:")
-                        || body == server_user;
+                        || body == server_user.as_str();
 
                     // This will evaluate to false if the emergency password is set up so that
                     // the administrator can execute commands as conduit
-                    let from_conduit = pdu.sender == server_user
+                    let from_conduit = pdu.sender == *server_user
                         && services().globals.emergency_password().is_none();
 
                     if let Some(admin_room) = services().admin.get_admin_room()? {
@@ -857,7 +857,7 @@ impl Service {
                             .filter(|v| v.starts_with('@'))
                             .unwrap_or(sender.as_str());
                         let server_name = services().globals.server_name();
-                        let server_user = format!("@conduit:{}", server_name);
+                        let server_user = services().globals.server_user().as_str();
                         let content = serde_json::from_str::<ExtractMembership>(pdu.content.get())
                             .map_err(|_| Error::bad_database("Invalid content in pdu."))?;
 
