@@ -217,8 +217,7 @@ impl Service {
         // TODO: Use futures when we have long admin commands
         //let mut futures = FuturesUnordered::new();
 
-        let conduit_user = UserId::parse(format!("@conduit:{}", services().globals.server_name()))
-            .expect("@conduit:server_name is valid");
+        let conduit_user = services().globals.server_user();
 
         if let Ok(Some(conduit_room)) = services().admin.get_admin_room() {
             loop {
@@ -252,7 +251,7 @@ impl Service {
                                     state_key: None,
                                     redacts: None,
                                 },
-                                &conduit_user,
+                                conduit_user,
                                 &conduit_room,
                                 &state_lock,
                             )
@@ -1037,11 +1036,9 @@ impl Service {
         let state_lock = mutex_state.lock().await;
 
         // Create a user for the server
-        let conduit_user =
-            UserId::parse_with_server_name("conduit", services().globals.server_name())
-                .expect("@conduit:server_name is valid");
+        let conduit_user = services().globals.server_user();
 
-        services().users.create(&conduit_user, None)?;
+        services().users.create(conduit_user, None)?;
 
         let room_version = services().globals.default_room_version();
         let mut content = match room_version {
@@ -1054,7 +1051,7 @@ impl Service {
             | RoomVersionId::V7
             | RoomVersionId::V8
             | RoomVersionId::V9
-            | RoomVersionId::V10 => RoomCreateEventContent::new_v1(conduit_user.clone()),
+            | RoomVersionId::V10 => RoomCreateEventContent::new_v1(conduit_user.to_owned()),
             RoomVersionId::V11 => RoomCreateEventContent::new_v11(),
             _ => unreachable!("Validity of room version already checked"),
         };
@@ -1074,7 +1071,7 @@ impl Service {
                     state_key: Some("".to_owned()),
                     redacts: None,
                 },
-                &conduit_user,
+                conduit_user,
                 &room_id,
                 &state_lock,
             )
@@ -1102,7 +1099,7 @@ impl Service {
                     state_key: Some(conduit_user.to_string()),
                     redacts: None,
                 },
-                &conduit_user,
+                conduit_user,
                 &room_id,
                 &state_lock,
             )
@@ -1110,7 +1107,7 @@ impl Service {
 
         // 3. Power levels
         let mut users = BTreeMap::new();
-        users.insert(conduit_user.clone(), 100.into());
+        users.insert(conduit_user.to_owned(), 100.into());
 
         services()
             .rooms
@@ -1127,7 +1124,7 @@ impl Service {
                     state_key: Some("".to_owned()),
                     redacts: None,
                 },
-                &conduit_user,
+                conduit_user,
                 &room_id,
                 &state_lock,
             )
@@ -1146,7 +1143,7 @@ impl Service {
                     state_key: Some("".to_owned()),
                     redacts: None,
                 },
-                &conduit_user,
+                conduit_user,
                 &room_id,
                 &state_lock,
             )
@@ -1167,7 +1164,7 @@ impl Service {
                     state_key: Some("".to_owned()),
                     redacts: None,
                 },
-                &conduit_user,
+                conduit_user,
                 &room_id,
                 &state_lock,
             )
@@ -1188,7 +1185,7 @@ impl Service {
                     state_key: Some("".to_owned()),
                     redacts: None,
                 },
-                &conduit_user,
+                conduit_user,
                 &room_id,
                 &state_lock,
             )
@@ -1208,7 +1205,7 @@ impl Service {
                     state_key: Some("".to_owned()),
                     redacts: None,
                 },
-                &conduit_user,
+                conduit_user,
                 &room_id,
                 &state_lock,
             )
@@ -1228,7 +1225,7 @@ impl Service {
                     state_key: Some("".to_owned()),
                     redacts: None,
                 },
-                &conduit_user,
+                conduit_user,
                 &room_id,
                 &state_lock,
             )
@@ -1254,7 +1251,7 @@ impl Service {
                     state_key: Some("".to_owned()),
                     redacts: None,
                 },
-                &conduit_user,
+                conduit_user,
                 &room_id,
                 &state_lock,
             )
@@ -1301,9 +1298,7 @@ impl Service {
             let state_lock = mutex_state.lock().await;
 
             // Use the server user to grant the new admin's power level
-            let conduit_user =
-                UserId::parse_with_server_name("conduit", services().globals.server_name())
-                    .expect("@conduit:server_name is valid");
+            let conduit_user = services().globals.server_user();
 
             // Invite and join the real user
             services()
@@ -1327,7 +1322,7 @@ impl Service {
                         state_key: Some(user_id.to_string()),
                         redacts: None,
                     },
-                    &conduit_user,
+                    conduit_user,
                     &room_id,
                     &state_lock,
                 )
@@ -1379,7 +1374,7 @@ impl Service {
                         state_key: Some("".to_owned()),
                         redacts: None,
                     },
-                    &conduit_user,
+                    conduit_user,
                     &room_id,
                     &state_lock,
                 )
@@ -1398,7 +1393,7 @@ impl Service {
                 state_key: None,
                 redacts: None,
             },
-            &conduit_user,
+            conduit_user,
             &room_id,
             &state_lock,
         ).await?;

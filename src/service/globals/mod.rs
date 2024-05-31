@@ -72,6 +72,7 @@ pub struct Service {
     pub roomid_mutex_state: RwLock<HashMap<OwnedRoomId, Arc<Mutex<()>>>>,
     pub roomid_mutex_federation: RwLock<HashMap<OwnedRoomId, Arc<Mutex<()>>>>, // this lock will be held longer
     pub roomid_federationhandletime: RwLock<HashMap<OwnedRoomId, (OwnedEventId, Instant)>>,
+    server_user: OwnedUserId,
     pub stateres_mutex: Arc<Mutex<()>>,
     pub rotate: RotationHandler,
 
@@ -186,6 +187,8 @@ impl Service {
 
         let mut s = Self {
             allow_registration: RwLock::new(config.allow_registration),
+            server_user: UserId::parse(format!("@conduit:{}", &config.server_name))
+                .expect("@conduit:server_name is valid"),
             db,
             config,
             keypair: Arc::new(keypair),
@@ -277,6 +280,10 @@ impl Service {
 
     pub fn server_name(&self) -> &ServerName {
         self.config.server_name.as_ref()
+    }
+
+    pub fn server_user(&self) -> &UserId {
+        self.server_user.as_ref()
     }
 
     pub fn max_request_size(&self) -> u32 {
