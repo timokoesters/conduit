@@ -981,6 +981,8 @@ async fn join_room_by_id_helper(
                         .as_str()
                 })
                 .and_then(|s| OwnedUserId::try_from(s.unwrap_or_default()).ok());
+            let restricted_join = join_authorized_via_users_server.is_some();
+
             // TODO: Is origin needed?
             join_event_stub.insert(
                 "origin".to_owned(),
@@ -1027,7 +1029,7 @@ async fn join_room_by_id_helper(
                 ruma::signatures::reference_hash(&join_event_stub, &room_version_id)
                     .expect("ruma can calculate reference hashes")
             );
-            let event_id = <&EventId>::try_from(event_id.as_str())
+            let event_id = OwnedEventId::try_from(event_id)
                 .expect("ruma's reference hashes are valid event ids");
 
             // Add event_id back
@@ -1052,43 +1054,32 @@ async fn join_room_by_id_helper(
                 )
                 .await?;
 
-            if let Some(signed_raw) = send_join_response.room_state.event {
-                let (signed_event_id, signed_value) =
-                    match gen_event_id_canonical_json(&signed_raw, &room_version_id) {
-                        Ok(t) => t,
-                        Err(_) => {
-                            // Event could not be converted to canonical json
-                            return Err(Error::BadRequest(
-                                ErrorKind::InvalidParam,
-                                "Could not convert event to canonical json.",
-                            ));
-                        }
-                    };
+            let pdu = if let Some(signed_raw) = send_join_response.room_state.event {
+                let (signed_event_id, signed_pdu) =
+                    gen_event_id_canonical_json(&signed_raw, &room_version_id)?;
 
                 if signed_event_id != event_id {
-                    return Err(Error::BadRequest(
-                        ErrorKind::InvalidParam,
+                    return Err(Error::BadServerResponse(
                         "Server sent event with wrong event id",
                     ));
                 }
 
-                drop(state_lock);
-                let pub_key_map = RwLock::new(BTreeMap::new());
-                services()
-                    .rooms
-                    .event_handler
-                    .handle_incoming_pdu(
-                        &remote_server,
-                        &signed_event_id,
-                        room_id,
-                        signed_value,
-                        true,
-                        &pub_key_map,
-                    )
-                    .await?;
+                signed_pdu
+            } else if restricted_join {
+                return Err(Error::BadServerResponse(
+                    "No signed event was returned, despite just performing a restricted join",
+                ));
             } else {
-                return Err(error);
-            }
+                join_event
+            };
+
+            drop(state_lock);
+            let pub_key_map = RwLock::new(BTreeMap::new());
+            services()
+                .rooms
+                .event_handler
+                .handle_incoming_pdu(&remote_server, &event_id, room_id, pdu, true, &pub_key_map)
+                .await?;
         } else {
             return Err(error);
         }
