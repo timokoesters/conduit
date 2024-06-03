@@ -2,7 +2,8 @@ use std::{future::Future, io, net::SocketAddr, sync::atomic, time::Duration};
 
 use axum::{
     extract::{DefaultBodyLimit, FromRequestParts, MatchedPath},
-    response::IntoResponse,
+    middleware::map_response,
+    response::{IntoResponse, Response},
     routing::{any, get, on, MethodFilter},
     Router,
 };
@@ -13,7 +14,7 @@ use figment::{
     Figment,
 };
 use http::{
-    header::{self, HeaderName},
+    header::{self, HeaderName, CONTENT_SECURITY_POLICY},
     Method, StatusCode, Uri,
 };
 use ruma::api::{
@@ -141,6 +142,13 @@ async fn main() {
     }
 }
 
+/// Adds additional headers to prevent any potential XSS attacks via the media repo
+async fn set_csp_header(response: Response) -> impl IntoResponse {
+    (
+        [(CONTENT_SECURITY_POLICY, "sandbox; default-src 'none'; script-src 'none'; plugin-types application/pdf; style-src 'unsafe-inline'; object-src 'self';")], response
+    )
+}
+
 async fn run_server() -> io::Result<()> {
     let config = &services().globals.config;
     let addr = SocketAddr::from((config.address, config.port));
@@ -181,6 +189,7 @@ async fn run_server() -> io::Result<()> {
                 ])
                 .max_age(Duration::from_secs(86400)),
         )
+        .layer(map_response(set_csp_header))
         .layer(DefaultBodyLimit::max(
             config
                 .max_request_size
@@ -219,7 +228,7 @@ async fn run_server() -> io::Result<()> {
 async fn spawn_task<B: Send + 'static>(
     req: http::Request<B>,
     next: axum::middleware::Next<B>,
-) -> std::result::Result<axum::response::Response, StatusCode> {
+) -> std::result::Result<Response, StatusCode> {
     if services().globals.shutdown.load(atomic::Ordering::Relaxed) {
         return Err(StatusCode::SERVICE_UNAVAILABLE);
     }
@@ -231,7 +240,7 @@ async fn spawn_task<B: Send + 'static>(
 async fn unrecognized_method<B: Send>(
     req: http::Request<B>,
     next: axum::middleware::Next<B>,
-) -> std::result::Result<axum::response::Response, StatusCode> {
+) -> std::result::Result<Response, StatusCode> {
     let method = req.method().clone();
     let uri = req.uri().clone();
     let inner = next.run(req).await;
