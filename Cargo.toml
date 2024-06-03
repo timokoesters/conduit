@@ -48,7 +48,7 @@ tower-http = { version = "0.4.1", features = [
 
 # Used for matrix spec type definitions and helpers
 #ruma = { version = "0.4.0", features = ["compat", "rand", "appservice-api-c", "client-api", "federation-api", "push-gateway-api-c", "state-res", "unstable-pre-spec", "unstable-exhaustive-types"] }
-ruma = { git = "https://github.com/ruma/ruma", rev = "5495b85aa311c2805302edb0a7de40399e22b397", features = [
+ruma = { git = "https://github.com/ruma/ruma", rev = "c5f8137ba9741b2317313256b57e6e14b61fb419", features = [
   "appservice-api-c",
   "client-api",
   "compat",
