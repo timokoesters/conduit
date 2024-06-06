@@ -56,6 +56,13 @@ If you have any questions, feel free to
 - Send an direct message to `@timokoesters:fachschaften.org` on Matrix
 - [Open an issue on GitLab](https://gitlab.com/famedly/conduit/-/issues/new)
 
+#### Security
+
+If you believe you have found a security issue, please send a message to [Timo](https://matrix.to/#/@timo:conduit.rs)
+and/or [Matthias](https://matrix.to/#/@matthias:ahouansou.cz) on Matrix, or send an email to
+[conduit@koesters.xyz](mailto:conduit@koesters.xyz). Please do not disclose details about the issue to anyone else before
+a fix is released publically.
+
 #### Thanks to
 
 Thanks to FUTO, Famedly, Prototype Fund (DLR and German BMBF) and all individuals for financially supporting this project.
