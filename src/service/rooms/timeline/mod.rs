@@ -496,7 +496,14 @@ impl Service {
                         && services().globals.emergency_password().is_none();
 
                     if let Some(admin_room) = services().admin.get_admin_room()? {
-                        if to_conduit && !from_conduit && admin_room == pdu.room_id {
+                        if to_conduit
+                            && !from_conduit
+                            && admin_room == pdu.room_id
+                            && services()
+                                .rooms
+                                .state_cache
+                                .is_joined(server_user, &admin_room)?
+                        {
                             services().admin.process_message(body);
                         }
                     }

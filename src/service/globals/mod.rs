@@ -4,6 +4,7 @@ use ruma::{
     serde::Base64, OwnedDeviceId, OwnedEventId, OwnedRoomId, OwnedServerName,
     OwnedServerSigningKeyId, OwnedUserId,
 };
+use ruma::{OwnedRoomAliasId, RoomAliasId};
 
 use crate::api::server_server::FedDest;
 
@@ -72,6 +73,7 @@ pub struct Service {
     pub roomid_mutex_federation: RwLock<HashMap<OwnedRoomId, Arc<Mutex<()>>>>, // this lock will be held longer
     pub roomid_federationhandletime: RwLock<HashMap<OwnedRoomId, (OwnedEventId, Instant)>>,
     server_user: OwnedUserId,
+    admin_alias: OwnedRoomAliasId,
     pub stateres_mutex: Arc<Mutex<()>>,
     pub rotate: RotationHandler,
 
@@ -194,6 +196,8 @@ impl Service {
 
         let mut s = Self {
             allow_registration: RwLock::new(config.allow_registration),
+            admin_alias: RoomAliasId::parse(format!("#admins:{}", &config.server_name))
+                .expect("#admins:server_name is a valid alias name"),
             server_user: UserId::parse(format!("@conduit:{}", &config.server_name))
                 .expect("@conduit:server_name is valid"),
             db,
@@ -291,6 +295,10 @@ impl Service {
 
     pub fn server_user(&self) -> &UserId {
         self.server_user.as_ref()
+    }
+
+    pub fn admin_alias(&self) -> &RoomAliasId {
+        self.admin_alias.as_ref()
     }
 
     pub fn max_request_size(&self) -> u32 {

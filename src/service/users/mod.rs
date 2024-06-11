@@ -9,7 +9,6 @@ pub use data::Data;
 use ruma::{
     api::client::{
         device::Device,
-        error::ErrorKind,
         filter::FilterDefinition,
         sync::sync_events::{
             self,
@@ -20,7 +19,7 @@ use ruma::{
     events::AnyToDeviceEvent,
     serde::Raw,
     DeviceId, DeviceKeyAlgorithm, DeviceKeyId, OwnedDeviceId, OwnedDeviceKeyId, OwnedMxcUri,
-    OwnedRoomId, OwnedUserId, RoomAliasId, UInt, UserId,
+    OwnedRoomId, OwnedUserId, UInt, UserId,
 };
 
 use crate::{services, Error, Result};
@@ -262,19 +261,14 @@ impl Service {
 
     /// Check if a user is an admin
     pub fn is_admin(&self, user_id: &UserId) -> Result<bool> {
-        let admin_room_alias_id =
-            RoomAliasId::parse(format!("#admins:{}", services().globals.server_name()))
-                .map_err(|_| Error::BadRequest(ErrorKind::InvalidParam, "Invalid alias."))?;
-        let admin_room_id = services()
-            .rooms
-            .alias
-            .resolve_local_alias(&admin_room_alias_id)?
-            .unwrap();
-
-        services()
-            .rooms
-            .state_cache
-            .is_joined(user_id, &admin_room_id)
+        if let Some(admin_room_id) = services().admin.get_admin_room()? {
+            services()
+                .rooms
+                .state_cache
+                .is_joined(user_id, &admin_room_id)
+        } else {
+            Ok(false)
+        }
     }
 
     /// Create a new user account on this homeserver.

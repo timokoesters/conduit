@@ -1,9 +1,4 @@
-use std::{
-    collections::BTreeMap,
-    convert::{TryFrom, TryInto},
-    sync::Arc,
-    time::Instant,
-};
+use std::{collections::BTreeMap, convert::TryFrom, sync::Arc, time::Instant};
 
 use clap::Parser;
 use regex::Regex;
@@ -925,7 +920,15 @@ impl Service {
                 {
                     RoomMessageEventContent::text_plain("No such alias exists")
                 } else {
-                    services().rooms.alias.remove_alias(&alias)?;
+                    // We execute this as the server user for two reasons
+                    // 1. If the user can execute commands in the admin room, they can always remove the alias.
+                    // 2. In the future, we are likely going to be able to allow users to execute commands via
+                    //   other methods, such as IPC, which would lead to us not knowing their user id
+
+                    services()
+                        .rooms
+                        .alias
+                        .remove_alias(&alias, services().globals.server_user())?;
                     RoomMessageEventContent::text_plain("Alias removed sucessfully")
                 }
             }
@@ -1232,9 +1235,7 @@ impl Service {
             .await?;
 
         // 6. Room alias
-        let alias: OwnedRoomAliasId = format!("#admins:{}", services().globals.server_name())
-            .try_into()
-            .expect("#admins:server_name is a valid alias name");
+        let alias: OwnedRoomAliasId = services().globals.admin_alias().to_owned();
 
         services()
             .rooms
@@ -1257,7 +1258,10 @@ impl Service {
             )
             .await?;
 
-        services().rooms.alias.set_alias(&alias, &room_id)?;
+        services()
+            .rooms
+            .alias
+            .set_alias(&alias, &room_id, conduit_user)?;
 
         Ok(())
     }
@@ -1266,15 +1270,10 @@ impl Service {
     ///
     /// Errors are propagated from the database, and will have None if there is no admin room
     pub(crate) fn get_admin_room(&self) -> Result<Option<OwnedRoomId>> {
-        let admin_room_alias: Box<RoomAliasId> =
-            format!("#admins:{}", services().globals.server_name())
-                .try_into()
-                .expect("#admins:server_name is a valid alias name");
-
         services()
             .rooms
             .alias
-            .resolve_local_alias(&admin_room_alias)
+            .resolve_local_alias(services().globals.admin_alias())
     }
 
     /// Invite the user to the conduit admin room.
@@ -1399,6 +1398,15 @@ impl Service {
         ).await?;
         }
         Ok(())
+    }
+
+    /// Checks whether a given user is an admin of this server
+    pub fn user_is_admin(&self, user_id: &UserId) -> Result<bool> {
+        let Some(admin_room) = self.get_admin_room()? else {
+            return Ok(false);
+        };
+
+        services().rooms.state_cache.is_joined(user_id, &admin_room)
     }
 }
 

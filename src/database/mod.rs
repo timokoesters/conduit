@@ -101,6 +101,8 @@ pub struct KeyValueDatabase {
     pub(super) userroomid_leftstate: Arc<dyn KvTree>,
     pub(super) roomuserid_leftcount: Arc<dyn KvTree>,
 
+    pub(super) alias_userid: Arc<dyn KvTree>, // User who created the alias
+
     pub(super) disabledroomids: Arc<dyn KvTree>, // Rooms where incoming federation handling is disabled
 
     pub(super) lazyloadedids: Arc<dyn KvTree>, // LazyLoadedIds = UserId + DeviceId + RoomId + LazyLoadedUserId
@@ -326,6 +328,8 @@ impl KeyValueDatabase {
             roomuserid_invitecount: builder.open_tree("roomuserid_invitecount")?,
             userroomid_leftstate: builder.open_tree("userroomid_leftstate")?,
             roomuserid_leftcount: builder.open_tree("roomuserid_leftcount")?,
+
+            alias_userid: builder.open_tree("alias_userid")?,
 
             disabledroomids: builder.open_tree("disabledroomids")?,
 

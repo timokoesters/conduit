@@ -485,7 +485,10 @@ pub async fn create_room_route(
 
     // Homeserver specific stuff
     if let Some(alias) = alias {
-        services().rooms.alias.set_alias(&alias, &room_id)?;
+        services()
+            .rooms
+            .alias
+            .set_alias(&alias, &room_id, sender_user)?;
     }
 
     if body.visibility == room::Visibility::Public {
@@ -815,7 +818,7 @@ pub async fn upgrade_room_route(
         services()
             .rooms
             .alias
-            .set_alias(&alias, &replacement_room)?;
+            .set_alias(&alias, &replacement_room, sender_user)?;
     }
 
     // Get the old room power levels

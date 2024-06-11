@@ -1,9 +1,15 @@
-use ruma::{api::client::error::ErrorKind, OwnedRoomAliasId, OwnedRoomId, RoomAliasId, RoomId};
+use ruma::{
+    api::client::error::ErrorKind, OwnedRoomAliasId, OwnedRoomId, OwnedUserId, RoomAliasId, RoomId,
+    UserId,
+};
 
 use crate::{database::KeyValueDatabase, service, services, utils, Error, Result};
 
 impl service::rooms::alias::Data for KeyValueDatabase {
-    fn set_alias(&self, alias: &RoomAliasId, room_id: &RoomId) -> Result<()> {
+    fn set_alias(&self, alias: &RoomAliasId, room_id: &RoomId, user_id: &UserId) -> Result<()> {
+        // Comes first as we don't want a stuck alias
+        self.alias_userid
+            .insert(alias.alias().as_bytes(), user_id.as_bytes())?;
         self.alias_roomid
             .insert(alias.alias().as_bytes(), room_id.as_bytes())?;
         let mut aliasid = room_id.as_bytes().to_vec();
@@ -22,13 +28,13 @@ impl service::rooms::alias::Data for KeyValueDatabase {
                 self.aliasid_alias.remove(&key)?;
             }
             self.alias_roomid.remove(alias.alias().as_bytes())?;
+            self.alias_userid.remove(alias.alias().as_bytes())
         } else {
-            return Err(Error::BadRequest(
+            Err(Error::BadRequest(
                 ErrorKind::NotFound,
                 "Alias does not exist.",
-            ));
+            ))
         }
-        Ok(())
     }
 
     fn resolve_local_alias(&self, alias: &RoomAliasId) -> Result<Option<OwnedRoomId>> {
@@ -56,5 +62,17 @@ impl service::rooms::alias::Data for KeyValueDatabase {
                 .try_into()
                 .map_err(|_| Error::bad_database("Invalid alias in aliasid_alias."))
         }))
+    }
+
+    fn who_created_alias(&self, alias: &RoomAliasId) -> Result<Option<OwnedUserId>> {
+        self.alias_userid
+            .get(alias.alias().as_bytes())?
+            .map(|bytes| {
+                UserId::parse(utils::string_from_bytes(&bytes).map_err(|_| {
+                    Error::bad_database("User ID in alias_userid is invalid unicode.")
+                })?)
+                .map_err(|_| Error::bad_database("User ID in alias_roomid is invalid."))
+            })
+            .transpose()
     }
 }

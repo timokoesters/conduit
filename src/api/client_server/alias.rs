@@ -18,6 +18,8 @@ use ruma::{
 pub async fn create_alias_route(
     body: Ruma<create_alias::v3::Request>,
 ) -> Result<create_alias::v3::Response> {
+    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
+
     if body.room_alias.server_name() != services().globals.server_name() {
         return Err(Error::BadRequest(
             ErrorKind::InvalidParam,
@@ -55,7 +57,7 @@ pub async fn create_alias_route(
     services()
         .rooms
         .alias
-        .set_alias(&body.room_alias, &body.room_id)?;
+        .set_alias(&body.room_alias, &body.room_id, sender_user)?;
 
     Ok(create_alias::v3::Response::new())
 }
@@ -64,11 +66,12 @@ pub async fn create_alias_route(
 ///
 /// Deletes a room alias from this server.
 ///
-/// - TODO: additional access control checks
 /// - TODO: Update canonical alias event
 pub async fn delete_alias_route(
     body: Ruma<delete_alias::v3::Request>,
 ) -> Result<delete_alias::v3::Response> {
+    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
+
     if body.room_alias.server_name() != services().globals.server_name() {
         return Err(Error::BadRequest(
             ErrorKind::InvalidParam,
@@ -94,7 +97,10 @@ pub async fn delete_alias_route(
         ));
     }
 
-    services().rooms.alias.remove_alias(&body.room_alias)?;
+    services()
+        .rooms
+        .alias
+        .remove_alias(&body.room_alias, sender_user)?;
 
     // TODO: update alt_aliases?
 
