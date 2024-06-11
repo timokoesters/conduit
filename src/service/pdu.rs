@@ -72,6 +72,23 @@ impl PduEvent {
         Ok(())
     }
 
+    pub fn is_redacted(&self) -> bool {
+        #[derive(Deserialize)]
+        struct ExtractRedactedBecause {
+            redacted_because: Option<serde::de::IgnoredAny>,
+        }
+
+        let Some(unsigned) = &self.unsigned else {
+            return false;
+        };
+
+        let Ok(unsigned) = ExtractRedactedBecause::deserialize(&**unsigned) else {
+            return false;
+        };
+
+        unsigned.redacted_because.is_some()
+    }
+
     pub fn remove_transaction_id(&mut self) -> crate::Result<()> {
         if let Some(unsigned) = &self.unsigned {
             let mut unsigned: BTreeMap<String, Box<RawJsonValue>> =

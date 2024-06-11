@@ -399,7 +399,7 @@ impl Service {
                                 &pdu.room_id,
                                 false,
                             )? {
-                                self.redact_pdu(redact_id, pdu)?;
+                                self.redact_pdu(redact_id, pdu, shortroomid)?;
                             }
                         }
                     }
@@ -416,7 +416,7 @@ impl Service {
                                 &pdu.room_id,
                                 false,
                             )? {
-                                self.redact_pdu(redact_id, pdu)?;
+                                self.redact_pdu(redact_id, pdu, shortroomid)?;
                             }
                         }
                     }
@@ -1100,14 +1100,33 @@ impl Service {
 
     /// Replace a PDU with the redacted form.
     #[tracing::instrument(skip(self, reason))]
-    pub fn redact_pdu(&self, event_id: &EventId, reason: &PduEvent) -> Result<()> {
+    pub fn redact_pdu(
+        &self,
+        event_id: &EventId,
+        reason: &PduEvent,
+        shortroomid: u64,
+    ) -> Result<()> {
         // TODO: Don't reserialize, keep original json
         if let Some(pdu_id) = self.get_pdu_id(event_id)? {
             let mut pdu = self
                 .get_pdu_from_id(&pdu_id)?
                 .ok_or_else(|| Error::bad_database("PDU ID points to invalid PDU."))?;
+
+            #[derive(Deserialize)]
+            struct ExtractBody {
+                body: String,
+            }
+
+            if let Ok(content) = serde_json::from_str::<ExtractBody>(pdu.content.get()) {
+                services()
+                    .rooms
+                    .search
+                    .deindex_pdu(shortroomid, &pdu_id, &content.body)?;
+            }
+
             let room_version_id = services().rooms.state.get_room_version(&pdu.room_id)?;
             pdu.redact(room_version_id, reason)?;
+
             self.replace_pdu(
                 &pdu_id,
                 &utils::to_canonical_object(&pdu).expect("PDU is an object"),
