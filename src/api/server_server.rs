@@ -782,50 +782,53 @@ pub async fn send_transaction_message_route(
             Edu::Receipt(receipt) => {
                 for (room_id, room_updates) in receipt.receipts {
                     for (user_id, user_updates) in room_updates.read {
-                        if let Some((event_id, _)) = user_updates
-                            .event_ids
-                            .iter()
-                            .filter_map(|id| {
+                        if user_id.server_name() == sender_servername {
+                            if let Some((event_id, _)) = user_updates
+                                .event_ids
+                                .iter()
+                                .filter_map(|id| {
+                                    services()
+                                        .rooms
+                                        .timeline
+                                        .get_pdu_count(id)
+                                        .ok()
+                                        .flatten()
+                                        .map(|r| (id, r))
+                                })
+                                .max_by_key(|(_, count)| *count)
+                            {
+                                let mut user_receipts = BTreeMap::new();
+                                user_receipts.insert(user_id.clone(), user_updates.data);
+
+                                let mut receipts = BTreeMap::new();
+                                receipts.insert(ReceiptType::Read, user_receipts);
+
+                                let mut receipt_content = BTreeMap::new();
+                                receipt_content.insert(event_id.to_owned(), receipts);
+
+                                let event = ReceiptEvent {
+                                    content: ReceiptEventContent(receipt_content),
+                                    room_id: room_id.clone(),
+                                };
                                 services()
                                     .rooms
-                                    .timeline
-                                    .get_pdu_count(id)
-                                    .ok()
-                                    .flatten()
-                                    .map(|r| (id, r))
-                            })
-                            .max_by_key(|(_, count)| *count)
-                        {
-                            let mut user_receipts = BTreeMap::new();
-                            user_receipts.insert(user_id.clone(), user_updates.data);
-
-                            let mut receipts = BTreeMap::new();
-                            receipts.insert(ReceiptType::Read, user_receipts);
-
-                            let mut receipt_content = BTreeMap::new();
-                            receipt_content.insert(event_id.to_owned(), receipts);
-
-                            let event = ReceiptEvent {
-                                content: ReceiptEventContent(receipt_content),
-                                room_id: room_id.clone(),
-                            };
-                            services()
-                                .rooms
-                                .edus
-                                .read_receipt
-                                .readreceipt_update(&user_id, &room_id, event)?;
-                        } else {
-                            // TODO fetch missing events
-                            debug!("No known event ids in read receipt: {:?}", user_updates);
+                                    .edus
+                                    .read_receipt
+                                    .readreceipt_update(&user_id, &room_id, event)?;
+                            } else {
+                                // TODO fetch missing events
+                                debug!("No known event ids in read receipt: {:?}", user_updates);
+                            }
                         }
                     }
                 }
             }
             Edu::Typing(typing) => {
-                if services()
-                    .rooms
-                    .state_cache
-                    .is_joined(&typing.user_id, &typing.room_id)?
+                if typing.user_id.server_name() == sender_servername
+                    && services()
+                        .rooms
+                        .state_cache
+                        .is_joined(&typing.user_id, &typing.room_id)?
                 {
                     if typing.typing {
                         services()
@@ -849,7 +852,9 @@ pub async fn send_transaction_message_route(
                 }
             }
             Edu::DeviceListUpdate(DeviceListUpdateContent { user_id, .. }) => {
-                services().users.mark_device_key_update(&user_id)?;
+                if user_id.server_name() == sender_servername {
+                    services().users.mark_device_key_update(&user_id)?;
+                }
             }
             Edu::DirectToDevice(DirectDeviceContent {
                 sender,
@@ -857,77 +862,75 @@ pub async fn send_transaction_message_route(
                 message_id,
                 messages,
             }) => {
-                // Check if this is a new transaction id
-                if services()
-                    .transaction_ids
-                    .existing_txnid(&sender, None, &message_id)?
-                    .is_some()
+                if sender.server_name() == sender_servername
+                    // Check if this is a new transaction id
+                    && services()
+                        .transaction_ids
+                        .existing_txnid(&sender, None, &message_id)?
+                        .is_none()
                 {
-                    continue;
-                }
-
-                for (target_user_id, map) in &messages {
-                    for (target_device_id_maybe, event) in map {
-                        match target_device_id_maybe {
-                            DeviceIdOrAllDevices::DeviceId(target_device_id) => {
-                                services().users.add_to_device_event(
-                                    &sender,
-                                    target_user_id,
-                                    target_device_id,
-                                    &ev_type.to_string(),
-                                    event.deserialize_as().map_err(|e| {
-                                        warn!("To-Device event is invalid: {event:?} {e}");
-                                        Error::BadRequest(
-                                            ErrorKind::InvalidParam,
-                                            "Event is invalid",
-                                        )
-                                    })?,
-                                )?
-                            }
-
-                            DeviceIdOrAllDevices::AllDevices => {
-                                for target_device_id in
-                                    services().users.all_device_ids(target_user_id)
-                                {
+                    for (target_user_id, map) in &messages {
+                        for (target_device_id_maybe, event) in map {
+                            match target_device_id_maybe {
+                                DeviceIdOrAllDevices::DeviceId(target_device_id) => {
                                     services().users.add_to_device_event(
                                         &sender,
                                         target_user_id,
-                                        &target_device_id?,
+                                        target_device_id,
                                         &ev_type.to_string(),
-                                        event.deserialize_as().map_err(|_| {
+                                        event.deserialize_as().map_err(|e| {
+                                            warn!("To-Device event is invalid: {event:?} {e}");
                                             Error::BadRequest(
                                                 ErrorKind::InvalidParam,
                                                 "Event is invalid",
                                             )
                                         })?,
-                                    )?;
+                                    )?
+                                }
+
+                                DeviceIdOrAllDevices::AllDevices => {
+                                    for target_device_id in
+                                        services().users.all_device_ids(target_user_id)
+                                    {
+                                        services().users.add_to_device_event(
+                                            &sender,
+                                            target_user_id,
+                                            &target_device_id?,
+                                            &ev_type.to_string(),
+                                            event.deserialize_as().map_err(|_| {
+                                                Error::BadRequest(
+                                                    ErrorKind::InvalidParam,
+                                                    "Event is invalid",
+                                                )
+                                            })?,
+                                        )?;
+                                    }
                                 }
                             }
                         }
                     }
-                }
 
-                // Save transaction id with empty data
-                services()
-                    .transaction_ids
-                    .add_txnid(&sender, None, &message_id, &[])?;
+                    // Save transaction id with empty data
+                    services()
+                        .transaction_ids
+                        .add_txnid(&sender, None, &message_id, &[])?;
+                }
             }
             Edu::SigningKeyUpdate(SigningKeyUpdateContent {
                 user_id,
                 master_key,
                 self_signing_key,
             }) => {
-                if user_id.server_name() != sender_servername {
-                    continue;
-                }
-                if let Some(master_key) = master_key {
-                    services().users.add_cross_signing_keys(
-                        &user_id,
-                        &master_key,
-                        &self_signing_key,
-                        &None,
-                        true,
-                    )?;
+                if user_id.server_name() == sender_servername {
+                    if let Some(master_key) = master_key {
+                        services().users.add_cross_signing_keys(
+                            &user_id,
+                            &master_key,
+                            &self_signing_key,
+                            &None,
+                            true,
+                        )?;
+                    }
                 }
             }
             Edu::_Custom(_) => {}
