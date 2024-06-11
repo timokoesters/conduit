@@ -133,7 +133,10 @@ impl Service {
             match services().rooms.timeline.get_pdu(&event_id) {
                 Ok(Some(pdu)) => {
                     if pdu.room_id != room_id {
-                        return Err(Error::BadRequest(ErrorKind::Forbidden, "Evil event in db"));
+                        return Err(Error::BadRequest(
+                            ErrorKind::forbidden(),
+                            "Evil event in db",
+                        ));
                     }
                     for auth_event in &pdu.auth_events {
                         let sauthevent = services()

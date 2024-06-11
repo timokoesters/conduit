@@ -1,6 +1,7 @@
 use std::{future::Future, io, net::SocketAddr, sync::atomic, time::Duration};
 
 use axum::{
+    body::Body,
     extract::{DefaultBodyLimit, FromRequestParts, MatchedPath},
     middleware::map_response,
     response::{IntoResponse, Response},
@@ -69,11 +70,13 @@ async fn main() {
     config.warn_deprecated();
 
     if config.allow_jaeger {
-        opentelemetry::global::set_text_map_propagator(opentelemetry_jaeger::Propagator::new());
-        let tracer = opentelemetry_jaeger::new_agent_pipeline()
-            .with_auto_split_batch(true)
-            .with_service_name("conduit")
-            .install_batch(opentelemetry::runtime::Tokio)
+        opentelemetry::global::set_text_map_propagator(
+            opentelemetry_jaeger_propagator::Propagator::new(),
+        );
+        let tracer = opentelemetry_otlp::new_pipeline()
+            .tracing()
+            .with_exporter(opentelemetry_otlp::new_exporter().tonic())
+            .install_batch(opentelemetry_sdk::runtime::Tokio)
             .unwrap();
         let telemetry = tracing_opentelemetry::layer().with_tracer(tracer);
 
@@ -225,9 +228,9 @@ async fn run_server() -> io::Result<()> {
     Ok(())
 }
 
-async fn spawn_task<B: Send + 'static>(
-    req: http::Request<B>,
-    next: axum::middleware::Next<B>,
+async fn spawn_task(
+    req: http::Request<Body>,
+    next: axum::middleware::Next,
 ) -> std::result::Result<Response, StatusCode> {
     if services().globals.shutdown.load(atomic::Ordering::Relaxed) {
         return Err(StatusCode::SERVICE_UNAVAILABLE);
@@ -237,9 +240,9 @@ async fn spawn_task<B: Send + 'static>(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
-async fn unrecognized_method<B: Send>(
-    req: http::Request<B>,
-    next: axum::middleware::Next<B>,
+async fn unrecognized_method(
+    req: http::Request<Body>,
+    next: axum::middleware::Next,
 ) -> std::result::Result<Response, StatusCode> {
     let method = req.method().clone();
     let uri = req.uri().clone();

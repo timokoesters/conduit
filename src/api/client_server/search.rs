@@ -43,7 +43,7 @@ pub async fn search_events_route(
             .is_joined(sender_user, &room_id)?
         {
             return Err(Error::BadRequest(
-                ErrorKind::Forbidden,
+                ErrorKind::forbidden(),
                 "You don't have permission to view this room.",
             ));
         }

@@ -77,7 +77,7 @@ pub async fn get_register_available_route(
 pub async fn register_route(body: Ruma<register::v3::Request>) -> Result<register::v3::Response> {
     if !services().globals.allow_registration().await && body.appservice_info.is_none() {
         return Err(Error::BadRequest(
-            ErrorKind::Forbidden,
+            ErrorKind::forbidden(),
             "Registration has been disabled.",
         ));
     }

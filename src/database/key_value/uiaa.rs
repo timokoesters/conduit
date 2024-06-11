@@ -80,7 +80,7 @@ impl service::uiaa::Data for KeyValueDatabase {
                 .userdevicesessionid_uiaainfo
                 .get(&userdevicesessionid)?
                 .ok_or(Error::BadRequest(
-                    ErrorKind::Forbidden,
+                    ErrorKind::forbidden(),
                     "UIAA session does not exist.",
                 ))?,
         )

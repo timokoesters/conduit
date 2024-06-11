@@ -2,13 +2,14 @@ use std::{collections::BTreeMap, iter::FromIterator, str};
 
 use axum::{
     async_trait,
-    body::{Full, HttpBody},
-    extract::{rejection::TypedHeaderRejectionReason, FromRequest, Path, TypedHeader},
-    headers::{authorization::Bearer, Authorization},
+    body::Body,
+    extract::{FromRequest, Path},
     response::{IntoResponse, Response},
-    BoxError, RequestExt, RequestPartsExt,
+    RequestExt, RequestPartsExt,
 };
-use bytes::{Buf, BufMut, Bytes, BytesMut};
+use axum_extra::headers::authorization::Bearer;
+use axum_extra::{headers::Authorization, typed_header::TypedHeaderRejectionReason, TypedHeader};
+use bytes::{BufMut, BytesMut};
 use http::{Request, StatusCode};
 use ruma::{
     api::{client::error::ErrorKind, AuthScheme, IncomingRequest, OutgoingResponse},
@@ -29,37 +30,33 @@ enum Token {
 }
 
 #[async_trait]
-impl<T, S, B> FromRequest<S, B> for Ruma<T>
+impl<T, S> FromRequest<S> for Ruma<T>
 where
     T: IncomingRequest,
-    B: HttpBody + Send + 'static,
-    B::Data: Send,
-    B::Error: Into<BoxError>,
 {
     type Rejection = Error;
 
-    async fn from_request(req: Request<B>, _state: &S) -> Result<Self, Self::Rejection> {
+    async fn from_request(req: Request<Body>, _state: &S) -> Result<Self, Self::Rejection> {
         #[derive(Deserialize)]
         struct QueryParams {
             access_token: Option<String>,
             user_id: Option<String>,
         }
 
-        let (mut parts, mut body) = match req.with_limited_body() {
-            Ok(limited_req) => {
-                let (parts, body) = limited_req.into_parts();
-                let body = to_bytes(body)
-                    .await
-                    .map_err(|_| Error::BadRequest(ErrorKind::MissingToken, "Missing token."))?;
-                (parts, body)
-            }
-            Err(original_req) => {
-                let (parts, body) = original_req.into_parts();
-                let body = to_bytes(body)
-                    .await
-                    .map_err(|_| Error::BadRequest(ErrorKind::MissingToken, "Missing token."))?;
-                (parts, body)
-            }
+        let (mut parts, mut body) = {
+            let limited_req = req.with_limited_body();
+            let (parts, body) = limited_req.into_parts();
+            let body = axum::body::to_bytes(
+                body,
+                services()
+                    .globals
+                    .max_request_size()
+                    .try_into()
+                    .unwrap_or(usize::MAX),
+            )
+            .await
+            .map_err(|_| Error::BadRequest(ErrorKind::MissingToken, "Missing token."))?;
+            (parts, body)
         };
 
         let metadata = T::METADATA;
@@ -135,7 +132,7 @@ where
 
                     if !services().users.exists(&user_id)? {
                         return Err(Error::BadRequest(
-                            ErrorKind::Forbidden,
+                            ErrorKind::forbidden(),
                             "User does not exist.",
                         ));
                     }
@@ -175,7 +172,7 @@ where
                                 _ => "Unknown header-related error",
                             };
 
-                            Error::BadRequest(ErrorKind::Forbidden, msg)
+                            Error::BadRequest(ErrorKind::forbidden(), msg)
                         })?;
 
                     if let Some(dest) = x_matrix.destination {
@@ -242,7 +239,7 @@ where
                         Err(e) => {
                             warn!("Failed to fetch signing keys: {}", e);
                             return Err(Error::BadRequest(
-                                ErrorKind::Forbidden,
+                                ErrorKind::forbidden(),
                                 "Failed to fetch signing keys.",
                             ));
                         }
@@ -268,7 +265,7 @@ where
                             }
 
                             return Err(Error::BadRequest(
-                                ErrorKind::Forbidden,
+                                ErrorKind::forbidden(),
                                 "Failed to verify X-Matrix signatures.",
                             ));
                         }
@@ -351,60 +348,8 @@ where
 impl<T: OutgoingResponse> IntoResponse for RumaResponse<T> {
     fn into_response(self) -> Response {
         match self.0.try_into_http_response::<BytesMut>() {
-            Ok(res) => res.map(BytesMut::freeze).map(Full::new).into_response(),
+            Ok(res) => res.map(BytesMut::freeze).map(Body::from).into_response(),
             Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
         }
     }
-}
-
-// copied from hyper under the following license:
-// Copyright (c) 2014-2021 Sean McArthur
-
-// Permission is hereby granted, free of charge, to any person obtaining a copy
-// of this software and associated documentation files (the "Software"), to deal
-// in the Software without restriction, including without limitation the rights
-// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-// copies of the Software, and to permit persons to whom the Software is
-// furnished to do so, subject to the following conditions:
-
-// The above copyright notice and this permission notice shall be included in
-// all copies or substantial portions of the Software.
-
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-// THE SOFTWARE.
-pub(crate) async fn to_bytes<T>(body: T) -> Result<Bytes, T::Error>
-where
-    T: HttpBody,
-{
-    futures_util::pin_mut!(body);
-
-    // If there's only 1 chunk, we can just return Buf::to_bytes()
-    let mut first = if let Some(buf) = body.data().await {
-        buf?
-    } else {
-        return Ok(Bytes::new());
-    };
-
-    let second = if let Some(buf) = body.data().await {
-        buf?
-    } else {
-        return Ok(first.copy_to_bytes(first.remaining()));
-    };
-
-    // With more than 1 buf, we gotta flatten into a Vec first.
-    let cap = first.remaining() + second.remaining() + body.size_hint().lower() as usize;
-    let mut vec = Vec::with_capacity(cap);
-    vec.put(first);
-    vec.put(second);
-
-    while let Some(buf) = body.data().await {
-        vec.put(buf?);
-    }
-
-    Ok(vec.into())
 }

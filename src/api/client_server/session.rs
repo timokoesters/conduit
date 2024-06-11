@@ -63,7 +63,7 @@ pub async fn login_route(body: Ruma<login::v3::Request>) -> Result<login::v3::Re
                 UserId::parse(user)
             } else {
                 warn!("Bad login type: {:?}", &body.login_info);
-                return Err(Error::BadRequest(ErrorKind::Forbidden, "Bad login type."));
+                return Err(Error::BadRequest(ErrorKind::forbidden(), "Bad login type."));
             }
             .map_err(|_| Error::BadRequest(ErrorKind::InvalidUsername, "Username is invalid."))?;
 
@@ -78,7 +78,7 @@ pub async fn login_route(body: Ruma<login::v3::Request>) -> Result<login::v3::Re
                 .users
                 .password_hash(&user_id)?
                 .ok_or(Error::BadRequest(
-                    ErrorKind::Forbidden,
+                    ErrorKind::forbidden(),
                     "Wrong username or password.",
                 ))?;
 
@@ -93,7 +93,7 @@ pub async fn login_route(body: Ruma<login::v3::Request>) -> Result<login::v3::Re
 
             if !hash_matches {
                 return Err(Error::BadRequest(
-                    ErrorKind::Forbidden,
+                    ErrorKind::forbidden(),
                     "Wrong username or password.",
                 ));
             }
@@ -143,7 +143,7 @@ pub async fn login_route(body: Ruma<login::v3::Request>) -> Result<login::v3::Re
                 UserId::parse(user)
             } else {
                 warn!("Bad login type: {:?}", &body.login_info);
-                return Err(Error::BadRequest(ErrorKind::Forbidden, "Bad login type."));
+                return Err(Error::BadRequest(ErrorKind::forbidden(), "Bad login type."));
             }
             .map_err(|_| Error::BadRequest(ErrorKind::InvalidUsername, "Username is invalid."))?;
 

@@ -28,43 +28,24 @@ workspace = true
 
 [dependencies]
 # Web framework
-axum = { version = "0.6.18", default-features = false, features = [
+axum = { version = "0.7", default-features = false, features = [
   "form",
-  "headers",
   "http1",
   "http2",
   "json",
   "matched-path",
 ], optional = true }
-axum-server = { version = "0.5.1", features = ["tls-rustls"] }
+axum-extra = { version = "0.9", features = ["typed-header"] }
+axum-server = { version = "0.6", features = ["tls-rustls"] }
 tower = { version = "0.4.13", features = ["util"] }
-tower-http = { version = "0.4.1", features = [
+tower-http = { version = "0.5", features = [
   "add-extension",
   "cors",
   "sensitive-headers",
   "trace",
   "util",
 ] }
-
-# Used for matrix spec type definitions and helpers
-#ruma = { version = "0.4.0", features = ["compat", "rand", "appservice-api-c", "client-api", "federation-api", "push-gateway-api-c", "state-res", "unstable-pre-spec", "unstable-exhaustive-types"] }
-ruma = { git = "https://github.com/ruma/ruma", rev = "c5f8137ba9741b2317313256b57e6e14b61fb419", features = [
-  "appservice-api-c",
-  "client-api",
-  "compat",
-  "federation-api",
-  "push-gateway-api-c",
-  "rand",
-  "ring-compat",
-  "server-util",
-  "state-res",
-  "unstable-exhaustive-types",
-  "unstable-msc2448",
-  "unstable-msc3575",
-  "unstable-unspecified",
-] }
-#ruma = { git = "https://github.com/timokoesters/ruma", rev = "4ec9c69bb7e09391add2382b3ebac97b6e8f4c64", features = ["compat", "rand", "appservice-api-c", "client-api", "federation-api", "push-gateway-api-c", "state-res", "unstable-msc2448", "unstable-msc3575", "unstable-exhaustive-types", "ring-compat", "unstable-unspecified" ] }
-#ruma = { path = "../ruma/crates/ruma", features = ["compat", "rand", "appservice-api-c", "client-api", "federation-api", "push-gateway-api-c", "state-res", "unstable-msc2448", "unstable-msc3575", "unstable-exhaustive-types", "ring-compat", "unstable-unspecified" ] }
+tower-service = "0.3"
 
 # Async runtime and utilities
 tokio = { version = "1.28.1", features = ["fs", "macros", "signal", "sync"] }
@@ -75,7 +56,7 @@ persy = { version = "1.4.4", optional = true, features = ["background_ops"] }
 
 # Used for the http request / response body type for Ruma endpoints used with reqwest
 bytes = "1.4.0"
-http = "0.2.9"
+http = "1"
 # Used to find data directory for default db path
 directories = "5"
 # Used for ruma wrapper
@@ -89,8 +70,14 @@ rand = "0.8.5"
 # Used to hash passwords
 rust-argon2 = "2"
 # Used to send requests
-hyper = "0.14.26"
-reqwest = { version = "0.11.18", default-features = false, features = [
+hyper = "1.1"
+hyper-util = { version = "0.1", features = [
+  "client",
+  "client-legacy",
+  "http1",
+  "http2",
+] }
+reqwest = { version = "0.12", default-features = false, features = [
   "rustls-tls-native-roots",
   "socks",
 ] }
@@ -113,11 +100,13 @@ regex = "1.8.1"
 # jwt jsonwebtokens
 jsonwebtoken = "9.2.0"
 # Performance measurements
-opentelemetry = { version = "0.18.0", features = ["rt-tokio"] }
-opentelemetry-jaeger = { version = "0.17.0", features = ["rt-tokio"] }
-tracing = { version = "0.1.37", features = [] }
+opentelemetry = "0.22"
+opentelemetry-jaeger-propagator = "0.1"
+opentelemetry-otlp = "0.15"
+opentelemetry_sdk = { version = "0.22", features = ["rt-tokio"] }
+tracing = "0.1.37"
 tracing-flame = "0.2.0"
-tracing-opentelemetry = "0.18.0"
+tracing-opentelemetry = "0.23"
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
 
 lru-cache = "0.1.2"
@@ -157,6 +146,25 @@ tikv-jemallocator = { version = "0.5.0", features = [
 ], optional = true }
 
 sd-notify = { version = "0.4.1", optional = true }
+
+# Used for matrix spec type definitions and helpers
+[dependencies.ruma]
+features = [
+  "appservice-api-c",
+  "client-api",
+  "compat",
+  "federation-api",
+  "push-gateway-api-c",
+  "rand",
+  "ring-compat",
+  "server-util",
+  "state-res",
+  "unstable-exhaustive-types",
+  "unstable-msc2448",
+  "unstable-msc3575",
+  "unstable-unspecified",
+]
+git = "https://github.com/ruma/ruma"
 
 [dependencies.rocksdb]
 features = ["lz4", "multi-threaded-cf", "zstd"]
