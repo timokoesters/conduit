@@ -21,7 +21,6 @@ use ruma::{
         GlobalAccountDataEventType, StateEventType, TimelineEventType,
     },
     push::{Action, Ruleset, Tweak},
-    serde::Base64,
     state_res::{self, Event, RoomVersion},
     uint, user_id, CanonicalJsonObject, CanonicalJsonValue, EventId, OwnedEventId, OwnedRoomId,
     OwnedServerName, RoomId, RoomVersionId, ServerName, UserId,
@@ -33,7 +32,10 @@ use tracing::{error, info, warn};
 
 use crate::{
     api::server_server,
-    service::pdu::{EventHash, PduBuilder},
+    service::{
+        globals::SigningKeys,
+        pdu::{EventHash, PduBuilder},
+    },
     services, utils, Error, PduEvent, Result,
 };
 
@@ -1214,7 +1216,7 @@ impl Service {
         &self,
         origin: &ServerName,
         pdu: Box<RawJsonValue>,
-        pub_key_map: &RwLock<BTreeMap<String, BTreeMap<String, Base64>>>,
+        pub_key_map: &RwLock<BTreeMap<String, SigningKeys>>,
     ) -> Result<()> {
         let (event_id, value, room_id) = server_server::parse_incoming_pdu(&pdu)?;
 

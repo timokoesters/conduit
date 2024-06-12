@@ -18,9 +18,8 @@ use ruma::{
         },
         StateEventType, TimelineEventType,
     },
-    serde::Base64,
-    state_res, CanonicalJsonObject, CanonicalJsonValue, EventId, OwnedEventId, OwnedRoomId,
-    OwnedServerName, OwnedUserId, RoomId, RoomVersionId, UserId,
+    state_res, CanonicalJsonObject, CanonicalJsonValue, EventId, MilliSecondsSinceUnixEpoch,
+    OwnedEventId, OwnedRoomId, OwnedServerName, OwnedUserId, RoomId, RoomVersionId, UserId,
 };
 use serde_json::value::{to_raw_value, RawValue as RawJsonValue};
 use std::{
@@ -32,7 +31,10 @@ use tokio::sync::RwLock;
 use tracing::{debug, error, info, warn};
 
 use crate::{
-    service::pdu::{gen_event_id_canonical_json, PduBuilder},
+    service::{
+        globals::SigningKeys,
+        pdu::{gen_event_id_canonical_json, PduBuilder},
+    },
     services, utils, Error, PduEvent, Result, Ruma,
 };
 
@@ -1130,7 +1132,7 @@ async fn make_join_request(
 async fn validate_and_add_event_id(
     pdu: &RawJsonValue,
     room_version: &RoomVersionId,
-    pub_key_map: &RwLock<BTreeMap<String, BTreeMap<String, Base64>>>,
+    pub_key_map: &RwLock<BTreeMap<String, SigningKeys>>,
 ) -> Result<(OwnedEventId, CanonicalJsonObject)> {
     let mut value: CanonicalJsonObject = serde_json::from_str(pdu.get()).map_err(|e| {
         error!("Invalid PDU in server response: {:?}: {:?}", pdu, e);
@@ -1177,8 +1179,35 @@ async fn validate_and_add_event_id(
         }
     }
 
-    if let Err(e) = ruma::signatures::verify_event(&*pub_key_map.read().await, &value, room_version)
-    {
+    let origin_server_ts = value.get("origin_server_ts").ok_or_else(|| {
+        error!("Invalid PDU, no origin_server_ts field");
+        Error::BadRequest(
+            ErrorKind::MissingParam,
+            "Invalid PDU, no origin_server_ts field",
+        )
+    })?;
+
+    let origin_server_ts: MilliSecondsSinceUnixEpoch = {
+        let ts = origin_server_ts.as_integer().ok_or_else(|| {
+            Error::BadRequest(
+                ErrorKind::InvalidParam,
+                "origin_server_ts must be an integer",
+            )
+        })?;
+
+        MilliSecondsSinceUnixEpoch(i64::from(ts).try_into().map_err(|_| {
+            Error::BadRequest(ErrorKind::InvalidParam, "Time must be after the unix epoch")
+        })?)
+    };
+
+    let unfiltered_keys = (*pub_key_map.read().await).clone();
+
+    let keys =
+        services()
+            .globals
+            .filter_keys_server_map(unfiltered_keys, origin_server_ts, room_version);
+
+    if let Err(e) = ruma::signatures::verify_event(&keys, &value, room_version) {
         warn!("Event {} failed verification {:?} {}", event_id, pdu, e);
         back_off(event_id).await;
         return Err(Error::BadServerResponse("Event failed verification."));

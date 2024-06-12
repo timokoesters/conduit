@@ -1,15 +1,19 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 
 use async_trait::async_trait;
 use futures_util::{stream::FuturesUnordered, StreamExt};
 use lru_cache::LruCache;
 use ruma::{
-    api::federation::discovery::{ServerSigningKeys, VerifyKey},
+    api::federation::discovery::{OldVerifyKey, ServerSigningKeys},
     signatures::Ed25519KeyPair,
-    DeviceId, MilliSecondsSinceUnixEpoch, OwnedServerSigningKeyId, ServerName, UserId,
+    DeviceId, ServerName, UserId,
 };
 
-use crate::{database::KeyValueDatabase, service, services, utils, Error, Result};
+use crate::{
+    database::KeyValueDatabase,
+    service::{self, globals::SigningKeys},
+    services, utils, Error, Result,
+};
 
 pub const COUNTER: &[u8] = b"c";
 pub const LAST_CHECK_FOR_UPDATES_COUNT: &[u8] = b"u";
@@ -237,64 +241,97 @@ lasttimelinecount_cache: {lasttimelinecount_cache}\n"
         self.global.remove(b"keypair")
     }
 
-    fn add_signing_key(
+    fn add_signing_key_from_trusted_server(
         &self,
         origin: &ServerName,
         new_keys: ServerSigningKeys,
-    ) -> Result<BTreeMap<OwnedServerSigningKeyId, VerifyKey>> {
-        // Not atomic, but this is not critical
-        let signingkeys = self.server_signingkeys.get(origin.as_bytes())?;
+    ) -> Result<SigningKeys> {
+        let prev_keys = self.server_signingkeys.get(origin.as_bytes())?;
 
-        let mut keys = signingkeys
-            .and_then(|keys| serde_json::from_slice(&keys).ok())
-            .unwrap_or_else(|| {
-                // Just insert "now", it doesn't matter
-                ServerSigningKeys::new(origin.to_owned(), MilliSecondsSinceUnixEpoch::now())
-            });
+        Ok(
+            if let Some(mut prev_keys) =
+                prev_keys.and_then(|keys| serde_json::from_slice::<ServerSigningKeys>(&keys).ok())
+            {
+                let ServerSigningKeys {
+                    verify_keys,
+                    old_verify_keys,
+                    ..
+                } = new_keys;
 
-        let ServerSigningKeys {
-            verify_keys,
-            old_verify_keys,
-            ..
-        } = new_keys;
+                prev_keys.verify_keys.extend(verify_keys);
+                prev_keys.old_verify_keys.extend(old_verify_keys);
+                prev_keys.valid_until_ts = new_keys.valid_until_ts;
 
-        keys.verify_keys.extend(verify_keys);
-        keys.old_verify_keys.extend(old_verify_keys);
+                self.server_signingkeys.insert(
+                    origin.as_bytes(),
+                    &serde_json::to_vec(&prev_keys).expect("serversigningkeys can be serialized"),
+                )?;
 
-        self.server_signingkeys.insert(
-            origin.as_bytes(),
-            &serde_json::to_vec(&keys).expect("serversigningkeys can be serialized"),
-        )?;
+                prev_keys.into()
+            } else {
+                self.server_signingkeys.insert(
+                    origin.as_bytes(),
+                    &serde_json::to_vec(&new_keys).expect("serversigningkeys can be serialized"),
+                )?;
 
-        let mut tree = keys.verify_keys;
-        tree.extend(
-            keys.old_verify_keys
-                .into_iter()
-                .map(|old| (old.0, VerifyKey::new(old.1.key))),
-        );
+                new_keys.into()
+            },
+        )
+    }
 
-        Ok(tree)
+    fn add_signing_key_from_origin(
+        &self,
+        origin: &ServerName,
+        new_keys: ServerSigningKeys,
+    ) -> Result<SigningKeys> {
+        let prev_keys = self.server_signingkeys.get(origin.as_bytes())?;
+
+        Ok(
+            if let Some(mut prev_keys) =
+                prev_keys.and_then(|keys| serde_json::from_slice::<ServerSigningKeys>(&keys).ok())
+            {
+                let ServerSigningKeys {
+                    verify_keys,
+                    old_verify_keys,
+                    ..
+                } = new_keys;
+
+                // Moving `verify_keys` no longer present to `old_verify_keys`
+                for (key_id, key) in prev_keys.verify_keys {
+                    if !verify_keys.contains_key(&key_id) {
+                        prev_keys
+                            .old_verify_keys
+                            .insert(key_id, OldVerifyKey::new(prev_keys.valid_until_ts, key.key));
+                    }
+                }
+
+                prev_keys.verify_keys = verify_keys;
+                prev_keys.old_verify_keys.extend(old_verify_keys);
+                prev_keys.valid_until_ts = new_keys.valid_until_ts;
+
+                self.server_signingkeys.insert(
+                    origin.as_bytes(),
+                    &serde_json::to_vec(&prev_keys).expect("serversigningkeys can be serialized"),
+                )?;
+
+                prev_keys.into()
+            } else {
+                self.server_signingkeys.insert(
+                    origin.as_bytes(),
+                    &serde_json::to_vec(&new_keys).expect("serversigningkeys can be serialized"),
+                )?;
+
+                new_keys.into()
+            },
+        )
     }
 
     /// This returns an empty `Ok(BTreeMap<..>)` when there are no keys found for the server.
-    fn signing_keys_for(
-        &self,
-        origin: &ServerName,
-    ) -> Result<BTreeMap<OwnedServerSigningKeyId, VerifyKey>> {
+    fn signing_keys_for(&self, origin: &ServerName) -> Result<Option<SigningKeys>> {
         let signingkeys = self
             .server_signingkeys
             .get(origin.as_bytes())?
-            .and_then(|bytes| serde_json::from_slice(&bytes).ok())
-            .map(|keys: ServerSigningKeys| {
-                let mut tree = keys.verify_keys;
-                tree.extend(
-                    keys.old_verify_keys
-                        .into_iter()
-                        .map(|old| (old.0, VerifyKey::new(old.1.key))),
-                );
-                tree
-            })
-            .unwrap_or_else(BTreeMap::new);
+            .and_then(|bytes| serde_json::from_slice::<SigningKeys>(&bytes).ok());
 
         Ok(signingkeys)
     }

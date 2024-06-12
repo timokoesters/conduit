@@ -1,9 +1,8 @@
 mod data;
 pub use data::Data;
-use ruma::{
-    serde::Base64, OwnedDeviceId, OwnedEventId, OwnedRoomId, OwnedServerName,
-    OwnedServerSigningKeyId, OwnedUserId,
-};
+pub use data::SigningKeys;
+use ruma::MilliSecondsSinceUnixEpoch;
+use ruma::{serde::Base64, OwnedDeviceId, OwnedEventId, OwnedRoomId, OwnedServerName, OwnedUserId};
 use ruma::{OwnedRoomAliasId, RoomAliasId};
 
 use crate::api::server_server::FedDest;
@@ -14,10 +13,7 @@ use hickory_resolver::TokioAsyncResolver;
 use hyper_util::client::legacy::connect::dns::{GaiResolver, Name as HyperName};
 use reqwest::dns::{Addrs, Name, Resolve, Resolving};
 use ruma::{
-    api::{
-        client::sync::sync_events,
-        federation::discovery::{ServerSigningKeys, VerifyKey},
-    },
+    api::{client::sync::sync_events, federation::discovery::ServerSigningKeys},
     DeviceId, RoomVersionId, ServerName, UserId,
 };
 use std::str::FromStr;
@@ -393,36 +389,89 @@ impl Service {
         room_versions
     }
 
-    /// TODO: the key valid until timestamp is only honored in room version > 4
-    /// Remove the outdated keys and insert the new ones.
-    ///
     /// This doesn't actually check that the keys provided are newer than the old set.
-    pub fn add_signing_key(
+    pub fn add_signing_key_from_trusted_server(
         &self,
         origin: &ServerName,
         new_keys: ServerSigningKeys,
-    ) -> Result<BTreeMap<OwnedServerSigningKeyId, VerifyKey>> {
-        self.db.add_signing_key(origin, new_keys)
+    ) -> Result<SigningKeys> {
+        self.db
+            .add_signing_key_from_trusted_server(origin, new_keys)
     }
 
-    /// This returns an empty `Ok(BTreeMap<..>)` when there are no keys found for the server.
-    pub fn signing_keys_for(
+    /// Same as from_trusted_server, except it will move active keys not present in `new_keys` to old_signing_keys
+    pub fn add_signing_key_from_origin(
         &self,
         origin: &ServerName,
-    ) -> Result<BTreeMap<OwnedServerSigningKeyId, VerifyKey>> {
-        let mut keys = self.db.signing_keys_for(origin)?;
-        if origin == self.server_name() {
-            keys.insert(
-                format!("ed25519:{}", services().globals.keypair().version())
-                    .try_into()
-                    .expect("found invalid server signing keys in DB"),
-                VerifyKey {
-                    key: Base64::new(self.keypair.public_key().to_vec()),
-                },
-            );
-        }
+        new_keys: ServerSigningKeys,
+    ) -> Result<SigningKeys> {
+        self.db.add_signing_key_from_origin(origin, new_keys)
+    }
 
-        Ok(keys)
+    /// This returns Ok(None) when there are no keys found for the server.
+    pub fn signing_keys_for(&self, origin: &ServerName) -> Result<Option<SigningKeys>> {
+        Ok(self.db.signing_keys_for(origin)?.or_else(|| {
+            if origin == self.server_name() {
+                Some(SigningKeys::load_own_keys())
+            } else {
+                None
+            }
+        }))
+    }
+
+    /// Filters the key map of multiple servers down to keys that should be accepted given the expiry time,
+    /// room version, and timestamp of the paramters
+    pub fn filter_keys_server_map(
+        &self,
+        keys: BTreeMap<String, SigningKeys>,
+        timestamp: MilliSecondsSinceUnixEpoch,
+        room_version_id: &RoomVersionId,
+    ) -> BTreeMap<String, BTreeMap<String, Base64>> {
+        keys.into_iter()
+            .filter_map(|(server, keys)| {
+                self.filter_keys_single_server(keys, timestamp, room_version_id)
+                    .map(|keys| (server, keys))
+            })
+            .collect()
+    }
+
+    /// Filters the keys of a single server down to keys that should be accepted given the expiry time,
+    /// room version, and timestamp of the paramters
+    pub fn filter_keys_single_server(
+        &self,
+        keys: SigningKeys,
+        timestamp: MilliSecondsSinceUnixEpoch,
+        room_version_id: &RoomVersionId,
+    ) -> Option<BTreeMap<String, Base64>> {
+        if keys.valid_until_ts > timestamp
+            // valid_until_ts MUST be ignored in room versions 1, 2, 3, and 4.
+            // https://spec.matrix.org/v1.10/server-server-api/#get_matrixkeyv2server
+                || matches!(room_version_id, RoomVersionId::V1
+                    | RoomVersionId::V2
+                    | RoomVersionId::V4
+                    | RoomVersionId::V3)
+        {
+            // Given that either the room version allows stale keys, or the valid_until_ts is
+            // in the future, all verify_keys are valid
+            let mut map: BTreeMap<_, _> = keys
+                .verify_keys
+                .into_iter()
+                .map(|(id, key)| (id, key.key))
+                .collect();
+
+            map.extend(keys.old_verify_keys.into_iter().filter_map(|(id, key)| {
+                // Even on old room versions, we don't allow old keys if they are expired
+                if key.expired_ts > timestamp {
+                    Some((id, key.key))
+                } else {
+                    None
+                }
+            }));
+
+            Some(map)
+        } else {
+            None
+        }
     }
 
     pub fn database_version(&self) -> Result<u64> {
