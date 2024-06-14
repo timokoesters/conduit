@@ -103,6 +103,11 @@ artifacts:
     - ./bin/nix-build-and-cache .#static-aarch64-unknown-linux-musl
     - cp result/bin/conduit aarch64-unknown-linux-musl
 
+    - mkdir -p target/aarch64-unknown-linux-musl/release
+    - cp result/bin/conduit target/aarch64-unknown-linux-musl/release
+    - direnv exec . cargo deb --no-strip --no-build --target aarch64-unknown-linux-musl
+    - mv target/aarch64-unknown-linux-musl/debian/*.deb aarch64-unknown-linux-musl.deb
+
     - ./bin/nix-build-and-cache .#oci-image-aarch64-unknown-linux-musl
     - cp result oci-image-arm64v8.tar.gz
 
@@ -114,6 +119,7 @@ artifacts:
       - x86_64-unknown-linux-musl
       - aarch64-unknown-linux-musl
       - x86_64-unknown-linux-musl.deb
+      - aarch64-unknown-linux-musl.deb
       - oci-image-amd64.tar.gz
       - oci-image-arm64v8.tar.gz
       - public
