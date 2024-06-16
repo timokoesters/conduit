@@ -1,9 +1,9 @@
 mod data;
-pub use data::Data;
-pub use data::SigningKeys;
-use ruma::MilliSecondsSinceUnixEpoch;
-use ruma::{serde::Base64, OwnedDeviceId, OwnedEventId, OwnedRoomId, OwnedServerName, OwnedUserId};
-use ruma::{OwnedRoomAliasId, RoomAliasId};
+pub use data::{Data, SigningKeys};
+use ruma::{
+    serde::Base64, MilliSecondsSinceUnixEpoch, OwnedDeviceId, OwnedEventId, OwnedRoomAliasId,
+    OwnedRoomId, OwnedServerName, OwnedUserId, RoomAliasId,
+};
 
 use crate::api::server_server::FedDest;
 
@@ -16,7 +16,6 @@ use ruma::{
     api::{client::sync::sync_events, federation::discovery::ServerSigningKeys},
     DeviceId, RoomVersionId, ServerName, UserId,
 };
-use std::str::FromStr;
 use std::{
     collections::{BTreeMap, HashMap},
     error::Error as StdError,
@@ -25,6 +24,7 @@ use std::{
     iter,
     net::{IpAddr, SocketAddr},
     path::PathBuf,
+    str::FromStr,
     sync::{
         atomic::{self, AtomicBool},
         Arc, RwLock as StdRwLock,

@@ -7,8 +7,11 @@ use axum::{
     response::{IntoResponse, Response},
     RequestExt, RequestPartsExt,
 };
-use axum_extra::headers::authorization::Bearer;
-use axum_extra::{headers::Authorization, typed_header::TypedHeaderRejectionReason, TypedHeader};
+use axum_extra::{
+    headers::{authorization::Bearer, Authorization},
+    typed_header::TypedHeaderRejectionReason,
+    TypedHeader,
+};
 use bytes::{BufMut, BytesMut};
 use http::{Request, StatusCode};
 use ruma::{
