@@ -23,7 +23,7 @@ mkShell {
   };
 
   # Development tools
-  nativeBuildInputs = default.nativeBuildInputs ++ [
+  nativeBuildInputs = [
     # Always use nightly rustfmt because most of its options are unstable
     #
     # This needs to come before `toolchain` in this list, otherwise
@@ -57,5 +57,5 @@ mkShell {
 
     # Useful for editing the book locally
     mdbook
-  ];
+  ] ++ default.nativeBuildInputs ;
 }
