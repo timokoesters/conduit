@@ -166,22 +166,20 @@ impl Service {
                                 / u64::from(original_height)
                         };
                         if use_width {
-                            if intermediate <= u64::from(::std::u32::MAX) {
+                            if intermediate <= u64::from(u32::MAX) {
                                 (width, intermediate as u32)
                             } else {
                                 (
-                                    (u64::from(width) * u64::from(::std::u32::MAX) / intermediate)
-                                        as u32,
-                                    ::std::u32::MAX,
+                                    (u64::from(width) * u64::from(u32::MAX) / intermediate) as u32,
+                                    u32::MAX,
                                 )
                             }
-                        } else if intermediate <= u64::from(::std::u32::MAX) {
+                        } else if intermediate <= u64::from(u32::MAX) {
                             (intermediate as u32, height)
                         } else {
                             (
-                                ::std::u32::MAX,
-                                (u64::from(height) * u64::from(::std::u32::MAX) / intermediate)
-                                    as u32,
+                                u32::MAX,
+                                (u64::from(height) * u64::from(u32::MAX) / intermediate) as u32,
                             )
                         }
                     };
