@@ -1445,6 +1445,7 @@ pub async fn create_join_event_template_route(
             unsigned: None,
             state_key: Some(body.user_id.to_string()),
             redacts: None,
+            timestamp: None,
         },
         &body.user_id,
         &body.room_id,

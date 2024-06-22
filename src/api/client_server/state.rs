@@ -10,7 +10,7 @@ use ruma::{
         room::canonical_alias::RoomCanonicalAliasEventContent, AnyStateEventContent, StateEventType,
     },
     serde::Raw,
-    EventId, RoomId, UserId,
+    EventId, MilliSecondsSinceUnixEpoch, RoomId, UserId,
 };
 use tracing::log::warn;
 
@@ -32,6 +32,11 @@ pub async fn send_state_event_for_key_route(
         &body.event_type,
         &body.body.body, // Yes, I hate it too
         body.state_key.to_owned(),
+        if body.appservice_info.is_some() {
+            body.timestamp
+        } else {
+            None
+        },
     )
     .await?;
 
@@ -65,6 +70,11 @@ pub async fn send_state_event_for_empty_key_route(
         &body.event_type.to_string().into(),
         &body.body.body,
         body.state_key.to_owned(),
+        if body.appservice_info.is_some() {
+            body.timestamp
+        } else {
+            None
+        },
     )
     .await?;
 
@@ -190,6 +200,7 @@ async fn send_state_event_for_key_helper(
     event_type: &StateEventType,
     json: &Raw<AnyStateEventContent>,
     state_key: String,
+    timestamp: Option<MilliSecondsSinceUnixEpoch>,
 ) -> Result<Arc<EventId>> {
     let sender_user = sender;
 
@@ -243,6 +254,7 @@ async fn send_state_event_for_key_helper(
                 unsigned: None,
                 state_key: Some(state_key),
                 redacts: None,
+                timestamp,
             },
             sender_user,
             room_id,

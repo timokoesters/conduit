@@ -321,6 +321,7 @@ impl Service {
             unsigned: None,
             state_key: Some(target_user.into()),
             redacts: None,
+            timestamp: None,
         };
 
         Ok(services()

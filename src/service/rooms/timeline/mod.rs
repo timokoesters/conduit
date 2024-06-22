@@ -22,8 +22,8 @@ use ruma::{
     },
     push::{Action, Ruleset, Tweak},
     state_res::{self, Event, RoomVersion},
-    uint, user_id, CanonicalJsonObject, CanonicalJsonValue, EventId, OwnedEventId, OwnedRoomId,
-    OwnedServerName, RoomId, RoomVersionId, ServerName, UserId,
+    uint, user_id, CanonicalJsonObject, CanonicalJsonValue, EventId, MilliSecondsSinceUnixEpoch,
+    OwnedEventId, OwnedRoomId, OwnedServerName, RoomId, RoomVersionId, ServerName, UserId,
 };
 use serde::Deserialize;
 use serde_json::value::{to_raw_value, RawValue as RawJsonValue};
@@ -665,6 +665,7 @@ impl Service {
             unsigned,
             state_key,
             redacts,
+            timestamp,
         } = pdu_builder;
 
         let prev_events: Vec<_> = services()
@@ -734,9 +735,9 @@ impl Service {
             event_id: ruma::event_id!("$thiswillbefilledinlater").into(),
             room_id: room_id.to_owned(),
             sender: sender.to_owned(),
-            origin_server_ts: utils::millis_since_unix_epoch()
-                .try_into()
-                .expect("time is valid"),
+            origin_server_ts: timestamp
+                .map(|ts| ts.get())
+                .unwrap_or_else(|| MilliSecondsSinceUnixEpoch::now().get()),
             kind: event_type,
             content,
             state_key,
