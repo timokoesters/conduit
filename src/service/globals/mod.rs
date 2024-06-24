@@ -5,7 +5,7 @@ use ruma::{
     OwnedRoomId, OwnedServerName, OwnedUserId, RoomAliasId,
 };
 
-use crate::api::server_server::FedDest;
+use crate::api::server_server::DestinationResponse;
 
 use crate::{services, Config, Error, Result};
 use futures_util::FutureExt;
@@ -37,7 +37,7 @@ use tracing::{error, info};
 
 use base64::{engine::general_purpose, Engine as _};
 
-type WellKnownMap = HashMap<OwnedServerName, (FedDest, String)>;
+type WellKnownMap = HashMap<OwnedServerName, DestinationResponse>;
 type TlsNameMap = HashMap<String, (Vec<IpAddr>, u16)>;
 type RateLimitState = (Instant, u32); // Time if last failed try, number of failed tries
 type SyncHandle = (
