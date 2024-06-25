@@ -315,7 +315,11 @@ pub async fn register_route(body: Ruma<register::v3::Request>) -> Result<registe
 pub async fn change_password_route(
     body: Ruma<change_password::v3::Request>,
 ) -> Result<change_password::v3::Response> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
+    let sender_user = body
+        .sender_user
+        .as_ref()
+        // In the future password changes could be performed with UIA with 3PIDs, but we don't support that currently
+        .ok_or_else(|| Error::BadRequest(ErrorKind::MissingToken, "Missing access token."))?;
     let sender_device = body.sender_device.as_ref().expect("user is authenticated");
 
     let mut uiaainfo = UiaaInfo {
@@ -402,7 +406,11 @@ pub async fn whoami_route(body: Ruma<whoami::v3::Request>) -> Result<whoami::v3:
 pub async fn deactivate_route(
     body: Ruma<deactivate::v3::Request>,
 ) -> Result<deactivate::v3::Response> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
+    let sender_user = body
+        .sender_user
+        .as_ref()
+        // In the future password changes could be performed with UIA with SSO, but we don't support that currently
+        .ok_or_else(|| Error::BadRequest(ErrorKind::MissingToken, "Missing access token."))?;
     let sender_device = body.sender_device.as_ref().expect("user is authenticated");
 
     let mut uiaainfo = UiaaInfo {
