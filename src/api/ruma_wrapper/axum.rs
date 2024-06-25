@@ -189,7 +189,7 @@ where
 
                     let origin_signatures = BTreeMap::from_iter([(
                         x_matrix.key.clone(),
-                        CanonicalJsonValue::String(x_matrix.sig),
+                        CanonicalJsonValue::String(x_matrix.sig.to_string()),
                     )]);
 
                     let signatures = BTreeMap::from_iter([(

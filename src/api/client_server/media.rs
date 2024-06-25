@@ -1,3 +1,6 @@
+// Unauthenticated media is deprecated
+#![allow(deprecated)]
+
 use std::time::Duration;
 
 use crate::{service::media::FileMeta, services, utils, Error, Result, Ruma};
@@ -190,7 +193,7 @@ pub async fn get_content_thumbnail_route(
             content_type,
             cross_origin_resource_policy: Some("cross-origin".to_owned()),
         })
-    } else if &*body.server_name != services().globals.server_name() && body.allow_remote {
+    } else if body.server_name != services().globals.server_name() && body.allow_remote {
         let get_thumbnail_response = services()
             .sending
             .send_federation_request(
@@ -204,6 +207,7 @@ pub async fn get_content_thumbnail_route(
                     media_id: body.media_id.clone(),
                     timeout_ms: Duration::from_secs(20),
                     allow_redirect: false,
+                    animated: body.animated,
                 },
             )
             .await?;

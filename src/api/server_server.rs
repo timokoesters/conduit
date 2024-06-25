@@ -6,8 +6,9 @@ use crate::{
     services, utils, Error, PduEvent, Result, Ruma,
 };
 use axum::{response::IntoResponse, Json};
+use axum_extra::headers::authorization::Credentials;
 use get_profile_information::v1::ProfileField;
-use http::header::{HeaderValue, AUTHORIZATION};
+use http::header::AUTHORIZATION;
 
 use ruma::{
     api::{
@@ -44,6 +45,7 @@ use ruma::{
         StateEventType, TimelineEventType,
     },
     serde::{Base64, JsonObject, Raw},
+    server_util::authorization::XMatrix,
     to_device::DeviceIdOrAllDevices,
     uint, user_id, CanonicalJsonObject, CanonicalJsonValue, EventId, MilliSecondsSinceUnixEpoch,
     OwnedEventId, OwnedRoomId, OwnedServerName, OwnedServerSigningKeyId, OwnedUserId, RoomId,
@@ -226,14 +228,15 @@ where
         for s in signature_server {
             http_request.headers_mut().insert(
                 AUTHORIZATION,
-                HeaderValue::from_str(&format!(
+                XMatrix::parse(&format!(
                     "X-Matrix origin=\"{}\",destination=\"{}\",key=\"{}\",sig=\"{}\"",
                     services().globals.server_name(),
                     destination,
                     s.0,
                     s.1
                 ))
-                .unwrap(),
+                .expect("When Ruma signs JSON, it produces a valid base64 signature. All other types are valid ServerNames or OwnedKeyId")
+                .encode(),
             );
         }
     }
