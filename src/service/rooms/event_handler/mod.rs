@@ -1687,11 +1687,6 @@ impl Service {
                 }
             };
 
-        if acl_event_content.allow.is_empty() {
-            // Ignore broken acl events
-            return Ok(());
-        }
-
         if acl_event_content.is_allowed(server_name) {
             Ok(())
         } else {
