@@ -907,7 +907,6 @@ async fn join_room_by_id_helper(
                         .rooms
                         .state_accessor
                         .user_can_invite(room_id, &user, sender_user, &state_lock)
-                        .await
                         .unwrap_or(false)
                 {
                     auth_user = Some(user);
