@@ -460,4 +460,8 @@ pub struct PduBuilder {
     pub unsigned: Option<BTreeMap<String, serde_json::Value>>,
     pub state_key: Option<String>,
     pub redacts: Option<Arc<EventId>>,
+    /// For timestamped messaging, should only be used for appservices
+    ///
+    /// Will be set to current time if None
+    pub timestamp: Option<MilliSecondsSinceUnixEpoch>,
 }

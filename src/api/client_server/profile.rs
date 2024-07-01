@@ -65,6 +65,7 @@ pub async fn set_displayname_route(
                     unsigned: None,
                     state_key: Some(sender_user.to_string()),
                     redacts: None,
+                    timestamp: None,
                 },
                 room_id,
             ))
@@ -200,6 +201,7 @@ pub async fn set_avatar_url_route(
                     unsigned: None,
                     state_key: Some(sender_user.to_string()),
                     redacts: None,
+                    timestamp: None,
                 },
                 room_id,
             ))

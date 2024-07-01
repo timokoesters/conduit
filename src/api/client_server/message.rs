@@ -84,6 +84,11 @@ pub async fn send_message_event_route(
                 unsigned: Some(unsigned),
                 state_key: None,
                 redacts: None,
+                timestamp: if body.appservice_info.is_some() {
+                    body.timestamp
+                } else {
+                    None
+                },
             },
             sender_user,
             &body.room_id,
