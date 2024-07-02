@@ -6,6 +6,8 @@
 
 > **Note:** If you update the configuration file, you must restart Conduit for the changes to take effect
 
+> **Note:** You can also configure Conduit by using `CONDUIT_{field_name}` environment variables. To set values inside a table, use `CONDUIT_{table_name}__{field_name}`. Example: `CONDUIT_SERVER_NAME="example.org"`
+
 Conduit's configuration file is divided into the following sections:
 
 - [Global](#global)

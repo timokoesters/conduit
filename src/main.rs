@@ -57,7 +57,7 @@ async fn main() {
                 ))
                 .nested(),
             )
-            .merge(Env::prefixed("CONDUIT_").global());
+            .merge(Env::prefixed("CONDUIT_").global().split("__"));
 
     let config = match raw_config.extract::<Config>() {
         Ok(s) => s,
