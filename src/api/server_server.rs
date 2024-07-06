@@ -564,6 +564,13 @@ async fn get_srv_destination(delegated_hostname: String) -> (FedDest, Option<Ins
                     (override_ip.iter().collect(), force_port.unwrap_or(8448)),
                 );
         } else {
+            // Removing in case there was previously a SRV record
+            services()
+                .globals
+                .tls_name_override
+                .write()
+                .unwrap()
+                .remove(&delegated_hostname);
             warn!("Using SRV record, but could not resolve to IP");
         }
 
