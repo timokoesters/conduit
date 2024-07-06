@@ -583,6 +583,13 @@ async fn get_srv_destination(delegated_hostname: String) -> (FedDest, Option<Ins
             (add_port_to_hostname(&delegated_hostname), Some(timestamp))
         }
     } else {
+        // Removing in case there was previously a SRV record
+        services()
+            .globals
+            .tls_name_override
+            .write()
+            .unwrap()
+            .remove(&delegated_hostname);
         debug!("No SRV records found");
         (add_port_to_hostname(&delegated_hostname), None)
     }
