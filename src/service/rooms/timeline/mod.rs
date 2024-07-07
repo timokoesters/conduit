@@ -815,7 +815,7 @@ impl Service {
         pdu.event_id = EventId::parse_arc(format!(
             "${}",
             ruma::signatures::reference_hash(&pdu_json, &room_version_id)
-                .expect("ruma can calculate reference hashes")
+                .expect("Event format validated when event was hashed")
         ))
         .expect("ruma's reference hashes are valid event ids");
 

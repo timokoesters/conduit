@@ -1,5 +1,6 @@
 use crate::Error;
 use ruma::{
+    api::client::error::ErrorKind,
     canonical_json::redact_content_in_place,
     events::{
         room::{member::RoomMemberEventContent, redaction::RoomRedactionEventContent},
@@ -443,7 +444,7 @@ pub(crate) fn gen_event_id_canonical_json(
         "${}",
         // Anything higher than version3 behaves the same
         ruma::signatures::reference_hash(&value, room_version_id)
-            .expect("ruma can calculate reference hashes")
+            .map_err(|_| Error::BadRequest(ErrorKind::BadJson, "Invalid PDU format"))?
     )
     .try_into()
     .expect("ruma's reference hashes are valid event ids");
