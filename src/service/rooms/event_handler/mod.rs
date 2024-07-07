@@ -1477,7 +1477,7 @@ impl Service {
         let event_id = format!(
             "${}",
             ruma::signatures::reference_hash(&value, room_version)
-                .expect("ruma can calculate reference hashes")
+                .map_err(|_| Error::BadRequest(ErrorKind::BadJson, "Invalid PDU format"))?
         );
         let event_id = <&EventId>::try_from(event_id.as_str())
             .expect("ruma's reference hashes are valid event ids");

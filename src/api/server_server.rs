@@ -1815,7 +1815,7 @@ pub async fn create_invite_route(
     let event_id = EventId::parse(format!(
         "${}",
         ruma::signatures::reference_hash(&signed_event, &body.room_version)
-            .expect("ruma can calculate reference hashes")
+            .expect("Event format validated when event was hashed")
     ))
     .expect("ruma's reference hashes are valid event ids");
 

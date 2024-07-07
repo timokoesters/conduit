@@ -627,7 +627,7 @@ async fn join_room_by_id_helper(
         let event_id = format!(
             "${}",
             ruma::signatures::reference_hash(&join_event_stub, &room_version_id)
-                .expect("ruma can calculate reference hashes")
+                .expect("Event format validated when event was hashed")
         );
         let event_id = <&EventId>::try_from(event_id.as_str())
             .expect("ruma's reference hashes are valid event ids");
@@ -1145,7 +1145,7 @@ async fn validate_and_add_event_id(
     let event_id = EventId::parse(format!(
         "${}",
         ruma::signatures::reference_hash(&value, room_version)
-            .expect("ruma can calculate reference hashes")
+            .map_err(|_| Error::BadRequest(ErrorKind::BadJson, "Invalid PDU format"))?
     ))
     .expect("ruma's reference hashes are valid event ids");
 
@@ -1614,7 +1614,7 @@ async fn remote_leave_room(user_id: &UserId, room_id: &RoomId) -> Result<()> {
     let event_id = EventId::parse(format!(
         "${}",
         ruma::signatures::reference_hash(&leave_event_stub, &room_version_id)
-            .expect("ruma can calculate reference hashes")
+            .expect("Event format validated when event was hashed")
     ))
     .expect("ruma's reference hashes are valid event ids");
 
