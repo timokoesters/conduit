@@ -64,6 +64,7 @@ docker run -d -p 8448:6167 \
   -e CONDUIT_MAX_REQUEST_SIZE="20000000" \
   -e CONDUIT_TRUSTED_SERVERS="[\"matrix.org\"]" \
   -e CONDUIT_MAX_CONCURRENT_REQUESTS="100" \
+  -e CONDUIT_PORT="6167" \
   --name conduit <link>
 ```
 
