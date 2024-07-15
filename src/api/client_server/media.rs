@@ -4,12 +4,15 @@
 use std::time::Duration;
 
 use crate::{service::media::FileMeta, services, utils, Error, Result, Ruma};
-use ruma::api::client::{
-    error::ErrorKind,
-    media::{
-        create_content, get_content, get_content_as_filename, get_content_thumbnail,
-        get_media_config,
+use ruma::{
+    api::client::{
+        error::ErrorKind,
+        media::{
+            create_content, get_content, get_content_as_filename, get_content_thumbnail,
+            get_media_config,
+        },
     },
+    http_headers::{ContentDisposition, ContentDispositionType},
 };
 
 const MXC_LENGTH: usize = 32;
@@ -44,10 +47,10 @@ pub async fn create_content_route(
         .media
         .create(
             mxc.clone(),
-            body.filename
-                .as_ref()
-                .map(|filename| "inline; filename=".to_owned() + filename)
-                .as_deref(),
+            Some(
+                ContentDisposition::new(ContentDispositionType::Inline)
+                    .with_filename(body.filename.clone()),
+            ),
             body.content_type.as_deref(),
             &body.file,
         )
@@ -82,7 +85,7 @@ pub async fn get_remote_content(
         .media
         .create(
             mxc.to_owned(),
-            content_response.content_disposition.as_deref(),
+            content_response.content_disposition.clone(),
             content_response.content_type.as_deref(),
             &content_response.file,
         )
@@ -110,7 +113,7 @@ pub async fn get_content_route(
         Ok(get_content::v3::Response {
             file,
             content_type,
-            content_disposition,
+            content_disposition: Some(content_disposition),
             cross_origin_resource_policy: Some("cross-origin".to_owned()),
         })
     } else if &*body.server_name != services().globals.server_name() && body.allow_remote {
@@ -145,7 +148,10 @@ pub async fn get_content_as_filename_route(
         Ok(get_content_as_filename::v3::Response {
             file,
             content_type,
-            content_disposition: Some(format!("inline; filename={}", body.filename)),
+            content_disposition: Some(
+                ContentDisposition::new(ContentDispositionType::Inline)
+                    .with_filename(Some(body.filename.clone())),
+            ),
             cross_origin_resource_policy: Some("cross-origin".to_owned()),
         })
     } else if &*body.server_name != services().globals.server_name() && body.allow_remote {
@@ -153,7 +159,10 @@ pub async fn get_content_as_filename_route(
             get_remote_content(&mxc, &body.server_name, body.media_id.clone()).await?;
 
         Ok(get_content_as_filename::v3::Response {
-            content_disposition: Some(format!("inline: filename={}", body.filename)),
+            content_disposition: Some(
+                ContentDisposition::new(ContentDispositionType::Inline)
+                    .with_filename(Some(body.filename.clone())),
+            ),
             content_type: remote_content_response.content_type,
             file: remote_content_response.file,
             cross_origin_resource_policy: Some("cross-origin".to_owned()),
@@ -216,7 +225,6 @@ pub async fn get_content_thumbnail_route(
             .media
             .upload_thumbnail(
                 mxc,
-                None,
                 get_thumbnail_response.content_type.as_deref(),
                 body.width.try_into().expect("all UInts are valid u32s"),
                 body.height.try_into().expect("all UInts are valid u32s"),

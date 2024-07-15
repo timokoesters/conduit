@@ -1,4 +1,4 @@
-use ruma::api::client::error::ErrorKind;
+use ruma::{api::client::error::ErrorKind, http_headers::ContentDisposition};
 
 use crate::{database::KeyValueDatabase, service, utils, Error, Result};
 
@@ -8,7 +8,7 @@ impl service::media::Data for KeyValueDatabase {
         mxc: String,
         width: u32,
         height: u32,
-        content_disposition: Option<&str>,
+        content_disposition: &ContentDisposition,
         content_type: Option<&str>,
     ) -> Result<Vec<u8>> {
         let mut key = mxc.as_bytes().to_vec();
@@ -16,12 +16,7 @@ impl service::media::Data for KeyValueDatabase {
         key.extend_from_slice(&width.to_be_bytes());
         key.extend_from_slice(&height.to_be_bytes());
         key.push(0xff);
-        key.extend_from_slice(
-            content_disposition
-                .as_ref()
-                .map(|f| f.as_bytes())
-                .unwrap_or_default(),
-        );
+        key.extend_from_slice(content_disposition.to_string().as_bytes());
         key.push(0xff);
         key.extend_from_slice(
             content_type
@@ -40,7 +35,7 @@ impl service::media::Data for KeyValueDatabase {
         mxc: String,
         width: u32,
         height: u32,
-    ) -> Result<(Option<String>, Option<String>, Vec<u8>)> {
+    ) -> Result<(ContentDisposition, Option<String>, Vec<u8>)> {
         let mut prefix = mxc.as_bytes().to_vec();
         prefix.push(0xff);
         prefix.extend_from_slice(&width.to_be_bytes());
@@ -68,15 +63,9 @@ impl service::media::Data for KeyValueDatabase {
             .next()
             .ok_or_else(|| Error::bad_database("Media ID in db is invalid."))?;
 
-        let content_disposition = if content_disposition_bytes.is_empty() {
-            None
-        } else {
-            Some(
-                utils::string_from_bytes(content_disposition_bytes).map_err(|_| {
-                    Error::bad_database("Content Disposition in mediaid_file is invalid unicode.")
-                })?,
-            )
-        };
+        let content_disposition = content_disposition_bytes
+            .try_into()
+            .map_err(|_| Error::bad_database("Content Disposition in mediaid_file is invalid."))?;
         Ok((content_disposition, content_type, key))
     }
 }
