@@ -2,7 +2,7 @@
 
 ## General instructions
 
-* It is assumed you have a [Coturn server](https://github.com/coturn/coturn) up and running. See [Synapse reference implementation](https://github.com/matrix-org/synapse/blob/develop/docs/turn-howto.md).
+* It is assumed you have a [Coturn server](https://github.com/coturn/coturn) up and running. See [Synapse reference implementation](https://github.com/element-hq/synapse/blob/develop/docs/turn-howto.md).
 
 ## Edit/Add a few settings to your existing conduit.toml
 
