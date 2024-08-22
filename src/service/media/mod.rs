@@ -2,6 +2,7 @@ mod data;
 use std::io::Cursor;
 
 pub use data::Data;
+use ruma::http_headers::{ContentDisposition, ContentDispositionType};
 
 use crate::{services, Result};
 use image::imageops::FilterType;
@@ -12,7 +13,7 @@ use tokio::{
 };
 
 pub struct FileMeta {
-    pub content_disposition: Option<String>,
+    pub content_disposition: ContentDisposition,
     pub content_type: Option<String>,
     pub file: Vec<u8>,
 }
@@ -26,14 +27,17 @@ impl Service {
     pub async fn create(
         &self,
         mxc: String,
-        content_disposition: Option<&str>,
+        content_disposition: Option<ContentDisposition>,
         content_type: Option<&str>,
         file: &[u8],
     ) -> Result<()> {
+        let content_disposition =
+            content_disposition.unwrap_or(ContentDisposition::new(ContentDispositionType::Inline));
+
         // Width, Height = 0 if it's not a thumbnail
         let key = self
             .db
-            .create_file_metadata(mxc, 0, 0, content_disposition, content_type)?;
+            .create_file_metadata(mxc, 0, 0, &content_disposition, content_type)?;
 
         let path = services().globals.get_media_file(&key);
         let mut f = File::create(path).await?;
@@ -46,15 +50,18 @@ impl Service {
     pub async fn upload_thumbnail(
         &self,
         mxc: String,
-        content_disposition: Option<&str>,
         content_type: Option<&str>,
         width: u32,
         height: u32,
         file: &[u8],
     ) -> Result<()> {
-        let key =
-            self.db
-                .create_file_metadata(mxc, width, height, content_disposition, content_type)?;
+        let key = self.db.create_file_metadata(
+            mxc,
+            width,
+            height,
+            &ContentDisposition::new(ContentDispositionType::Inline),
+            content_type,
+        )?;
 
         let path = services().globals.get_media_file(&key);
         let mut f = File::create(path).await?;
@@ -198,7 +205,7 @@ impl Service {
                     mxc,
                     width,
                     height,
-                    content_disposition.as_deref(),
+                    &content_disposition,
                     content_type.as_deref(),
                 )?;
 

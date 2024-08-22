@@ -1,3 +1,5 @@
+use ruma::http_headers::ContentDisposition;
+
 use crate::Result;
 
 pub trait Data: Send + Sync {
@@ -6,7 +8,7 @@ pub trait Data: Send + Sync {
         mxc: String,
         width: u32,
         height: u32,
-        content_disposition: Option<&str>,
+        content_disposition: &ContentDisposition,
         content_type: Option<&str>,
     ) -> Result<Vec<u8>>;
 
@@ -16,5 +18,5 @@ pub trait Data: Send + Sync {
         mxc: String,
         width: u32,
         height: u32,
-    ) -> Result<(Option<String>, Option<String>, Vec<u8>)>;
+    ) -> Result<(ContentDisposition, Option<String>, Vec<u8>)>;
 }
