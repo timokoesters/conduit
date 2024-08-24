@@ -84,40 +84,70 @@ pub async fn get_remote_content(
     server_name: &ServerName,
     media_id: String,
 ) -> Result<get_content::v1::Response, Error> {
-    let media::get_content::v3::Response {
-        file,
-        content_type,
-        content_disposition,
-        ..
-    } = services()
+    let content_response = match services()
         .sending
         .send_federation_request(
             server_name,
-            media::get_content::v3::Request {
-                server_name: server_name.to_owned(),
-                media_id,
+            federation_media::get_content::v1::Request {
+                media_id: media_id.clone(),
                 timeout_ms: Duration::from_secs(20),
-                allow_remote: false,
-                allow_redirect: true,
             },
         )
-        .await?;
+        .await
+    {
+        Ok(federation_media::get_content::v1::Response {
+            metadata: _,
+            content: FileOrLocation::File(content),
+        }) => get_content::v1::Response {
+            file: content.file,
+            content_type: content.content_type,
+            content_disposition: content.content_disposition,
+        },
+
+        Ok(federation_media::get_content::v1::Response {
+            metadata: _,
+            content: FileOrLocation::Location(url),
+        }) => get_location_content(url).await?,
+        Err(Error::BadRequest(ErrorKind::Unrecognized, _)) => {
+            let media::get_content::v3::Response {
+                file,
+                content_type,
+                content_disposition,
+                ..
+            } = services()
+                .sending
+                .send_federation_request(
+                    server_name,
+                    media::get_content::v3::Request {
+                        server_name: server_name.to_owned(),
+                        media_id,
+                        timeout_ms: Duration::from_secs(20),
+                        allow_remote: false,
+                        allow_redirect: true,
+                    },
+                )
+                .await?;
+
+            get_content::v1::Response {
+                file,
+                content_type,
+                content_disposition,
+            }
+        }
+        Err(e) => return Err(e),
+    };
 
     services()
         .media
         .create(
             mxc.to_owned(),
-            content_disposition.clone(),
-            content_type.as_deref(),
-            &file,
+            content_response.content_disposition.clone(),
+            content_response.content_type.as_deref(),
+            &content_response.file,
         )
         .await?;
 
-    Ok(get_content::v1::Response {
-        file,
-        content_type,
-        content_disposition,
-    })
+    Ok(content_response)
 }
 
 /// # `GET /_matrix/media/r0/download/{serverName}/{mediaId}`
@@ -335,37 +365,77 @@ async fn get_content_thumbnail(
     {
         Ok(get_content_thumbnail::v1::Response { file, content_type })
     } else if server_name != services().globals.server_name() && allow_remote {
-        let media::get_content_thumbnail::v3::Response {
-            file, content_type, ..
-        } = services()
+        let thumbnail_response = match services()
             .sending
             .send_federation_request(
                 server_name,
-                media::get_content_thumbnail::v3::Request {
+                federation_media::get_content_thumbnail::v1::Request {
                     height,
                     width,
                     method: method.clone(),
-                    server_name: server_name.to_owned(),
                     media_id: media_id.clone(),
                     timeout_ms: Duration::from_secs(20),
-                    allow_redirect: false,
                     animated,
-                    allow_remote: false,
                 },
             )
-            .await?;
+            .await
+        {
+            Ok(federation_media::get_content_thumbnail::v1::Response {
+                metadata: _,
+                content: FileOrLocation::File(content),
+            }) => get_content_thumbnail::v1::Response {
+                file: content.file,
+                content_type: content.content_type,
+            },
+
+            Ok(federation_media::get_content_thumbnail::v1::Response {
+                metadata: _,
+                content: FileOrLocation::Location(url),
+            }) => {
+                let get_content::v1::Response {
+                    file, content_type, ..
+                } = get_location_content(url).await?;
+
+                get_content_thumbnail::v1::Response { file, content_type }
+            }
+            Err(Error::BadRequest(ErrorKind::Unrecognized, _)) => {
+                let media::get_content_thumbnail::v3::Response {
+                    file, content_type, ..
+                } = services()
+                    .sending
+                    .send_federation_request(
+                        server_name,
+                        media::get_content_thumbnail::v3::Request {
+                            height,
+                            width,
+                            method: method.clone(),
+                            server_name: server_name.to_owned(),
+                            media_id: media_id.clone(),
+                            timeout_ms: Duration::from_secs(20),
+                            allow_redirect: false,
+                            animated,
+                            allow_remote: false,
+                        },
+                    )
+                    .await?;
+
+                get_content_thumbnail::v1::Response { file, content_type }
+            }
+            Err(e) => return Err(e),
+        };
+
         services()
             .media
             .upload_thumbnail(
                 mxc,
-                content_type.as_deref(),
+                thumbnail_response.content_type.as_deref(),
                 width.try_into().expect("all UInts are valid u32s"),
                 height.try_into().expect("all UInts are valid u32s"),
-                &file,
+                &thumbnail_response.file,
             )
             .await?;
 
-        Ok(get_content_thumbnail::v1::Response { file, content_type })
+        Ok(thumbnail_response)
     } else {
         Err(Error::BadRequest(ErrorKind::NotFound, "Media not found."))
     }
