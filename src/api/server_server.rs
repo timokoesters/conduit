@@ -4,6 +4,7 @@ use crate::{
     api::client_server::{self, claim_keys_helper, get_keys_helper},
     service::{
         globals::SigningKeys,
+        media::FileMeta,
         pdu::{gen_event_id_canonical_json, PduBuilder},
     },
     services, utils, Error, PduEvent, Result, Ruma,
@@ -17,6 +18,9 @@ use ruma::{
     api::{
         client::error::{Error as RumaError, ErrorKind},
         federation::{
+            authenticated_media::{
+                get_content, get_content_thumbnail, Content, ContentMetadata, FileOrLocation,
+            },
             authorization::get_event_authorization,
             backfill::get_backfill,
             device::get_devices::{self, v1::UserDevice},
@@ -207,7 +211,7 @@ where
         .try_into_http_request::<Vec<u8>>(
             &actual_destination_str,
             SendAccessToken::IfRequired(""),
-            &[MatrixVersion::V1_4],
+            &[MatrixVersion::V1_11],
         )
         .map_err(|e| {
             warn!(
@@ -1889,6 +1893,90 @@ pub async fn create_invite_route(
     Ok(create_invite::v2::Response {
         event: PduEvent::convert_to_outgoing_federation_event(signed_event),
     })
+}
+
+/// # `GET /_matrix/federation/v1/media/download/{serverName}/{mediaId}`
+///
+/// Load media from our server.
+pub async fn get_content_route(
+    body: Ruma<get_content::v1::Request>,
+) -> Result<get_content::v1::Response> {
+    let mxc = format!(
+        "mxc://{}/{}",
+        services().globals.server_name(),
+        body.media_id
+    );
+
+    if let Some(FileMeta {
+        content_disposition,
+        content_type,
+        file,
+    }) = services().media.get(mxc.clone()).await?
+    {
+        Ok(get_content::v1::Response::new(
+            ContentMetadata::new(),
+            FileOrLocation::File(Content {
+                file,
+                content_type,
+                content_disposition: Some(content_disposition),
+            }),
+        ))
+    } else {
+        Err(Error::BadRequest(ErrorKind::NotFound, "Media not found."))
+    }
+}
+
+/// # `GET /_matrix/federation/v1/media/thumbnail/{serverName}/{mediaId}`
+///
+/// Load media thumbnail from our server or over federation.
+pub async fn get_content_thumbnail_route(
+    body: Ruma<get_content_thumbnail::v1::Request>,
+) -> Result<get_content_thumbnail::v1::Response> {
+    let mxc = format!(
+        "mxc://{}/{}",
+        services().globals.server_name(),
+        body.media_id
+    );
+
+    let Some(FileMeta {
+        file,
+        content_type,
+        content_disposition,
+    }) = services()
+        .media
+        .get_thumbnail(
+            mxc.clone(),
+            body.width
+                .try_into()
+                .map_err(|_| Error::BadRequest(ErrorKind::InvalidParam, "Width is invalid."))?,
+            body.height
+                .try_into()
+                .map_err(|_| Error::BadRequest(ErrorKind::InvalidParam, "Width is invalid."))?,
+        )
+        .await?
+    else {
+        return Err(Error::BadRequest(ErrorKind::NotFound, "Media not found."));
+    };
+
+    services()
+        .media
+        .upload_thumbnail(
+            mxc,
+            content_type.as_deref(),
+            body.width.try_into().expect("all UInts are valid u32s"),
+            body.height.try_into().expect("all UInts are valid u32s"),
+            &file,
+        )
+        .await?;
+
+    Ok(get_content_thumbnail::v1::Response::new(
+        ContentMetadata::new(),
+        FileOrLocation::File(Content {
+            file,
+            content_type,
+            content_disposition: Some(content_disposition),
+        }),
+    ))
 }
 
 /// # `GET /_matrix/federation/v1/user/devices/{userId}`
