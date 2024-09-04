@@ -188,11 +188,11 @@ async fn get_content(
 ) -> Result<get_content::v1::Response, Error> {
     let mxc = format!("mxc://{}/{}", server_name, media_id);
 
-    if let Some(FileMeta {
+    if let Ok(Some(FileMeta {
         content_disposition,
         content_type,
         file,
-    }) = services().media.get(mxc.clone()).await?
+    })) = services().media.get(mxc.clone()).await
     {
         Ok(get_content::v1::Response {
             file,
@@ -264,9 +264,9 @@ async fn get_content_as_filename(
 ) -> Result<get_content_as_filename::v1::Response, Error> {
     let mxc = format!("mxc://{}/{}", server_name, media_id);
 
-    if let Some(FileMeta {
+    if let Ok(Some(FileMeta {
         file, content_type, ..
-    }) = services().media.get(mxc.clone()).await?
+    })) = services().media.get(mxc.clone()).await
     {
         Ok(get_content_as_filename::v1::Response {
             file,
@@ -348,9 +348,9 @@ async fn get_content_thumbnail(
 ) -> Result<get_content_thumbnail::v1::Response, Error> {
     let mxc = format!("mxc://{}/{}", server_name, media_id);
 
-    if let Some(FileMeta {
+    if let Ok(Some(FileMeta {
         file, content_type, ..
-    }) = services()
+    })) = services()
         .media
         .get_thumbnail(
             mxc.clone(),
@@ -361,7 +361,7 @@ async fn get_content_thumbnail(
                 .try_into()
                 .map_err(|_| Error::BadRequest(ErrorKind::InvalidParam, "Width is invalid."))?,
         )
-        .await?
+        .await
     {
         Ok(get_content_thumbnail::v1::Response { file, content_type })
     } else if server_name != services().globals.server_name() && allow_remote {

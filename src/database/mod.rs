@@ -6,6 +6,7 @@ use crate::{
     SERVICES,
 };
 use abstraction::{KeyValueDatabaseEngine, KvTree};
+use base64::{engine::general_purpose, Engine};
 use directories::ProjectDirs;
 use lru_cache::LruCache;
 
@@ -424,7 +425,7 @@ impl KeyValueDatabase {
         }
 
         // If the database has any data, perform data migrations before starting
-        let latest_database_version = 13;
+        let latest_database_version = 14;
 
         if services().users.count()? > 0 {
             // MIGRATIONS
@@ -939,6 +940,64 @@ impl KeyValueDatabase {
                 services().globals.bump_database_version(13)?;
 
                 warn!("Migration: 12 -> 13 finished");
+            }
+
+            if services().globals.database_version()? < 14 {
+                // Reconstruct all media using the filesystem
+                db.mediaid_file.clear().unwrap();
+
+                for file in fs::read_dir(services().globals.get_media_folder()).unwrap() {
+                    let file = file.unwrap();
+                    let mediaid = general_purpose::URL_SAFE_NO_PAD
+                        .decode(file.file_name().into_string().unwrap())
+                        .unwrap();
+
+                    let mut parts = mediaid.rsplit(|&b| b == 0xff);
+
+                    let mut removed_bytes = 0;
+
+                    let content_type_bytes = parts.next().unwrap();
+                    removed_bytes += content_type_bytes.len() + 1;
+
+                    let content_disposition_bytes = parts
+                        .next()
+                        .ok_or_else(|| Error::bad_database("Media ID in db is invalid."))?;
+                    removed_bytes += content_disposition_bytes.len();
+
+                    let mut content_disposition =
+                        utils::string_from_bytes(content_disposition_bytes).map_err(|_| {
+                            Error::bad_database("Content Disposition in mediaid_file is invalid.")
+                        })?;
+
+                    if content_disposition.contains("filename=")
+                        && !content_disposition.contains("filename=\"")
+                    {
+                        println!("{}", &content_disposition);
+                        content_disposition =
+                            content_disposition.replacen("filename=", "filename=\"", 1);
+                        content_disposition.push('"');
+                        println!("{}", &content_disposition);
+
+                        let mut new_key = mediaid[..(mediaid.len() - removed_bytes)].to_vec();
+                        assert!(*new_key.last().unwrap() == 0xff);
+
+                        new_key.extend_from_slice(content_disposition.to_string().as_bytes());
+                        new_key.push(0xff);
+                        new_key.extend_from_slice(content_type_bytes);
+
+                        // Some file names are too long. Ignore those.
+                        let _ = fs::rename(
+                            services().globals.get_media_file(&mediaid),
+                            services().globals.get_media_file(&new_key),
+                        );
+                        db.mediaid_file.insert(&new_key, &[])?;
+                    } else {
+                        db.mediaid_file.insert(&mediaid, &[])?;
+                    }
+                }
+                services().globals.bump_database_version(14)?;
+
+                warn!("Migration: 13 -> 14 finished");
             }
 
             assert_eq!(
