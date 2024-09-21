@@ -27,7 +27,10 @@ pub async fn get_supported_versions_route(
             "v1.4".to_owned(),
             "v1.5".to_owned(),
         ],
-        unstable_features: BTreeMap::from_iter([("org.matrix.e2e_cross_signing".to_owned(), true)]),
+        unstable_features: BTreeMap::from_iter([
+            ("org.matrix.e2e_cross_signing".to_owned(), true),
+            ("org.matrix.msc3916.stable".to_owned(), true),
+        ]),
     };
 
     Ok(resp)
