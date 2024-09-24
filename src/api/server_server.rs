@@ -10,7 +10,7 @@ use crate::{
     services, utils, Error, PduEvent, Result, Ruma,
 };
 use axum::{response::IntoResponse, Json};
-use axum_extra::headers::{authorization::Credentials, CacheControl, Header};
+use axum_extra::headers::{CacheControl, Header};
 use get_profile_information::v1::ProfileField;
 use http::header::AUTHORIZATION;
 
@@ -52,7 +52,6 @@ use ruma::{
         StateEventType, TimelineEventType,
     },
     serde::{Base64, JsonObject, Raw},
-    server_util::authorization::XMatrix,
     to_device::DeviceIdOrAllDevices,
     uint, user_id, CanonicalJsonObject, CanonicalJsonValue, EventId, MilliSecondsSinceUnixEpoch,
     OwnedEventId, OwnedRoomId, OwnedServerName, OwnedServerSigningKeyId, OwnedUserId, RoomId,
@@ -275,15 +274,15 @@ where
         for s in signature_server {
             http_request.headers_mut().insert(
                 AUTHORIZATION,
-                XMatrix::parse(&format!(
+                format!(
                     "X-Matrix origin=\"{}\",destination=\"{}\",key=\"{}\",sig=\"{}\"",
                     services().globals.server_name(),
                     destination,
                     s.0,
                     s.1
-                ))
-                .expect("When Ruma signs JSON, it produces a valid base64 signature. All other types are valid ServerNames or OwnedKeyId")
-                .encode(),
+                )
+                .try_into()
+                .unwrap(),
             );
         }
     }
@@ -343,7 +342,7 @@ where
 
                 response.map_err(|e| {
                     warn!(
-                        "Invalid 200 response from {} on: {} {}",
+                        "Invalid 200 response from {} on: {} {:?}",
                         &destination, url, e
                     );
                     Error::BadServerResponse("Server returned bad 200 response.")

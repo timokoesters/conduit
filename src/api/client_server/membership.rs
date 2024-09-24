@@ -97,7 +97,7 @@ pub async fn join_room_by_id_or_alias_route(
 
     let (servers, room_id) = match OwnedRoomId::try_from(body.room_id_or_alias) {
         Ok(room_id) => {
-            let mut servers = body.server_name.clone();
+            let mut servers = body.via.clone();
             servers.extend(
                 services()
                     .rooms

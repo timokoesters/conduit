@@ -425,7 +425,7 @@ impl KeyValueDatabase {
         }
 
         // If the database has any data, perform data migrations before starting
-        let latest_database_version = 14;
+        let latest_database_version = 15;
 
         if services().users.count()? > 0 {
             // MIGRATIONS
@@ -942,7 +942,7 @@ impl KeyValueDatabase {
                 warn!("Migration: 12 -> 13 finished");
             }
 
-            if services().globals.database_version()? < 14 {
+            if services().globals.database_version()? < 15 {
                 // Reconstruct all media using the filesystem
                 db.mediaid_file.clear().unwrap();
 
@@ -981,23 +981,43 @@ impl KeyValueDatabase {
                         let mut new_key = mediaid[..(mediaid.len() - removed_bytes)].to_vec();
                         assert!(*new_key.last().unwrap() == 0xff);
 
+                        let mut shorter_key = new_key.clone();
+                        shorter_key.extend(
+                            ruma::http_headers::ContentDisposition::new(
+                                ruma::http_headers::ContentDispositionType::Inline,
+                            )
+                            .to_string()
+                            .as_bytes(),
+                        );
+                        shorter_key.push(0xff);
+                        shorter_key.extend_from_slice(content_type_bytes);
+
                         new_key.extend_from_slice(content_disposition.to_string().as_bytes());
                         new_key.push(0xff);
                         new_key.extend_from_slice(content_type_bytes);
 
                         // Some file names are too long. Ignore those.
-                        let _ = fs::rename(
+                        match fs::rename(
                             services().globals.get_media_file(&mediaid),
                             services().globals.get_media_file(&new_key),
-                        );
-                        db.mediaid_file.insert(&new_key, &[])?;
-                    } else {
-                        db.mediaid_file.insert(&mediaid, &[])?;
+                        ) {
+                            Ok(_) => {
+                                db.mediaid_file.insert(&mediaid, &[])?;
+                            }
+                            Err(_) => {
+                                fs::rename(
+                                    services().globals.get_media_file(&mediaid),
+                                    services().globals.get_media_file(&shorter_key),
+                                )
+                                .unwrap();
+                                db.mediaid_file.insert(&shorter_key, &[])?;
+                            }
+                        }
                     }
                 }
-                services().globals.bump_database_version(14)?;
+                services().globals.bump_database_version(15)?;
 
-                warn!("Migration: 13 -> 14 finished");
+                warn!("Migration: 13 -> 15 finished");
             }
 
             assert_eq!(
