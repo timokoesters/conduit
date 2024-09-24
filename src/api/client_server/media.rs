@@ -359,7 +359,7 @@ async fn get_content_thumbnail(
                 .map_err(|_| Error::BadRequest(ErrorKind::InvalidParam, "Width is invalid."))?,
             height
                 .try_into()
-                .map_err(|_| Error::BadRequest(ErrorKind::InvalidParam, "Width is invalid."))?,
+                .map_err(|_| Error::BadRequest(ErrorKind::InvalidParam, "Height is invalid."))?,
         )
         .await
     {

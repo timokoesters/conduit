@@ -425,7 +425,7 @@ impl KeyValueDatabase {
         }
 
         // If the database has any data, perform data migrations before starting
-        let latest_database_version = 15;
+        let latest_database_version = 16;
 
         if services().users.count()? > 0 {
             // MIGRATIONS
@@ -942,7 +942,7 @@ impl KeyValueDatabase {
                 warn!("Migration: 12 -> 13 finished");
             }
 
-            if services().globals.database_version()? < 15 {
+            if services().globals.database_version()? < 16 {
                 // Reconstruct all media using the filesystem
                 db.mediaid_file.clear().unwrap();
 
@@ -1002,7 +1002,7 @@ impl KeyValueDatabase {
                             services().globals.get_media_file(&new_key),
                         ) {
                             Ok(_) => {
-                                db.mediaid_file.insert(&mediaid, &[])?;
+                                db.mediaid_file.insert(&new_key, &[])?;
                             }
                             Err(_) => {
                                 fs::rename(
@@ -1013,11 +1013,13 @@ impl KeyValueDatabase {
                                 db.mediaid_file.insert(&shorter_key, &[])?;
                             }
                         }
+                    } else {
+                        db.mediaid_file.insert(&mediaid, &[])?;
                     }
                 }
-                services().globals.bump_database_version(15)?;
+                services().globals.bump_database_version(16)?;
 
-                warn!("Migration: 13 -> 15 finished");
+                warn!("Migration: 13 -> 16 finished");
             }
 
             assert_eq!(
