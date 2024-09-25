@@ -63,9 +63,9 @@ impl service::media::Data for KeyValueDatabase {
             .next()
             .ok_or_else(|| Error::bad_database("Media ID in db is invalid."))?;
 
-        let content_disposition = content_disposition_bytes
-            .try_into()
-            .map_err(|_| Error::bad_database("Content Disposition in mediaid_file is invalid."))?;
+        let content_disposition = content_disposition_bytes.try_into().unwrap_or_else(|_| {
+            ContentDisposition::new(ruma::http_headers::ContentDispositionType::Inline)
+        });
         Ok((content_disposition, content_type, key))
     }
 }
