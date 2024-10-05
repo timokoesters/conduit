@@ -4,7 +4,7 @@
         "bungcip.better-toml",
         "ms-azuretools.vscode-docker",
         "eamodio.gitlens",
-        "serayuzgur.crates",
+        "fill-labs.dependi",
         "vadimcn.vscode-lldb",
         "timonwong.shellcheck"
     ]
