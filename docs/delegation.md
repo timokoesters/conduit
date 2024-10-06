@@ -16,18 +16,18 @@ are connected to the server running Conduit using something like a VPN.
 
 > **Note**: this will automatically allow you to use [sliding sync][0] without any extra configuration
 
-To configure it, use the following options in the `global.well_known` table:
+To configure it, use the following options:
 | Field | Type | Description | Default |
 | --- | --- | --- | --- |
-| `client` | `String` | The URL that clients should use to connect to Conduit | `https://<server_name>` |
-| `server` | `String` | The hostname and port servers should use to connect to Conduit | `<server_name>:443` |
+| `well_known_client` | `String` | The URL that clients should use to connect to Conduit | `https://<server_name>` |
+| `well_known_server` | `String` | The hostname and port servers should use to connect to Conduit | `<server_name>:443` |
 
 ### Example
 
 ```toml
-[global.well_known]
-client = "https://matrix.example.org"
-server = "matrix.example.org:443"
+[global]
+well_known_client = "https://matrix.example.org"
+well_known_server = "matrix.example.org:443"
 ```
 
 ## Manual
