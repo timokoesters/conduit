@@ -972,11 +972,9 @@ impl KeyValueDatabase {
                     if content_disposition.contains("filename=")
                         && !content_disposition.contains("filename=\"")
                     {
-                        println!("{}", &content_disposition);
                         content_disposition =
                             content_disposition.replacen("filename=", "filename=\"", 1);
                         content_disposition.push('"');
-                        println!("{}", &content_disposition);
 
                         let mut new_key = mediaid[..(mediaid.len() - removed_bytes)].to_vec();
                         assert!(*new_key.last().unwrap() == 0xff);
