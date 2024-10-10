@@ -6,7 +6,7 @@
 
 > **Note:** If you update the configuration file, you must restart Conduit for the changes to take effect
 
-> **Note:** You can also configure Conduit by using `CONDUIT_{field_name}` environment variables. To set values inside a table, use `CONDUIT_{table_name}__{field_name}`. Example: `CONDUIT_SERVER_NAME="example.org"`
+> **Note:** You can also configure Conduit by using `CONDUIT_{field_name}` environment variables. To set values inside a table, use `CONDUIT_{table_name}_{field_name}`. Example: `CONDUIT_WELL_KNOWN_CLIENT="https://matrix.example.org"`
 
 Conduit's configuration file is divided into the following sections:
 
@@ -58,8 +58,7 @@ The `global` section contains the following fields:
 | `turn_secret` | `string` | The TURN secret | `""` |
 | `turn_ttl` | `integer` | The TURN TTL in seconds | `86400` |
 | `emergency_password` | `string` | Set a password to login as the `conduit` user in case of emergency | N/A |
-| `well_known_client` | `string` | Used for [delegation](delegation.md) | See [delegation](delegation.md) |
-| `well_known_server` | `string` | Used for [delegation](delegation.md) | See [delegation](delegation.md) |
+| `well_known` | `table` | Used for [delegation](delegation.md) | See [delegation](delegation.md) |
 
 
 ### TLS
