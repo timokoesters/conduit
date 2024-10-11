@@ -93,7 +93,7 @@ impl Service {
                     services()
                         .rooms
                         .spaces
-                        .roomid_spacechunk_cache
+                        .roomid_spacehierarchy_cache
                         .lock()
                         .await
                         .remove(&pdu.room_id);

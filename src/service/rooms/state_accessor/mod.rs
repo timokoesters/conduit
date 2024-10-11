@@ -10,15 +10,18 @@ use ruma::{
     events::{
         room::{
             avatar::RoomAvatarEventContent,
+            guest_access::{GuestAccess, RoomGuestAccessEventContent},
             history_visibility::{HistoryVisibility, RoomHistoryVisibilityEventContent},
+            join_rules::{AllowRule, JoinRule, RoomJoinRulesEventContent, RoomMembership},
             member::{MembershipState, RoomMemberEventContent},
             name::RoomNameEventContent,
             power_levels::{RoomPowerLevels, RoomPowerLevelsEventContent},
         },
         StateEventType,
     },
+    space::SpaceRoomJoinRule,
     state_res::Event,
-    EventId, JsOption, OwnedServerName, OwnedUserId, RoomId, ServerName, UserId,
+    EventId, JsOption, OwnedRoomId, OwnedServerName, OwnedUserId, RoomId, ServerName, UserId,
 };
 use serde_json::value::to_raw_value;
 use tokio::sync::MutexGuard;
@@ -395,5 +398,71 @@ impl Service {
                     ))
                 }
             })
+    }
+
+    /// Checks if guests are able to join a given room
+    pub fn guest_can_join(&self, room_id: &RoomId) -> Result<bool, Error> {
+        self.room_state_get(room_id, &StateEventType::RoomGuestAccess, "")?
+            .map_or(Ok(false), |s| {
+                serde_json::from_str(s.content.get())
+                    .map(|c: RoomGuestAccessEventContent| c.guest_access == GuestAccess::CanJoin)
+                    .map_err(|_| {
+                        Error::bad_database("Invalid room guest access event in database.")
+                    })
+            })
+    }
+
+    /// Checks if guests are able to view room content without joining
+    pub fn world_readable(&self, room_id: &RoomId) -> Result<bool, Error> {
+        self.room_state_get(room_id, &StateEventType::RoomHistoryVisibility, "")?
+            .map_or(Ok(false), |s| {
+                serde_json::from_str(s.content.get())
+                    .map(|c: RoomHistoryVisibilityEventContent| {
+                        c.history_visibility == HistoryVisibility::WorldReadable
+                    })
+                    .map_err(|_| {
+                        Error::bad_database("Invalid room history visibility event in database.")
+                    })
+            })
+    }
+
+    /// Returns the join rule for a given room
+    pub fn get_join_rule(
+        &self,
+        current_room: &RoomId,
+    ) -> Result<(SpaceRoomJoinRule, Vec<OwnedRoomId>), Error> {
+        Ok(self
+            .room_state_get(current_room, &StateEventType::RoomJoinRules, "")?
+            .map(|s| {
+                serde_json::from_str(s.content.get())
+                    .map(|c: RoomJoinRulesEventContent| {
+                        (
+                            c.join_rule.clone().into(),
+                            self.allowed_room_ids(c.join_rule),
+                        )
+                    })
+                    .map_err(|e| {
+                        error!("Invalid room join rule event in database: {}", e);
+                        Error::BadDatabase("Invalid room join rule event in database.")
+                    })
+            })
+            .transpose()?
+            .unwrap_or((SpaceRoomJoinRule::Invite, vec![])))
+    }
+
+    /// Returns an empty vec if not a restricted room
+    pub fn allowed_room_ids(&self, join_rule: JoinRule) -> Vec<OwnedRoomId> {
+        let mut room_ids = vec![];
+        if let JoinRule::Restricted(r) | JoinRule::KnockRestricted(r) = join_rule {
+            for rule in r.allow {
+                if let AllowRule::RoomMembership(RoomMembership {
+                    room_id: membership,
+                }) = rule
+                {
+                    room_ids.push(membership.to_owned());
+                }
+            }
+        }
+        room_ids
     }
 }

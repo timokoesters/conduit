@@ -34,6 +34,7 @@ use ruma::{
             membership::{create_invite, create_join_event, prepare_join_event},
             openid::get_openid_userinfo,
             query::{get_profile_information, get_room_information},
+            space::get_hierarchy,
             transactions::{
                 edu::{DeviceListUpdateContent, DirectDeviceContent, Edu, SigningKeyUpdateContent},
                 send_transaction_message,
@@ -2160,6 +2161,31 @@ pub async fn get_openid_userinfo_route(
                 )
             })?,
     ))
+}
+
+/// # `GET /_matrix/federation/v1/hierarchy/{roomId}`
+///
+/// Gets the space tree in a depth-first manner to locate child rooms of a given space.
+pub async fn get_hierarchy_route(
+    body: Ruma<get_hierarchy::v1::Request>,
+) -> Result<get_hierarchy::v1::Response> {
+    let sender_servername = body
+        .sender_servername
+        .as_ref()
+        .expect("server is authenticated");
+
+    if services().rooms.metadata.exists(&body.room_id)? {
+        services()
+            .rooms
+            .spaces
+            .get_federation_hierarchy(&body.room_id, sender_servername, body.suggested_only)
+            .await
+    } else {
+        Err(Error::BadRequest(
+            ErrorKind::NotFound,
+            "Room does not exist.",
+        ))
+    }
 }
 
 /// # `GET /.well-known/matrix/server`

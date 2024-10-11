@@ -1,5 +1,10 @@
-use crate::{services, Result, Ruma};
-use ruma::api::client::space::get_hierarchy;
+use std::str::FromStr;
+
+use crate::{service::rooms::spaces::PagnationToken, services, Error, Result, Ruma};
+use ruma::{
+    api::client::{error::ErrorKind, space::get_hierarchy},
+    UInt,
+};
 
 /// # `GET /_matrix/client/v1/rooms/{room_id}/hierarchy``
 ///
@@ -9,25 +14,42 @@ pub async fn get_hierarchy_route(
 ) -> Result<get_hierarchy::v1::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
-    let skip = body
+    let limit = body
+        .limit
+        .unwrap_or(UInt::from(10_u32))
+        .min(UInt::from(100_u32));
+    let max_depth = body
+        .max_depth
+        .unwrap_or(UInt::from(3_u32))
+        .min(UInt::from(10_u32));
+
+    let key = body
         .from
         .as_ref()
-        .and_then(|s| s.parse::<usize>().ok())
-        .unwrap_or(0);
+        .and_then(|s| PagnationToken::from_str(s).ok());
 
-    let limit = body.limit.map_or(10, u64::from).min(100) as usize;
-
-    let max_depth = body.max_depth.map_or(3, u64::from).min(10) as usize + 1; // +1 to skip the space room itself
+    // Should prevent unexpected behaviour in (bad) clients
+    if let Some(token) = &key {
+        if token.suggested_only != body.suggested_only || token.max_depth != max_depth {
+            return Err(Error::BadRequest(
+                ErrorKind::InvalidParam,
+                "suggested_only and max_depth cannot change on paginated requests",
+            ));
+        }
+    }
 
     services()
         .rooms
         .spaces
-        .get_hierarchy(
+        .get_client_hierarchy(
             sender_user,
             &body.room_id,
-            limit,
-            skip,
-            max_depth,
+            usize::try_from(limit)
+                .map_err(|_| Error::BadRequest(ErrorKind::InvalidParam, "Limit is too great"))?,
+            key.map_or(vec![], |token| token.short_room_ids),
+            usize::try_from(max_depth).map_err(|_| {
+                Error::BadRequest(ErrorKind::InvalidParam, "Max depth is too great")
+            })?,
             body.suggested_only,
         )
         .await
