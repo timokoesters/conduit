@@ -12,6 +12,7 @@ use axum_server::{bind, bind_rustls, tls_rustls::RustlsConfig, Handle as ServerH
 use conduit::api::{client_server, server_server};
 use figment::{
     providers::{Env, Format, Toml},
+    value::Uncased,
     Figment,
 };
 use http::{
@@ -44,6 +45,8 @@ use tikv_jemallocator::Jemalloc;
 #[global_allocator]
 static GLOBAL: Jemalloc = Jemalloc;
 
+static SUB_TABLES: [&str; 2] = ["well_known", "tls"]; // Not doing `proxy` cause setting that with env vars would be a pain
+
 #[tokio::main]
 async fn main() {
     clap::parse();
@@ -57,7 +60,20 @@ async fn main() {
                 ))
                 .nested(),
             )
-            .merge(Env::prefixed("CONDUIT_").global().split("__"));
+            .merge(Env::prefixed("CONDUIT_").global().map(|k| {
+                let mut key: Uncased = k.into();
+
+                for table in SUB_TABLES {
+                    if k.starts_with(&(table.to_owned() + "_")) {
+                        key = Uncased::from(
+                            table.to_owned() + "." + k[table.len() + 1..k.len()].as_str(),
+                        );
+                        break;
+                    }
+                }
+
+                key
+            }));
 
     let config = match raw_config.extract::<Config>() {
         Ok(s) => s,
