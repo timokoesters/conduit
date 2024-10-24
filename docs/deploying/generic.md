@@ -212,7 +212,7 @@ server {
 
     location /_matrix/ {
         proxy_pass http://127.0.0.1:6167;
-        proxy_set_header Host $http_host;
+        proxy_set_header Host $host;
         proxy_buffering off;
         proxy_read_timeout 5m;
     }
