@@ -67,7 +67,7 @@ use std::{
     sync::Arc,
     time::{Duration, Instant, SystemTime},
 };
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 
 use tracing::{debug, error, warn};
 
@@ -1500,35 +1500,9 @@ pub async fn get_room_state_ids_route(
 pub async fn create_join_event_template_route(
     body: Ruma<prepare_join_event::v1::Request>,
 ) -> Result<prepare_join_event::v1::Response> {
-    if !services().rooms.metadata.exists(&body.room_id)? {
-        return Err(Error::BadRequest(
-            ErrorKind::NotFound,
-            "Room is unknown to this server.",
-        ));
-    }
-
-    let sender_servername = body
-        .sender_servername
-        .as_ref()
-        .expect("server is authenticated");
-
-    services()
-        .rooms
-        .event_handler
-        .acl_check(sender_servername, &body.room_id)?;
-
-    let mutex_state = Arc::clone(
-        services()
-            .globals
-            .roomid_mutex_state
-            .write()
-            .await
-            .entry(body.room_id.to_owned())
-            .or_default(),
-    );
+    let (mutex_state, room_version_id) =
+        member_shake_preamble(&body.sender_servername, &body.room_id).await?;
     let state_lock = mutex_state.lock().await;
-
-    let room_version_id = services().rooms.state.get_room_version(&body.room_id)?;
 
     let join_authorized_via_users_server = if
     // The following two functions check whether the user can "join" without performing a restricted join
@@ -1580,12 +1554,32 @@ pub async fn create_join_event_template_route(
         ));
     }
 
+    Ok(prepare_join_event::v1::Response {
+        room_version: Some(room_version_id),
+        event: create_membership_template(
+            &body.user_id,
+            &body.room_id,
+            join_authorized_via_users_server,
+            MembershipState::Join,
+            state_lock,
+        )?,
+    })
+}
+
+/// Creates a template for the given membership state, to return on the `/make_<membership>` endpoints
+fn create_membership_template(
+    user_id: &UserId,
+    room_id: &RoomId,
+    join_authorized_via_users_server: Option<OwnedUserId>,
+    membership: MembershipState,
+    state_lock: tokio::sync::MutexGuard<'_, ()>,
+) -> Result<Box<RawJsonValue>, Error> {
     let content = to_raw_value(&RoomMemberEventContent {
         avatar_url: None,
         blurhash: None,
         displayname: None,
         is_direct: None,
-        membership: MembershipState::Join,
+        membership,
         third_party_invite: None,
         reason: None,
         join_authorized_via_users_server,
@@ -1597,12 +1591,12 @@ pub async fn create_join_event_template_route(
             event_type: TimelineEventType::RoomMember,
             content,
             unsigned: None,
-            state_key: Some(body.user_id.to_string()),
+            state_key: Some(user_id.to_string()),
             redacts: None,
             timestamp: None,
         },
-        &body.user_id,
-        &body.room_id,
+        user_id,
+        room_id,
         &state_lock,
     )?;
 
@@ -1610,17 +1604,13 @@ pub async fn create_join_event_template_route(
 
     pdu_json.remove("event_id");
 
-    Ok(prepare_join_event::v1::Response {
-        room_version: Some(room_version_id),
-        event: to_raw_value(&pdu_json).expect("CanonicalJson can be serialized to JSON"),
-    })
+    let raw_event = to_raw_value(&pdu_json).expect("CanonicalJson can be serialized to JSON");
+
+    Ok(raw_event)
 }
 
-async fn create_join_event(
-    sender_servername: &ServerName,
-    room_id: &RoomId,
-    pdu: &RawJsonValue,
-) -> Result<create_join_event::v1::RoomState> {
+/// checks whether the given room exists, and checks whether the specified server is allowed to send events according to the ACL
+fn room_and_acl_check(room_id: &RoomId, sender_servername: &OwnedServerName) -> Result<(), Error> {
     if !services().rooms.metadata.exists(room_id)? {
         return Err(Error::BadRequest(
             ErrorKind::NotFound,
@@ -1632,6 +1622,40 @@ async fn create_join_event(
         .rooms
         .event_handler
         .acl_check(sender_servername, room_id)?;
+    Ok(())
+}
+
+/// Takes care of common boilerpalte for room membership handshake endpoints.
+/// The returned mutex must be locked by the caller.
+async fn member_shake_preamble(
+    sender_servername: &Option<OwnedServerName>,
+    room_id: &RoomId,
+) -> Result<(Arc<Mutex<()>>, RoomVersionId), Error> {
+    let sender_servername = sender_servername.as_ref().expect("server is authenticated");
+    room_and_acl_check(room_id, sender_servername)?;
+
+    let mutex_state = Arc::clone(
+        services()
+            .globals
+            .roomid_mutex_state
+            .write()
+            .await
+            .entry(room_id.to_owned())
+            .or_default(),
+    );
+
+    let room_version_id = services().rooms.state.get_room_version(room_id)?;
+
+    Ok((mutex_state, room_version_id))
+}
+
+async fn create_join_event(
+    sender_servername: &Option<OwnedServerName>,
+    room_id: &RoomId,
+    pdu: &RawJsonValue,
+) -> Result<create_join_event::v1::RoomState> {
+    let sender_servername = sender_servername.as_ref().expect("server is authenticated");
+    room_and_acl_check(room_id, sender_servername)?;
 
     // We need to return the state prior to joining, let's keep a reference to that here
     let shortstatehash = services()
@@ -1643,8 +1667,44 @@ async fn create_join_event(
             "Pdu state not found.",
         ))?;
 
+    let pdu = append_member_pdu(MembershipState::Join, sender_servername, room_id, pdu).await?;
+
+    let state_ids = services()
+        .rooms
+        .state_accessor
+        .state_full_ids(shortstatehash)
+        .await?;
+    let auth_chain_ids = services()
+        .rooms
+        .auth_chain
+        .get_auth_chain(room_id, state_ids.values().cloned().collect())
+        .await?;
+
+    Ok(create_join_event::v1::RoomState {
+        auth_chain: auth_chain_ids
+            .filter_map(|id| services().rooms.timeline.get_pdu_json(&id).ok().flatten())
+            .map(PduEvent::convert_to_outgoing_federation_event)
+            .collect(),
+        state: state_ids
+            .iter()
+            .filter_map(|(_, id)| services().rooms.timeline.get_pdu_json(id).ok().flatten())
+            .map(PduEvent::convert_to_outgoing_federation_event)
+            .collect(),
+        event: pdu.map(|pdu| {
+            to_raw_value(&CanonicalJsonValue::Object(pdu))
+                .expect("To raw json should not fail since only change was adding signature")
+        }),
+    })
+}
+
+/// Takes the given membership PDU and attempts to append it to the timeline
+async fn append_member_pdu(
+    membership: MembershipState,
+    sender_servername: &OwnedServerName,
+    room_id: &RoomId,
+    pdu: &RawJsonValue,
+) -> Result<Option<BTreeMap<String, CanonicalJsonValue>>, Error> {
     let pub_key_map = RwLock::new(BTreeMap::new());
-    // let mut auth_cache = EventMap::new();
 
     // We do not add the event_id field to the pdu here because of signature and hashes checks
     let room_version_id = services().rooms.state.get_room_version(room_id)?;
@@ -1719,17 +1779,18 @@ async fn create_join_event(
     )
     .map_err(|_| Error::BadRequest(ErrorKind::BadJson, "Invalid event content"))?;
 
-    if event_content.membership != MembershipState::Join {
+    if event_content.membership != membership {
         return Err(Error::BadRequest(
             ErrorKind::BadJson,
             "Membership of sent event does not match that of the endpoint",
         ));
     }
 
-    let sign_join_event = event_content
-        .join_authorized_via_users_server
-        .map(|user| user.server_name() == services().globals.server_name())
-        .unwrap_or_default()
+    let sign_join_event = membership == MembershipState::Join
+        && event_content
+            .join_authorized_via_users_server
+            .map(|user| user.server_name() == services().globals.server_name())
+            .unwrap_or_default()
         && user_can_perform_restricted_join(&sender, room_id, &room_version_id).unwrap_or_default();
 
     if sign_join_event {
@@ -1779,17 +1840,6 @@ async fn create_join_event(
         ))?;
     drop(mutex_lock);
 
-    let state_ids = services()
-        .rooms
-        .state_accessor
-        .state_full_ids(shortstatehash)
-        .await?;
-    let auth_chain_ids = services()
-        .rooms
-        .auth_chain
-        .get_auth_chain(room_id, state_ids.values().cloned().collect())
-        .await?;
-
     let servers = services()
         .rooms
         .state_cache
@@ -1799,26 +1849,7 @@ async fn create_join_event(
 
     services().sending.send_pdu(servers, &pdu_id)?;
 
-    Ok(create_join_event::v1::RoomState {
-        auth_chain: auth_chain_ids
-            .filter_map(|id| services().rooms.timeline.get_pdu_json(&id).ok().flatten())
-            .map(PduEvent::convert_to_outgoing_federation_event)
-            .collect(),
-        state: state_ids
-            .iter()
-            .filter_map(|(_, id)| services().rooms.timeline.get_pdu_json(id).ok().flatten())
-            .map(PduEvent::convert_to_outgoing_federation_event)
-            .collect(),
-        // Event field is required if we sign the join event.
-        event: if sign_join_event {
-            Some(
-                to_raw_value(&CanonicalJsonValue::Object(value))
-                    .expect("To raw json should not fail since only change was adding signature"),
-            )
-        } else {
-            None
-        },
-    })
+    Ok(if sign_join_event { Some(value) } else { None })
 }
 
 /// # `PUT /_matrix/federation/v1/send_join/{roomId}/{eventId}`
@@ -1827,12 +1858,7 @@ async fn create_join_event(
 pub async fn create_join_event_v1_route(
     body: Ruma<create_join_event::v1::Request>,
 ) -> Result<create_join_event::v1::Response> {
-    let sender_servername = body
-        .sender_servername
-        .as_ref()
-        .expect("server is authenticated");
-
-    let room_state = create_join_event(sender_servername, &body.room_id, &body.pdu).await?;
+    let room_state = create_join_event(&body.sender_servername, &body.room_id, &body.pdu).await?;
 
     Ok(create_join_event::v1::Response { room_state })
 }
@@ -1843,16 +1869,11 @@ pub async fn create_join_event_v1_route(
 pub async fn create_join_event_v2_route(
     body: Ruma<create_join_event::v2::Request>,
 ) -> Result<create_join_event::v2::Response> {
-    let sender_servername = body
-        .sender_servername
-        .as_ref()
-        .expect("server is authenticated");
-
     let create_join_event::v1::RoomState {
         auth_chain,
         state,
         event,
-    } = create_join_event(sender_servername, &body.room_id, &body.pdu).await?;
+    } = create_join_event(&body.sender_servername, &body.room_id, &body.pdu).await?;
     let room_state = create_join_event::v2::RoomState {
         members_omitted: false,
         auth_chain,
