@@ -2,7 +2,10 @@ mod data;
 use std::io::Cursor;
 
 pub use data::Data;
-use ruma::http_headers::{ContentDisposition, ContentDispositionType};
+use ruma::{
+    api::client::error::ErrorKind,
+    http_headers::{ContentDisposition, ContentDispositionType},
+};
 
 use crate::{services, Result};
 use image::imageops::FilterType;
@@ -219,12 +222,11 @@ impl Service {
                     file: thumbnail_bytes.to_vec(),
                 }))
             } else {
-                // Couldn't parse file to generate thumbnail, send original
-                Ok(Some(FileMeta {
-                    content_disposition,
-                    content_type,
-                    file: file.to_vec(),
-                }))
+                // Couldn't parse file to generate thumbnail, likely not an image
+                return Err(crate::Error::BadRequest(
+                ErrorKind::Unknown,
+                "Unable to generate thumbnail for the requested content (likely is not an image)",
+            ));
             }
         } else {
             Ok(None)
