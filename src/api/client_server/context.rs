@@ -11,7 +11,7 @@ use tracing::error;
 /// Allows loading room history around an event.
 ///
 /// - Only works if the user is joined (TODO: always allow, but only show events if the user was
-/// joined, depending on history_visibility)
+///   joined, depending on history_visibility)
 pub async fn get_context_route(
     body: Ruma<get_context::v3::Request>,
 ) -> Result<get_context::v3::Response> {

@@ -696,7 +696,7 @@ pub async fn get_server_version_route(
 /// Gets the public signing keys of this server.
 ///
 /// - Matrix does not support invalidating public keys, so the key returned by this will be valid
-/// forever.
+///   forever.
 // Response type for this endpoint is Json because we need to calculate a signature for the response
 pub async fn get_server_keys_route() -> Result<impl IntoResponse> {
     let mut verify_keys: BTreeMap<OwnedServerSigningKeyId, VerifyKey> = BTreeMap::new();
@@ -743,7 +743,7 @@ pub async fn get_server_keys_route() -> Result<impl IntoResponse> {
 /// Gets the public signing keys of this server.
 ///
 /// - Matrix does not support invalidating public keys, so the key returned by this will be valid
-/// forever.
+///   forever.
 pub async fn get_server_keys_deprecated_route() -> impl IntoResponse {
     get_server_keys_route().await
 }

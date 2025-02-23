@@ -1,5 +1,3 @@
-use std::mem;
-
 use ruma::{
     events::receipt::ReceiptEvent, serde::Raw, CanonicalJsonObject, OwnedUserId, RoomId, UserId,
 };
@@ -73,12 +71,13 @@ impl service::rooms::edus::read_receipt::Data for KeyValueDatabase {
                 .iter_from(&first_possible_edu, false)
                 .take_while(move |(k, _)| k.starts_with(&prefix2))
                 .map(move |(k, v)| {
-                    let count = utils::u64_from_bytes(
-                        &k[prefix.len()..prefix.len() + mem::size_of::<u64>()],
-                    )
-                    .map_err(|_| Error::bad_database("Invalid readreceiptid count in db."))?;
+                    let count =
+                        utils::u64_from_bytes(&k[prefix.len()..prefix.len() + size_of::<u64>()])
+                            .map_err(|_| {
+                                Error::bad_database("Invalid readreceiptid count in db.")
+                            })?;
                     let user_id = UserId::parse(
-                        utils::string_from_bytes(&k[prefix.len() + mem::size_of::<u64>() + 1..])
+                        utils::string_from_bytes(&k[prefix.len() + size_of::<u64>() + 1..])
                             .map_err(|_| {
                                 Error::bad_database("Invalid readreceiptid userid bytes in db.")
                             })?,

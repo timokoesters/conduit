@@ -1,5 +1,3 @@
-use std::mem;
-
 use ruma::{api::client::threads::get_threads::v1::IncludeThreads, OwnedUserId, RoomId, UserId};
 
 use crate::{database::KeyValueDatabase, service, services, utils, Error, PduEvent, Result};
@@ -28,7 +26,7 @@ impl service::rooms::threads::Data for KeyValueDatabase {
                 .iter_from(&current, true)
                 .take_while(move |(k, _)| k.starts_with(&prefix))
                 .map(move |(pduid, _users)| {
-                    let count = utils::u64_from_bytes(&pduid[(mem::size_of::<u64>())..])
+                    let count = utils::u64_from_bytes(&pduid[(size_of::<u64>())..])
                         .map_err(|_| Error::bad_database("Invalid pduid in threadid_userids."))?;
                     let mut pdu = services()
                         .rooms

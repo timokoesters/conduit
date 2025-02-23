@@ -37,7 +37,7 @@ use tracing::{error, info};
 /// Synchronize the client's state with the latest state on the server.
 ///
 /// - This endpoint takes a `since` parameter which should be the `next_batch` value from a
-/// previous request for incremental syncs.
+///   previous request for incremental syncs.
 ///
 /// Calling this endpoint without a `since` parameter returns:
 /// - Some of the most recent events of each timeline
@@ -49,9 +49,9 @@ use tracing::{error, info};
 /// For joined rooms:
 /// - Some of the most recent events of each timeline that happened after since
 /// - If user joined the room after since: All state events (unless lazy loading is activated) and
-/// all device list updates in that room
+///   all device list updates in that room
 /// - If the user was already in the room: A list of all events that are in the state now, but were
-/// not in the state at `since`
+///   not in the state at `since`
 /// - If the state we send contains a member event: Joined and invited member counts, heroes
 /// - Device list updates that happened after `since`
 /// - If there are events in the timeline we send or the user send updated his read mark: Notification counts
@@ -65,7 +65,7 @@ use tracing::{error, info};
 /// - If the user left after `since`: prev_batch token, empty state (TODO: subset of the state at the point of the leave)
 ///
 /// - Sync is handled in an async task, multiple requests from the same device with the same
-/// `since` will be cached
+///   `since` will be cached
 pub async fn sync_events_route(
     body: Ruma<sync_events::v3::Request>,
 ) -> Result<sync_events::v3::Response, RumaResponse<UiaaResponse>> {

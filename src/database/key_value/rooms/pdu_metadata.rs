@@ -1,4 +1,4 @@
-use std::{mem, sync::Arc};
+use std::sync::Arc;
 
 use ruma::{EventId, RoomId, UserId};
 
@@ -40,7 +40,7 @@ impl service::rooms::pdu_metadata::Data for KeyValueDatabase {
                 .iter_from(&current, true)
                 .take_while(move |(k, _)| k.starts_with(&prefix))
                 .map(move |(tofrom, _data)| {
-                    let from = utils::u64_from_bytes(&tofrom[(mem::size_of::<u64>())..])
+                    let from = utils::u64_from_bytes(&tofrom[(size_of::<u64>())..])
                         .map_err(|_| Error::bad_database("Invalid count in tofrom_relation."))?;
 
                     let mut pduid = shortroomid.to_be_bytes().to_vec();
