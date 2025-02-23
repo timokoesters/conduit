@@ -246,24 +246,10 @@ impl KeyValueDatabase {
         }
 
         let builder: Arc<dyn KeyValueDatabaseEngine> = match &*config.database_backend {
-            "sqlite" => {
-                #[cfg(not(feature = "sqlite"))]
-                return Err(Error::BadConfig("Database backend not found."));
-                #[cfg(feature = "sqlite")]
-                Arc::new(Arc::<abstraction::sqlite::Engine>::open(&config)?)
-            }
-            "rocksdb" => {
-                #[cfg(not(feature = "rocksdb"))]
-                return Err(Error::BadConfig("Database backend not found."));
-                #[cfg(feature = "rocksdb")]
-                Arc::new(Arc::<abstraction::rocksdb::Engine>::open(&config)?)
-            }
-            "persy" => {
-                #[cfg(not(feature = "persy"))]
-                return Err(Error::BadConfig("Database backend not found."));
-                #[cfg(feature = "persy")]
-                Arc::new(Arc::<abstraction::persy::Engine>::open(&config)?)
-            }
+            #[cfg(feature = "sqlite")]
+            "sqlite" => Arc::new(Arc::<abstraction::sqlite::Engine>::open(&config)?),
+            #[cfg(feature = "rocksdb")]
+            "rocksdb" => Arc::new(Arc::<abstraction::rocksdb::Engine>::open(&config)?),
             _ => {
                 return Err(Error::BadConfig("Database backend not found."));
             }

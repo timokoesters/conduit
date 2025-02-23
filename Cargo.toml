@@ -49,10 +49,6 @@ tower-service = "0.3"
 
 # Async runtime and utilities
 tokio = { version = "1.28.1", features = ["fs", "macros", "signal", "sync"] }
-# Used for storing data permanently
-#sled = { version = "0.34.7", features = ["compression", "no_metrics"], optional = true }
-#sled = { git = "https://github.com/spacejam/sled.git", rev = "e4640e0773595229f398438886f19bca6f7326a2", features = ["compression"] }
-persy = { version = "1.4.4", optional = true, features = ["background_ops"] }
 
 # Used for the http request / response body type for Ruma endpoints used with reqwest
 bytes = "1.4.0"
@@ -116,7 +112,6 @@ rusqlite = { version = "0.31", optional = true, features = ["bundled"] }
 # crossbeam = { version = "0.8.2", optional = true }
 num_cpus = "1.15.0"
 threadpool = "1.8.1"
-# heed = { git = "https://github.com/timokoesters/heed.git", rev = "f6f825da7fb2c758867e05ad973ef800a6fe1d5d", optional = true }
 # Used for ruma wrapper
 serde_html_form = "0.2.0"
 
@@ -176,13 +171,10 @@ version = "0.25"
 nix = { version = "0.28", features = ["resource"] }
 
 [features]
-default = ["backend_rocksdb", "backend_sqlite", "conduit_bin", "systemd"]
-#backend_sled = ["sled"]
-backend_persy = ["parking_lot", "persy"]
-backend_sqlite = ["sqlite"]
-#backend_heed = ["heed", "crossbeam"]
 backend_rocksdb = ["rocksdb"]
+backend_sqlite = ["sqlite"]
 conduit_bin = ["axum"]
+default = ["backend_rocksdb", "backend_sqlite", "conduit_bin", "systemd"]
 jemalloc = ["tikv-jemallocator"]
 sqlite = ["parking_lot", "rusqlite", "tokio/signal"]
 systemd = ["sd-notify"]
