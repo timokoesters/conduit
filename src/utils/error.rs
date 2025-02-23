@@ -60,7 +60,7 @@ pub enum Error {
     BadDatabase(&'static str),
     #[error("uiaa")]
     Uiaa(UiaaInfo),
-    #[error("{0}: {1}")]
+    #[error("{}: {1}",.0.errcode())]
     BadRequest(ErrorKind, &'static str),
     #[error("{0}")]
     Conflict(&'static str), // This is only needed for when a room alias already exists

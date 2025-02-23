@@ -4,8 +4,8 @@ use ruma::{
     encryption::{CrossSigningKey, DeviceKeys, OneTimeKey},
     events::AnyToDeviceEvent,
     serde::Raw,
-    DeviceId, DeviceKeyAlgorithm, DeviceKeyId, OwnedDeviceId, OwnedDeviceKeyId, OwnedMxcUri,
-    OwnedUserId, UInt, UserId,
+    DeviceId, OneTimeKeyAlgorithm, OwnedDeviceId, OwnedMxcUri, OwnedOneTimeKeyId, OwnedUserId,
+    UInt, UserId,
 };
 use std::collections::BTreeMap;
 
@@ -79,7 +79,7 @@ pub trait Data: Send + Sync {
         &self,
         user_id: &UserId,
         device_id: &DeviceId,
-        one_time_key_key: &DeviceKeyId,
+        one_time_key_key: &OwnedOneTimeKeyId,
         one_time_key_value: &Raw<OneTimeKey>,
     ) -> Result<()>;
 
@@ -89,14 +89,14 @@ pub trait Data: Send + Sync {
         &self,
         user_id: &UserId,
         device_id: &DeviceId,
-        key_algorithm: &DeviceKeyAlgorithm,
-    ) -> Result<Option<(OwnedDeviceKeyId, Raw<OneTimeKey>)>>;
+        key_algorithm: &OneTimeKeyAlgorithm,
+    ) -> Result<Option<(OwnedOneTimeKeyId, Raw<OneTimeKey>)>>;
 
     fn count_one_time_keys(
         &self,
         user_id: &UserId,
         device_id: &DeviceId,
-    ) -> Result<BTreeMap<DeviceKeyAlgorithm, UInt>>;
+    ) -> Result<BTreeMap<OneTimeKeyAlgorithm, UInt>>;
 
     fn add_device_keys(
         &self,

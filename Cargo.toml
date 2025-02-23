@@ -147,19 +147,25 @@ sd-notify = { version = "0.4.1", optional = true }
 features = [
   "appservice-api-c",
   "client-api",
-  "compat",
+  "compat-empty-string-null",
+  "compat-get-3pids",
+  "compat-null",
+  "compat-optional",
+  "compat-optional-txn-pdus",
+  "compat-server-signing-key-version",
+  "compat-signature-id",
+  "compat-tag-info",
+  "compat-unset-avatar",
   "federation-api",
   "push-gateway-api-c",
   "rand",
   "ring-compat",
   "server-util",
   "state-res",
-  "unstable-exhaustive-types",
   "unstable-msc2448",
   "unstable-msc3575",
-  "unstable-unspecified",
 ]
-git = "https://github.com/ruma/ruma"
+git = "https://github.com/ruma/ruma.git"
 
 [dependencies.rocksdb]
 features = ["lz4", "multi-threaded-cf", "zstd"]

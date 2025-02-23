@@ -301,7 +301,11 @@ async fn get_content_as_filename(
 pub async fn get_content_thumbnail_route(
     body: Ruma<media::get_content_thumbnail::v3::Request>,
 ) -> Result<media::get_content_thumbnail::v3::Response> {
-    let get_content_thumbnail::v1::Response { file, content_type } = get_content_thumbnail(
+    let get_content_thumbnail::v1::Response {
+        file,
+        content_type,
+        content_disposition,
+    } = get_content_thumbnail(
         &body.server_name,
         body.media_id.clone(),
         body.height,
@@ -316,6 +320,7 @@ pub async fn get_content_thumbnail_route(
         file,
         content_type,
         cross_origin_resource_policy: Some("cross-origin".to_owned()),
+        content_disposition,
     })
 }
 
@@ -349,7 +354,9 @@ async fn get_content_thumbnail(
     let mxc = format!("mxc://{}/{}", server_name, media_id);
 
     if let Some(FileMeta {
-        file, content_type, ..
+        file,
+        content_type,
+        content_disposition,
     }) = services()
         .media
         .get_thumbnail(
@@ -363,7 +370,11 @@ async fn get_content_thumbnail(
         )
         .await?
     {
-        Ok(get_content_thumbnail::v1::Response { file, content_type })
+        Ok(get_content_thumbnail::v1::Response {
+            file,
+            content_type,
+            content_disposition: Some(content_disposition),
+        })
     } else if server_name != services().globals.server_name() && allow_remote {
         let thumbnail_response = match services()
             .sending
@@ -386,6 +397,7 @@ async fn get_content_thumbnail(
             }) => get_content_thumbnail::v1::Response {
                 file: content.file,
                 content_type: content.content_type,
+                content_disposition: content.content_disposition,
             },
 
             Ok(federation_media::get_content_thumbnail::v1::Response {
@@ -393,14 +405,23 @@ async fn get_content_thumbnail(
                 content: FileOrLocation::Location(url),
             }) => {
                 let get_content::v1::Response {
-                    file, content_type, ..
+                    file,
+                    content_type,
+                    content_disposition,
                 } = get_location_content(url).await?;
 
-                get_content_thumbnail::v1::Response { file, content_type }
+                get_content_thumbnail::v1::Response {
+                    file,
+                    content_type,
+                    content_disposition,
+                }
             }
             Err(Error::BadRequest(ErrorKind::Unrecognized, _)) => {
                 let media::get_content_thumbnail::v3::Response {
-                    file, content_type, ..
+                    file,
+                    content_type,
+                    content_disposition,
+                    ..
                 } = services()
                     .sending
                     .send_federation_request(
@@ -419,7 +440,11 @@ async fn get_content_thumbnail(
                     )
                     .await?;
 
-                get_content_thumbnail::v1::Response { file, content_type }
+                get_content_thumbnail::v1::Response {
+                    file,
+                    content_type,
+                    content_disposition,
+                }
             }
             Err(e) => return Err(e),
         };

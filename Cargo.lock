@@ -528,7 +528,7 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "sha-1",
- "thiserror",
+ "thiserror 1.0.61",
  "thread_local",
  "threadpool",
  "tikv-jemallocator",
@@ -1062,7 +1062,7 @@ dependencies = [
  "ipnet",
  "once_cell",
  "rand",
- "thiserror",
+ "thiserror 1.0.61",
  "tinyvec",
  "tokio",
  "tracing",
@@ -1085,7 +1085,7 @@ dependencies = [
  "rand",
  "resolv-conf",
  "smallvec",
- "thiserror",
+ "thiserror 1.0.61",
  "tokio",
  "tracing",
 ]
@@ -1723,7 +1723,7 @@ dependencies = [
  "js-sys",
  "once_cell",
  "pin-project-lite",
- "thiserror",
+ "thiserror 1.0.61",
  "urlencoding",
 ]
 
@@ -1750,7 +1750,7 @@ dependencies = [
  "opentelemetry-semantic-conventions",
  "opentelemetry_sdk",
  "prost",
- "thiserror",
+ "thiserror 1.0.61",
  "tokio",
  "tonic",
 ]
@@ -1790,7 +1790,7 @@ dependencies = [
  "ordered-float",
  "percent-encoding",
  "rand",
- "thiserror",
+ "thiserror 1.0.61",
  "tokio",
  "tokio-stream",
 ]
@@ -1968,9 +1968,9 @@ dependencies = [
 
 [[package]]
 name = "proc-macro2"
-version = "1.0.85"
+version = "1.0.93"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "22244ce15aa966053a896d1accb3a6e68469b97c7f33f284b99f0d576879fc23"
+checksum = "60946a68e5f9d28b0dc1c21bb8a97ee7d018a8b322fa57838ba31cc878e22d99"
 dependencies = [
  "unicode-ident",
 ]
@@ -2073,7 +2073,7 @@ checksum = "bd283d9651eeda4b2a83a43c1c91b266c40fd76ecd39a50a8c630ae69dc72891"
 dependencies = [
  "getrandom",
  "libredox",
- "thiserror",
+ "thiserror 1.0.61",
 ]
 
 [[package]]
@@ -2189,8 +2189,8 @@ dependencies = [
 
 [[package]]
 name = "ruma"
-version = "0.10.1"
-source = "git+https://github.com/ruma/ruma#c06af4385e0e30c48a8e9ca3d488da32102d0db9"
+version = "0.12.1"
+source = "git+https://github.com/ruma/ruma.git#afaf132362fe6195556a872351a70337e97ab755"
 dependencies = [
  "assign",
  "js_int",
@@ -2200,7 +2200,6 @@ dependencies = [
  "ruma-common",
  "ruma-events",
  "ruma-federation-api",
- "ruma-identity-service-api",
  "ruma-push-gateway-api",
  "ruma-server-util",
  "ruma-signatures",
@@ -2210,8 +2209,8 @@ dependencies = [
 
 [[package]]
 name = "ruma-appservice-api"
-version = "0.10.0"
-source = "git+https://github.com/ruma/ruma#c06af4385e0e30c48a8e9ca3d488da32102d0db9"
+version = "0.12.1"
+source = "git+https://github.com/ruma/ruma.git#afaf132362fe6195556a872351a70337e97ab755"
 dependencies = [
  "js_int",
  "ruma-common",
@@ -2222,8 +2221,8 @@ dependencies = [
 
 [[package]]
 name = "ruma-client-api"
-version = "0.18.0"
-source = "git+https://github.com/ruma/ruma#c06af4385e0e30c48a8e9ca3d488da32102d0db9"
+version = "0.20.1"
+source = "git+https://github.com/ruma/ruma.git#afaf132362fe6195556a872351a70337e97ab755"
 dependencies = [
  "as_variant",
  "assign",
@@ -2238,20 +2237,21 @@ dependencies = [
  "serde",
  "serde_html_form",
  "serde_json",
- "thiserror",
+ "thiserror 2.0.11",
  "url",
  "web-time",
 ]
 
 [[package]]
 name = "ruma-common"
-version = "0.13.0"
-source = "git+https://github.com/ruma/ruma#c06af4385e0e30c48a8e9ca3d488da32102d0db9"
+version = "0.15.1"
+source = "git+https://github.com/ruma/ruma.git#afaf132362fe6195556a872351a70337e97ab755"
 dependencies = [
  "as_variant",
  "base64 0.22.1",
  "bytes",
  "form_urlencoded",
+ "getrandom",
  "http 1.1.0",
  "indexmap 2.2.6",
  "js_int",
@@ -2264,7 +2264,7 @@ dependencies = [
  "serde",
  "serde_html_form",
  "serde_json",
- "thiserror",
+ "thiserror 2.0.11",
  "time",
  "tracing",
  "url",
@@ -2275,8 +2275,8 @@ dependencies = [
 
 [[package]]
 name = "ruma-events"
-version = "0.28.1"
-source = "git+https://github.com/ruma/ruma#c06af4385e0e30c48a8e9ca3d488da32102d0db9"
+version = "0.30.1"
+source = "git+https://github.com/ruma/ruma.git#afaf132362fe6195556a872351a70337e97ab755"
 dependencies = [
  "as_variant",
  "indexmap 2.2.6",
@@ -2289,7 +2289,7 @@ dependencies = [
  "ruma-macros",
  "serde",
  "serde_json",
- "thiserror",
+ "thiserror 2.0.11",
  "tracing",
  "url",
  "web-time",
@@ -2298,8 +2298,8 @@ dependencies = [
 
 [[package]]
 name = "ruma-federation-api"
-version = "0.9.0"
-source = "git+https://github.com/ruma/ruma#c06af4385e0e30c48a8e9ca3d488da32102d0db9"
+version = "0.11.0"
+source = "git+https://github.com/ruma/ruma.git#afaf132362fe6195556a872351a70337e97ab755"
 dependencies = [
  "bytes",
  "http 1.1.0",
@@ -2316,30 +2316,19 @@ dependencies = [
 
 [[package]]
 name = "ruma-identifiers-validation"
-version = "0.9.5"
-source = "git+https://github.com/ruma/ruma#c06af4385e0e30c48a8e9ca3d488da32102d0db9"
+version = "0.10.1"
+source = "git+https://github.com/ruma/ruma.git#afaf132362fe6195556a872351a70337e97ab755"
 dependencies = [
  "js_int",
- "thiserror",
-]
-
-[[package]]
-name = "ruma-identity-service-api"
-version = "0.9.0"
-source = "git+https://github.com/ruma/ruma#c06af4385e0e30c48a8e9ca3d488da32102d0db9"
-dependencies = [
- "js_int",
- "ruma-common",
- "serde",
+ "thiserror 2.0.11",
 ]
 
 [[package]]
 name = "ruma-macros"
-version = "0.13.0"
-source = "git+https://github.com/ruma/ruma#c06af4385e0e30c48a8e9ca3d488da32102d0db9"
+version = "0.15.1"
+source = "git+https://github.com/ruma/ruma.git#afaf132362fe6195556a872351a70337e97ab755"
 dependencies = [
  "cfg-if",
- "once_cell",
  "proc-macro-crate",
  "proc-macro2",
  "quote",
@@ -2351,8 +2340,8 @@ dependencies = [
 
 [[package]]
 name = "ruma-push-gateway-api"
-version = "0.9.0"
-source = "git+https://github.com/ruma/ruma#c06af4385e0e30c48a8e9ca3d488da32102d0db9"
+version = "0.11.0"
+source = "git+https://github.com/ruma/ruma.git#afaf132362fe6195556a872351a70337e97ab755"
 dependencies = [
  "js_int",
  "ruma-common",
@@ -2363,21 +2352,21 @@ dependencies = [
 
 [[package]]
 name = "ruma-server-util"
-version = "0.3.0"
-source = "git+https://github.com/ruma/ruma#c06af4385e0e30c48a8e9ca3d488da32102d0db9"
+version = "0.5.0"
+source = "git+https://github.com/ruma/ruma.git#afaf132362fe6195556a872351a70337e97ab755"
 dependencies = [
  "headers",
  "http 1.1.0",
  "http-auth",
  "ruma-common",
- "thiserror",
+ "thiserror 2.0.11",
  "tracing",
 ]
 
 [[package]]
 name = "ruma-signatures"
-version = "0.15.0"
-source = "git+https://github.com/ruma/ruma#c06af4385e0e30c48a8e9ca3d488da32102d0db9"
+version = "0.17.0"
+source = "git+https://github.com/ruma/ruma.git#afaf132362fe6195556a872351a70337e97ab755"
 dependencies = [
  "base64 0.22.1",
  "ed25519-dalek",
@@ -2387,21 +2376,20 @@ dependencies = [
  "serde_json",
  "sha2",
  "subslice",
- "thiserror",
+ "thiserror 2.0.11",
 ]
 
 [[package]]
 name = "ruma-state-res"
-version = "0.11.0"
-source = "git+https://github.com/ruma/ruma#c06af4385e0e30c48a8e9ca3d488da32102d0db9"
+version = "0.13.0"
+source = "git+https://github.com/ruma/ruma.git#afaf132362fe6195556a872351a70337e97ab755"
 dependencies = [
- "itertools",
  "js_int",
  "ruma-common",
  "ruma-events",
  "serde",
  "serde_json",
- "thiserror",
+ "thiserror 2.0.11",
  "tracing",
 ]
 
@@ -2793,7 +2781,7 @@ checksum = "adc4e5204eb1910f40f9cfa375f6f05b68c3abac4b6fd879c8ff5e7ae8a0a085"
 dependencies = [
  "num-bigint",
  "num-traits",
- "thiserror",
+ "thiserror 1.0.61",
  "time",
 ]
 
@@ -2855,9 +2843,9 @@ checksum = "81cdd64d312baedb58e21336b31bc043b77e01cc99033ce76ef539f78e965ebc"
 
 [[package]]
 name = "syn"
-version = "2.0.66"
+version = "2.0.98"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c42f3f41a2de00b01c0aaad383c5a45241efc8b2d1eda5661812fda5f3cdcff5"
+checksum = "36147f1a48ae0ec2b5b3bc5b537d267457555a10dc06f3dbc8cb11ba3006d3b1"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2882,7 +2870,16 @@ version = "1.0.61"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c546c80d6be4bc6a00c0f01730c08df82eaa7a7a61f11d656526506112cc1709"
 dependencies = [
- "thiserror-impl",
+ "thiserror-impl 1.0.61",
+]
+
+[[package]]
+name = "thiserror"
+version = "2.0.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d452f284b73e6d76dd36758a0c8684b1d5be31f92b89d07fd5822175732206fc"
+dependencies = [
+ "thiserror-impl 2.0.11",
 ]
 
 [[package]]
@@ -2890,6 +2887,17 @@ name = "thiserror-impl"
 version = "1.0.61"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "46c3384250002a6d5af4d114f2845d37b57521033f30d5c3f46c4d70e1197533"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "thiserror-impl"
+version = "2.0.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "26afc1baea8a989337eeb52b6e72a039780ce45c3edfcc9c5b9d112feeb173c2"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3049,7 +3057,7 @@ checksum = "51165dfa029d2a65969413a6cc96f354b86b464498702f174a4efa13608fd8c0"
 dependencies = [
  "either",
  "futures-util",
- "thiserror",
+ "thiserror 1.0.61",
  "tokio",
 ]
 
