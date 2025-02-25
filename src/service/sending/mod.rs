@@ -498,6 +498,8 @@ impl Service {
                             )
                         })?,
                     appservice::event::push_events::v1::Request {
+                        //TODO: ephemeral pushing
+                        ephemeral: Vec::new(),
                         events: pdu_jsons,
                         txn_id: (&*general_purpose::URL_SAFE_NO_PAD.encode(calculate_hash(
                             &events

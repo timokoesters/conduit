@@ -56,7 +56,7 @@ use ruma::{
     to_device::DeviceIdOrAllDevices,
     uint, user_id, CanonicalJsonObject, CanonicalJsonValue, EventId, MilliSecondsSinceUnixEpoch,
     OwnedEventId, OwnedRoomId, OwnedServerName, OwnedServerSigningKeyId, OwnedUserId, RoomId,
-    ServerName,
+    ServerName, Signatures,
 };
 use serde_json::value::{to_raw_value, RawValue as RawJsonValue};
 use std::{
@@ -696,7 +696,7 @@ pub async fn get_server_version_route(
 /// Gets the public signing keys of this server.
 ///
 /// - Matrix does not support invalidating public keys, so the key returned by this will be valid
-/// forever.
+///   forever.
 // Response type for this endpoint is Json because we need to calculate a signature for the response
 pub async fn get_server_keys_route() -> Result<impl IntoResponse> {
     let mut verify_keys: BTreeMap<OwnedServerSigningKeyId, VerifyKey> = BTreeMap::new();
@@ -714,7 +714,7 @@ pub async fn get_server_keys_route() -> Result<impl IntoResponse> {
                 server_name: services().globals.server_name().to_owned(),
                 verify_keys,
                 old_verify_keys: BTreeMap::new(),
-                signatures: BTreeMap::new(),
+                signatures: Signatures::new(),
                 valid_until_ts: MilliSecondsSinceUnixEpoch::from_system_time(
                     SystemTime::now() + Duration::from_secs(86400 * 7),
                 )
@@ -743,7 +743,7 @@ pub async fn get_server_keys_route() -> Result<impl IntoResponse> {
 /// Gets the public signing keys of this server.
 ///
 /// - Matrix does not support invalidating public keys, so the key returned by this will be valid
-/// forever.
+///   forever.
 pub async fn get_server_keys_deprecated_route() -> impl IntoResponse {
     get_server_keys_route().await
 }

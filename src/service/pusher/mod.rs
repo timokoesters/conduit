@@ -230,7 +230,7 @@ impl Service {
                 let event_id_only = http.format == Some(PushFormat::EventIdOnly);
 
                 let mut device = Device::new(pusher.ids.app_id.clone(), pusher.ids.pushkey.clone());
-                device.data.default_payload = http.default_payload.clone();
+                device.data.data = http.data.clone();
                 device.data.format.clone_from(&http.format);
 
                 // Tweaks are only added if the format is NOT event_id_only

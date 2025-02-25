@@ -5,7 +5,7 @@ use ruma::{
         push::{
             delete_pushrule, get_pushers, get_pushrule, get_pushrule_actions, get_pushrule_enabled,
             get_pushrules_all, set_pusher, set_pushrule, set_pushrule_actions,
-            set_pushrule_enabled, RuleScope,
+            set_pushrule_enabled,
         },
     },
     events::{push_rules::PushRulesEvent, GlobalAccountDataEventType},
@@ -89,13 +89,6 @@ pub async fn set_pushrule_route(
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
     let body = body.body;
 
-    if body.scope != RuleScope::Global {
-        return Err(Error::BadRequest(
-            ErrorKind::InvalidParam,
-            "Scopes other than 'global' are not supported.",
-        ));
-    }
-
     let event = services()
         .account_data
         .get(
@@ -161,13 +154,6 @@ pub async fn get_pushrule_actions_route(
 ) -> Result<get_pushrule_actions::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
-    if body.scope != RuleScope::Global {
-        return Err(Error::BadRequest(
-            ErrorKind::InvalidParam,
-            "Scopes other than 'global' are not supported.",
-        ));
-    }
-
     let event = services()
         .account_data
         .get(
@@ -203,13 +189,6 @@ pub async fn set_pushrule_actions_route(
     body: Ruma<set_pushrule_actions::v3::Request>,
 ) -> Result<set_pushrule_actions::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
-
-    if body.scope != RuleScope::Global {
-        return Err(Error::BadRequest(
-            ErrorKind::InvalidParam,
-            "Scopes other than 'global' are not supported.",
-        ));
-    }
 
     let event = services()
         .account_data
@@ -256,13 +235,6 @@ pub async fn get_pushrule_enabled_route(
 ) -> Result<get_pushrule_enabled::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
-    if body.scope != RuleScope::Global {
-        return Err(Error::BadRequest(
-            ErrorKind::InvalidParam,
-            "Scopes other than 'global' are not supported.",
-        ));
-    }
-
     let event = services()
         .account_data
         .get(
@@ -297,13 +269,6 @@ pub async fn set_pushrule_enabled_route(
     body: Ruma<set_pushrule_enabled::v3::Request>,
 ) -> Result<set_pushrule_enabled::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
-
-    if body.scope != RuleScope::Global {
-        return Err(Error::BadRequest(
-            ErrorKind::InvalidParam,
-            "Scopes other than 'global' are not supported.",
-        ));
-    }
 
     let event = services()
         .account_data
@@ -349,13 +314,6 @@ pub async fn delete_pushrule_route(
     body: Ruma<delete_pushrule::v3::Request>,
 ) -> Result<delete_pushrule::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
-
-    if body.scope != RuleScope::Global {
-        return Err(Error::BadRequest(
-            ErrorKind::InvalidParam,
-            "Scopes other than 'global' are not supported.",
-        ));
-    }
 
     let event = services()
         .account_data

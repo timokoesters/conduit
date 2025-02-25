@@ -11,33 +11,18 @@ use ruma::{
 use thiserror::Error;
 use tracing::{error, info};
 
-#[cfg(feature = "persy")]
-use persy::PersyError;
-
 use crate::RumaResponse;
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 #[derive(Error, Debug)]
 pub enum Error {
-    #[cfg(feature = "sled")]
-    #[error("There was a problem with the connection to the sled database.")]
-    SledError {
-        #[from]
-        source: sled::Error,
-    },
     #[cfg(feature = "sqlite")]
     #[error("There was a problem with the connection to the sqlite database: {source}")]
     SqliteError {
         #[from]
         source: rusqlite::Error,
     },
-    #[cfg(feature = "persy")]
-    #[error("There was a problem with the connection to the persy database.")]
-    PersyError { source: PersyError },
-    #[cfg(feature = "heed")]
-    #[error("There was a problem with the connection to the heed database: {error}")]
-    HeedError { error: String },
     #[cfg(feature = "rocksdb")]
     #[error("There was a problem with the connection to the rocksdb database: {source}")]
     RocksDbError {
@@ -75,7 +60,7 @@ pub enum Error {
     BadDatabase(&'static str),
     #[error("uiaa")]
     Uiaa(UiaaInfo),
-    #[error("{0}: {1}")]
+    #[error("{}: {1}",.0.errcode())]
     BadRequest(ErrorKind, &'static str),
     #[error("{0}")]
     Conflict(&'static str), // This is only needed for when a room alias already exists
@@ -157,29 +142,14 @@ impl Error {
         let db_error = String::from("Database or I/O error occurred.");
 
         match self {
-            #[cfg(feature = "sled")]
-            Self::SledError { .. } => db_error,
             #[cfg(feature = "sqlite")]
             Self::SqliteError { .. } => db_error,
-            #[cfg(feature = "persy")]
-            Self::PersyError { .. } => db_error,
-            #[cfg(feature = "heed")]
-            Self::HeedError => db_error,
             #[cfg(feature = "rocksdb")]
             Self::RocksDbError { .. } => db_error,
             Self::IoError { .. } => db_error,
             Self::BadConfig { .. } => db_error,
             Self::BadDatabase { .. } => db_error,
             _ => self.to_string(),
-        }
-    }
-}
-
-#[cfg(feature = "persy")]
-impl<T: Into<PersyError>> From<persy::PE<T>> for Error {
-    fn from(err: persy::PE<T>) -> Self {
-        Error::PersyError {
-            source: err.error().into(),
         }
     }
 }

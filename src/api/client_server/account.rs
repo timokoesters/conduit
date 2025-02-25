@@ -305,7 +305,7 @@ pub async fn register_route(body: Ruma<register::v3::Request>) -> Result<registe
 /// - Requires UIAA to verify user password
 /// - Changes the password of the sender user
 /// - The password hash is calculated using argon2 with 32 character salt, the plain password is
-/// not saved
+///   not saved
 ///
 /// If logout_devices is true it does the following for each device except the sender device:
 /// - Invalidates access token

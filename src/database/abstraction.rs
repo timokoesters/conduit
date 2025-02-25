@@ -3,27 +3,13 @@ use crate::Result;
 
 use std::{future::Future, pin::Pin, sync::Arc};
 
-#[cfg(feature = "sled")]
-pub mod sled;
-
 #[cfg(feature = "sqlite")]
 pub mod sqlite;
-
-#[cfg(feature = "heed")]
-pub mod heed;
 
 #[cfg(feature = "rocksdb")]
 pub mod rocksdb;
 
-#[cfg(feature = "persy")]
-pub mod persy;
-
-#[cfg(any(
-    feature = "sqlite",
-    feature = "rocksdb",
-    feature = "heed",
-    feature = "persy"
-))]
+#[cfg(any(feature = "sqlite", feature = "rocksdb"))]
 pub mod watchers;
 
 pub trait KeyValueDatabaseEngine: Send + Sync {

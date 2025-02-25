@@ -52,6 +52,7 @@ let
 
       # Keep sorted
       include = [
+        ".cargo"
         "Cargo.lock"
         "Cargo.toml"
         "src"

@@ -12,7 +12,7 @@ use ruma::{
 /// Searches all known users for a match.
 ///
 /// - Hides any local users that aren't in any public rooms (i.e. those that have the join rule set to public)
-/// and don't share a room with the sender
+///   and don't share a room with the sender
 pub async fn search_users_route(
     body: Ruma<search_users::v3::Request>,
 ) -> Result<search_users::v3::Response> {
