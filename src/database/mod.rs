@@ -934,71 +934,13 @@ impl KeyValueDatabase {
 
                 for file in fs::read_dir(services().globals.get_media_folder()).unwrap() {
                     let file = file.unwrap();
-                    let mediaid = general_purpose::URL_SAFE_NO_PAD
-                        .decode(file.file_name().into_string().unwrap())
-                        .unwrap();
+                    let file_name = file.file_name().into_string().unwrap();
 
-                    let mut parts = mediaid.rsplit(|&b| b == 0xff);
+                    let mediaid = general_purpose::URL_SAFE_NO_PAD.decode(&file_name).unwrap();
 
-                    let mut removed_bytes = 0;
-
-                    let content_type_bytes = parts.next().unwrap();
-                    removed_bytes += content_type_bytes.len() + 1;
-
-                    let content_disposition_bytes = parts
-                        .next()
-                        .ok_or_else(|| Error::bad_database("Media ID in db is invalid."))?;
-                    removed_bytes += content_disposition_bytes.len();
-
-                    let mut content_disposition =
-                        utils::string_from_bytes(content_disposition_bytes).map_err(|_| {
-                            Error::bad_database("Content Disposition in mediaid_file is invalid.")
-                        })?;
-
-                    if content_disposition.contains("filename=")
-                        && !content_disposition.contains("filename=\"")
-                    {
-                        content_disposition =
-                            content_disposition.replacen("filename=", "filename=\"", 1);
-                        content_disposition.push('"');
-
-                        let mut new_key = mediaid[..(mediaid.len() - removed_bytes)].to_vec();
-                        assert!(*new_key.last().unwrap() == 0xff);
-
-                        let mut shorter_key = new_key.clone();
-                        shorter_key.extend(
-                            ruma::http_headers::ContentDisposition::new(
-                                ruma::http_headers::ContentDispositionType::Inline,
-                            )
-                            .to_string()
-                            .as_bytes(),
-                        );
-                        shorter_key.push(0xff);
-                        shorter_key.extend_from_slice(content_type_bytes);
-
-                        new_key.extend_from_slice(content_disposition.to_string().as_bytes());
-                        new_key.push(0xff);
-                        new_key.extend_from_slice(content_type_bytes);
-
-                        // Some file names are too long. Ignore those.
-                        match fs::rename(
-                            services().globals.get_media_file(&mediaid),
-                            services().globals.get_media_file(&new_key),
-                        ) {
-                            Ok(_) => {
-                                db.mediaid_file.insert(&new_key, &[])?;
-                            }
-                            Err(_) => {
-                                fs::rename(
-                                    services().globals.get_media_file(&mediaid),
-                                    services().globals.get_media_file(&shorter_key),
-                                )
-                                .unwrap();
-                                db.mediaid_file.insert(&shorter_key, &[])?;
-                            }
-                        }
-                    } else {
-                        db.mediaid_file.insert(&mediaid, &[])?;
+                    if let Err(e) = migrate_content_disposition_format(mediaid, db) {
+                        error!("Error migrating media file with name \"{file_name}\": {e}");
+                        return Err(e);
                     }
                 }
                 services().globals.bump_database_version(16)?;
@@ -1167,6 +1109,66 @@ impl KeyValueDatabase {
             }
         });
     }
+}
+
+fn migrate_content_disposition_format(
+    mediaid: Vec<u8>,
+    db: &KeyValueDatabase,
+) -> Result<(), Error> {
+    let mut parts = mediaid.rsplit(|&b| b == 0xff);
+    let mut removed_bytes = 0;
+    let content_type_bytes = parts.next().unwrap();
+    removed_bytes += content_type_bytes.len() + 1;
+    let content_disposition_bytes = parts
+        .next()
+        .ok_or_else(|| Error::bad_database("File with invalid name in media directory"))?;
+    removed_bytes += content_disposition_bytes.len();
+    let mut content_disposition = utils::string_from_bytes(content_disposition_bytes)
+        .map_err(|_| Error::bad_database("Content Disposition in mediaid_file is invalid."))?;
+    if content_disposition.contains("filename=") && !content_disposition.contains("filename=\"") {
+        content_disposition = content_disposition.replacen("filename=", "filename=\"", 1);
+        content_disposition.push('"');
+
+        let mut new_key = mediaid[..(mediaid.len() - removed_bytes)].to_vec();
+        assert!(*new_key.last().unwrap() == 0xff);
+
+        let mut shorter_key = new_key.clone();
+        shorter_key.extend(
+            ruma::http_headers::ContentDisposition::new(
+                ruma::http_headers::ContentDispositionType::Inline,
+            )
+            .to_string()
+            .as_bytes(),
+        );
+        shorter_key.push(0xff);
+        shorter_key.extend_from_slice(content_type_bytes);
+
+        new_key.extend_from_slice(content_disposition.to_string().as_bytes());
+        new_key.push(0xff);
+        new_key.extend_from_slice(content_type_bytes);
+
+        // Some file names are too long. Ignore those.
+        match fs::rename(
+            services().globals.get_media_file(&mediaid),
+            services().globals.get_media_file(&new_key),
+        ) {
+            Ok(_) => {
+                db.mediaid_file.insert(&new_key, &[])?;
+            }
+            Err(_) => {
+                fs::rename(
+                    services().globals.get_media_file(&mediaid),
+                    services().globals.get_media_file(&shorter_key),
+                )
+                .unwrap();
+                db.mediaid_file.insert(&shorter_key, &[])?;
+            }
+        }
+    } else {
+        db.mediaid_file.insert(&mediaid, &[])?;
+    };
+
+    Ok(())
 }
 
 /// Sets the emergency password and push rules for the @conduit account in case emergency password is set
