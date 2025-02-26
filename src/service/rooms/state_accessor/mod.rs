@@ -308,7 +308,7 @@ impl Service {
             })
     }
 
-    pub async fn user_can_invite(
+    pub fn user_can_invite(
         &self,
         room_id: &RoomId,
         sender: &UserId,

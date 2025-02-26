@@ -47,7 +47,7 @@ use ruma::{
     events::{
         receipt::{ReceiptEvent, ReceiptEventContent, ReceiptType},
         room::{
-            join_rules::{JoinRule, RoomJoinRulesEventContent},
+            join_rules::{AllowRule, JoinRule, RoomJoinRulesEventContent},
             member::{MembershipState, RoomMemberEventContent},
         },
         StateEventType, TimelineEventType,
@@ -56,7 +56,7 @@ use ruma::{
     to_device::DeviceIdOrAllDevices,
     uint, user_id, CanonicalJsonObject, CanonicalJsonValue, EventId, MilliSecondsSinceUnixEpoch,
     OwnedEventId, OwnedRoomId, OwnedServerName, OwnedServerSigningKeyId, OwnedUserId, RoomId,
-    ServerName, Signatures,
+    RoomVersionId, ServerName, Signatures, UserId,
 };
 use serde_json::value::{to_raw_value, RawValue as RawJsonValue};
 use std::{
@@ -1528,36 +1528,49 @@ pub async fn create_join_event_template_route(
     );
     let state_lock = mutex_state.lock().await;
 
-    // TODO: Conduit does not implement restricted join rules yet, we always reject
-    let join_rules_event = services().rooms.state_accessor.room_state_get(
-        &body.room_id,
-        &StateEventType::RoomJoinRules,
-        "",
-    )?;
+    let room_version_id = services().rooms.state.get_room_version(&body.room_id)?;
 
-    let join_rules_event_content: Option<RoomJoinRulesEventContent> = join_rules_event
-        .as_ref()
-        .map(|join_rules_event| {
-            serde_json::from_str(join_rules_event.content.get()).map_err(|e| {
-                warn!("Invalid join rules event: {}", e);
-                Error::bad_database("Invalid join rules event in db.")
-            })
-        })
-        .transpose()?;
+    let join_authorized_via_users_server = if
+    // The following two functions check whether the user can "join" without performing a restricted join
+    !services()
+        .rooms
+        .state_cache
+        .is_joined(&body.user_id, &body.room_id)
+        .unwrap_or(false)
+        && !services()
+            .rooms
+            .state_cache
+            .is_invited(&body.user_id, &body.room_id)
+            .unwrap_or(false)
+        // This function also checks whether the room is restricted in the first place, meaning a restricted join will not happen if the room is public for example
+        && user_can_perform_restricted_join(&body.user_id, &body.room_id, &room_version_id)?
+    {
+        let auth_user = services()
+            .rooms
+            .state_cache
+            .room_members(&body.room_id)
+            .filter_map(Result::ok)
+            .filter(|user| user.server_name() == services().globals.server_name())
+            .find(|user| {
+                services()
+                    .rooms
+                    .state_accessor
+                    .user_can_invite(&body.room_id, user, &body.user_id, &state_lock)
+                    .unwrap_or(false)
+            });
 
-    if let Some(join_rules_event_content) = join_rules_event_content {
-        if matches!(
-            join_rules_event_content.join_rule,
-            JoinRule::Restricted { .. } | JoinRule::KnockRestricted { .. }
-        ) {
+        if auth_user.is_some() {
+            auth_user
+        } else {
             return Err(Error::BadRequest(
-                ErrorKind::UnableToAuthorizeJoin,
-                "Conduit does not support restricted rooms yet.",
+                ErrorKind::UnableToGrantJoin,
+                "No user on this server is able to assist in joining.",
             ));
         }
-    }
+    } else {
+        None
+    };
 
-    let room_version_id = services().rooms.state.get_room_version(&body.room_id)?;
     if !body.ver.contains(&room_version_id) {
         return Err(Error::BadRequest(
             ErrorKind::IncompatibleRoomVersion {
@@ -1575,7 +1588,7 @@ pub async fn create_join_event_template_route(
         membership: MembershipState::Join,
         third_party_invite: None,
         reason: None,
-        join_authorized_via_users_server: None,
+        join_authorized_via_users_server,
     })
     .expect("member event is valid value");
 
@@ -1620,35 +1633,6 @@ async fn create_join_event(
         .event_handler
         .acl_check(sender_servername, room_id)?;
 
-    // TODO: Conduit does not implement restricted join rules yet, we always reject
-    let join_rules_event = services().rooms.state_accessor.room_state_get(
-        room_id,
-        &StateEventType::RoomJoinRules,
-        "",
-    )?;
-
-    let join_rules_event_content: Option<RoomJoinRulesEventContent> = join_rules_event
-        .as_ref()
-        .map(|join_rules_event| {
-            serde_json::from_str(join_rules_event.content.get()).map_err(|e| {
-                warn!("Invalid join rules event: {}", e);
-                Error::bad_database("Invalid join rules event in db.")
-            })
-        })
-        .transpose()?;
-
-    if let Some(join_rules_event_content) = join_rules_event_content {
-        if matches!(
-            join_rules_event_content.join_rule,
-            JoinRule::Restricted { .. } | JoinRule::KnockRestricted { .. }
-        ) {
-            return Err(Error::BadRequest(
-                ErrorKind::UnableToAuthorizeJoin,
-                "Conduit does not support restricted rooms yet.",
-            ));
-        }
-    }
-
     // We need to return the state prior to joining, let's keep a reference to that here
     let shortstatehash = services()
         .rooms
@@ -1664,7 +1648,8 @@ async fn create_join_event(
 
     // We do not add the event_id field to the pdu here because of signature and hashes checks
     let room_version_id = services().rooms.state.get_room_version(room_id)?;
-    let (event_id, value) = match gen_event_id_canonical_json(pdu, &room_version_id) {
+
+    let (event_id, mut value) = match gen_event_id_canonical_json(pdu, &room_version_id) {
         Ok(t) => t,
         Err(_) => {
             // Event could not be converted to canonical json
@@ -1674,6 +1659,88 @@ async fn create_join_event(
             ));
         }
     };
+
+    let state_key: OwnedUserId = serde_json::from_value(
+        value
+            .get("state_key")
+            .ok_or_else(|| Error::BadRequest(ErrorKind::BadJson, "State key is missing"))?
+            .clone()
+            .into(),
+    )
+    .map_err(|_| Error::BadRequest(ErrorKind::BadJson, "State key is not a valid user ID"))?;
+
+    let sender: OwnedUserId = serde_json::from_value(
+        value
+            .get("sender")
+            .ok_or_else(|| Error::BadRequest(ErrorKind::BadJson, "Sender is missing"))?
+            .clone()
+            .into(),
+    )
+    .map_err(|_| Error::BadRequest(ErrorKind::BadJson, "Sender is not a valid user ID"))?;
+
+    if state_key != sender {
+        return Err(Error::BadRequest(
+            ErrorKind::BadJson,
+            "Sender and state key don't match",
+        ));
+    }
+
+    // Security-wise, we only really need to check the event is not from us, cause otherwise it must be signed by that server,
+    // but we might as well check this since this event shouldn't really be sent on behalf of another server
+    if state_key.server_name() != sender_servername {
+        return Err(Error::BadRequest(
+            ErrorKind::forbidden(),
+            "User's server and origin don't match",
+        ));
+    }
+
+    let event_type: StateEventType = serde_json::from_value(
+        value
+            .get("type")
+            .ok_or_else(|| Error::BadRequest(ErrorKind::BadJson, "Missing event type"))?
+            .clone()
+            .into(),
+    )
+    .map_err(|_| Error::BadRequest(ErrorKind::BadJson, "Invalid event type"))?;
+
+    if event_type != StateEventType::RoomMember {
+        return Err(Error::BadRequest(
+            ErrorKind::BadJson,
+            "Event type is not membership",
+        ));
+    }
+
+    let event_content: RoomMemberEventContent = serde_json::from_value(
+        value
+            .get("content")
+            .ok_or_else(|| Error::BadRequest(ErrorKind::BadJson, "Missing event content"))?
+            .clone()
+            .into(),
+    )
+    .map_err(|_| Error::BadRequest(ErrorKind::BadJson, "Invalid event content"))?;
+
+    if event_content.membership != MembershipState::Join {
+        return Err(Error::BadRequest(
+            ErrorKind::BadJson,
+            "Membership of sent event does not match that of the endpoint",
+        ));
+    }
+
+    let sign_join_event = event_content
+        .join_authorized_via_users_server
+        .map(|user| user.server_name() == services().globals.server_name())
+        .unwrap_or_default()
+        && user_can_perform_restricted_join(&sender, room_id, &room_version_id).unwrap_or_default();
+
+    if sign_join_event {
+        ruma::signatures::hash_and_sign_event(
+            services().globals.server_name().as_str(),
+            services().globals.keypair(),
+            &mut value,
+            &room_version_id,
+        )
+        .map_err(|_| Error::BadRequest(ErrorKind::InvalidParam, "Failed to sign event."))?;
+    }
 
     let origin: OwnedServerName = serde_json::from_value(
         serde_json::to_value(value.get("origin").ok_or(Error::BadRequest(
@@ -1697,7 +1764,14 @@ async fn create_join_event(
     let pdu_id: Vec<u8> = services()
         .rooms
         .event_handler
-        .handle_incoming_pdu(&origin, &event_id, room_id, value, true, &pub_key_map)
+        .handle_incoming_pdu(
+            &origin,
+            &event_id,
+            room_id,
+            value.clone(),
+            true,
+            &pub_key_map,
+        )
         .await?
         .ok_or(Error::BadRequest(
             ErrorKind::InvalidParam,
@@ -1735,7 +1809,15 @@ async fn create_join_event(
             .filter_map(|(_, id)| services().rooms.timeline.get_pdu_json(id).ok().flatten())
             .map(PduEvent::convert_to_outgoing_federation_event)
             .collect(),
-        event: None, // TODO: handle restricted joins
+        // Event field is required if we sign the join event.
+        event: if sign_join_event {
+            Some(
+                to_raw_value(&CanonicalJsonValue::Object(value))
+                    .expect("To raw json should not fail since only change was adding signature"),
+            )
+        } else {
+            None
+        },
     })
 }
 
@@ -1780,6 +1862,79 @@ pub async fn create_join_event_v2_route(
     };
 
     Ok(create_join_event::v2::Response { room_state })
+}
+
+/// Checks whether the given user can join the given room via a restricted join.
+/// This doesn't check the current user's membership. This should be done externally,
+/// either by using the state cache or attempting to authorize the event.
+fn user_can_perform_restricted_join(
+    user_id: &UserId,
+    room_id: &RoomId,
+    room_version_id: &RoomVersionId,
+) -> Result<bool> {
+    let join_rules_event = services().rooms.state_accessor.room_state_get(
+        room_id,
+        &StateEventType::RoomJoinRules,
+        "",
+    )?;
+
+    let Some(join_rules_event_content) = join_rules_event
+        .as_ref()
+        .map(|join_rules_event| {
+            serde_json::from_str::<RoomJoinRulesEventContent>(join_rules_event.content.get())
+                .map_err(|e| {
+                    warn!("Invalid join rules event: {}", e);
+                    Error::bad_database("Invalid join rules event in db.")
+                })
+        })
+        .transpose()?
+    else {
+        return Ok(false);
+    };
+
+    if matches!(
+        room_version_id,
+        RoomVersionId::V1
+            | RoomVersionId::V2
+            | RoomVersionId::V3
+            | RoomVersionId::V4
+            | RoomVersionId::V5
+            | RoomVersionId::V6
+            | RoomVersionId::V7
+    ) {
+        return Ok(false);
+    }
+
+    let (JoinRule::Restricted(r) | JoinRule::KnockRestricted(r)) =
+        join_rules_event_content.join_rule
+    else {
+        return Ok(false);
+    };
+
+    if r.allow
+        .iter()
+        .filter_map(|rule| {
+            if let AllowRule::RoomMembership(membership) = rule {
+                Some(membership)
+            } else {
+                None
+            }
+        })
+        .any(|m| {
+            services()
+                .rooms
+                .state_cache
+                .is_joined(user_id, &m.room_id)
+                .unwrap_or(false)
+        })
+    {
+        Ok(true)
+    } else {
+        Err(Error::BadRequest(
+            ErrorKind::UnableToAuthorizeJoin,
+            "User is not known to be in any required room.",
+        ))
+    }
 }
 
 /// # `PUT /_matrix/federation/v2/invite/{roomId}/{eventId}`
