@@ -36,6 +36,10 @@ pub async fn upload_keys_route(
     let sender_device = body.sender_device.as_ref().expect("user is authenticated");
 
     for (key_key, key_value) in &body.one_time_keys {
+        key_value.deserialize().map_err(|_| {
+            Error::BadRequest(ErrorKind::BadJson, "Body contained invalid one-time key")
+        })?;
+
         services()
             .users
             .add_one_time_key(sender_user, sender_device, key_key, key_value)?;
@@ -49,6 +53,10 @@ pub async fn upload_keys_route(
             .get_device_keys(sender_user, sender_device)?
             .is_none()
         {
+            device_keys.deserialize().map_err(|_| {
+                Error::BadRequest(ErrorKind::BadJson, "Body contained invalid device keys")
+            })?;
+
             services()
                 .users
                 .add_device_keys(sender_user, sender_device, device_keys)?;
