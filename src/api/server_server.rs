@@ -31,7 +31,10 @@ use ruma::{
             },
             event::{get_event, get_missing_events, get_room_state, get_room_state_ids},
             keys::{claim_keys, get_keys},
-            membership::{create_invite, create_join_event, prepare_join_event},
+            membership::{
+                create_invite, create_join_event, create_leave_event, prepare_join_event,
+                prepare_leave_event,
+            },
             openid::get_openid_userinfo,
             query::{get_profile_information, get_room_information},
             space::get_hierarchy,
@@ -1494,6 +1497,28 @@ pub async fn get_room_state_ids_route(
     })
 }
 
+/// # `GET /_matrix/federation/v1/make_leave/{roomId}/{userId}`
+///
+/// Creates a leave template.
+pub async fn create_leave_event_template_route(
+    body: Ruma<prepare_leave_event::v1::Request>,
+) -> Result<prepare_leave_event::v1::Response> {
+    let (mutex_state, room_version_id) =
+        member_shake_preamble(&body.sender_servername, &body.room_id).await?;
+    let state_lock = mutex_state.lock().await;
+
+    Ok(prepare_leave_event::v1::Response {
+        room_version: Some(room_version_id),
+        event: create_membership_template(
+            &body.user_id,
+            &body.room_id,
+            None,
+            MembershipState::Leave,
+            state_lock,
+        )?,
+    })
+}
+
 /// # `GET /_matrix/federation/v1/make_join/{roomId}/{userId}`
 ///
 /// Creates a join template.
@@ -1883,6 +1908,29 @@ pub async fn create_join_event_v2_route(
     };
 
     Ok(create_join_event::v2::Response { room_state })
+}
+
+/// # `PUT /_matrix/federation/v2/send_leave/{roomId}/{eventId}`
+///
+/// Submits a signed leave event.
+pub async fn create_leave_event_route(
+    body: Ruma<create_leave_event::v2::Request>,
+) -> Result<create_leave_event::v2::Response> {
+    let sender_servername = body
+        .sender_servername
+        .as_ref()
+        .expect("server is authenticated");
+    room_and_acl_check(&body.room_id, sender_servername)?;
+
+    append_member_pdu(
+        MembershipState::Leave,
+        sender_servername,
+        &body.room_id,
+        &body.pdu,
+    )
+    .await?;
+
+    Ok(create_leave_event::v2::Response {})
 }
 
 /// Checks whether the given user can join the given room via a restricted join.

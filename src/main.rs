@@ -458,6 +458,8 @@ fn routes(config: &Config) -> Router {
             .ruma_route(server_server::create_join_event_template_route)
             .ruma_route(server_server::create_join_event_v1_route)
             .ruma_route(server_server::create_join_event_v2_route)
+            .ruma_route(server_server::create_leave_event_template_route)
+            .ruma_route(server_server::create_leave_event_route)
             .ruma_route(server_server::create_invite_route)
             .ruma_route(server_server::get_devices_route)
             .ruma_route(server_server::get_content_route)
