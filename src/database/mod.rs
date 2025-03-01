@@ -97,7 +97,7 @@ pub struct KeyValueDatabase {
     pub(super) roomid_joinedcount: Arc<dyn KvTree>,
     pub(super) roomid_invitedcount: Arc<dyn KvTree>,
     pub(super) roomuseroncejoinedids: Arc<dyn KvTree>,
-    pub(super) userroomid_invitestate: Arc<dyn KvTree>, // InviteState = Vec<Raw<Pdu>>
+    pub(super) userroomid_invitestate: Arc<dyn KvTree>, // InviteState = Vec<Raw<AnyStrippedStateEvent>>
     pub(super) roomuserid_invitecount: Arc<dyn KvTree>, // InviteCount = Count
     pub(super) userroomid_leftstate: Arc<dyn KvTree>,
     pub(super) roomuserid_leftcount: Arc<dyn KvTree>,

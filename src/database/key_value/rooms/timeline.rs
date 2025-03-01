@@ -9,6 +9,8 @@ use crate::{database::KeyValueDatabase, service, services, utils, Error, PduEven
 
 use service::rooms::timeline::PduCount;
 
+use super::get_userroom_id_bytes;
+
 impl service::rooms::timeline::Data for KeyValueDatabase {
     fn last_timeline_count(&self, sender_user: &UserId, room_id: &RoomId) -> Result<PduCount> {
         match self
@@ -286,15 +288,11 @@ impl service::rooms::timeline::Data for KeyValueDatabase {
         let mut notifies_batch = Vec::new();
         let mut highlights_batch = Vec::new();
         for user in notifies {
-            let mut userroom_id = user.as_bytes().to_vec();
-            userroom_id.push(0xff);
-            userroom_id.extend_from_slice(room_id.as_bytes());
+            let userroom_id = get_userroom_id_bytes(&user, room_id);
             notifies_batch.push(userroom_id);
         }
         for user in highlights {
-            let mut userroom_id = user.as_bytes().to_vec();
-            userroom_id.push(0xff);
-            userroom_id.extend_from_slice(room_id.as_bytes());
+            let userroom_id = get_userroom_id_bytes(&user, room_id);
             highlights_batch.push(userroom_id);
         }
 

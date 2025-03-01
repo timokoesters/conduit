@@ -10,6 +10,7 @@ use ruma::{
     events::{
         room::{create::RoomCreateEventContent, member::MembershipState},
         AnyStrippedStateEvent, StateEventType, TimelineEventType,
+        RECOMMENDED_STRIPPED_STATE_EVENT_TYPES,
     },
     serde::Raw,
     state_res::{self, StateMap},
@@ -258,58 +259,22 @@ impl Service {
         }
     }
 
-    #[tracing::instrument(skip(self, invite_event))]
-    pub fn calculate_invite_state(
-        &self,
-        invite_event: &PduEvent,
-    ) -> Result<Vec<Raw<AnyStrippedStateEvent>>> {
-        let mut state = Vec::new();
-        // Add recommended events
-        if let Some(e) = services().rooms.state_accessor.room_state_get(
-            &invite_event.room_id,
-            &StateEventType::RoomCreate,
-            "",
-        )? {
-            state.push(e.to_stripped_state_event());
-        }
-        if let Some(e) = services().rooms.state_accessor.room_state_get(
-            &invite_event.room_id,
-            &StateEventType::RoomJoinRules,
-            "",
-        )? {
-            state.push(e.to_stripped_state_event());
-        }
-        if let Some(e) = services().rooms.state_accessor.room_state_get(
-            &invite_event.room_id,
-            &StateEventType::RoomCanonicalAlias,
-            "",
-        )? {
-            state.push(e.to_stripped_state_event());
-        }
-        if let Some(e) = services().rooms.state_accessor.room_state_get(
-            &invite_event.room_id,
-            &StateEventType::RoomAvatar,
-            "",
-        )? {
-            state.push(e.to_stripped_state_event());
-        }
-        if let Some(e) = services().rooms.state_accessor.room_state_get(
-            &invite_event.room_id,
-            &StateEventType::RoomName,
-            "",
-        )? {
-            state.push(e.to_stripped_state_event());
-        }
-        if let Some(e) = services().rooms.state_accessor.room_state_get(
-            &invite_event.room_id,
-            &StateEventType::RoomMember,
-            invite_event.sender.as_str(),
-        )? {
-            state.push(e.to_stripped_state_event());
-        }
-
-        state.push(invite_event.to_stripped_state_event());
-        Ok(state)
+    #[tracing::instrument(skip(self, room_id))]
+    /// Gets all the [recommended stripped state events] from the given room
+    ///
+    /// [recommended stripped state events]: https://spec.matrix.org/v1.13/client-server-api/#stripped-state
+    pub fn stripped_state(&self, room_id: &RoomId) -> Result<Vec<Raw<AnyStrippedStateEvent>>> {
+        RECOMMENDED_STRIPPED_STATE_EVENT_TYPES
+            .iter()
+            .filter_map(|state_event_type| {
+                services()
+                    .rooms
+                    .state_accessor
+                    .room_state_get(room_id, state_event_type, "")
+                    .transpose()
+            })
+            .map(|e| e.map(|e| e.to_stripped_state_event()))
+            .collect::<Result<Vec<_>>>()
     }
 
     /// Set the state hash to a new version, but does not update state_cache.

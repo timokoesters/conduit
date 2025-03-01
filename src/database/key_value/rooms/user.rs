@@ -2,14 +2,11 @@ use ruma::{OwnedRoomId, OwnedUserId, RoomId, UserId};
 
 use crate::{database::KeyValueDatabase, service, services, utils, Error, Result};
 
+use super::{get_room_and_user_byte_ids, get_userroom_id_bytes};
+
 impl service::rooms::user::Data for KeyValueDatabase {
     fn reset_notification_counts(&self, user_id: &UserId, room_id: &RoomId) -> Result<()> {
-        let mut userroom_id = user_id.as_bytes().to_vec();
-        userroom_id.push(0xff);
-        userroom_id.extend_from_slice(room_id.as_bytes());
-        let mut roomuser_id = room_id.as_bytes().to_vec();
-        roomuser_id.push(0xff);
-        roomuser_id.extend_from_slice(user_id.as_bytes());
+        let (roomuser_id, userroom_id) = get_room_and_user_byte_ids(room_id, user_id);
 
         self.userroomid_notificationcount
             .insert(&userroom_id, &0_u64.to_be_bytes())?;
@@ -25,9 +22,7 @@ impl service::rooms::user::Data for KeyValueDatabase {
     }
 
     fn notification_count(&self, user_id: &UserId, room_id: &RoomId) -> Result<u64> {
-        let mut userroom_id = user_id.as_bytes().to_vec();
-        userroom_id.push(0xff);
-        userroom_id.extend_from_slice(room_id.as_bytes());
+        let userroom_id = get_userroom_id_bytes(user_id, room_id);
 
         self.userroomid_notificationcount
             .get(&userroom_id)?
@@ -39,9 +34,7 @@ impl service::rooms::user::Data for KeyValueDatabase {
     }
 
     fn highlight_count(&self, user_id: &UserId, room_id: &RoomId) -> Result<u64> {
-        let mut userroom_id = user_id.as_bytes().to_vec();
-        userroom_id.push(0xff);
-        userroom_id.extend_from_slice(room_id.as_bytes());
+        let userroom_id = get_userroom_id_bytes(user_id, room_id);
 
         self.userroomid_highlightcount
             .get(&userroom_id)?

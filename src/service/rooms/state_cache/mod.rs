@@ -40,6 +40,13 @@ impl Service {
             // TODO: displayname, avatar url
         }
 
+        // We don't need to store stripped state on behalf of remote users, since these events are only used on `/sync`
+        let last_state = if user_id.server_name() == services().globals.server_name() {
+            last_state
+        } else {
+            None
+        };
+
         match &membership {
             MembershipState::Join => {
                 // Check if the user never joined this room

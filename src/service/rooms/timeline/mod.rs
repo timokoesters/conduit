@@ -450,9 +450,11 @@ impl Service {
                     let content = serde_json::from_str::<ExtractMembership>(pdu.content.get())
                         .map_err(|_| Error::bad_database("Invalid content in pdu."))?;
 
-                    let invite_state = match content.membership {
+                    let stripped_state = match content.membership {
                         MembershipState::Invite => {
-                            let state = services().rooms.state.calculate_invite_state(pdu)?;
+                            let mut state = services().rooms.state.stripped_state(&pdu.room_id)?;
+                            // So that clients can get info about who invitied them, the reason, when, etc.
+                            state.push(pdu.to_stripped_state_event());
                             Some(state)
                         }
                         _ => None,
@@ -465,7 +467,7 @@ impl Service {
                         &target_user_id,
                         content.membership,
                         &pdu.sender,
-                        invite_state,
+                        stripped_state,
                         true,
                     )?;
                 }
