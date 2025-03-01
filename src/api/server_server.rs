@@ -640,7 +640,7 @@ async fn request_well_known(destination: &str) -> Option<(String, Instant)> {
     let response = services()
         .globals
         .default_client()
-        .get(&format!("https://{destination}/.well-known/matrix/server"))
+        .get(format!("https://{destination}/.well-known/matrix/server"))
         .send()
         .await;
     debug!("Got well known response");
