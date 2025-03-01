@@ -10,7 +10,8 @@ use ruma::{
             self,
             v3::{
                 Ephemeral, Filter, GlobalAccountData, InviteState, InvitedRoom, JoinedRoom,
-                LeftRoom, Presence, RoomAccountData, RoomSummary, Rooms, State, Timeline, ToDevice,
+                KnockState, KnockedRoom, LeftRoom, Presence, RoomAccountData, RoomSummary, Rooms,
+                State, Timeline, ToDevice,
             },
             v4::{SlidingOp, SlidingSyncRoomHero},
             DeviceLists, UnreadNotificationsCount,
@@ -503,6 +504,50 @@ async fn sync_helper(
         );
     }
 
+    let mut knocked_rooms = BTreeMap::new();
+    let all_knocked_rooms: Vec<_> = services()
+        .rooms
+        .state_cache
+        .rooms_knocked(&sender_user)
+        .collect();
+    for result in all_knocked_rooms {
+        let (room_id, knock_state_events) = result?;
+
+        {
+            // Get and drop the lock to wait for remaining operations to finish
+            let mutex_insert = Arc::clone(
+                services()
+                    .globals
+                    .roomid_mutex_insert
+                    .write()
+                    .await
+                    .entry(room_id.clone())
+                    .or_default(),
+            );
+            let insert_lock = mutex_insert.lock().await;
+            drop(insert_lock);
+        }
+
+        let knock_count = services()
+            .rooms
+            .state_cache
+            .get_knock_count(&room_id, &sender_user)?;
+
+        // knock before last sync
+        if Some(since) >= knock_count {
+            continue;
+        }
+
+        knocked_rooms.insert(
+            room_id.clone(),
+            KnockedRoom {
+                knock_state: KnockState {
+                    events: knock_state_events,
+                },
+            },
+        );
+    }
+
     for user_id in left_encrypted_users {
         let dont_share_encrypted_room = services()
             .rooms
@@ -538,7 +583,7 @@ async fn sync_helper(
             leave: left_rooms,
             join: joined_rooms,
             invite: invited_rooms,
-            knock: BTreeMap::new(), // TODO
+            knock: knocked_rooms,
         },
         presence: Presence {
             events: presence_updates

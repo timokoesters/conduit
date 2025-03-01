@@ -1,15 +1,7 @@
 use crate::{services, Error, Result, Ruma};
-use rand::seq::SliceRandom;
-use ruma::{
-    api::{
-        appservice,
-        client::{
-            alias::{create_alias, delete_alias, get_alias},
-            error::ErrorKind,
-        },
-        federation,
-    },
-    OwnedRoomAliasId,
+use ruma::api::client::{
+    alias::{create_alias, delete_alias, get_alias},
+    error::ErrorKind,
 };
 
 /// # `PUT /_matrix/client/r0/directory/room/{roomAlias}`
@@ -115,75 +107,9 @@ pub async fn delete_alias_route(
 pub async fn get_alias_route(
     body: Ruma<get_alias::v3::Request>,
 ) -> Result<get_alias::v3::Response> {
-    get_alias_helper(body.body.room_alias).await
-}
-
-pub(crate) async fn get_alias_helper(
-    room_alias: OwnedRoomAliasId,
-) -> Result<get_alias::v3::Response> {
-    if room_alias.server_name() != services().globals.server_name() {
-        let response = services()
-            .sending
-            .send_federation_request(
-                room_alias.server_name(),
-                federation::query::get_room_information::v1::Request {
-                    room_alias: room_alias.to_owned(),
-                },
-            )
-            .await?;
-
-        let mut servers = response.servers;
-        servers.shuffle(&mut rand::thread_rng());
-
-        return Ok(get_alias::v3::Response::new(response.room_id, servers));
-    }
-
-    let mut room_id = None;
-    match services().rooms.alias.resolve_local_alias(&room_alias)? {
-        Some(r) => room_id = Some(r),
-        None => {
-            for appservice in services().appservice.read().await.values() {
-                if appservice.aliases.is_match(room_alias.as_str())
-                    && matches!(
-                        services()
-                            .sending
-                            .send_appservice_request(
-                                appservice.registration.clone(),
-                                appservice::query::query_room_alias::v1::Request {
-                                    room_alias: room_alias.clone(),
-                                },
-                            )
-                            .await,
-                        Ok(Some(_opt_result))
-                    )
-                {
-                    room_id = Some(
-                        services()
-                            .rooms
-                            .alias
-                            .resolve_local_alias(&room_alias)?
-                            .ok_or_else(|| {
-                                Error::bad_config("Appservice lied to us. Room does not exist.")
-                            })?,
-                    );
-                    break;
-                }
-            }
-        }
-    };
-
-    let room_id = match room_id {
-        Some(room_id) => room_id,
-        None => {
-            return Err(Error::BadRequest(
-                ErrorKind::NotFound,
-                "Room with alias not found.",
-            ))
-        }
-    };
-
-    Ok(get_alias::v3::Response::new(
-        room_id,
-        vec![services().globals.server_name().to_owned()],
-    ))
+    services()
+        .rooms
+        .alias
+        .get_alias_helper(body.body.room_alias)
+        .await
 }

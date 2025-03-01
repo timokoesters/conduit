@@ -31,6 +31,7 @@ use ruma::{
             },
             event::{get_event, get_missing_events, get_room_state, get_room_state_ids},
             keys::{claim_keys, get_keys},
+            knock::{create_knock_event_template, send_knock},
             membership::{
                 create_invite, create_join_event, create_leave_event, prepare_join_event,
                 prepare_leave_event,
@@ -1497,6 +1498,28 @@ pub async fn get_room_state_ids_route(
     })
 }
 
+/// # `GET /_matrix/federation/v1/make_knock/{roomId}/{userId}`
+///
+/// Creates a knock template.
+pub async fn create_knock_event_template_route(
+    body: Ruma<create_knock_event_template::v1::Request>,
+) -> Result<create_knock_event_template::v1::Response> {
+    let (mutex_state, room_version_id) =
+        member_shake_preamble(&body.sender_servername, &body.room_id).await?;
+    let state_lock = mutex_state.lock().await;
+
+    Ok(create_knock_event_template::v1::Response {
+        room_version: room_version_id,
+        event: create_membership_template(
+            &body.user_id,
+            &body.room_id,
+            None,
+            MembershipState::Knock,
+            state_lock,
+        )?,
+    })
+}
+
 /// # `GET /_matrix/federation/v1/make_leave/{roomId}/{userId}`
 ///
 /// Creates a leave template.
@@ -1933,6 +1956,31 @@ pub async fn create_leave_event_route(
     Ok(create_leave_event::v2::Response {})
 }
 
+/// # `PUT /_matrix/federation/v1/send_knock/{roomId}/{eventId}`
+///
+/// Submits a signed knock event.
+pub async fn create_knock_event_route(
+    body: Ruma<send_knock::v1::Request>,
+) -> Result<send_knock::v1::Response> {
+    let sender_servername = body
+        .sender_servername
+        .as_ref()
+        .expect("server is authenticated");
+    room_and_acl_check(&body.room_id, sender_servername)?;
+
+    append_member_pdu(
+        MembershipState::Knock,
+        sender_servername,
+        &body.room_id,
+        &body.pdu,
+    )
+    .await?;
+
+    Ok(send_knock::v1::Response {
+        knock_room_state: services().rooms.state.stripped_state(&body.room_id)?,
+    })
+}
+
 /// Checks whether the given user can join the given room via a restricted join.
 /// This doesn't check the current user's membership. This should be done externally,
 /// either by using the state cache or attempting to authorize the event.
@@ -2012,44 +2060,54 @@ fn user_can_perform_restricted_join(
 pub async fn create_invite_route(
     body: Ruma<create_invite::v2::Request>,
 ) -> Result<create_invite::v2::Response> {
-    let sender_servername = body
-        .sender_servername
-        .as_ref()
-        .expect("server is authenticated");
+    let Ruma::<create_invite::v2::Request> {
+        body,
+        sender_servername,
+        ..
+    } = body;
+
+    let create_invite::v2::Request {
+        room_id,
+        room_version,
+        event,
+        invite_room_state,
+        ..
+    } = body;
+
+    let sender_servername = sender_servername.expect("server is authenticated");
 
     services()
         .rooms
         .event_handler
-        .acl_check(sender_servername, &body.room_id)?;
-
+        .acl_check(&sender_servername, &room_id)?;
     if !services()
         .globals
         .supported_room_versions()
-        .contains(&body.room_version)
+        .contains(&room_version)
     {
         return Err(Error::BadRequest(
             ErrorKind::IncompatibleRoomVersion {
-                room_version: body.room_version.clone(),
+                room_version: room_version.clone(),
             },
             "Server does not support this room version.",
         ));
     }
 
-    let mut signed_event = utils::to_canonical_object(&body.event)
+    let mut signed_event = utils::to_canonical_object(&event)
         .map_err(|_| Error::BadRequest(ErrorKind::InvalidParam, "Invite event is invalid."))?;
 
     ruma::signatures::hash_and_sign_event(
         services().globals.server_name().as_str(),
         services().globals.keypair(),
         &mut signed_event,
-        &body.room_version,
+        &room_version,
     )
     .map_err(|_| Error::BadRequest(ErrorKind::InvalidParam, "Failed to sign event."))?;
 
     // Generate event id
     let event_id = EventId::parse(format!(
         "${}",
-        ruma::signatures::reference_hash(&signed_event, &body.room_version)
+        ruma::signatures::reference_hash(&signed_event, &room_version)
             .expect("Event format validated when event was hashed")
     ))
     .expect("ruma's reference hashes are valid event ids");
@@ -2084,9 +2142,9 @@ pub async fn create_invite_route(
     )
     .map_err(|_| Error::BadRequest(ErrorKind::InvalidParam, "state_key is not a user id."))?;
 
-    let mut invite_state = body.invite_room_state.clone();
+    let mut invite_state = invite_room_state.clone();
 
-    let mut event: JsonObject = serde_json::from_str(body.event.get())
+    let mut event: JsonObject = serde_json::from_str(event.get())
         .map_err(|_| Error::BadRequest(ErrorKind::InvalidParam, "Invalid invite event bytes."))?;
 
     event.insert("event_id".to_owned(), "$dummy".into());
@@ -2102,16 +2160,55 @@ pub async fn create_invite_route(
     if !services()
         .rooms
         .state_cache
-        .server_in_room(services().globals.server_name(), &body.room_id)?
+        .server_in_room(services().globals.server_name(), &room_id)?
     {
-        services().rooms.state_cache.update_membership(
-            &body.room_id,
-            &invited_user,
-            MembershipState::Invite,
-            &sender,
-            Some(invite_state),
-            true,
-        )?;
+        // If the user has already knocked on the room, we take that as the user wanting to join
+        // the room as soon as their knock is accepted, as recommended by the spec.
+        //
+        // https://spec.matrix.org/v1.13/client-server-api/#knocking-on-rooms
+        if services()
+            .rooms
+            .state_cache
+            .is_knocked(&invited_user, &room_id)
+            .unwrap_or_default()
+        {
+            // We want to try join automatically first, before notifying clients that they were invited.
+            // We also shouldn't block giving the calling server the response on attempting to join the
+            // room, since it's not relevant for the caller.
+            tokio::spawn(async move {
+                if services().rooms.helpers.join_room_by_id(&invited_user, &room_id, None, &invite_state.iter()                        .filter_map(|event| event.deserialize().ok())
+                        .map(|event| event.sender().server_name().to_owned())
+                        .collect::<Vec<_>>()
+, None)
+                    .await
+                    .is_err() &&
+                    // Checking whether the state has changed since we started this join handshake
+                    services()
+                        .rooms
+                        .state_cache
+                        .is_knocked(&invited_user, &room_id)
+                        .unwrap_or_default()
+                {
+                    let _ = services().rooms.state_cache.update_membership(
+                        &room_id,
+                        &invited_user,
+                        MembershipState::Invite,
+                        &sender,
+                        Some(invite_state),
+                        true,
+                    );
+                }
+            });
+        } else {
+            services().rooms.state_cache.update_membership(
+                &room_id,
+                &invited_user,
+                MembershipState::Invite,
+                &sender,
+                Some(invite_state),
+                true,
+            )?;
+        }
     }
 
     Ok(create_invite::v2::Response {

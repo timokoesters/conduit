@@ -426,8 +426,8 @@ impl Service {
             })
     }
 
-    /// Returns the join rule for a given room
-    pub fn get_join_rule(
+    /// Returns the space-room join rule for a given room
+    pub fn get_space_room_join_rule(
         &self,
         current_room: &RoomId,
     ) -> Result<(SpaceRoomJoinRule, Vec<OwnedRoomId>), Error> {
@@ -448,6 +448,26 @@ impl Service {
             })
             .transpose()?
             .unwrap_or((SpaceRoomJoinRule::Invite, vec![])))
+    }
+
+    /// Returns the join rules event content of a room, if there are any and we are aware of it locally
+    #[tracing::instrument(skip(self))]
+    pub fn get_join_rules(
+        &self,
+        room_id: &RoomId,
+    ) -> Result<Option<RoomJoinRulesEventContent>, Error> {
+        let join_rules_event = self.room_state_get(room_id, &StateEventType::RoomJoinRules, "")?;
+
+        join_rules_event
+            .as_ref()
+            .map(|join_rules_event| {
+                serde_json::from_str::<RoomJoinRulesEventContent>(join_rules_event.content.get())
+                    .map_err(|e| {
+                        warn!("Invalid join rules event: {}", e);
+                        Error::bad_database("Invalid join rules event in db.")
+                    })
+            })
+            .transpose()
     }
 
     /// Returns an empty vec if not a restricted room

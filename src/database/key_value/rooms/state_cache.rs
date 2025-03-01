@@ -27,6 +27,8 @@ impl service::rooms::state_cache::Data for KeyValueDatabase {
         self.roomuserid_joined.insert(&roomuser_id, &[])?;
         self.userroomid_invitestate.remove(&userroom_id)?;
         self.roomuserid_invitecount.remove(&roomuser_id)?;
+        self.userroomid_knockstate.remove(&userroom_id)?;
+        self.roomuserid_knockcount.remove(&roomuser_id)?;
         self.userroomid_leftstate.remove(&userroom_id)?;
         self.roomuserid_leftcount.remove(&roomuser_id)?;
 
@@ -52,12 +54,40 @@ impl service::rooms::state_cache::Data for KeyValueDatabase {
         )?;
         self.userroomid_joined.remove(&userroom_id)?;
         self.roomuserid_joined.remove(&roomuser_id)?;
+        self.userroomid_knockstate.remove(&userroom_id)?;
+        self.roomuserid_knockcount.remove(&roomuser_id)?;
         self.userroomid_leftstate.remove(&userroom_id)?;
         self.roomuserid_leftcount.remove(&roomuser_id)?;
 
         Ok(())
     }
 
+    fn mark_as_knocked(
+        &self,
+        user_id: &UserId,
+        room_id: &RoomId,
+        last_state: Option<Vec<Raw<AnyStrippedStateEvent>>>,
+    ) -> Result<()> {
+        let (roomuser_id, userroom_id) = get_room_and_user_byte_ids(room_id, user_id);
+
+        self.userroomid_knockstate.insert(
+            &userroom_id,
+            &serde_json::to_vec(&last_state.unwrap_or_default())
+                .expect("state to bytes always works"),
+        )?;
+        self.roomuserid_knockcount.insert(
+            &roomuser_id,
+            &services().globals.next_count()?.to_be_bytes(),
+        )?;
+        self.userroomid_joined.remove(&userroom_id)?;
+        self.roomuserid_joined.remove(&roomuser_id)?;
+        self.userroomid_invitestate.remove(&userroom_id)?;
+        self.roomuserid_invitecount.remove(&roomuser_id)?;
+        self.userroomid_leftstate.remove(&userroom_id)?;
+        self.roomuserid_leftcount.remove(&roomuser_id)?;
+
+        Ok(())
+    }
 
     fn mark_as_left(&self, user_id: &UserId, room_id: &RoomId) -> Result<()> {
         let (roomuser_id, userroom_id) = get_room_and_user_byte_ids(room_id, user_id);
@@ -74,6 +104,8 @@ impl service::rooms::state_cache::Data for KeyValueDatabase {
         self.roomuserid_joined.remove(&roomuser_id)?;
         self.userroomid_invitestate.remove(&userroom_id)?;
         self.roomuserid_invitecount.remove(&roomuser_id)?;
+        self.userroomid_knockstate.remove(&userroom_id)?;
+        self.roomuserid_knockcount.remove(&roomuser_id)?;
 
         Ok(())
     }
@@ -391,6 +423,21 @@ impl service::rooms::state_cache::Data for KeyValueDatabase {
     }
 
     #[tracing::instrument(skip(self))]
+    fn get_knock_count(&self, room_id: &RoomId, user_id: &UserId) -> Result<Option<u64>> {
+        let mut key = room_id.as_bytes().to_vec();
+        key.push(0xff);
+        key.extend_from_slice(user_id.as_bytes());
+
+        self.roomuserid_knockcount
+            .get(&key)?
+            .map_or(Ok(None), |bytes| {
+                Ok(Some(utils::u64_from_bytes(&bytes).map_err(|_| {
+                    Error::bad_database("Invalid knockcount in db.")
+                })?))
+            })
+    }
+
+    #[tracing::instrument(skip(self))]
     fn get_left_count(&self, room_id: &RoomId, user_id: &UserId) -> Result<Option<u64>> {
         let mut key = room_id.as_bytes().to_vec();
         key.push(0xff);
@@ -440,6 +487,16 @@ impl service::rooms::state_cache::Data for KeyValueDatabase {
         scan_userroom_id_memberstate_tree(user_id, &self.userroomid_invitestate)
     }
 
+    /// Returns an iterator over all rooms a user has knocked on.
+    #[allow(clippy::type_complexity)]
+    #[tracing::instrument(skip(self))]
+    fn rooms_knocked<'a>(
+        &'a self,
+        user_id: &UserId,
+    ) -> Box<dyn Iterator<Item = Result<(OwnedRoomId, Vec<Raw<AnyStrippedStateEvent>>)>> + 'a> {
+        scan_userroom_id_memberstate_tree(user_id, &self.userroomid_knockstate)
+    }
+
     #[tracing::instrument(skip(self))]
     fn invite_state(
         &self,
@@ -455,6 +512,27 @@ impl service::rooms::state_cache::Data for KeyValueDatabase {
             .map(|state| {
                 let state = serde_json::from_slice(&state)
                     .map_err(|_| Error::bad_database("Invalid state in userroomid_invitestate."))?;
+
+                Ok(state)
+            })
+            .transpose()
+    }
+
+    #[tracing::instrument(skip(self))]
+    fn knock_state(
+        &self,
+        user_id: &UserId,
+        room_id: &RoomId,
+    ) -> Result<Option<Vec<Raw<AnyStrippedStateEvent>>>> {
+        let mut key = user_id.as_bytes().to_vec();
+        key.push(0xff);
+        key.extend_from_slice(room_id.as_bytes());
+
+        self.userroomid_knockstate
+            .get(&key)?
+            .map(|state| {
+                let state = serde_json::from_slice(&state)
+                    .map_err(|_| Error::bad_database("Invalid state in userroomid_knockstate."))?;
 
                 Ok(state)
             })

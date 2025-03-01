@@ -99,6 +99,8 @@ pub struct KeyValueDatabase {
     pub(super) roomuseroncejoinedids: Arc<dyn KvTree>,
     pub(super) userroomid_invitestate: Arc<dyn KvTree>, // InviteState = Vec<Raw<AnyStrippedStateEvent>>
     pub(super) roomuserid_invitecount: Arc<dyn KvTree>, // InviteCount = Count
+    pub(super) userroomid_knockstate: Arc<dyn KvTree>, // KnockState = Vec<Raw<AnyStrippedStateEvent>>
+    pub(super) roomuserid_knockcount: Arc<dyn KvTree>, // KnockCount = Count
     pub(super) userroomid_leftstate: Arc<dyn KvTree>,
     pub(super) roomuserid_leftcount: Arc<dyn KvTree>,
 
@@ -313,6 +315,8 @@ impl KeyValueDatabase {
             roomuseroncejoinedids: builder.open_tree("roomuseroncejoinedids")?,
             userroomid_invitestate: builder.open_tree("userroomid_invitestate")?,
             roomuserid_invitecount: builder.open_tree("roomuserid_invitecount")?,
+            userroomid_knockstate: builder.open_tree("userroomid_knockstate")?,
+            roomuserid_knockcount: builder.open_tree("roomuserid_knockcount")?,
             userroomid_leftstate: builder.open_tree("userroomid_leftstate")?,
             roomuserid_leftcount: builder.open_tree("roomuserid_leftcount")?,
 
