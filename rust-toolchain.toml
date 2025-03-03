@@ -9,7 +9,7 @@
 # If you're having trouble making the relevant changes, bug a maintainer.
 
 [toolchain]
-channel = "1.80.0"
+channel = "1.81.0"
 components = [
   # For rust-analyzer
   "rust-src",

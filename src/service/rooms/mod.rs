@@ -3,6 +3,7 @@ pub mod auth_chain;
 pub mod directory;
 pub mod edus;
 pub mod event_handler;
+pub mod helpers;
 pub mod lazy_loading;
 pub mod metadata;
 pub mod outlier;
@@ -45,6 +46,7 @@ pub struct Service {
     pub directory: directory::Service,
     pub edus: edus::Service,
     pub event_handler: event_handler::Service,
+    pub helpers: helpers::Service,
     pub lazy_loading: lazy_loading::Service,
     pub metadata: metadata::Service,
     pub outlier: outlier::Service,

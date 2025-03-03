@@ -12,7 +12,7 @@ use ruma::{
         RoomAccountDataEventType, StateEventType,
     },
     serde::Raw,
-    OwnedRoomId, OwnedServerName, OwnedUserId, RoomId, ServerName, UserId,
+    OwnedRoomId, OwnedRoomOrAliasId, OwnedServerName, OwnedUserId, RoomId, ServerName, UserId,
 };
 use tracing::warn;
 
@@ -39,6 +39,13 @@ impl Service {
             services().users.create(user_id, None)?;
             // TODO: displayname, avatar url
         }
+
+        // We don't need to store stripped state on behalf of remote users, since these events are only used on `/sync`
+        let last_state = if user_id.server_name() == services().globals.server_name() {
+            last_state
+        } else {
+            None
+        };
 
         match &membership {
             MembershipState::Join => {
@@ -178,6 +185,9 @@ impl Service {
 
                 self.db.mark_as_invited(user_id, room_id, last_state)?;
             }
+            MembershipState::Knock => {
+                self.db.mark_as_knocked(user_id, room_id, last_state)?;
+            }
             MembershipState::Leave | MembershipState::Ban => {
                 self.db.mark_as_left(user_id, room_id)?;
             }
@@ -284,6 +294,11 @@ impl Service {
     }
 
     #[tracing::instrument(skip(self))]
+    pub fn get_knock_count(&self, room_id: &RoomId, user_id: &UserId) -> Result<Option<u64>> {
+        self.db.get_knock_count(room_id, user_id)
+    }
+
+    #[tracing::instrument(skip(self))]
     pub fn get_left_count(&self, room_id: &RoomId, user_id: &UserId) -> Result<Option<u64>> {
         self.db.get_left_count(room_id, user_id)
     }
@@ -306,6 +321,15 @@ impl Service {
         self.db.rooms_invited(user_id)
     }
 
+    /// Returns an iterator over all rooms a user has knocked on.
+    #[tracing::instrument(skip(self))]
+    pub fn rooms_knocked<'a>(
+        &'a self,
+        user_id: &UserId,
+    ) -> impl Iterator<Item = Result<(OwnedRoomId, Vec<Raw<AnyStrippedStateEvent>>)>> + 'a {
+        self.db.rooms_knocked(user_id)
+    }
+
     #[tracing::instrument(skip(self))]
     pub fn invite_state(
         &self,
@@ -313,6 +337,15 @@ impl Service {
         room_id: &RoomId,
     ) -> Result<Option<Vec<Raw<AnyStrippedStateEvent>>>> {
         self.db.invite_state(user_id, room_id)
+    }
+
+    #[tracing::instrument(skip(self))]
+    pub fn knock_state(
+        &self,
+        user_id: &UserId,
+        room_id: &RoomId,
+    ) -> Result<Option<Vec<Raw<AnyStrippedStateEvent>>>> {
+        self.db.knock_state(user_id, room_id)
     }
 
     #[tracing::instrument(skip(self))]
@@ -349,7 +382,59 @@ impl Service {
     }
 
     #[tracing::instrument(skip(self))]
+    pub fn is_knocked(&self, user_id: &UserId, room_id: &RoomId) -> Result<bool> {
+        self.db.is_knocked(user_id, room_id)
+    }
+
+    #[tracing::instrument(skip(self))]
     pub fn is_left(&self, user_id: &UserId, room_id: &RoomId) -> Result<bool> {
         self.db.is_left(user_id, room_id)
+    }
+
+    /// Function to assist performing a membership event that may require help from a remote server
+    ///
+    /// If a room id is provided, the servers returned will consist of:
+    /// - the `via` argument, provided by the client
+    /// - servers of the senders of the stripped state events we are given
+    /// - the server in the room id
+    ///
+    /// Otherwise, the servers returned will come from the response when resolving the alias.
+    #[tracing::instrument(skip(self))]
+    pub async fn get_room_id_and_via_servers(
+        &self,
+        sender_user: &UserId,
+        room_id_or_alias: OwnedRoomOrAliasId,
+        via: Vec<OwnedServerName>,
+    ) -> Result<(Vec<OwnedServerName>, OwnedRoomId), Error> {
+        let (servers, room_id) = match OwnedRoomId::try_from(room_id_or_alias) {
+            Ok(room_id) => {
+                let mut servers = via;
+                servers.extend(
+                    self.invite_state(sender_user, &room_id)
+                        .transpose()
+                        .or_else(|| self.knock_state(sender_user, &room_id).transpose())
+                        .transpose()?
+                        .unwrap_or_default()
+                        .iter()
+                        .filter_map(|event| event.deserialize().ok())
+                        .map(|event| event.sender().server_name().to_owned()),
+                );
+
+                servers.push(
+                    room_id
+                        .server_name()
+                        .expect("Room IDs should always have a server name")
+                        .into(),
+                );
+
+                (servers, room_id)
+            }
+            Err(room_alias) => {
+                let response = services().rooms.alias.get_alias_helper(room_alias).await?;
+
+                (response.servers, response.room_id)
+            }
+        };
+        Ok((servers, room_id))
     }
 }

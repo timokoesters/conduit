@@ -73,6 +73,7 @@ impl Services {
                     },
                 },
                 event_handler: rooms::event_handler::Service,
+                helpers: rooms::helpers::Service,
                 lazy_loading: rooms::lazy_loading::Service {
                     db,
                     lazy_load_waiting: Mutex::new(HashMap::new()),

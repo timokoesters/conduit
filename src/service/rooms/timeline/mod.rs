@@ -450,22 +450,29 @@ impl Service {
                     let content = serde_json::from_str::<ExtractMembership>(pdu.content.get())
                         .map_err(|_| Error::bad_database("Invalid content in pdu."))?;
 
-                    let invite_state = match content.membership {
-                        MembershipState::Invite => {
-                            let state = services().rooms.state.calculate_invite_state(pdu)?;
+                    let stripped_state = match content.membership {
+                        MembershipState::Invite | MembershipState::Knock => {
+                            let mut state = services().rooms.state.stripped_state(&pdu.room_id)?;
+                            // So that clients can get info about who invitied them (not relevant for knocking), the reason, when, etc.
+                            state.push(pdu.to_stripped_state_event());
                             Some(state)
                         }
                         _ => None,
                     };
 
-                    // Update our membership info, we do this here incase a user is invited
-                    // and immediately leaves we need the DB to record the invite event for auth
+                    // Here we don't attempt to join if the previous membership was knock and the
+                    // new one is join, like we do for `/federation/*/invite`, as not only are there
+                    // implementation difficulties due to callers not implementing `Send`, but
+                    // invites we recieve which aren't over `/invite` must have been due to a
+                    // database reset or switching server implementations, which means we probably
+                    // shouldn't be joining automatically anyways, since it may surprise users to
+                    // suddenly join rooms which clients didn't even show as being knocked on before.
                     services().rooms.state_cache.update_membership(
                         &pdu.room_id,
                         &target_user_id,
                         content.membership,
                         &pdu.sender,
-                        invite_state,
+                        stripped_state,
                         true,
                     )?;
                 }
