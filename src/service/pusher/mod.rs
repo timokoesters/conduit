@@ -2,7 +2,7 @@ mod data;
 pub use data::Data;
 use ruma::{events::AnySyncTimelineEvent, push::PushConditionPowerLevelsCtx};
 
-use crate::{services, Error, PduEvent, Result};
+use crate::{services, Error, PduEvent, Result, MATRIX_VERSIONS};
 use bytes::BytesMut;
 use ruma::{
     api::{
@@ -11,7 +11,7 @@ use ruma::{
             self,
             v1::{Device, Notification, NotificationCounts, NotificationPriority},
         },
-        IncomingResponse, MatrixVersion, OutgoingRequest, SendAccessToken,
+        IncomingResponse, OutgoingRequest, SendAccessToken,
     },
     events::{room::power_levels::RoomPowerLevelsEventContent, StateEventType, TimelineEventType},
     push::{Action, PushConditionRoomCtx, PushFormat, Ruleset, Tweak},
@@ -58,7 +58,7 @@ impl Service {
             .try_into_http_request::<BytesMut>(
                 &destination,
                 SendAccessToken::IfRequired(""),
-                &[MatrixVersion::V1_0],
+                MATRIX_VERSIONS,
             )
             .map_err(|e| {
                 warn!("Failed to find destination {}: {}", destination, e);

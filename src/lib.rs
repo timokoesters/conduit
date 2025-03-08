@@ -13,10 +13,12 @@ use std::sync::RwLock;
 pub use api::ruma_wrapper::{Ruma, RumaResponse};
 pub use config::Config;
 pub use database::KeyValueDatabase;
+use ruma::api::MatrixVersion;
 pub use service::{pdu::PduEvent, Services};
 pub use utils::error::{Error, Result};
 
 pub static SERVICES: RwLock<Option<&'static Services>> = RwLock::new(None);
+pub const MATRIX_VERSIONS: &[MatrixVersion] = &[MatrixVersion::V1_13];
 
 pub fn services() -> &'static Services {
     SERVICES

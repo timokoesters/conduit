@@ -1,8 +1,6 @@
-use crate::{services, utils, Error, Result};
+use crate::{services, utils, Error, Result, MATRIX_VERSIONS};
 use bytes::BytesMut;
-use ruma::api::{
-    appservice::Registration, IncomingResponse, MatrixVersion, OutgoingRequest, SendAccessToken,
-};
+use ruma::api::{appservice::Registration, IncomingResponse, OutgoingRequest, SendAccessToken};
 use std::{fmt::Debug, mem, time::Duration};
 use tracing::warn;
 
@@ -30,7 +28,7 @@ where
         .try_into_http_request::<BytesMut>(
             &destination,
             SendAccessToken::IfRequired(hs_token),
-            &[MatrixVersion::V1_0],
+            MATRIX_VERSIONS,
         )
         .unwrap()
         .map(|body| body.freeze());
