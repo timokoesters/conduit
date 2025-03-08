@@ -279,6 +279,7 @@ async fn unrecognized_method(
 
 fn routes(config: &Config) -> Router {
     let router = Router::new()
+        .ruma_route(client_server::ping_appservice_route)
         .ruma_route(client_server::get_supported_versions_route)
         .ruma_route(client_server::get_register_available_route)
         .ruma_route(client_server::register_route)

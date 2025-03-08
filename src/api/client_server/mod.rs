@@ -1,5 +1,6 @@
 mod account;
 mod alias;
+mod appservice;
 mod backup;
 mod capabilities;
 mod config;
@@ -37,6 +38,7 @@ mod well_known;
 
 pub use account::*;
 pub use alias::*;
+pub use appservice::*;
 pub use backup::*;
 pub use capabilities::*;
 pub use config::*;
