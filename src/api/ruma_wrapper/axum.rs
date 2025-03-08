@@ -15,8 +15,10 @@ use axum_extra::{
 use bytes::{BufMut, BytesMut};
 use http::{Request, StatusCode};
 use ruma::{
-    api::{client::error::ErrorKind, AuthScheme, IncomingRequest, OutgoingResponse},
-    server_util::authorization::XMatrix,
+    api::{
+        client::error::ErrorKind, federation::authentication::XMatrix, AuthScheme, IncomingRequest,
+        OutgoingResponse,
+    },
     CanonicalJsonValue, MilliSecondsSinceUnixEpoch, OwnedDeviceId, OwnedUserId, UserId,
 };
 use serde::Deserialize;
@@ -110,7 +112,10 @@ where
                         ));
                     }
                 }
-                (AuthScheme::AccessToken, Token::Appservice(info)) => {
+                (
+                    AuthScheme::AccessToken | AuthScheme::AppserviceToken,
+                    Token::Appservice(info),
+                ) => {
                     let user_id = query_params
                         .user_id
                         .map_or_else(
@@ -144,11 +149,11 @@ where
                 }
                 (
                     AuthScheme::None
-                    | AuthScheme::AppserviceToken
+                    | AuthScheme::AppserviceTokenOptional
                     | AuthScheme::AccessTokenOptional,
                     Token::Appservice(info),
                 ) => (None, None, None, Some(*info)),
-                (AuthScheme::AccessToken, Token::None) => {
+                (AuthScheme::AppserviceToken | AuthScheme::AccessToken, Token::None) => {
                     return Err(Error::BadRequest(
                         ErrorKind::MissingToken,
                         "Missing access token.",
@@ -287,7 +292,7 @@ where
                 }
                 (
                     AuthScheme::None
-                    | AuthScheme::AppserviceToken
+                    | AuthScheme::AppserviceTokenOptional
                     | AuthScheme::AccessTokenOptional,
                     Token::None,
                 ) => (None, None, None, None),
@@ -297,7 +302,10 @@ where
                         "Only server signatures should be used on this endpoint.",
                     ));
                 }
-                (AuthScheme::AppserviceToken, Token::User(_)) => {
+                (
+                    AuthScheme::AppserviceToken | AuthScheme::AppserviceTokenOptional,
+                    Token::User(_),
+                ) => {
                     return Err(Error::BadRequest(
                         ErrorKind::Unauthorized,
                         "Only appservice access tokens should be used on this endpoint.",
