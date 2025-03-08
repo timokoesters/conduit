@@ -7,7 +7,7 @@ use crate::{
         media::FileMeta,
         pdu::{gen_event_id_canonical_json, PduBuilder},
     },
-    services, utils, Error, PduEvent, Result, Ruma,
+    services, utils, Error, PduEvent, Result, Ruma, MATRIX_VERSIONS,
 };
 use axum::{response::IntoResponse, Json};
 use axum_extra::headers::{CacheControl, Header};
@@ -44,8 +44,7 @@ use ruma::{
                 send_transaction_message,
             },
         },
-        EndpointError, IncomingResponse, MatrixVersion, OutgoingRequest, OutgoingResponse,
-        SendAccessToken,
+        EndpointError, IncomingResponse, OutgoingRequest, OutgoingResponse, SendAccessToken,
     },
     directory::{Filter, RoomNetwork},
     events::{
@@ -215,7 +214,7 @@ where
         .try_into_http_request::<Vec<u8>>(
             &actual_destination_str,
             SendAccessToken::IfRequired(""),
-            &[MatrixVersion::V1_11],
+            MATRIX_VERSIONS,
         )
         .map_err(|e| {
             warn!(

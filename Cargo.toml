@@ -160,7 +160,6 @@ features = [
   "push-gateway-api-c",
   "rand",
   "ring-compat",
-  "server-util",
   "state-res",
   "unstable-msc2448",
   "unstable-msc3575",

@@ -122,6 +122,8 @@ impl Error {
                     LimitExceeded { .. } => StatusCode::TOO_MANY_REQUESTS,
                     UserDeactivated => StatusCode::FORBIDDEN,
                     TooLarge => StatusCode::PAYLOAD_TOO_LARGE,
+                    ConnectionTimeout => StatusCode::GATEWAY_TIMEOUT,
+                    BadStatus { .. } | ConnectionFailed => StatusCode::BAD_GATEWAY,
                     _ => StatusCode::BAD_REQUEST,
                 },
             ),
