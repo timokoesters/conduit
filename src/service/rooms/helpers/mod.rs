@@ -233,7 +233,6 @@ impl Service {
             let authenticated = state_res::event_auth::auth_check(
                 &state_res::RoomVersion::new(&room_version_id).expect("room version is supported"),
                 &parsed_join_pdu,
-                None::<PduEvent>, // TODO: third party invite
                 |k, s| {
                     services()
                         .rooms
