@@ -153,7 +153,6 @@ features = [
   "compat-optional",
   "compat-optional-txn-pdus",
   "compat-server-signing-key-version",
-  "compat-signature-id",
   "compat-tag-info",
   "compat-unset-avatar",
   "federation-api",

@@ -766,12 +766,9 @@ impl Service {
             signatures: None,
         };
 
-        let auth_check = state_res::auth_check(
-            &room_version,
-            &pdu,
-            None::<PduEvent>, // TODO: third_party_invite
-            |k, s| auth_events.get(&(k.clone(), s.to_owned())),
-        )
+        let auth_check = state_res::auth_check(&room_version, &pdu, |k, s| {
+            auth_events.get(&(k.clone(), s.to_owned()))
+        })
         .map_err(|e| {
             error!("{:?}", e);
             Error::bad_database("Auth check failed.")
