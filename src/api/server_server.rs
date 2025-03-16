@@ -2221,17 +2221,14 @@ pub async fn create_invite_route(
 pub async fn get_content_route(
     body: Ruma<get_content::v1::Request>,
 ) -> Result<get_content::v1::Response> {
-    let mxc = format!(
-        "mxc://{}/{}",
-        services().globals.server_name(),
-        body.media_id
-    );
-
     if let Some(FileMeta {
         content_disposition,
         content_type,
         file,
-    }) = services().media.get(mxc.clone()).await?
+    }) = services()
+        .media
+        .get(services().globals.server_name(), &body.media_id)
+        .await?
     {
         Ok(get_content::v1::Response::new(
             ContentMetadata::new(),
@@ -2252,12 +2249,6 @@ pub async fn get_content_route(
 pub async fn get_content_thumbnail_route(
     body: Ruma<get_content_thumbnail::v1::Request>,
 ) -> Result<get_content_thumbnail::v1::Response> {
-    let mxc = format!(
-        "mxc://{}/{}",
-        services().globals.server_name(),
-        body.media_id
-    );
-
     let Some(FileMeta {
         file,
         content_type,
@@ -2265,7 +2256,8 @@ pub async fn get_content_thumbnail_route(
     }) = services()
         .media
         .get_thumbnail(
-            mxc.clone(),
+            services().globals.server_name(),
+            &body.media_id,
             body.width
                 .try_into()
                 .map_err(|_| Error::BadRequest(ErrorKind::InvalidParam, "Width is invalid."))?,
@@ -2281,7 +2273,9 @@ pub async fn get_content_thumbnail_route(
     services()
         .media
         .upload_thumbnail(
-            mxc,
+            services().globals.server_name(),
+            &body.media_id,
+            content_disposition.filename.as_deref(),
             content_type.as_deref(),
             body.width.try_into().expect("all UInts are valid u32s"),
             body.height.try_into().expect("all UInts are valid u32s"),

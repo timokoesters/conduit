@@ -18,6 +18,13 @@ pub fn millis_since_unix_epoch() -> u64 {
         .as_millis() as u64
 }
 
+pub fn secs_since_unix_epoch() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("time is valid")
+        .as_secs()
+}
+
 pub fn increment(old: Option<&[u8]>) -> Option<Vec<u8>> {
     let number = match old.map(|bytes| bytes.try_into()) {
         Some(Ok(bytes)) => {

@@ -54,33 +54,33 @@ pub async fn get_media_config_auth_route(
 pub async fn create_content_route(
     body: Ruma<create_content::v3::Request>,
 ) -> Result<create_content::v3::Response> {
-    let mxc = format!(
-        "mxc://{}/{}",
-        services().globals.server_name(),
-        utils::random_string(MXC_LENGTH)
-    );
+    let create_content::v3::Request {
+        filename,
+        content_type,
+        file,
+        ..
+    } = body.body;
+
+    let media_id = utils::random_string(MXC_LENGTH);
 
     services()
         .media
         .create(
-            mxc.clone(),
-            Some(
-                ContentDisposition::new(ContentDispositionType::Inline)
-                    .with_filename(body.filename.clone()),
-            ),
-            body.content_type.as_deref(),
-            &body.file,
+            services().globals.server_name(),
+            &media_id,
+            filename.as_deref(),
+            content_type.as_deref(),
+            &file,
         )
         .await?;
 
     Ok(create_content::v3::Response {
-        content_uri: mxc.into(),
+        content_uri: (format!("mxc://{}/{}", services().globals.server_name(), media_id)).into(),
         blurhash: None,
     })
 }
 
 pub async fn get_remote_content(
-    mxc: &str,
     server_name: &ServerName,
     media_id: String,
 ) -> Result<get_content::v1::Response, Error> {
@@ -120,7 +120,7 @@ pub async fn get_remote_content(
                     server_name,
                     media::get_content::v3::Request {
                         server_name: server_name.to_owned(),
-                        media_id,
+                        media_id: media_id.clone(),
                         timeout_ms: Duration::from_secs(20),
                         allow_remote: false,
                         allow_redirect: true,
@@ -140,8 +140,12 @@ pub async fn get_remote_content(
     services()
         .media
         .create(
-            mxc.to_owned(),
-            content_response.content_disposition.clone(),
+            server_name,
+            &media_id,
+            content_response
+                .content_disposition
+                .as_ref()
+                .and_then(|cd| cd.filename.as_deref()),
             content_response.content_type.as_deref(),
             &content_response.file,
         )
@@ -186,13 +190,11 @@ async fn get_content(
     media_id: String,
     allow_remote: bool,
 ) -> Result<get_content::v1::Response, Error> {
-    let mxc = format!("mxc://{}/{}", server_name, media_id);
-
     if let Ok(Some(FileMeta {
         content_disposition,
         content_type,
         file,
-    })) = services().media.get(mxc.clone()).await
+    })) = services().media.get(server_name, &media_id).await
     {
         Ok(get_content::v1::Response {
             file,
@@ -200,8 +202,7 @@ async fn get_content(
             content_disposition: Some(content_disposition),
         })
     } else if server_name != services().globals.server_name() && allow_remote {
-        let remote_content_response =
-            get_remote_content(&mxc, server_name, media_id.clone()).await?;
+        let remote_content_response = get_remote_content(server_name, media_id.clone()).await?;
 
         Ok(get_content::v1::Response {
             content_disposition: remote_content_response.content_disposition,
@@ -262,11 +263,9 @@ async fn get_content_as_filename(
     filename: String,
     allow_remote: bool,
 ) -> Result<get_content_as_filename::v1::Response, Error> {
-    let mxc = format!("mxc://{}/{}", server_name, media_id);
-
     if let Ok(Some(FileMeta {
         file, content_type, ..
-    })) = services().media.get(mxc.clone()).await
+    })) = services().media.get(server_name, &media_id).await
     {
         Ok(get_content_as_filename::v1::Response {
             file,
@@ -277,8 +276,7 @@ async fn get_content_as_filename(
             ),
         })
     } else if server_name != services().globals.server_name() && allow_remote {
-        let remote_content_response =
-            get_remote_content(&mxc, server_name, media_id.clone()).await?;
+        let remote_content_response = get_remote_content(server_name, media_id.clone()).await?;
 
         Ok(get_content_as_filename::v1::Response {
             content_disposition: Some(
@@ -351,8 +349,6 @@ async fn get_content_thumbnail(
     animated: Option<bool>,
     allow_remote: bool,
 ) -> Result<get_content_thumbnail::v1::Response, Error> {
-    let mxc = format!("mxc://{}/{}", server_name, media_id);
-
     if let Some(FileMeta {
         file,
         content_type,
@@ -360,7 +356,8 @@ async fn get_content_thumbnail(
     }) = services()
         .media
         .get_thumbnail(
-            mxc.clone(),
+            server_name,
+            &media_id,
             width
                 .try_into()
                 .map_err(|_| Error::BadRequest(ErrorKind::InvalidParam, "Width is invalid."))?,
@@ -452,7 +449,12 @@ async fn get_content_thumbnail(
         services()
             .media
             .upload_thumbnail(
-                mxc,
+                server_name,
+                &media_id,
+                thumbnail_response
+                    .content_disposition
+                    .as_ref()
+                    .and_then(|cd| cd.filename.as_deref()),
                 thumbnail_response.content_type.as_deref(),
                 width.try_into().expect("all UInts are valid u32s"),
                 height.try_into().expect("all UInts are valid u32s"),

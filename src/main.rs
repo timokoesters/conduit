@@ -45,7 +45,7 @@ use tikv_jemallocator::Jemalloc;
 #[global_allocator]
 static GLOBAL: Jemalloc = Jemalloc;
 
-static SUB_TABLES: [&str; 2] = ["well_known", "tls"]; // Not doing `proxy` cause setting that with env vars would be a pain
+static SUB_TABLES: [&str; 3] = ["well_known", "tls", "media"]; // Not doing `proxy` cause setting that with env vars would be a pain
 
 #[tokio::main]
 async fn main() {

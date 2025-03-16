@@ -57,9 +57,29 @@ The `global` section contains the following fields:
 | `turn_uris` | `array` | The TURN URIs | `[]` |
 | `turn_secret` | `string` | The TURN secret | `""` |
 | `turn_ttl` | `integer` | The TURN TTL in seconds | `86400` |
+| `media` | `table` | See the [media configuration](#media) | See the [media configuration](#media) |
 | `emergency_password` | `string` | Set a password to login as the `conduit` user in case of emergency | N/A |
 | `well_known` | `table` | Used for [delegation](delegation.md) | See [delegation](delegation.md) |
 
+### Media
+The `media` table is used to configure how media is stored and where. Currently, there is only one available
+backend, that being `filesystem`. The backend can be set using the `backend` field. Example:
+```
+[global.media]
+backend = "filesystem" # the default backend
+```
+
+#### Filesystem backend
+The filesystem backend has the following fields:
+- `path`: The base directory where all the media files will be stored (defaults to
+  `${database_path}/media`)
+
+##### Example:
+```
+[global.media]
+backend = "filesystem"
+path = "/srv/matrix-media"
+```
 
 ### TLS
 The `tls` table contains the following fields:

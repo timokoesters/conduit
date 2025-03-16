@@ -3,16 +3,25 @@ use std::io::Cursor;
 
 pub use data::Data;
 use ruma::{
-    api::client::error::ErrorKind,
+    api::client::{error::ErrorKind, media::is_safe_inline_content_type},
     http_headers::{ContentDisposition, ContentDispositionType},
+    ServerName,
 };
+use sha2::{digest::Output, Digest, Sha256};
 
-use crate::{services, Result};
+use crate::{config::MediaConfig, services, Error, Result};
 use image::imageops::FilterType;
+
+pub struct DbFileMeta {
+    pub sha256_digest: Vec<u8>,
+    pub filename: Option<String>,
+    pub content_type: Option<String>,
+    pub unauthenticated_access_permitted: bool,
+}
 
 use tokio::{
     fs::File,
-    io::{AsyncReadExt, AsyncWriteExt, BufReader},
+    io::{AsyncReadExt, AsyncWriteExt},
 };
 
 pub struct FileMeta {
@@ -29,69 +38,70 @@ impl Service {
     /// Uploads a file.
     pub async fn create(
         &self,
-        mxc: String,
-        content_disposition: Option<ContentDisposition>,
+        servername: &ServerName,
+        media_id: &str,
+        filename: Option<&str>,
         content_type: Option<&str>,
         file: &[u8],
     ) -> Result<()> {
-        let content_disposition =
-            content_disposition.unwrap_or(ContentDisposition::new(ContentDispositionType::Inline));
+        let (sha256_digest, sha256_hex) = generate_digests(file);
 
-        // Width, Height = 0 if it's not a thumbnail
-        let key = self
-            .db
-            .create_file_metadata(mxc, 0, 0, &content_disposition, content_type)?;
+        self.db.create_file_metadata(
+            sha256_digest,
+            size(file)?,
+            servername,
+            media_id,
+            filename,
+            content_type,
+        )?;
 
-        let path = services().globals.get_media_file(&key);
-        let mut f = File::create(path).await?;
-        f.write_all(file).await?;
-        Ok(())
+        create_file(&sha256_hex, file).await
     }
 
     /// Uploads or replaces a file thumbnail.
     #[allow(clippy::too_many_arguments)]
     pub async fn upload_thumbnail(
         &self,
-        mxc: String,
+        servername: &ServerName,
+        media_id: &str,
+        filename: Option<&str>,
         content_type: Option<&str>,
         width: u32,
         height: u32,
         file: &[u8],
     ) -> Result<()> {
-        let key = self.db.create_file_metadata(
-            mxc,
+        let (sha256_digest, sha256_hex) = generate_digests(file);
+
+        self.db.create_thumbnail_metadata(
+            sha256_digest,
+            size(file)?,
+            servername,
+            media_id,
             width,
             height,
-            &ContentDisposition::new(ContentDispositionType::Inline),
+            filename,
             content_type,
         )?;
 
-        let path = services().globals.get_media_file(&key);
-        let mut f = File::create(path).await?;
-        f.write_all(file).await?;
-
-        Ok(())
+        create_file(&sha256_hex, file).await
     }
 
-    /// Downloads a file.
-    pub async fn get(&self, mxc: String) -> Result<Option<FileMeta>> {
-        if let Ok((content_disposition, content_type, key)) =
-            self.db.search_file_metadata(mxc, 0, 0)
-        {
-            let path = services().globals.get_media_file(&key);
-            let mut file = Vec::new();
-            BufReader::new(File::open(path).await?)
-                .read_to_end(&mut file)
-                .await?;
+    /// Fetches a local file and it's metadata
+    pub async fn get(&self, servername: &ServerName, media_id: &str) -> Result<Option<FileMeta>> {
+        let DbFileMeta {
+            sha256_digest,
+            filename,
+            content_type,
+            unauthenticated_access_permitted: _,
+        } = self.db.search_file_metadata(servername, media_id)?;
 
-            Ok(Some(FileMeta {
-                content_disposition,
-                content_type,
-                file,
-            }))
-        } else {
-            Ok(None)
-        }
+        let file = get_file(&hex::encode(sha256_digest)).await?;
+
+        Ok(Some(FileMeta {
+            content_disposition: content_disposition(filename, &content_type),
+            content_type,
+            file,
+        }))
     }
 
     /// Returns width, height of the thumbnail and whether it should be cropped. Returns None when
@@ -119,117 +129,206 @@ impl Service {
     /// For width,height <= 96 the server uses another thumbnailing algorithm which crops the image afterwards.
     pub async fn get_thumbnail(
         &self,
-        mxc: String,
+        servername: &ServerName,
+        media_id: &str,
         width: u32,
         height: u32,
     ) -> Result<Option<FileMeta>> {
-        let (width, height, crop) = self
-            .thumbnail_properties(width, height)
-            .unwrap_or((0, 0, false)); // 0, 0 because that's the original file
-
-        if let Ok((content_disposition, content_type, key)) =
-            self.db.search_file_metadata(mxc.clone(), width, height)
-        {
-            // Using saved thumbnail
-            let path = services().globals.get_media_file(&key);
-            let mut file = Vec::new();
-            File::open(path).await?.read_to_end(&mut file).await?;
-
-            Ok(Some(FileMeta {
-                content_disposition,
+        if let Some((width, height, crop)) = self.thumbnail_properties(width, height) {
+            if let Ok(DbFileMeta {
+                sha256_digest,
+                filename,
                 content_type,
-                file: file.to_vec(),
-            }))
-        } else if let Ok((content_disposition, content_type, key)) =
-            self.db.search_file_metadata(mxc.clone(), 0, 0)
-        {
-            // Generate a thumbnail
-            let path = services().globals.get_media_file(&key);
-            let mut file = Vec::new();
-            File::open(path).await?.read_to_end(&mut file).await?;
-
-            if let Ok(image) = image::load_from_memory(&file) {
-                let original_width = image.width();
-                let original_height = image.height();
-                if width > original_width || height > original_height {
-                    return Ok(Some(FileMeta {
-                        content_disposition,
-                        content_type,
-                        file: file.to_vec(),
-                    }));
-                }
-
-                let thumbnail = if crop {
-                    image.resize_to_fill(width, height, FilterType::CatmullRom)
-                } else {
-                    let (exact_width, exact_height) = {
-                        // Copied from image::dynimage::resize_dimensions
-                        let ratio = u64::from(original_width) * u64::from(height);
-                        let nratio = u64::from(width) * u64::from(original_height);
-
-                        let use_width = nratio <= ratio;
-                        let intermediate = if use_width {
-                            u64::from(original_height) * u64::from(width)
-                                / u64::from(original_width)
-                        } else {
-                            u64::from(original_width) * u64::from(height)
-                                / u64::from(original_height)
-                        };
-                        if use_width {
-                            if intermediate <= u64::from(u32::MAX) {
-                                (width, intermediate as u32)
-                            } else {
-                                (
-                                    (u64::from(width) * u64::from(u32::MAX) / intermediate) as u32,
-                                    u32::MAX,
-                                )
-                            }
-                        } else if intermediate <= u64::from(u32::MAX) {
-                            (intermediate as u32, height)
-                        } else {
-                            (
-                                u32::MAX,
-                                (u64::from(height) * u64::from(u32::MAX) / intermediate) as u32,
-                            )
-                        }
-                    };
-
-                    image.thumbnail_exact(exact_width, exact_height)
-                };
-
-                let mut thumbnail_bytes = Vec::new();
-                thumbnail.write_to(
-                    &mut Cursor::new(&mut thumbnail_bytes),
-                    image::ImageFormat::Png,
-                )?;
-
-                // Save thumbnail in database so we don't have to generate it again next time
-                let thumbnail_key = self.db.create_file_metadata(
-                    mxc,
-                    width,
-                    height,
-                    &content_disposition,
-                    content_type.as_deref(),
-                )?;
-
-                let path = services().globals.get_media_file(&thumbnail_key);
-                let mut f = File::create(path).await?;
-                f.write_all(&thumbnail_bytes).await?;
+                unauthenticated_access_permitted: _,
+            }) = self
+                .db
+                .search_thumbnail_metadata(servername, media_id, width, height)
+            {
+                // Using saved thumbnail
+                let file = get_file(&hex::encode(sha256_digest)).await?;
 
                 Ok(Some(FileMeta {
-                    content_disposition,
+                    content_disposition: content_disposition(filename, &content_type),
                     content_type,
-                    file: thumbnail_bytes.to_vec(),
+                    file,
                 }))
+            } else if let Ok(DbFileMeta {
+                sha256_digest,
+                filename,
+                content_type,
+                unauthenticated_access_permitted: _,
+            }) = self.db.search_file_metadata(servername, media_id)
+            {
+                let content_disposition = content_disposition(filename.clone(), &content_type);
+                // Generate a thumbnail
+                let file = get_file(&hex::encode(sha256_digest)).await?;
+
+                if let Ok(image) = image::load_from_memory(&file) {
+                    let original_width = image.width();
+                    let original_height = image.height();
+                    if width > original_width || height > original_height {
+                        return Ok(Some(FileMeta {
+                            content_disposition,
+                            content_type,
+                            file,
+                        }));
+                    }
+
+                    let thumbnail = if crop {
+                        image.resize_to_fill(width, height, FilterType::CatmullRom)
+                    } else {
+                        let (exact_width, exact_height) = {
+                            // Copied from image::dynimage::resize_dimensions
+                            let ratio = u64::from(original_width) * u64::from(height);
+                            let nratio = u64::from(width) * u64::from(original_height);
+
+                            let use_width = nratio <= ratio;
+                            let intermediate = if use_width {
+                                u64::from(original_height) * u64::from(width)
+                                    / u64::from(original_width)
+                            } else {
+                                u64::from(original_width) * u64::from(height)
+                                    / u64::from(original_height)
+                            };
+                            if use_width {
+                                if intermediate <= u64::from(u32::MAX) {
+                                    (width, intermediate as u32)
+                                } else {
+                                    (
+                                        (u64::from(width) * u64::from(u32::MAX) / intermediate)
+                                            as u32,
+                                        u32::MAX,
+                                    )
+                                }
+                            } else if intermediate <= u64::from(u32::MAX) {
+                                (intermediate as u32, height)
+                            } else {
+                                (
+                                    u32::MAX,
+                                    (u64::from(height) * u64::from(u32::MAX) / intermediate) as u32,
+                                )
+                            }
+                        };
+
+                        image.thumbnail_exact(exact_width, exact_height)
+                    };
+
+                    let mut thumbnail_bytes = Vec::new();
+                    thumbnail.write_to(
+                        &mut Cursor::new(&mut thumbnail_bytes),
+                        image::ImageFormat::Png,
+                    )?;
+
+                    // Save thumbnail in database so we don't have to generate it again next time
+                    self.upload_thumbnail(
+                        servername,
+                        media_id,
+                        filename.as_deref(),
+                        content_type.as_deref(),
+                        width,
+                        height,
+                        &thumbnail_bytes,
+                    )
+                    .await?;
+
+                    Ok(Some(FileMeta {
+                        content_disposition,
+                        content_type,
+                        file: thumbnail_bytes,
+                    }))
+                } else {
+                    // Couldn't parse file to generate thumbnail, likely not an image
+                    Err(Error::BadRequest(
+                        ErrorKind::Unknown,
+                        "Unable to generate thumbnail for the requested content (likely is not an image)",
+                    ))
+                }
             } else {
-                // Couldn't parse file to generate thumbnail, likely not an image
-                return Err(crate::Error::BadRequest(
-                ErrorKind::Unknown,
-                "Unable to generate thumbnail for the requested content (likely is not an image)",
-            ));
+                Ok(None)
             }
         } else {
-            Ok(None)
+            // Using full-sized file
+            let Ok(DbFileMeta {
+                sha256_digest,
+                filename,
+                content_type,
+                unauthenticated_access_permitted: _,
+            }) = self.db.search_file_metadata(servername, media_id)
+            else {
+                return Ok(None);
+            };
+
+            let file = get_file(&hex::encode(sha256_digest)).await?;
+
+            Ok(Some(FileMeta {
+                content_disposition: content_disposition(filename, &content_type),
+                content_type,
+                file,
+            }))
         }
     }
+}
+
+/// Creates the media file, using the configured media backend
+///
+/// Note: this function does NOT set the metadata related to the file
+pub async fn create_file(sha256_hex: &str, file: &[u8]) -> Result<()> {
+    match &services().globals.config.media {
+        MediaConfig::FileSystem { path } => {
+            let path = services().globals.get_media_path(path, sha256_hex);
+
+            let mut f = File::create(path).await?;
+            f.write_all(file).await?;
+        }
+    }
+
+    Ok(())
+}
+
+/// Fetches the file from the configured media backend
+async fn get_file(sha256_hex: &str) -> Result<Vec<u8>> {
+    Ok(match &services().globals.config.media {
+        MediaConfig::FileSystem { path } => {
+            let path = services().globals.get_media_path(path, sha256_hex);
+
+            let mut file = Vec::new();
+            File::open(path).await?.read_to_end(&mut file).await?;
+
+            file
+        }
+    })
+}
+
+/// Creates a content disposition with the given `filename`, using the `content_type` to determine whether
+/// the disposition should be `inline` or `attachment`
+fn content_disposition(
+    filename: Option<String>,
+    content_type: &Option<String>,
+) -> ContentDisposition {
+    ContentDisposition::new(
+        if content_type
+            .as_deref()
+            .is_some_and(is_safe_inline_content_type)
+        {
+            ContentDispositionType::Inline
+        } else {
+            ContentDispositionType::Attachment
+        },
+    )
+    .with_filename(filename)
+}
+
+/// Returns sha256 digests of the file, in raw (Vec) and hex form respectively
+fn generate_digests(file: &[u8]) -> (Output<Sha256>, String) {
+    let sha256_digest = Sha256::digest(file);
+    let hex_sha256 = hex::encode(sha256_digest);
+
+    (sha256_digest, hex_sha256)
+}
+
+/// Get's the file size, is bytes, as u64, returning an error if the file size is larger
+/// than a u64 (which is far too big to be reasonably uploaded in the first place anyways)
+pub fn size(file: &[u8]) -> Result<u64> {
+    u64::try_from(file.len())
+        .map_err(|_| Error::BadRequest(ErrorKind::TooLarge, "File is too large"))
 }

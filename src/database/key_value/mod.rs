@@ -3,7 +3,7 @@ mod account_data;
 mod appservice;
 mod globals;
 mod key_backups;
-mod media;
+pub(super) mod media;
 //mod pdu;
 mod pusher;
 mod rooms;

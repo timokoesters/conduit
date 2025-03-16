@@ -2,6 +2,7 @@ use std::{
     collections::BTreeMap,
     fmt,
     net::{IpAddr, Ipv4Addr},
+    path::PathBuf,
 };
 
 use ruma::{OwnedServerName, RoomVersionId};
@@ -81,6 +82,9 @@ pub struct IncompleteConfig {
 
     pub turn: Option<TurnConfig>,
 
+    #[serde(default)]
+    pub media: IncompleteMediaConfig,
+
     pub emergency_password: Option<String>,
 
     #[serde(flatten)]
@@ -124,6 +128,8 @@ pub struct Config {
     pub log: String,
 
     pub turn: Option<TurnConfig>,
+
+    pub media: MediaConfig,
 
     pub emergency_password: Option<String>,
 
@@ -170,6 +176,7 @@ impl From<IncompleteConfig> for Config {
             turn_secret,
             turn_ttl,
             turn,
+            media,
             emergency_password,
             catchall,
         } = val;
@@ -210,6 +217,21 @@ impl From<IncompleteConfig> for Config {
             server: well_known_server,
         };
 
+        let media = match media {
+            IncompleteMediaConfig::FileSystem { path } => MediaConfig::FileSystem {
+                path: path.unwrap_or_else(|| {
+                    // We do this as we don't know if the path has a trailing slash, or even if the
+                    // path separator is a forward or backward slash
+                    [&database_path, "media"]
+                        .iter()
+                        .collect::<PathBuf>()
+                        .into_os_string()
+                        .into_string()
+                        .expect("Both inputs are valid UTF-8")
+                }),
+            },
+        };
+
         Config {
             address,
             port,
@@ -243,6 +265,7 @@ impl From<IncompleteConfig> for Config {
             trusted_servers,
             log,
             turn,
+            media,
             emergency_password,
             catchall,
         }
@@ -284,6 +307,23 @@ pub struct WellKnownConfig {
     // URL, just for it to be converted back into a &str
     pub client: String,
     pub server: OwnedServerName,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(tag = "backend", rename_all = "lowercase")]
+pub enum IncompleteMediaConfig {
+    FileSystem { path: Option<String> },
+}
+
+impl Default for IncompleteMediaConfig {
+    fn default() -> Self {
+        Self::FileSystem { path: None }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum MediaConfig {
+    FileSystem { path: String },
 }
 
 const DEPRECATED_KEYS: &[&str] = &[
