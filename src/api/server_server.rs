@@ -2215,7 +2215,7 @@ pub async fn create_invite_route(
     })
 }
 
-/// # `GET /_matrix/federation/v1/media/download/{serverName}/{mediaId}`
+/// # `GET /_matrix/federation/v1/media/download/{mediaId}`
 ///
 /// Load media from our server.
 pub async fn get_content_route(
@@ -2246,7 +2246,7 @@ pub async fn get_content_route(
     }
 }
 
-/// # `GET /_matrix/federation/v1/media/thumbnail/{serverName}/{mediaId}`
+/// # `GET /_matrix/federation/v1/media/thumbnail/{mediaId}`
 ///
 /// Load media thumbnail from our server or over federation.
 pub async fn get_content_thumbnail_route(
