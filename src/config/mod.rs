@@ -13,8 +13,8 @@ mod proxy;
 
 use self::proxy::ProxyConfig;
 
-#[derive(Clone, Debug, Deserialize)]
-pub struct Config {
+#[derive(Deserialize)]
+pub struct IncompleteConfig {
     #[serde(default = "default_address")]
     pub address: IpAddr,
     #[serde(default = "default_port")]
@@ -60,7 +60,7 @@ pub struct Config {
     #[serde(default = "default_default_room_version")]
     pub default_room_version: RoomVersionId,
     #[serde(default)]
-    pub well_known: WellKnownConfig,
+    pub well_known: IncompleteWellKnownConfig,
     #[serde(default = "false_fn")]
     pub allow_jaeger: bool,
     #[serde(default = "false_fn")]
@@ -87,6 +87,168 @@ pub struct Config {
     pub catchall: BTreeMap<String, IgnoredAny>,
 }
 
+#[derive(Deserialize, Clone, Debug)]
+#[serde(from = "IncompleteConfig")]
+pub struct Config {
+    pub address: IpAddr,
+    pub port: u16,
+    pub tls: Option<TlsConfig>,
+
+    pub server_name: OwnedServerName,
+    pub database_backend: String,
+    pub database_path: String,
+    pub db_cache_capacity_mb: f64,
+    pub enable_lightning_bolt: bool,
+    pub allow_check_for_updates: bool,
+    pub conduit_cache_capacity_modifier: f64,
+    pub rocksdb_max_open_files: i32,
+    pub pdu_cache_capacity: u32,
+    pub cleanup_second_interval: u32,
+    pub max_request_size: u32,
+    pub max_concurrent_requests: u16,
+    pub max_fetch_prev_events: u16,
+    pub allow_registration: bool,
+    pub registration_token: Option<String>,
+    pub openid_token_ttl: u64,
+    pub allow_encryption: bool,
+    pub allow_federation: bool,
+    pub allow_room_creation: bool,
+    pub allow_unstable_room_versions: bool,
+    pub default_room_version: RoomVersionId,
+    pub well_known: WellKnownConfig,
+    pub allow_jaeger: bool,
+    pub tracing_flame: bool,
+    pub proxy: ProxyConfig,
+    pub jwt_secret: Option<String>,
+    pub trusted_servers: Vec<OwnedServerName>,
+    pub log: String,
+
+    pub turn: Option<TurnConfig>,
+
+    pub emergency_password: Option<String>,
+
+    pub catchall: BTreeMap<String, IgnoredAny>,
+}
+
+impl From<IncompleteConfig> for Config {
+    fn from(val: IncompleteConfig) -> Self {
+        let IncompleteConfig {
+            address,
+            port,
+            tls,
+            server_name,
+            database_backend,
+            database_path,
+            db_cache_capacity_mb,
+            enable_lightning_bolt,
+            allow_check_for_updates,
+            conduit_cache_capacity_modifier,
+            rocksdb_max_open_files,
+            pdu_cache_capacity,
+            cleanup_second_interval,
+            max_request_size,
+            max_concurrent_requests,
+            max_fetch_prev_events,
+            allow_registration,
+            registration_token,
+            openid_token_ttl,
+            allow_encryption,
+            allow_federation,
+            allow_room_creation,
+            allow_unstable_room_versions,
+            default_room_version,
+            well_known,
+            allow_jaeger,
+            tracing_flame,
+            proxy,
+            jwt_secret,
+            trusted_servers,
+            log,
+            turn_username,
+            turn_password,
+            turn_uris,
+            turn_secret,
+            turn_ttl,
+            turn,
+            emergency_password,
+            catchall,
+        } = val;
+
+        let turn = turn.or_else(|| {
+            let auth = if let Some(secret) = turn_secret {
+                TurnAuth::Secret { secret }
+            } else if let (Some(username), Some(password)) = (turn_username, turn_password) {
+                TurnAuth::UserPass { username, password }
+            } else {
+                return None;
+            };
+
+            if let (Some(uris), ttl) = (turn_uris, turn_ttl) {
+                Some(TurnConfig { uris, ttl, auth })
+            } else {
+                None
+            }
+        });
+
+        let well_known_client = well_known
+            .client
+            .map(String::from)
+            .unwrap_or_else(|| format!("https://{server_name}"));
+
+        let well_known_server = well_known.server.unwrap_or_else(|| {
+            if server_name.port().is_some() {
+                server_name.clone()
+            } else {
+                format!("{}:443", server_name.host())
+                    .try_into()
+                    .expect("Host from valid hostname + :443 must be valid")
+            }
+        });
+
+        let well_known = WellKnownConfig {
+            client: well_known_client,
+            server: well_known_server,
+        };
+
+        Config {
+            address,
+            port,
+            tls,
+            server_name,
+            database_backend,
+            database_path,
+            db_cache_capacity_mb,
+            enable_lightning_bolt,
+            allow_check_for_updates,
+            conduit_cache_capacity_modifier,
+            rocksdb_max_open_files,
+            pdu_cache_capacity,
+            cleanup_second_interval,
+            max_request_size,
+            max_concurrent_requests,
+            max_fetch_prev_events,
+            allow_registration,
+            registration_token,
+            openid_token_ttl,
+            allow_encryption,
+            allow_federation,
+            allow_room_creation,
+            allow_unstable_room_versions,
+            default_room_version,
+            well_known,
+            allow_jaeger,
+            tracing_flame,
+            proxy,
+            jwt_secret,
+            trusted_servers,
+            log,
+            turn,
+            emergency_password,
+            catchall,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Deserialize)]
 pub struct TlsConfig {
     pub certs: String,
@@ -110,9 +272,18 @@ pub enum TurnAuth {
 }
 
 #[derive(Clone, Debug, Deserialize, Default)]
-pub struct WellKnownConfig {
+pub struct IncompleteWellKnownConfig {
+    // We use URL here so that the user gets an error if the config isn't a valid url
     pub client: Option<Url>,
     pub server: Option<OwnedServerName>,
+}
+
+#[derive(Clone, Debug)]
+pub struct WellKnownConfig {
+    // We use String here as there is no point converting our manually constructed String into a
+    // URL, just for it to be converted back into a &str
+    pub client: String,
+    pub server: OwnedServerName,
 }
 
 const DEPRECATED_KEYS: &[&str] = &[
@@ -142,61 +313,9 @@ impl Config {
     }
 }
 
-impl Config {
-    pub fn well_known_client(&self) -> String {
-        if let Some(url) = &self.well_known.client {
-            url.to_string()
-        } else {
-            format!("https://{}", self.server_name)
-        }
-    }
-
-    pub fn well_known_server(&self) -> OwnedServerName {
-        match &self.well_known.server {
-            Some(server_name) => server_name.to_owned(),
-            None => {
-                if self.server_name.port().is_some() {
-                    self.server_name.to_owned()
-                } else {
-                    format!("{}:443", self.server_name.host())
-                        .try_into()
-                        .expect("Host from valid hostname + :443 must be valid")
-                }
-            }
-        }
-    }
-
-    pub fn turn(&self) -> Option<TurnConfig> {
-        if self.turn.is_some() {
-            self.turn.clone()
-        } else if let Some(uris) = self.turn_uris.clone() {
-            if let Some(secret) = self.turn_secret.clone() {
-                Some(TurnConfig {
-                    uris,
-                    ttl: self.turn_ttl,
-                    auth: TurnAuth::Secret { secret },
-                })
-            } else if let (Some(username), Some(password)) =
-                (self.turn_username.clone(), self.turn_password.clone())
-            {
-                Some(TurnConfig {
-                    uris,
-                    ttl: self.turn_ttl,
-                    auth: TurnAuth::UserPass { username, password },
-                })
-            } else {
-                None
-            }
-        } else {
-            None
-        }
-    }
-}
-
 impl fmt::Display for Config {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Prepare a list of config values to show
-        let well_known_server = self.well_known_server();
         let lines = [
             ("Server name", self.server_name.host()),
             ("Database backend", &self.database_backend),
@@ -247,7 +366,7 @@ impl fmt::Display for Config {
                 &lst.join(", ")
             }),
             ("TURN URIs", {
-                if let Some(turn) = self.turn() {
+                if let Some(turn) = &self.turn {
                     let mut lst = vec![];
                     for item in turn.uris.iter().cloned().enumerate() {
                         let (_, uri): (usize, String) = item;
@@ -258,8 +377,8 @@ impl fmt::Display for Config {
                     "unset"
                 }
             }),
-            ("Well-known server name", well_known_server.as_str()),
-            ("Well-known client URL", &self.well_known_client()),
+            ("Well-known server name", self.well_known.server.as_str()),
+            ("Well-known client URL", &self.well_known.client),
         ];
 
         let mut msg: String = "Active config values:\n\n".to_owned();

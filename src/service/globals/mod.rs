@@ -349,7 +349,18 @@ impl Service {
     }
 
     pub fn turn(&self) -> Option<TurnConfig> {
-        self.config.turn()
+        // We have to clone basically the entire thing on `/turnServers` otherwise
+        self.config.turn.clone()
+    }
+
+    pub fn well_known_server(&self) -> OwnedServerName {
+        // Same as above, but for /.well-known/matrix/server
+        self.config.well_known.server.clone()
+    }
+
+    pub fn well_known_client(&self) -> String {
+        // Same as above, but for /.well-known/matrix/client
+        self.config.well_known.client.clone()
     }
 
     pub fn dns_resolver(&self) -> &TokioAsyncResolver {
@@ -479,14 +490,6 @@ impl Service {
         r.push("media");
         r.push(general_purpose::URL_SAFE_NO_PAD.encode(key));
         r
-    }
-
-    pub fn well_known_server(&self) -> OwnedServerName {
-        self.config.well_known_server()
-    }
-
-    pub fn well_known_client(&self) -> String {
-        self.config.well_known_client()
     }
 
     pub fn shutdown(&self) {
