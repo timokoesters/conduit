@@ -87,13 +87,22 @@ impl Service {
     }
 
     /// Fetches a local file and it's metadata
-    pub async fn get(&self, servername: &ServerName, media_id: &str) -> Result<Option<FileMeta>> {
+    pub async fn get(
+        &self,
+        servername: &ServerName,
+        media_id: &str,
+        authenticated: bool,
+    ) -> Result<Option<FileMeta>> {
         let DbFileMeta {
             sha256_digest,
             filename,
             content_type,
-            unauthenticated_access_permitted: _,
+            unauthenticated_access_permitted,
         } = self.db.search_file_metadata(servername, media_id)?;
+
+        if !(authenticated || unauthenticated_access_permitted) {
+            return Ok(None);
+        }
 
         let file = get_file(&hex::encode(sha256_digest)).await?;
 
@@ -133,17 +142,22 @@ impl Service {
         media_id: &str,
         width: u32,
         height: u32,
+        authenticated: bool,
     ) -> Result<Option<FileMeta>> {
         if let Some((width, height, crop)) = self.thumbnail_properties(width, height) {
             if let Ok(DbFileMeta {
                 sha256_digest,
                 filename,
                 content_type,
-                unauthenticated_access_permitted: _,
+                unauthenticated_access_permitted,
             }) = self
                 .db
                 .search_thumbnail_metadata(servername, media_id, width, height)
             {
+                if !(authenticated || unauthenticated_access_permitted) {
+                    return Ok(None);
+                }
+
                 // Using saved thumbnail
                 let file = get_file(&hex::encode(sha256_digest)).await?;
 
@@ -152,13 +166,19 @@ impl Service {
                     content_type,
                     file,
                 }))
+            } else if !authenticated {
+                return Ok(None);
             } else if let Ok(DbFileMeta {
                 sha256_digest,
                 filename,
                 content_type,
-                unauthenticated_access_permitted: _,
+                unauthenticated_access_permitted,
             }) = self.db.search_file_metadata(servername, media_id)
             {
+                if !(authenticated || unauthenticated_access_permitted) {
+                    return Ok(None);
+                }
+
                 let content_disposition = content_disposition(filename.clone(), &content_type);
                 // Generate a thumbnail
                 let file = get_file(&hex::encode(sha256_digest)).await?;
@@ -252,11 +272,15 @@ impl Service {
                 sha256_digest,
                 filename,
                 content_type,
-                unauthenticated_access_permitted: _,
+                unauthenticated_access_permitted,
             }) = self.db.search_file_metadata(servername, media_id)
             else {
                 return Ok(None);
             };
+
+            if !(authenticated || unauthenticated_access_permitted) {
+                return Ok(None);
+            }
 
             let file = get_file(&hex::encode(sha256_digest)).await?;
 

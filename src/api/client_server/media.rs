@@ -166,7 +166,13 @@ pub async fn get_content_route(
         file,
         content_disposition,
         content_type,
-    } = get_content(&body.server_name, body.media_id.clone(), body.allow_remote).await?;
+    } = get_content(
+        &body.server_name,
+        body.media_id.clone(),
+        body.allow_remote,
+        false,
+    )
+    .await?;
 
     Ok(media::get_content::v3::Response {
         file,
@@ -182,19 +188,23 @@ pub async fn get_content_route(
 pub async fn get_content_auth_route(
     body: Ruma<get_content::v1::Request>,
 ) -> Result<get_content::v1::Response> {
-    get_content(&body.server_name, body.media_id.clone(), true).await
+    get_content(&body.server_name, body.media_id.clone(), true, true).await
 }
 
 async fn get_content(
     server_name: &ServerName,
     media_id: String,
     allow_remote: bool,
+    authenticated: bool,
 ) -> Result<get_content::v1::Response, Error> {
     if let Ok(Some(FileMeta {
         content_disposition,
         content_type,
         file,
-    })) = services().media.get(server_name, &media_id).await
+    })) = services()
+        .media
+        .get(server_name, &media_id, authenticated)
+        .await
     {
         Ok(get_content::v1::Response {
             file,
@@ -231,6 +241,7 @@ pub async fn get_content_as_filename_route(
         body.media_id.clone(),
         body.filename.clone(),
         body.allow_remote,
+        false,
     )
     .await?;
 
@@ -253,6 +264,7 @@ pub async fn get_content_as_filename_auth_route(
         body.media_id.clone(),
         body.filename.clone(),
         true,
+        true,
     )
     .await
 }
@@ -262,10 +274,14 @@ async fn get_content_as_filename(
     media_id: String,
     filename: String,
     allow_remote: bool,
+    authenticated: bool,
 ) -> Result<get_content_as_filename::v1::Response, Error> {
     if let Ok(Some(FileMeta {
         file, content_type, ..
-    })) = services().media.get(server_name, &media_id).await
+    })) = services()
+        .media
+        .get(server_name, &media_id, authenticated)
+        .await
     {
         Ok(get_content_as_filename::v1::Response {
             file,
@@ -311,6 +327,7 @@ pub async fn get_content_thumbnail_route(
         body.method.clone(),
         body.animated,
         body.allow_remote,
+        false,
     )
     .await?;
 
@@ -336,10 +353,12 @@ pub async fn get_content_thumbnail_auth_route(
         body.method.clone(),
         body.animated,
         true,
+        true,
     )
     .await
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn get_content_thumbnail(
     server_name: &ServerName,
     media_id: String,
@@ -348,6 +367,7 @@ async fn get_content_thumbnail(
     method: Option<Method>,
     animated: Option<bool>,
     allow_remote: bool,
+    authenticated: bool,
 ) -> Result<get_content_thumbnail::v1::Response, Error> {
     if let Some(FileMeta {
         file,
@@ -364,6 +384,7 @@ async fn get_content_thumbnail(
             height
                 .try_into()
                 .map_err(|_| Error::BadRequest(ErrorKind::InvalidParam, "Height is invalid."))?,
+            authenticated,
         )
         .await?
     {
@@ -372,7 +393,7 @@ async fn get_content_thumbnail(
             content_type,
             content_disposition: Some(content_disposition),
         })
-    } else if server_name != services().globals.server_name() && allow_remote {
+    } else if server_name != services().globals.server_name() && allow_remote && authenticated {
         let thumbnail_response = match services()
             .sending
             .send_federation_request(

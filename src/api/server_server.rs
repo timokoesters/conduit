@@ -2227,7 +2227,7 @@ pub async fn get_content_route(
         file,
     }) = services()
         .media
-        .get(services().globals.server_name(), &body.media_id)
+        .get(services().globals.server_name(), &body.media_id, true)
         .await?
     {
         Ok(get_content::v1::Response::new(
@@ -2264,6 +2264,7 @@ pub async fn get_content_thumbnail_route(
             body.height
                 .try_into()
                 .map_err(|_| Error::BadRequest(ErrorKind::InvalidParam, "Width is invalid."))?,
+            true,
         )
         .await?
     else {
