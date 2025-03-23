@@ -8,7 +8,7 @@ use ruma::{
 use crate::api::server_server::DestinationResponse;
 
 use crate::{
-    config::{MediaConfig, TurnConfig},
+    config::{DirectoryStructure, MediaConfig, TurnConfig},
     services, Config, Error, Result,
 };
 use futures_util::FutureExt;
@@ -230,7 +230,7 @@ impl Service {
 
         // Remove this exception once other media backends are added
         #[allow(irrefutable_let_patterns)]
-        if let MediaConfig::FileSystem { path } = &s.config.media {
+        if let MediaConfig::FileSystem { path, .. } = &s.config.media {
             fs::create_dir_all(path)?;
         }
 
@@ -482,14 +482,32 @@ impl Service {
         self.db.bump_database_version(new_version)
     }
 
-    pub fn get_media_path(&self, media_directory: &str, sha256_hex: &str) -> PathBuf {
+    pub fn get_media_path(
+        &self,
+        media_directory: &str,
+        directory_structure: &DirectoryStructure,
+        sha256_hex: &str,
+    ) -> Result<PathBuf> {
         let mut r = PathBuf::new();
         r.push(media_directory);
 
-        //TODO: Directory distribution
-        r.push(sha256_hex);
+        if let DirectoryStructure::Deep { length, depth } = directory_structure {
+            let mut filename = sha256_hex;
+            for _ in 0..depth.get() {
+                let (current_path, next) = filename.split_at(length.get().into());
+                filename = next;
+                r.push(current_path);
+            }
 
-        r
+            // Create all directories leading up to file
+            fs::create_dir_all(&r).inspect_err(|e| error!("Error creating leading directories for media with sha256 hash of {sha256_hex}: {e}"))?;
+
+            r.push(filename);
+        } else {
+            r.push(sha256_hex);
+        }
+
+        Ok(r)
     }
 
     pub fn shutdown(&self) {

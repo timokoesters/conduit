@@ -298,8 +298,13 @@ impl Service {
 /// Note: this function does NOT set the metadata related to the file
 pub async fn create_file(sha256_hex: &str, file: &[u8]) -> Result<()> {
     match &services().globals.config.media {
-        MediaConfig::FileSystem { path } => {
-            let path = services().globals.get_media_path(path, sha256_hex);
+        MediaConfig::FileSystem {
+            path,
+            directory_structure,
+        } => {
+            let path = services()
+                .globals
+                .get_media_path(path, directory_structure, sha256_hex)?;
 
             let mut f = File::create(path).await?;
             f.write_all(file).await?;
@@ -312,8 +317,13 @@ pub async fn create_file(sha256_hex: &str, file: &[u8]) -> Result<()> {
 /// Fetches the file from the configured media backend
 async fn get_file(sha256_hex: &str) -> Result<Vec<u8>> {
     Ok(match &services().globals.config.media {
-        MediaConfig::FileSystem { path } => {
-            let path = services().globals.get_media_path(path, sha256_hex);
+        MediaConfig::FileSystem {
+            path,
+            directory_structure,
+        } => {
+            let path = services()
+                .globals
+                .get_media_path(path, directory_structure, sha256_hex)?;
 
             let mut file = Vec::new();
             File::open(path).await?.read_to_end(&mut file).await?;

@@ -2,6 +2,7 @@ use std::{
     collections::BTreeMap,
     fmt,
     net::{IpAddr, Ipv4Addr},
+    num::NonZeroU8,
     path::PathBuf,
 };
 
@@ -10,9 +11,12 @@ use serde::{de::IgnoredAny, Deserialize};
 use tracing::warn;
 use url::Url;
 
-mod proxy;
+use crate::Error;
 
+mod proxy;
 use self::proxy::ProxyConfig;
+
+const SHA256_HEX_LENGTH: u8 = 64;
 
 #[derive(Deserialize)]
 pub struct IncompleteConfig {
@@ -218,7 +222,10 @@ impl From<IncompleteConfig> for Config {
         };
 
         let media = match media {
-            IncompleteMediaConfig::FileSystem { path } => MediaConfig::FileSystem {
+            IncompleteMediaConfig::FileSystem {
+                path,
+                directory_structure,
+            } => MediaConfig::FileSystem {
                 path: path.unwrap_or_else(|| {
                     // We do this as we don't know if the path has a trailing slash, or even if the
                     // path separator is a forward or backward slash
@@ -229,6 +236,7 @@ impl From<IncompleteConfig> for Config {
                         .into_string()
                         .expect("Both inputs are valid UTF-8")
                 }),
+                directory_structure,
             },
         };
 
@@ -309,21 +317,85 @@ pub struct WellKnownConfig {
     pub server: OwnedServerName,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Deserialize)]
 #[serde(tag = "backend", rename_all = "lowercase")]
 pub enum IncompleteMediaConfig {
-    FileSystem { path: Option<String> },
+    FileSystem {
+        path: Option<String>,
+        #[serde(default)]
+        directory_structure: DirectoryStructure,
+    },
 }
 
 impl Default for IncompleteMediaConfig {
     fn default() -> Self {
-        Self::FileSystem { path: None }
+        Self::FileSystem {
+            path: None,
+            directory_structure: DirectoryStructure::default(),
+        }
     }
 }
 
 #[derive(Debug, Clone)]
 pub enum MediaConfig {
-    FileSystem { path: String },
+    FileSystem {
+        path: String,
+        directory_structure: DirectoryStructure,
+    },
+}
+
+#[derive(Debug, Clone, Deserialize)]
+// See https://github.com/serde-rs/serde/issues/642#issuecomment-525432907
+#[serde(try_from = "ShadowDirectoryStructure", untagged)]
+pub enum DirectoryStructure {
+    // We do this enum instead of Option<DirectoryStructure>, so that we can have the structure be
+    // deep by default, while still providing a away for it to be flat (by creating an empty table)
+    //
+    // e.g.:
+    // ```toml
+    // [global.media.directory_structure]
+    // ```
+    Flat,
+    Deep { length: NonZeroU8, depth: NonZeroU8 },
+}
+
+impl Default for DirectoryStructure {
+    fn default() -> Self {
+        Self::Deep {
+            length: NonZeroU8::new(2).expect("2 is not 0"),
+            depth: NonZeroU8::new(2).expect("2 is not 0"),
+        }
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum ShadowDirectoryStructure {
+    Flat {},
+    Deep { length: NonZeroU8, depth: NonZeroU8 },
+}
+
+impl TryFrom<ShadowDirectoryStructure> for DirectoryStructure {
+    type Error = Error;
+
+    fn try_from(value: ShadowDirectoryStructure) -> Result<Self, Self::Error> {
+        match value {
+            ShadowDirectoryStructure::Flat {} => Ok(Self::Flat),
+            ShadowDirectoryStructure::Deep { length, depth } => {
+                if length
+                    .get()
+                    .checked_mul(depth.get())
+                    .map(|product| product < SHA256_HEX_LENGTH)
+                    // If an overflow occurs, it definitely isn't less than SHA256_HEX_LENGTH
+                    .unwrap_or(false)
+                {
+                    Ok(Self::Deep { length, depth })
+                } else {
+                    Err(Error::bad_config("The media directory structure depth multiplied by the depth is equal to or greater than a sha256 hex hash, please reduce at least one of the two so that their product is less than 64"))
+                }
+            }
+        }
+    }
 }
 
 const DEPRECATED_KEYS: &[&str] = &[

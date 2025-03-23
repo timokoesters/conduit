@@ -64,7 +64,7 @@ The `global` section contains the following fields:
 ### Media
 The `media` table is used to configure how media is stored and where. Currently, there is only one available
 backend, that being `filesystem`. The backend can be set using the `backend` field. Example:
-```
+```toml
 [global.media]
 backend = "filesystem" # the default backend
 ```
@@ -73,12 +73,30 @@ backend = "filesystem" # the default backend
 The filesystem backend has the following fields:
 - `path`: The base directory where all the media files will be stored (defaults to
   `${database_path}/media`)
+- `directory_structure`: This is a table, used to configure how files are to be distributed within
+  the media directory. It has the following fields:
+  - `depth`: The number sub-directories that should be created for files (default: `2`)
+  - `length`: How long the name of these sub-directories should be (default: `2`)
+  For example, a file may regularly have the name `98ea6e4f216f2fb4b69fff9b3a44842c38686ca685f3f55dc48c5d3fb1107be4`
+  (The SHA256 digest of the file's content). If `depth` and `length` were both set to `2`, this file would be stored
+  at `${path}/98/ea/6e4f216f2fb4b69fff9b3a44842c38686ca685f3f55dc48c5d3fb1107be4`. If you want to instead have all
+  media files in the base directory with no sub-directories, just set `directory_structure` to be empty, as follows:
+  ```toml
+  [global.media]
+  backend = "filesystem"
+
+  [global.media.directory_structure]
+  ```
 
 ##### Example:
-```
+```toml
 [global.media]
 backend = "filesystem"
 path = "/srv/matrix-media"
+
+[global.media.directory_structure]
+depth = 4
+length = 2
 ```
 
 ### TLS
