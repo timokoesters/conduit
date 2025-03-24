@@ -69,7 +69,7 @@ impl Service {
     ///     trust a set of state we got from a remote)
     /// 13. Use state resolution to find new room state
     /// 14. Check if the event passes auth based on the "current state" of the room, if not soft fail it
-    // We use some AsyncRecursiveType hacks here so we can call this async funtion recursively
+    // We use some AsyncRecursiveType hacks here so we can call this async function recursively
     #[tracing::instrument(skip(self, value, is_timeline_event, pub_key_map))]
     pub(crate) async fn handle_incoming_pdu<'a>(
         &self,
@@ -1786,7 +1786,7 @@ impl Service {
             .expect("Should be valid until year 500,000,000");
 
             debug!(
-                "The treshhold is {:?}, found time is {:?} for server {}",
+                "The threshold is {:?}, found time is {:?} for server {}",
                 ts_threshold, result.valid_until_ts, origin
             );
 

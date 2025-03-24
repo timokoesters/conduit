@@ -723,7 +723,7 @@ impl Service {
 
                     let mut user_ids = Vec::new();
                     let mut remote_ids = Vec::new();
-                    let mut non_existant_ids = Vec::new();
+                    let mut non_existent_ids = Vec::new();
                     let mut invalid_users = Vec::new();
 
                     for &user in &users {
@@ -732,7 +732,7 @@ impl Service {
                                 if user_id.server_name() != services().globals.server_name() {
                                     remote_ids.push(user_id)
                                 } else if !services().users.exists(user_id)? {
-                                    non_existant_ids.push(user_id)
+                                    non_existent_ids.push(user_id)
                                 } else {
                                     user_ids.push(user_id)
                                 }
@@ -767,12 +767,12 @@ impl Service {
                         markdown_message.push_str("```\n\n");
                         html_message.push_str("</pre>\n\n");
                     }
-                    if !non_existant_ids.is_empty() {
+                    if !non_existent_ids.is_empty() {
                         markdown_message.push_str("The following users do not exist:\n```\n");
                         html_message.push_str("The following users do not exist:\n<pre>\n");
-                        for non_existant_id in non_existant_ids {
-                            markdown_message.push_str(&format!("{non_existant_id}\n"));
-                            html_message.push_str(&format!("{non_existant_id}\n"));
+                        for non_existent_id in non_existent_ids {
+                            markdown_message.push_str(&format!("{non_existent_id}\n"));
+                            html_message.push_str(&format!("{non_existent_id}\n"));
                         }
                         markdown_message.push_str("```\n\n");
                         html_message.push_str("</pre>\n\n");
@@ -962,7 +962,7 @@ impl Service {
                         .rooms
                         .alias
                         .remove_alias(&alias, services().globals.server_user())?;
-                    RoomMessageEventContent::text_plain("Alias removed sucessfully")
+                    RoomMessageEventContent::text_plain("Alias removed successfully")
                 }
             }
         };

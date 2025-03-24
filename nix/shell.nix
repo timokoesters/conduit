@@ -12,6 +12,7 @@
 , system
 , taplo
 , toolchain
+, typos
 }:
 
 mkShell {
@@ -54,6 +55,9 @@ mkShell {
 
     # Needed for finding broken markdown links
     lychee
+
+    # Needed for checking for typos
+    typos
 
     # Useful for editing the book locally
     mdbook

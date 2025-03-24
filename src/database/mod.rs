@@ -111,7 +111,7 @@ pub struct KeyValueDatabase {
     pub(super) lazyloadedids: Arc<dyn KvTree>, // LazyLoadedIds = UserId + DeviceId + RoomId + LazyLoadedUserId
 
     pub(super) userroomid_notificationcount: Arc<dyn KvTree>, // NotifyCount = u64
-    pub(super) userroomid_highlightcount: Arc<dyn KvTree>,    // HightlightCount = u64
+    pub(super) userroomid_highlightcount: Arc<dyn KvTree>,    // HighlightCount = u64
     pub(super) roomuserid_lastnotificationread: Arc<dyn KvTree>, // LastNotificationRead = u64
 
     /// Remember the current state hash of a room.

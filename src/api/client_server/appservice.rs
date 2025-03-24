@@ -64,7 +64,7 @@ pub async fn ping_appservice_route(
                 }
                 Error::BadServerResponse(_) => Error::BadRequest(
                     ErrorKind::ConnectionFailed,
-                    "Recieved invalid response from appservice",
+                    "Received invalid response from appservice",
                 ),
                 e => e,
             })

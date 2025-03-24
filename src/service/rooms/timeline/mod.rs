@@ -463,7 +463,7 @@ impl Service {
                     // Here we don't attempt to join if the previous membership was knock and the
                     // new one is join, like we do for `/federation/*/invite`, as not only are there
                     // implementation difficulties due to callers not implementing `Send`, but
-                    // invites we recieve which aren't over `/invite` must have been due to a
+                    // invites we receive which aren't over `/invite` must have been due to a
                     // database reset or switching server implementations, which means we probably
                     // shouldn't be joining automatically anyways, since it may surprise users to
                     // suddenly join rooms which clients didn't even show as being knocked on before.

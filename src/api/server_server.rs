@@ -507,7 +507,7 @@ async fn find_actual_destination(
                             }
                         }
                         None => {
-                            debug!("4: No .well-known or an error occured");
+                            debug!("4: No .well-known or an error occurred");
                             let (dest, expires) = get_srv_destination(destination_str).await;
                             let well_known_retry = Instant::now()
                                 + Duration::from_secs((60 * next_backoff_mins).into());

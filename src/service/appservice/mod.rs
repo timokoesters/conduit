@@ -36,7 +36,7 @@ impl NamespaceRegex {
         false
     }
 
-    /// Checks if this namespace has exlusive rights to a namespace
+    /// Checks if this namespace has exclusive rights to a namespace
     pub fn is_exclusive_match(&self, heystack: &str) -> bool {
         if let Some(exclusive) = &self.exclusive {
             if exclusive.is_match(heystack) {

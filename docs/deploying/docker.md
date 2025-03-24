@@ -184,7 +184,7 @@ These same values need to be set in conduit. You can either modify conduit.toml 
 turn_uris = ["turn:<your server domain>?transport=udp", "turn:<your server domain>?transport=tcp"]
 turn_secret = "<secret key from coturn configuration>"
 ```
-or append the following to the docker environment variables dependig on which configuration method you used earlier:
+or append the following to the docker environment variables depending on which configuration method you used earlier:
 ```yml
 CONDUIT_TURN_URIS: '["turn:<your server domain>?transport=udp", "turn:<your server domain>?transport=tcp"]'
 CONDUIT_TURN_SECRET: "<secret key from coturn configuration>"

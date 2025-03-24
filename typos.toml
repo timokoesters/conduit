@@ -1,0 +1,4 @@
+[files]
+# From my understanding, they are automatically generated
+# Plus, systest hasn't been used in who knows how long
+extend-exclude = ["tests/**"]
