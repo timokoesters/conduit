@@ -39,7 +39,7 @@ pub struct Service;
 
 impl Service {
     /// Attempts to join a room.
-    /// If the room cannot be joined locally, it attempts to join over federation, soley using the
+    /// If the room cannot be joined locally, it attempts to join over federation, solely using the
     /// specified servers
     #[tracing::instrument(skip(self, reason, servers, _third_party_signed))]
     pub async fn join_room_by_id(

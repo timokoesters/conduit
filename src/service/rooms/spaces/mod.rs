@@ -227,7 +227,7 @@ impl Service {
             .as_ref()
         {
             return Ok(if let Some(cached) = cached {
-                if is_accessable_child(
+                if is_accessible_child(
                     current_room,
                     &cached.summary.join_rule,
                     &identifier,
@@ -338,7 +338,7 @@ impl Service {
                         );
                     }
                 }
-                if is_accessable_child(
+                if is_accessible_child(
                     current_room,
                     &response.room.join_rule,
                     &Identifier::UserId(user_id),
@@ -408,7 +408,7 @@ impl Service {
             .state_accessor
             .allowed_room_ids(join_rule.clone());
 
-        if !is_accessable_child(
+        if !is_accessible_child(
             current_room,
             &join_rule.clone().into(),
             &identifier,
@@ -678,8 +678,8 @@ async fn get_stripped_space_child_events(
     }
 }
 
-/// With the given identifier, checks if a room is accessable
-fn is_accessable_child(
+/// With the given identifier, checks if a room is accessible
+fn is_accessible_child(
     current_room: &OwnedRoomId,
     join_rule: &SpaceRoomJoinRule,
     identifier: &Identifier<'_>,

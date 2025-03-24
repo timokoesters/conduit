@@ -305,7 +305,7 @@ impl Service {
         self.config.max_fetch_prev_events
     }
 
-    /// Allows for the temporary (non-persistant) toggling of registration
+    /// Allows for the temporary (non-persistent) toggling of registration
     pub async fn set_registration(&self, status: bool) {
         let mut lock = self.allow_registration.write().await;
         *lock = status;
@@ -404,7 +404,7 @@ impl Service {
     }
 
     /// Filters the key map of multiple servers down to keys that should be accepted given the expiry time,
-    /// room version, and timestamp of the paramters
+    /// room version, and timestamp of the parameters
     pub fn filter_keys_server_map(
         &self,
         keys: BTreeMap<String, SigningKeys>,
@@ -420,7 +420,7 @@ impl Service {
     }
 
     /// Filters the keys of a single server down to keys that should be accepted given the expiry time,
-    /// room version, and timestamp of the paramters
+    /// room version, and timestamp of the parameters
     pub fn filter_keys_single_server(
         &self,
         keys: SigningKeys,

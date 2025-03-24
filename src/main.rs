@@ -126,7 +126,7 @@ async fn main() {
         let filter_layer = match EnvFilter::try_new(&config.log) {
             Ok(s) => s,
             Err(e) => {
-                eprintln!("It looks like your config is invalid. The following error occured while parsing it: {e}");
+                eprintln!("It looks like your config is invalid. The following error occurred while parsing it: {e}");
                 EnvFilter::try_new("warn").unwrap()
             }
         };

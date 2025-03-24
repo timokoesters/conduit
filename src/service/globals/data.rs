@@ -80,14 +80,14 @@ pub trait Data: Send + Sync {
     fn load_keypair(&self) -> Result<Ed25519KeyPair>;
     fn remove_keypair(&self) -> Result<()>;
     /// Only extends the cached keys, not moving any verify_keys to old_verify_keys, as if we suddenly
-    /// recieve requests from the origin server, we want to be able to accept requests from them
+    /// receive requests from the origin server, we want to be able to accept requests from them
     fn add_signing_key_from_trusted_server(
         &self,
         origin: &ServerName,
         new_keys: ServerSigningKeys,
     ) -> Result<SigningKeys>;
     /// Extends cached keys, as well as moving verify_keys that are not present in these new keys to
-    /// old_verify_keys, so that potnetially comprimised keys cannot be used to make requests
+    /// old_verify_keys, so that potnetially compromised keys cannot be used to make requests
     fn add_signing_key_from_origin(
         &self,
         origin: &ServerName,

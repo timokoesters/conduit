@@ -61,7 +61,7 @@ If you have any questions, feel free to
 If you believe you have found a security issue, please send a message to [Timo](https://matrix.to/#/@timo:conduit.rs)
 and/or [Matthias](https://matrix.to/#/@matthias:ahouansou.cz) on Matrix, or send an email to
 [conduit@koesters.xyz](mailto:conduit@koesters.xyz). Please do not disclose details about the issue to anyone else before
-a fix is released publically.
+a fix is released publicly.
 
 #### Thanks to
 

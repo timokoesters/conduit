@@ -537,7 +537,7 @@ impl Service {
                                         (
                                             kind.clone(),
                                             Error::bad_database(
-                                                "[Push] Event in servernamevent_datas not found in db.",
+                                                "[Push] Event in servernamevent_data not found in db.",
                                             ),
                                         )
                                     })?,
@@ -621,7 +621,7 @@ impl Service {
                                         (
                                             OutgoingKind::Normal(server.clone()),
                                             Error::bad_database(
-                                                "[Normal] Event in servernamevent_datas not found in db.",
+                                                "[Normal] Event in servernamevent_data not found in db.",
                                             ),
                                         )
                                     })?,
