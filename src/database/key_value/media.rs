@@ -1,4 +1,4 @@
-use ruma::{api::client::error::ErrorKind, ServerName};
+use ruma::{api::client::error::ErrorKind, ServerName, UserId};
 use sha2::{digest::Output, Sha256};
 use tracing::error;
 
@@ -17,6 +17,7 @@ impl service::media::Data for KeyValueDatabase {
         media_id: &str,
         filename: Option<&str>,
         content_type: Option<&str>,
+        user_id: Option<&UserId>,
     ) -> Result<()> {
         let metadata = FilehashMetadata::new(file_size);
 
@@ -39,7 +40,26 @@ impl service::media::Data for KeyValueDatabase {
         value.push(0xff);
         value.extend_from_slice(content_type.map(|f| f.as_bytes()).unwrap_or_default());
 
-        self.servernamemediaid_metadata.insert(&key, &value)
+        self.servernamemediaid_metadata.insert(&key, &value)?;
+
+        if let Some(user_id) = user_id {
+            let mut key = servername.as_bytes().to_vec();
+            key.push(0xff);
+            key.extend_from_slice(user_id.localpart().as_bytes());
+            key.push(0xff);
+            key.extend_from_slice(media_id.as_bytes());
+
+            self.servername_userlocalpart_mediaid.insert(&key, &[])?;
+
+            let mut key = servername.as_bytes().to_vec();
+            key.push(0xff);
+            key.extend_from_slice(media_id.as_bytes());
+
+            self.servernamemediaid_userlocalpart
+                .insert(&key, user_id.localpart().as_bytes())?;
+        }
+
+        Ok(())
     }
 
     fn search_file_metadata(&self, servername: &ServerName, media_id: &str) -> Result<DbFileMeta> {

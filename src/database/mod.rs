@@ -179,6 +179,8 @@ pub struct KeyValueDatabase {
     pub(super) servernamemediaid_metadata: Arc<dyn KvTree>, // Servername + MediaID -> content sha256 + Filename + ContentType + extra 0xff byte if media is allowed on unauthenticated endpoints
     pub(super) filehash_servername_mediaid: Arc<dyn KvTree>, // sha256 of content + Servername + MediaID, used to delete dangling references to filehashes from servernamemediaid
     pub(super) filehash_metadata: Arc<dyn KvTree>, // sha256 of content -> file size + creation time +  last access time
+    pub(super) servername_userlocalpart_mediaid: Arc<dyn KvTree>, // Servername + User Localpart + MediaID
+    pub(super) servernamemediaid_userlocalpart: Arc<dyn KvTree>, // Servername + MediaID -> User Localpart, used to remove keys from above when files are deleted by unrelated means
     pub(super) thumbnailid_metadata: Arc<dyn KvTree>, // ThumbnailId = Servername + MediaID + width + height -> Filename + ContentType + extra 0xff byte if media is allowed on unauthenticated endpoints
     pub(super) filehash_thumbnailid: Arc<dyn KvTree>, // sha256 of content + "ThumbnailId", as defined above. Used to dangling references to filehashes from thumbnailIds
     //pub key_backups: key_backups::KeyBackups,
@@ -387,6 +389,10 @@ impl KeyValueDatabase {
             servernamemediaid_metadata: builder.open_tree("servernamemediaid_metadata")?,
             filehash_servername_mediaid: builder.open_tree("filehash_servername_mediaid")?,
             filehash_metadata: builder.open_tree("filehash_metadata")?,
+            servername_userlocalpart_mediaid: builder
+                .open_tree("servername_userlocalpart_mediaid")?,
+            servernamemediaid_userlocalpart: builder
+                .open_tree("servernamemediaid_userlocalpart")?,
             thumbnailid_metadata: builder.open_tree("thumbnailid_metadata")?,
             filehash_thumbnailid: builder.open_tree("filehash_thumbnailid")?,
             backupid_algorithm: builder.open_tree("backupid_algorithm")?,

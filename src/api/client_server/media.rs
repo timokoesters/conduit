@@ -71,6 +71,7 @@ pub async fn create_content_route(
             filename.as_deref(),
             content_type.as_deref(),
             &file,
+            body.sender_user.as_deref(),
         )
         .await?;
 
@@ -148,6 +149,7 @@ pub async fn get_remote_content(
                 .and_then(|cd| cd.filename.as_deref()),
             content_response.content_type.as_deref(),
             &content_response.file,
+            None,
         )
         .await?;
 

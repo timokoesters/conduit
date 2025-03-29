@@ -5,7 +5,7 @@ pub use data::Data;
 use ruma::{
     api::client::{error::ErrorKind, media::is_safe_inline_content_type},
     http_headers::{ContentDisposition, ContentDispositionType},
-    ServerName,
+    ServerName, UserId,
 };
 use sha2::{digest::Output, Digest, Sha256};
 
@@ -43,6 +43,7 @@ impl Service {
         filename: Option<&str>,
         content_type: Option<&str>,
         file: &[u8],
+        user_id: Option<&UserId>,
     ) -> Result<()> {
         let (sha256_digest, sha256_hex) = generate_digests(file);
 
@@ -53,6 +54,7 @@ impl Service {
             media_id,
             filename,
             content_type,
+            user_id,
         )?;
 
         create_file(&sha256_hex, file).await
