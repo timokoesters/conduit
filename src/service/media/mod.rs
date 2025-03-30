@@ -1,15 +1,19 @@
 mod data;
-use std::io::Cursor;
+use std::{fs, io::Cursor};
 
 pub use data::Data;
 use ruma::{
     api::client::{error::ErrorKind, media::is_safe_inline_content_type},
     http_headers::{ContentDisposition, ContentDispositionType},
-    ServerName, UserId,
+    OwnedServerName, ServerName, UserId,
 };
 use sha2::{digest::Output, Digest, Sha256};
+use tracing::error;
 
-use crate::{config::MediaConfig, services, Error, Result};
+use crate::{
+    config::{DirectoryStructure, MediaConfig},
+    services, Error, Result,
+};
 use image::imageops::FilterType;
 
 pub struct DbFileMeta {
@@ -293,6 +297,67 @@ impl Service {
             }))
         }
     }
+
+    /// Purges all of the specified media.
+    ///
+    /// If `force_filehash` is true, all media and/or thumbnails which share sha256 content hashes
+    /// with the purged media will also be purged, meaning that the media is guaranteed to be deleted
+    /// from the media backend. Otherwise, it will be deleted if only the media IDs requested to be
+    /// purged have that sha256 hash.
+    ///
+    /// Returns errors for all the files that were failed to be deleted, if any.
+    pub fn purge(&self, media: &[(OwnedServerName, String)], force_filehash: bool) -> Vec<Error> {
+        let hashes = self.db.purge_and_get_hashes(media, force_filehash);
+
+        purge_files(hashes)
+    }
+
+    /// Purges all (past a certain time in unix seconds, if specified) media
+    /// sent by a user.
+    ///
+    /// If `force_filehash` is true, all media and/or thumbnails which share sha256 content hashes
+    /// with the purged media will also be purged, meaning that the media is guaranteed to be deleted
+    /// from the media backend. Otherwise, it will be deleted if only the media IDs requested to be
+    /// purged have that sha256 hash.
+    ///
+    /// Returns errors for all the files that were failed to be deleted, if any.
+    ///
+    /// Note: it only currently works for local users, as we cannot determine who
+    /// exactly uploaded the file when it comes to remove users.
+    pub fn purge_from_user(
+        &self,
+        user_id: &UserId,
+        force_filehash: bool,
+        after: Option<u64>,
+    ) -> Vec<Error> {
+        let hashes = self
+            .db
+            .purge_and_get_hashes_from_user(user_id, force_filehash, after);
+
+        purge_files(hashes)
+    }
+
+    /// Purges all (past a certain time in unix seconds, if specified) media
+    /// obtained from the specified server (due to the MXC URI).
+    ///
+    /// If `force_filehash` is true, all media and/or thumbnails which share sha256 content hashes
+    /// with the purged media will also be purged, meaning that the media is guaranteed to be deleted
+    /// from the media backend. Otherwise, it will be deleted if only the media IDs requested to be
+    /// purged have that sha256 hash.
+    ///
+    /// Returns errors for all the files that were failed to be deleted, if any.
+    pub fn purge_from_server(
+        &self,
+        server_name: &ServerName,
+        force_filehash: bool,
+        after: Option<u64>,
+    ) -> Vec<Error> {
+        let hashes = self
+            .db
+            .purge_and_get_hashes_from_server(server_name, force_filehash, after);
+
+        purge_files(hashes)
+    }
 }
 
 /// Creates the media file, using the configured media backend
@@ -333,6 +398,68 @@ async fn get_file(sha256_hex: &str) -> Result<Vec<u8>> {
             file
         }
     })
+}
+
+/// Purges the given files from the media backend
+/// Returns a `Vec` of errors that occurred when attempting to delete the files
+///
+/// Note: this does NOT remove the related metadata from the database
+fn purge_files(hashes: Vec<Result<String>>) -> Vec<Error> {
+    hashes
+        .into_iter()
+        .map(|hash| match hash {
+            Ok(v) => delete_file(&v),
+            Err(e) => Err(e),
+        })
+        .filter_map(|r| if let Err(e) = r { Some(e) } else { None })
+        .collect()
+}
+
+/// Deletes the given file from the media backend
+///
+/// Note: this does NOT remove the related metadata from the database
+fn delete_file(sha256_hex: &str) -> Result<()> {
+    match &services().globals.config.media {
+        MediaConfig::FileSystem {
+            path,
+            directory_structure,
+        } => {
+            let mut path =
+                services()
+                    .globals
+                    .get_media_path(path, directory_structure, sha256_hex)?;
+
+            if let Err(e) = fs::remove_file(&path) {
+                // Multiple files with the same filehash might be requseted to be deleted
+                if e.kind() != std::io::ErrorKind::NotFound {
+                    error!("Error removing media from filesystem: {e}");
+                    Err(e)?;
+                }
+            }
+
+            if let DirectoryStructure::Deep { length: _, depth } = directory_structure {
+                let mut depth = depth.get();
+
+                while depth > 0 {
+                    // Here at the start so that the first time, the file gets removed from the path
+                    path.pop();
+
+                    if let Err(e) = fs::remove_dir(&path) {
+                        if e.kind() == std::io::ErrorKind::DirectoryNotEmpty {
+                            break;
+                        } else {
+                            error!("Error removing empty media directories: {e}");
+                            Err(e)?;
+                        }
+                    }
+
+                    depth -= 1;
+                }
+            }
+        }
+    }
+
+    Ok(())
 }
 
 /// Creates a content disposition with the given `filename`, using the `content_type` to determine whether

@@ -1,4 +1,4 @@
-use ruma::{ServerName, UserId};
+use ruma::{OwnedServerName, ServerName, UserId};
 use sha2::{digest::Output, Sha256};
 
 use crate::Result;
@@ -42,4 +42,24 @@ pub trait Data: Send + Sync {
         width: u32,
         height: u32,
     ) -> Result<DbFileMeta>;
+
+    fn purge_and_get_hashes(
+        &self,
+        media: &[(OwnedServerName, String)],
+        force_filehash: bool,
+    ) -> Vec<Result<String>>;
+
+    fn purge_and_get_hashes_from_user(
+        &self,
+        user_id: &UserId,
+        force_filehash: bool,
+        after: Option<u64>,
+    ) -> Vec<Result<String>>;
+
+    fn purge_and_get_hashes_from_server(
+        &self,
+        server_name: &ServerName,
+        force_filehash: bool,
+        after: Option<u64>,
+    ) -> Vec<Result<String>>;
 }

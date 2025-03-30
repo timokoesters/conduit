@@ -1,6 +1,11 @@
-use std::{collections::BTreeMap, convert::TryFrom, sync::Arc, time::Instant};
+use std::{
+    collections::BTreeMap,
+    convert::TryFrom,
+    sync::Arc,
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+};
 
-use clap::Parser;
+use clap::{Args, Parser};
 use regex::Regex;
 use ruma::{
     api::appservice::Registration,
@@ -19,8 +24,8 @@ use ruma::{
         },
         TimelineEventType,
     },
-    EventId, MilliSecondsSinceUnixEpoch, OwnedRoomAliasId, OwnedRoomId, RoomAliasId, RoomId,
-    RoomVersionId, ServerName, UserId,
+    EventId, MilliSecondsSinceUnixEpoch, MxcUri, OwnedRoomAliasId, OwnedRoomId, OwnedServerName,
+    RoomAliasId, RoomId, RoomVersionId, ServerName, UserId,
 };
 use serde_json::value::to_raw_value;
 use tokio::sync::{mpsc, Mutex, RwLock};
@@ -82,11 +87,13 @@ enum AdminCommand {
     /// Deactivate a user
     ///
     /// User will not be removed from all rooms by default.
-    /// Use --leave-rooms to force the user to leave all rooms
+    /// Use --leave-rooms to force the user to leave all rooms.
     DeactivateUser {
         #[arg(short, long)]
         leave_rooms: bool,
         user_id: Box<UserId>,
+        #[command(flatten)]
+        purge_media: DeactivatePurgeMediaArgs,
     },
 
     #[command(verbatim_doc_comment)]
@@ -94,6 +101,8 @@ enum AdminCommand {
     ///
     /// Recommended to use in conjunction with list-local-users.
     ///
+    /// Use either --purge-all-media or --purge-media-from-last to either delete all media uploaded
+    /// by them (in the last {specified timeframe}, if any)
     /// Users will not be removed from joined rooms by default.
     /// Can be overridden with --leave-rooms flag.
     /// Removing a mass amount of users from a room may cause a significant amount of leave events.
@@ -107,9 +116,68 @@ enum AdminCommand {
         #[arg(short, long)]
         /// Remove users from their joined rooms
         leave_rooms: bool,
-        #[arg(short, long)]
+        #[arg(short = 'F', long)]
         /// Also deactivate admin accounts
         force: bool,
+        #[command(flatten)]
+        purge_media: DeactivatePurgeMediaArgs,
+    },
+
+    /// Purge a list of media, formatted as MXC URIs
+    /// There should be one URI per line, all contained within a code-block
+    ///
+    /// Note: This will also delete media with the same sha256 hash, so
+    /// only use this when you are certain all the media is undesirable
+    PurgeMedia,
+
+    /// Purges all media uploaded by the local users listed in a code-block.
+    ///
+    /// Note: This will also delete identical media uploaded by other users, so
+    /// only use this when all the media they uploaded is undesirable
+    PurgeMediaFromUsers {
+        #[arg(
+            long, short = 't',
+            value_parser = humantime::parse_duration
+        )]
+        /// Only purge media uploaded in the last {timeframe}
+        ///
+        /// Should be in the form specified by humantime::parse_duration
+        /// (e.g. 48h, 60min, 10days etc.)
+        // --help is unformatted
+        #[allow(rustdoc::bare_urls)]
+        /// https://docs.rs/humantime/2.2.0/humantime/fn.parse_duration.html
+        from_last: Option<Duration>,
+
+        #[arg(long, short)]
+        /// Also deletes other media with the same SHA256 hash, ensuring that the file is removed from
+        /// the media backend, so only use this when all the media they uploaded is undesirable
+        force_filehash: bool,
+    },
+
+    /// Purges all media from the specified server
+    ///
+    /// Note: This will also delete identical media uploaded by local users, so
+    /// only use this when all the media from that server is undesirable (or if
+    /// you know that no media on the remote server is also uploaded locally)
+    PurgeMediaFromServer {
+        server_id: Box<ServerName>,
+        #[arg(
+            long, short = 't',
+            value_parser = humantime::parse_duration
+        )]
+        /// Only purge media uploaded in the last {timeframe}
+        ///
+        /// Should be in the form specified by humantime::parse_duration
+        /// (e.g. 48h, 60min, 10days etc.)
+        // --help is unformatted
+        #[allow(rustdoc::bare_urls)]
+        /// https://docs.rs/humantime/2.2.0/humantime/fn.parse_duration.html
+        from_last: Option<Duration>,
+
+        #[arg(long, short)]
+        /// Also deletes other media with the same SHA256 hash, ensuring that the file is removed from
+        /// the media backend, so only use this when all the media they uploaded is undesirable
+        force_filehash: bool,
     },
 
     /// Get the auth_chain of a PDU
@@ -179,6 +247,37 @@ enum AdminCommand {
     /// Parses a JSON object as an event then creates a hash and signs it, putting a room
     /// version as an argument, and the json in a codeblock
     HashAndSignEvent { room_version_id: RoomVersionId },
+}
+
+#[derive(Args, Debug)]
+#[group(multiple = true, required = false)]
+pub struct DeactivatePurgeMediaArgs {
+    #[arg(long, short = 'm')]
+    /// Purges all media uploaded by the user(s) after deactivating their account
+    purge_media: bool,
+
+    #[arg(
+        long, short = 't',
+        value_parser = humantime::parse_duration,
+        requires = "purge_media"
+    )]
+    /// If the --purge-media is present, it only purges media uploaded in the last {time-period}
+    ///
+    /// Should be in the form specified by humantime::parse_duration
+    /// (e.g. 48h, 60min, 10days etc.)
+    // --help is unformatted
+    #[allow(rustdoc::bare_urls)]
+    /// https://docs.rs/humantime/2.2.0/humantime/fn.parse_duration.html
+    ///
+    /// Note: This will also delete identical media uploaded by other users, so
+    /// only use this when all the media they uploaded in this timeframe is undesirable
+    media_from_last: Option<Duration>,
+
+    #[arg(long, short = 'f', requires = "purge_media")]
+    /// If the --purge-media is present, it will also delete identical media uploaded by other
+    /// users, ensuring that the file is removed from the media backend, so only use this when all
+    /// the media they uploaded is undesirable
+    force_filehash: bool,
 }
 
 #[derive(Debug)]
@@ -690,6 +789,7 @@ impl Service {
             AdminCommand::DeactivateUser {
                 leave_rooms,
                 user_id,
+                purge_media,
             } => {
                 let user_id = Arc::<UserId>::from(user_id);
                 if !services().users.exists(&user_id)? {
@@ -711,78 +811,42 @@ impl Service {
                         leave_all_rooms(&user_id).await?;
                     }
 
-                    RoomMessageEventContent::text_plain(format!(
-                        "User {user_id} has been deactivated"
+                    let failed_purged_media = if purge_media.purge_media {
+                        let after = purge_media
+                            .media_from_last
+                            .map(unix_secs_from_duration)
+                            .transpose()?;
+
+                        services()
+                            .media
+                            .purge_from_user(&user_id, purge_media.force_filehash, after)
+                            .len()
+                    } else {
+                        0
+                    };
+
+                    if failed_purged_media == 0 {
+                        RoomMessageEventContent::text_plain(format!(
+                            "User {user_id} has been deactivated"
+                        ))
+                    } else {
+                        RoomMessageEventContent ::text_plain(format!(
+                        "User {user_id} has been deactivated, but {failed_purged_media} media failed to be purged, check the logs for more details"
                     ))
+                    }
                 }
             }
-            AdminCommand::DeactivateAll { leave_rooms, force } => {
+            AdminCommand::DeactivateAll {
+                leave_rooms,
+                force,
+                purge_media,
+            } => {
                 if body.len() > 2 && body[0].trim() == "```" && body.last().unwrap().trim() == "```"
                 {
-                    let users = body.clone().drain(1..body.len() - 1).collect::<Vec<_>>();
-
-                    let mut user_ids = Vec::new();
-                    let mut remote_ids = Vec::new();
-                    let mut non_existent_ids = Vec::new();
-                    let mut invalid_users = Vec::new();
-
-                    for &user in &users {
-                        match <&UserId>::try_from(user) {
-                            Ok(user_id) => {
-                                if user_id.server_name() != services().globals.server_name() {
-                                    remote_ids.push(user_id)
-                                } else if !services().users.exists(user_id)? {
-                                    non_existent_ids.push(user_id)
-                                } else {
-                                    user_ids.push(user_id)
-                                }
-                            }
-                            Err(_) => {
-                                invalid_users.push(user);
-                            }
-                        }
-                    }
-
-                    let mut markdown_message = String::new();
-                    let mut html_message = String::new();
-                    if !invalid_users.is_empty() {
-                        markdown_message.push_str("The following user ids are not valid:\n```\n");
-                        html_message.push_str("The following user ids are not valid:\n<pre>\n");
-                        for invalid_user in invalid_users {
-                            markdown_message.push_str(&format!("{invalid_user}\n"));
-                            html_message.push_str(&format!("{invalid_user}\n"));
-                        }
-                        markdown_message.push_str("```\n\n");
-                        html_message.push_str("</pre>\n\n");
-                    }
-                    if !remote_ids.is_empty() {
-                        markdown_message
-                            .push_str("The following users are not from this server:\n```\n");
-                        html_message
-                            .push_str("The following users are not from this server:\n<pre>\n");
-                        for remote_id in remote_ids {
-                            markdown_message.push_str(&format!("{remote_id}\n"));
-                            html_message.push_str(&format!("{remote_id}\n"));
-                        }
-                        markdown_message.push_str("```\n\n");
-                        html_message.push_str("</pre>\n\n");
-                    }
-                    if !non_existent_ids.is_empty() {
-                        markdown_message.push_str("The following users do not exist:\n```\n");
-                        html_message.push_str("The following users do not exist:\n<pre>\n");
-                        for non_existent_id in non_existent_ids {
-                            markdown_message.push_str(&format!("{non_existent_id}\n"));
-                            html_message.push_str(&format!("{non_existent_id}\n"));
-                        }
-                        markdown_message.push_str("```\n\n");
-                        html_message.push_str("</pre>\n\n");
-                    }
-                    if !markdown_message.is_empty() {
-                        return Ok(RoomMessageEventContent::text_html(
-                            markdown_message,
-                            html_message,
-                        ));
-                    }
+                    let mut user_ids = match userids_from_body(&body)? {
+                        Ok(v) => v,
+                        Err(message) => return Ok(message),
+                    };
 
                     let mut deactivation_count = 0;
                     let mut admins = Vec::new();
@@ -812,17 +876,114 @@ impl Service {
                         }
                     }
 
-                    if admins.is_empty() {
-                        RoomMessageEventContent::text_plain(format!(
-                            "Deactivated {deactivation_count} accounts."
+                    let mut failed_count = 0;
+
+                    if purge_media.purge_media {
+                        let after = purge_media
+                            .media_from_last
+                            .map(unix_secs_from_duration)
+                            .transpose()?;
+
+                        for user_id in user_ids {
+                            failed_count += services()
+                                .media
+                                .purge_from_user(user_id, purge_media.force_filehash, after)
+                                .len();
+                        }
+                    }
+
+                    let mut message = format!("Deactivated {deactivation_count} accounts.");
+                    if !admins.is_empty() {
+                        message.push_str(&format!("\nSkipped admin accounts: {:?}. Use --force to deactivate admin accounts",admins.join(", ")));
+                    }
+                    if failed_count != 0 {
+                        message.push_str(&format!(
+                            "\nFailed to delete {failed_count} media, check logs for more details"
                         ))
+                    }
+
+                    RoomMessageEventContent::text_plain(message)
+                } else {
+                    RoomMessageEventContent::text_plain(
+                        "Expected code block in command body. Add --help for details.",
+                    )
+                }
+            }
+            AdminCommand::PurgeMedia => media_from_body(body).map_or_else(
+                |message| message,
+                |media| {
+                    let failed_count = services().media.purge(&media, true).len();
+
+                    if failed_count == 0 {
+                        RoomMessageEventContent::text_plain("Successfully purged media")
                     } else {
-                        RoomMessageEventContent::text_plain(format!("Deactivated {} accounts.\nSkipped admin accounts: {:?}. Use --force to deactivate admin accounts", deactivation_count, admins.join(", ")))
+                        RoomMessageEventContent::text_plain(format!(
+                            "Failed to delete {failed_count} media, check logs for more details"
+                        ))
+                    }
+                },
+            ),
+            AdminCommand::PurgeMediaFromUsers {
+                from_last,
+                force_filehash,
+            } => {
+                let after = from_last.map(unix_secs_from_duration).transpose()?;
+
+                if body.len() > 2 && body[0].trim() == "```" && body.last().unwrap().trim() == "```"
+                {
+                    let user_ids = match userids_from_body(&body)? {
+                        Ok(v) => v,
+                        Err(message) => return Ok(message),
+                    };
+
+                    let mut failed_count = 0;
+
+                    for user_id in user_ids {
+                        failed_count += services()
+                            .media
+                            .purge_from_user(user_id, force_filehash, after)
+                            .len();
+                    }
+
+                    if failed_count == 0 {
+                        RoomMessageEventContent::text_plain("Successfully purged media")
+                    } else {
+                        RoomMessageEventContent::text_plain(format!(
+                            "Failed to purge {failed_count} media, check logs for more details"
+                        ))
                     }
                 } else {
                     RoomMessageEventContent::text_plain(
                         "Expected code block in command body. Add --help for details.",
                     )
+                }
+            }
+            AdminCommand::PurgeMediaFromServer {
+                server_id: server_name,
+                from_last,
+                force_filehash,
+            } => {
+                if server_name == services().globals.server_name() {
+                    return Err(Error::AdminCommand(
+                        "Cannot purge all media from your own homeserver",
+                    ));
+                }
+
+                let after = from_last.map(unix_secs_from_duration).transpose()?;
+
+                let failed_count = services()
+                    .media
+                    .purge_from_server(&server_name, force_filehash, after)
+                    .len();
+
+                if failed_count == 0 {
+                    RoomMessageEventContent::text_plain(format!(
+                        "Media from {server_name} has successfully been purged"
+                    ))
+                } else {
+                    RoomMessageEventContent::text_plain(format!(
+                        "Failed to purge {failed_count} media, check logs for more details"
+                    ))
                 }
             }
             AdminCommand::SignJson => {
@@ -1454,6 +1615,105 @@ impl Service {
 
         services().rooms.state_cache.is_joined(user_id, &admin_room)
     }
+}
+
+fn userids_from_body<'a>(
+    body: &'a [&'a str],
+) -> Result<Result<Vec<&'a UserId>, RoomMessageEventContent>, Error> {
+    let users = body.to_owned().drain(1..body.len() - 1).collect::<Vec<_>>();
+
+    let mut user_ids = Vec::new();
+    let mut remote_ids = Vec::new();
+    let mut non_existent_ids = Vec::new();
+    let mut invalid_users = Vec::new();
+
+    for &user in &users {
+        match <&UserId>::try_from(user) {
+            Ok(user_id) => {
+                if user_id.server_name() != services().globals.server_name() {
+                    remote_ids.push(user_id)
+                } else if !services().users.exists(user_id)? {
+                    non_existent_ids.push(user_id)
+                } else {
+                    user_ids.push(user_id)
+                }
+            }
+            Err(_) => {
+                invalid_users.push(user);
+            }
+        }
+    }
+
+    let mut markdown_message = String::new();
+    let mut html_message = String::new();
+    if !invalid_users.is_empty() {
+        markdown_message.push_str("The following user ids are not valid:\n```\n");
+        html_message.push_str("The following user ids are not valid:\n<pre>\n");
+        for invalid_user in invalid_users {
+            markdown_message.push_str(&format!("{invalid_user}\n"));
+            html_message.push_str(&format!("{invalid_user}\n"));
+        }
+        markdown_message.push_str("```\n\n");
+        html_message.push_str("</pre>\n\n");
+    }
+    if !remote_ids.is_empty() {
+        markdown_message.push_str("The following users are not from this server:\n```\n");
+        html_message.push_str("The following users are not from this server:\n<pre>\n");
+        for remote_id in remote_ids {
+            markdown_message.push_str(&format!("{remote_id}\n"));
+            html_message.push_str(&format!("{remote_id}\n"));
+        }
+        markdown_message.push_str("```\n\n");
+        html_message.push_str("</pre>\n\n");
+    }
+    if !non_existent_ids.is_empty() {
+        markdown_message.push_str("The following users do not exist:\n```\n");
+        html_message.push_str("The following users do not exist:\n<pre>\n");
+        for non_existent_id in non_existent_ids {
+            markdown_message.push_str(&format!("{non_existent_id}\n"));
+            html_message.push_str(&format!("{non_existent_id}\n"));
+        }
+        markdown_message.push_str("```\n\n");
+        html_message.push_str("</pre>\n\n");
+    }
+    if !markdown_message.is_empty() {
+        return Ok(Err(RoomMessageEventContent::text_html(
+            markdown_message,
+            html_message,
+        )));
+    }
+
+    Ok(Ok(user_ids))
+}
+
+fn media_from_body(
+    body: Vec<&str>,
+) -> Result<Vec<(OwnedServerName, String)>, RoomMessageEventContent> {
+    if body.len() > 2 && body[0].trim() == "```" && body.last().unwrap().trim() == "```" {
+        Ok(body
+            .clone()
+            .drain(1..body.len() - 1)
+            .map(<Box<MxcUri>>::from)
+            .filter_map(|mxc| {
+                mxc.parts()
+                    .map(|(server_name, media_id)| (server_name.to_owned(), media_id.to_owned()))
+                    .ok()
+            })
+            .collect::<Vec<_>>())
+    } else {
+        Err(RoomMessageEventContent::text_plain(
+            "Expected code block in command body. Add --help for details.",
+        ))
+    }
+}
+
+fn unix_secs_from_duration(duration: Duration) -> Result<u64> {
+    SystemTime::now()
+        .checked_sub(duration).ok_or_else(||Error::AdminCommand("Given timeframe cannot be represented as system time, please try again with a shorter time-frame"))
+        .map(|time| time
+                .duration_since(UNIX_EPOCH)
+                .expect("Time is after unix epoch")
+                .as_secs())
 }
 
 #[cfg(test)]
