@@ -12,7 +12,7 @@ use tracing::error;
 
 use crate::{
     config::{DirectoryStructure, MediaConfig},
-    services, Error, Result,
+    services, utils, Error, Result,
 };
 use image::imageops::FilterType;
 
@@ -38,6 +38,14 @@ pub struct Service {
     pub db: &'static dyn Data,
 }
 
+pub struct BlockedMediaInfo {
+    pub server_name: OwnedServerName,
+    pub media_id: String,
+    pub unix_secs: u64,
+    pub reason: Option<String>,
+    pub sha256_hex: Option<String>,
+}
+
 impl Service {
     /// Uploads a file.
     pub async fn create(
@@ -59,9 +67,16 @@ impl Service {
             filename,
             content_type,
             user_id,
+            self.db.is_blocked_filehash(&sha256_digest)?,
         )?;
 
-        create_file(&sha256_hex, file).await
+        if !self.db.is_blocked_filehash(&sha256_digest)? {
+            create_file(&sha256_hex, file).await
+        } else if user_id.is_none() {
+            Err(Error::BadRequest(ErrorKind::NotFound, "Media not found."))
+        } else {
+            Ok(())
+        }
     }
 
     /// Uploads or replaces a file thumbnail.
@@ -357,6 +372,49 @@ impl Service {
             .purge_and_get_hashes_from_server(server_name, force_filehash, after);
 
         purge_files(hashes)
+    }
+
+    /// Checks whether the media has been blocked by administrators, returning either
+    /// a database error, or a not found error if it is blocked
+    pub fn check_blocked(&self, server_name: &ServerName, media_id: &str) -> Result<()> {
+        if self.db.is_blocked(server_name, media_id)? {
+            Err(Error::BadRequest(ErrorKind::NotFound, "Media not found."))
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Marks the specified media as blocked, preventing them from being accessed
+    pub fn block(&self, media: &[(OwnedServerName, String)], reason: Option<String>) -> Vec<Error> {
+        let now = utils::secs_since_unix_epoch();
+
+        self.db.block(media, now, reason)
+    }
+
+    /// Marks the media uploaded by a local user as blocked, preventing it from being accessed
+    pub fn block_from_user(
+        &self,
+        user_id: &UserId,
+        reason: &str,
+        after: Option<u64>,
+    ) -> Vec<Error> {
+        let now = utils::secs_since_unix_epoch();
+
+        self.db.block_from_user(user_id, now, reason, after)
+    }
+
+    /// Unblocks the specified media, allowing them from being accessed again
+    pub fn unblock(&self, media: &[(OwnedServerName, String)]) -> Vec<Error> {
+        self.db.unblock(media)
+    }
+
+    /// Returns a Vec of:
+    /// - The server the media is from
+    /// - The media id
+    /// - The time it was blocked, in unix seconds
+    /// - The optional reason why it was blocked
+    pub fn list_blocked(&self) -> Vec<Result<BlockedMediaInfo>> {
+        self.db.list_blocked()
     }
 }
 

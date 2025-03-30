@@ -2221,6 +2221,10 @@ pub async fn create_invite_route(
 pub async fn get_content_route(
     body: Ruma<get_content::v1::Request>,
 ) -> Result<get_content::v1::Response> {
+    services()
+        .media
+        .check_blocked(services().globals.server_name(), &body.media_id)?;
+
     if let Some(FileMeta {
         content_disposition,
         content_type,
@@ -2249,6 +2253,10 @@ pub async fn get_content_route(
 pub async fn get_content_thumbnail_route(
     body: Ruma<get_content_thumbnail::v1::Request>,
 ) -> Result<get_content_thumbnail::v1::Response> {
+    services()
+        .media
+        .check_blocked(services().globals.server_name(), &body.media_id)?;
+
     let Some(FileMeta {
         file,
         content_type,

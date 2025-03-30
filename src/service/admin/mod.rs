@@ -1,10 +1,12 @@
 use std::{
+    borrow::Cow,
     collections::BTreeMap,
     convert::TryFrom,
     sync::Arc,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
+use chrono::DateTime;
 use clap::{Args, Parser};
 use regex::Regex;
 use ruma::{
@@ -37,7 +39,7 @@ use crate::{
     Error, PduEvent, Result,
 };
 
-use super::pdu::PduBuilder;
+use super::{media::BlockedMediaInfo, pdu::PduBuilder};
 
 #[cfg_attr(test, derive(Debug))]
 #[derive(Parser)]
@@ -179,6 +181,55 @@ enum AdminCommand {
         /// the media backend, so only use this when all the media they uploaded is undesirable
         force_filehash: bool,
     },
+
+    /// Prevents the list of media from being accessed, but does not delete the media if it
+    /// is already downloaded. If the media has already been downloaded, the sha256 hash
+    /// is blocked, meaning that any other current or future uploads/downloads of the exact same
+    /// content cannot be accessed either.
+    ///
+    /// There should be one MXC URI per line, all contained within a code-block
+    BlockMedia {
+        #[arg(long, short)]
+        /// Prevents the specified media from being downloaded in the future
+        ///
+        /// Note: This will also delete identical media uploaded by other users, so
+        /// only use this all the media is known to be undesirable
+        and_purge: bool,
+        #[arg(long, short)]
+        /// Optional reason as to why this media should be blocked
+        reason: Option<String>,
+    },
+
+    /// Prevents all media uploaded by the local users, listed in a code-block, from being accessed
+    ///
+    /// Note: This will also block media with the same SHA256 hash, so
+    /// only use this when all media uploaded by the user is undesirable (or if
+    /// you only plan for the bloackage to be temporary)
+    BlockMediaFromUsers {
+        #[arg(
+            long, short,
+            value_parser = humantime::parse_duration
+        )]
+        /// Only block media uploaded in the last {timeframe}
+        ///
+        /// Should be in the form specified by humantime::parse_duration
+        /// (e.g. 48h, 60min, 10days etc.)
+        // --help is unformatted
+        #[allow(rustdoc::bare_urls)]
+        /// https://docs.rs/humantime/2.2.0/humantime/fn.parse_duration.html
+        from_last: Option<Duration>,
+        #[arg(long, short)]
+        /// Optional reason as to why this media should be blocked
+        reason: Option<String>,
+    },
+
+    /// Lists all media that is currently blocked
+    ListBlockedMedia,
+
+    /// Allows previously blocked media to be accessed again. Will also unblock media with the
+    /// same SHA256 hash
+    /// There should be one MXC URI per line, all contained within a code-block
+    UnblockMedia,
 
     /// Get the auth_chain of a PDU
     GetAuthChain {
@@ -986,6 +1037,121 @@ impl Service {
                     ))
                 }
             }
+            AdminCommand::BlockMedia { and_purge, reason } => media_from_body(body).map_or_else(
+                |message| message,
+                |media| {
+                    let failed_count = services().media.block(&media, reason).len();
+                    let failed_purge_count = if and_purge {
+                        services().media.purge(&media, true).len()
+                    } else {
+                        0
+                    };
+
+                    match (failed_count == 0, failed_purge_count == 0) {
+                        (true, true) => RoomMessageEventContent::text_plain("Successfully blocked media"),
+                        (false, true) => RoomMessageEventContent::text_plain(format!(
+                            "Failed to block {failed_count} media, check logs for more details"
+                        )),
+                        (true, false ) => RoomMessageEventContent::text_plain(format!(
+                            "Failed to purge {failed_purge_count} media, check logs for more details"
+                        )),
+                        (false, false) => RoomMessageEventContent::text_plain(format!(
+                            "Failed to block {failed_count}, and purge {failed_purge_count} media, check logs for more details"
+                        ))
+                    }
+                },
+            ),
+            AdminCommand::BlockMediaFromUsers { from_last, reason } => {
+                let after = from_last.map(unix_secs_from_duration).transpose()?;
+
+                if body.len() > 2 && body[0].trim() == "```" && body.last().unwrap().trim() == "```"
+                {
+                    let user_ids = match userids_from_body(&body)? {
+                        Ok(v) => v,
+                        Err(message) => return Ok(message),
+                    };
+
+                    let mut failed_count = 0;
+
+                    for user_id in user_ids {
+                        let reason = reason.as_ref().map_or_else(
+                            || Cow::Owned(format!("uploaded by {user_id}")),
+                            Cow::Borrowed,
+                        );
+
+                        failed_count += services()
+                            .media
+                            .block_from_user(user_id, &reason, after)
+                            .len();
+                    }
+
+                    if failed_count == 0 {
+                        RoomMessageEventContent::text_plain("Successfully blocked media")
+                    } else {
+                        RoomMessageEventContent::text_plain(format!(
+                            "Failed to block {failed_count} media, check logs for more details"
+                        ))
+                    }
+                } else {
+                    RoomMessageEventContent::text_plain(
+                        "Expected code block in command body. Add --help for details.",
+                    )
+                }
+            }
+            AdminCommand::ListBlockedMedia => {
+                let mut markdown_message = String::from(
+                    "| SHA256 hash | MXC URI | Time Blocked | Reason |\n| --- | --- | --- | --- |",
+                );
+                let mut html_message = String::from(
+                    r#"<table><thead><tr><th scope="col">SHA256 hash</th><th scope="col">MXC URI</th><th scope="col">Time Blocked</th><th scope="col">Reason</th></tr></thead><tbody>"#,
+                );
+
+                for media in services().media.list_blocked() {
+                    let Ok(BlockedMediaInfo {
+                        server_name,
+                        media_id,
+                        unix_secs,
+                        reason,
+                        sha256_hex,
+                    }) = media else {
+                        continue;
+                    };
+
+                    let sha256_hex = sha256_hex.unwrap_or_default();
+                    let reason = reason.unwrap_or_default();
+
+                    let time = i64::try_from(unix_secs)
+                        .map(|unix_secs| DateTime::from_timestamp(unix_secs, 0))
+                        .ok()
+                        .flatten()
+                        .expect("Time is valid");
+
+                    markdown_message
+                        .push_str(&format!("\n| {sha256_hex} | mxc://{server_name}/{media_id} | {time} | {reason} |"));
+
+                    html_message.push_str(&format!(
+                        "<tr><td>{sha256_hex}</td><td>mxc://{server_name}/{media_id}</td><td>{time}</td><td>{reason}</td></tr>",
+                    ))
+                }
+
+                html_message.push_str("</tbody></table>");
+
+                RoomMessageEventContent::text_html(markdown_message, html_message)
+            }
+            AdminCommand::UnblockMedia => media_from_body(body).map_or_else(
+                |message| message,
+                |media| {
+                    let failed_count = services().media.unblock(&media).len();
+
+                    if failed_count == 0 {
+                        RoomMessageEventContent::text_plain("Successfully unblocked media")
+                    } else {
+                        RoomMessageEventContent::text_plain(format!(
+                            "Failed to unblock {failed_count} media, check logs for more details"
+                        ))
+                    }
+                },
+            ),
             AdminCommand::SignJson => {
                 if body.len() > 2 && body[0].trim() == "```" && body.last().unwrap().trim() == "```"
                 {

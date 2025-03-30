@@ -123,6 +123,7 @@ thread_local = "1.1.7"
 hmac = "0.12.1"
 sha-1 = "0.10.1"
 # used for conduit's CLI and admin room command parsing
+chrono = "0.4"
 clap = { version = "4.3.0", default-features = false, features = [
   "derive",
   "error-context",

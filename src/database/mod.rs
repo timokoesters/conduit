@@ -179,6 +179,7 @@ pub struct KeyValueDatabase {
     pub(super) servernamemediaid_metadata: Arc<dyn KvTree>, // Servername + MediaID -> content sha256 + Filename + ContentType + extra 0xff byte if media is allowed on unauthenticated endpoints
     pub(super) filehash_servername_mediaid: Arc<dyn KvTree>, // sha256 of content + Servername + MediaID, used to delete dangling references to filehashes from servernamemediaid
     pub(super) filehash_metadata: Arc<dyn KvTree>, // sha256 of content -> file size + creation time +  last access time
+    pub(super) blocked_servername_mediaid: Arc<dyn KvTree>, // Servername + MediaID of blocked media -> time of block + reason
     pub(super) servername_userlocalpart_mediaid: Arc<dyn KvTree>, // Servername + User Localpart + MediaID
     pub(super) servernamemediaid_userlocalpart: Arc<dyn KvTree>, // Servername + MediaID -> User Localpart, used to remove keys from above when files are deleted by unrelated means
     pub(super) thumbnailid_metadata: Arc<dyn KvTree>, // ThumbnailId = Servername + MediaID + width + height -> Filename + ContentType + extra 0xff byte if media is allowed on unauthenticated endpoints
@@ -389,6 +390,7 @@ impl KeyValueDatabase {
             servernamemediaid_metadata: builder.open_tree("servernamemediaid_metadata")?,
             filehash_servername_mediaid: builder.open_tree("filehash_servername_mediaid")?,
             filehash_metadata: builder.open_tree("filehash_metadata")?,
+            blocked_servername_mediaid: builder.open_tree("blocked_servername_mediaid")?,
             servername_userlocalpart_mediaid: builder
                 .open_tree("servername_userlocalpart_mediaid")?,
             servernamemediaid_userlocalpart: builder

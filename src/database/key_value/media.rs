@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, ops::Range};
+use std::{collections::BTreeMap, ops::Range, slice::Split};
 
 use ruma::{api::client::error::ErrorKind, OwnedServerName, ServerName, UserId};
 use sha2::{digest::Output, Sha256};
@@ -6,7 +6,10 @@ use tracing::error;
 
 use crate::{
     database::KeyValueDatabase,
-    service::{self, media::DbFileMeta},
+    service::{
+        self,
+        media::{BlockedMediaInfo, DbFileMeta},
+    },
     utils, Error, Result,
 };
 
@@ -20,11 +23,14 @@ impl service::media::Data for KeyValueDatabase {
         filename: Option<&str>,
         content_type: Option<&str>,
         user_id: Option<&UserId>,
+        is_blocked_filehash: bool,
     ) -> Result<()> {
-        let metadata = FilehashMetadata::new(file_size);
+        if !is_blocked_filehash {
+            let metadata = FilehashMetadata::new(file_size);
 
-        self.filehash_metadata
-            .insert(&sha256_digest, metadata.value())?;
+            self.filehash_metadata
+                .insert(&sha256_digest, metadata.value())?;
+        };
 
         let mut key = sha256_digest.to_vec();
         key.extend_from_slice(servername.as_bytes());
@@ -167,9 +173,12 @@ impl service::media::Data for KeyValueDatabase {
             value.truncate(32);
             let sha256_digest = value;
 
+            let is_blocked = self.is_blocked_filehash(&sha256_digest)?;
             let sha256_hex = hex::encode(&sha256_digest);
 
-            self.purge_filehash(sha256_digest, false)?;
+            // If the file is blocked, we want to keep the metadata about it so it can be viewed,
+            // as well as filehashes blocked
+            self.purge_filehash(sha256_digest, is_blocked)?;
 
             Ok(sha256_hex)
         };
@@ -195,11 +204,14 @@ impl service::media::Data for KeyValueDatabase {
                     files.push(purge(value));
                 }
             } else {
-                match self.purge_mediaid(server_name, media_id, false) {
-                    Ok(f) => {
+                match self
+                    .is_blocked(server_name, media_id)
+                    .map(|is_blocked| self.purge_mediaid(server_name, media_id, is_blocked))
+                {
+                    Ok(Ok(f)) => {
                         files.append(&mut f.into_iter().map(Ok).collect());
                     }
-                    Err(e) => files.push(Err(e)),
+                    Ok(Err(e)) | Err(e) => files.push(Err(e)),
                 }
             }
         }
@@ -221,8 +233,11 @@ impl service::media::Data for KeyValueDatabase {
 
         let purge_filehash = |sha256_digest: Vec<u8>| {
             let sha256_hex = hex::encode(&sha256_digest);
+            let is_blocked = self.is_blocked_filehash(&sha256_digest)?;
 
-            self.purge_filehash(sha256_digest, false)?;
+            // If the file is blocked, we want to keep the metadata about it so it can be viewed,
+            // as well as filehashes blocked
+            self.purge_filehash(sha256_digest, is_blocked)?;
 
             Ok(sha256_hex)
         };
@@ -310,11 +325,15 @@ impl service::media::Data for KeyValueDatabase {
                     files.push(purge_filehash(sha256_digest));
                 }
             } else {
-                match self.purge_mediaid(user_id.server_name(), &media_id, false) {
-                    Ok(f) => {
+                match self
+                    .is_blocked(user_id.server_name(), &media_id)
+                    .map(|is_blocked| {
+                        self.purge_mediaid(user_id.server_name(), &media_id, is_blocked)
+                    }) {
+                    Ok(Ok(f)) => {
                         files.append(&mut f.into_iter().map(Ok).collect());
                     }
-                    Err(e) => files.push(Err(e)),
+                    Ok(Err(e)) | Err(e) => files.push(Err(e)),
                 }
             }
         }
@@ -355,8 +374,11 @@ impl service::media::Data for KeyValueDatabase {
             }
 
             let sha256_hex = hex::encode(&sha256_digest);
+            let is_blocked = self.is_blocked_filehash(&sha256_digest)?;
 
-            self.purge_filehash(sha256_digest, false)?;
+            // If the file is blocked, we want to keep the metadata about it so it can be viewed,
+            // as well as filehashes blocked
+            self.purge_filehash(sha256_digest, is_blocked)?;
 
             files.push(Ok(sha256_hex));
             Ok(())
@@ -379,9 +401,11 @@ impl service::media::Data for KeyValueDatabase {
                 .map(utils::string_from_bytes)?
                 .map_err(|_| Error::bad_database("Invalid Media ID String in metadata key"))?;
 
+            let is_blocked = self.is_blocked(&server_name, &media_id)?;
+
             files.append(
                 &mut self
-                    .purge_mediaid(&server_name, &media_id, false)?
+                    .purge_mediaid(&server_name, &media_id, is_blocked)?
                     .into_iter()
                     .map(Ok)
                     .collect(),
@@ -406,9 +430,363 @@ impl service::media::Data for KeyValueDatabase {
 
         files
     }
+
+    fn is_blocked(&self, server_name: &ServerName, media_id: &str) -> Result<bool> {
+        let blocked_via_hash = || {
+            let mut key = server_name.as_bytes().to_vec();
+            key.push(0xff);
+            key.extend_from_slice(media_id.as_bytes());
+
+            let Some(metadata) = self.servernamemediaid_metadata.get(&key)? else {
+                return Ok(false);
+            };
+
+            let sha256_digest = parse_metadata(&metadata).inspect_err(|e| {
+                error!("Error parsing metadata for \"mxc://{server_name}/{media_id}\" from servernamemediaid_metadata: {e}");
+            })?.sha256_digest;
+
+            self.is_blocked_filehash(&sha256_digest)
+        };
+
+        Ok(self.is_directly_blocked(server_name, media_id)? || blocked_via_hash()?)
+    }
+
+    fn block(
+        &self,
+        media: &[(OwnedServerName, String)],
+        unix_secs: u64,
+        reason: Option<String>,
+    ) -> Vec<Error> {
+        let reason = reason.unwrap_or_default();
+        let unix_secs = unix_secs.to_be_bytes();
+
+        let mut errors = Vec::new();
+
+        for (server_name, media_id) in media {
+            let mut key = server_name.as_bytes().to_vec();
+            key.push(0xff);
+            key.extend_from_slice(media_id.as_bytes());
+
+            let mut value = unix_secs.to_vec();
+            value.extend_from_slice(reason.as_bytes());
+
+            if let Err(e) = self.blocked_servername_mediaid.insert(&key, &value) {
+                errors.push(e);
+            }
+        }
+
+        errors
+    }
+
+    fn block_from_user(
+        &self,
+        user_id: &UserId,
+        now: u64,
+        reason: &str,
+        after: Option<u64>,
+    ) -> Vec<Error> {
+        let mut prefix = user_id.server_name().as_bytes().to_vec();
+        prefix.push(0xff);
+        prefix.extend_from_slice(user_id.localpart().as_bytes());
+        prefix.push(0xff);
+
+        let mut value = now.to_be_bytes().to_vec();
+        value.extend_from_slice(reason.as_bytes());
+
+        self.servername_userlocalpart_mediaid
+            .scan_prefix(prefix)
+            .map(|(k, _)| {
+                let parts = k.split(|&b| b == 0xff);
+
+                let media_id = parts.last().ok_or_else(|| {
+                    Error::bad_database("Invalid format of key in blocked_servername_mediaid")
+                })?;
+
+                let mut key = user_id.server_name().as_bytes().to_vec();
+                key.push(0xff);
+                key.extend_from_slice(media_id);
+
+                let Some(mut meta) = self.servernamemediaid_metadata.get(&key)? else {
+                    return Err(Error::bad_database(
+                        "Invalid format of metadata in servernamemediaid_metadata",
+                    ));
+                };
+                meta.truncate(32);
+                let sha256_digest = meta;
+
+                let Some(metadata) = self
+                    .filehash_metadata
+                    .get(&sha256_digest)?
+                    .map(FilehashMetadata::from_vec)
+                else {
+                    return Ok(());
+                };
+
+                if after
+                    .map(|after| Ok::<bool, Error>(metadata.creation(&sha256_digest)? > after))
+                    .transpose()?
+                    .unwrap_or(true)
+                {
+                    self.blocked_servername_mediaid.insert(&key, &value)
+                } else {
+                    Ok(())
+                }
+            })
+            .filter_map(Result::err)
+            .collect()
+    }
+
+    fn unblock(&self, media: &[(OwnedServerName, String)]) -> Vec<Error> {
+        let maybe_remove_remaining_metadata = |metadata: &DbFileMeta, errors: &mut Vec<Error>| {
+            for (k, _) in self
+                .filehash_servername_mediaid
+                .scan_prefix(metadata.sha256_digest.clone())
+            {
+                if let Some(servername_mediaid) = k.get(32..) {
+                    if let Err(e) = self.blocked_servername_mediaid.remove(servername_mediaid) {
+                        errors.push(e);
+                    }
+                } else {
+                    error!(
+                    "Invalid format of key in filehash_servername_mediaid for media with sha256 content hash of {}",
+                    hex::encode(&metadata.sha256_digest)
+                );
+                    errors.push(Error::BadDatabase(
+                        "Invalid format of key in filehash_servername_mediaid",
+                    ));
+                }
+            }
+
+            let thumbnail_id_error = || {
+                error!(
+                "Invalid format of key in filehash_thumbnail_id for media with sha256 content hash of {}",
+                hex::encode(&metadata.sha256_digest)
+            );
+                Error::BadDatabase("Invalid format of value in filehash_thumbnailid")
+            };
+
+            for (k, _) in self
+                .filehash_thumbnailid
+                .scan_prefix(metadata.sha256_digest.clone())
+            {
+                if let Some(end) = k.len().checked_sub(9) {
+                    if let Some(servername_mediaid) = k.get(32..end) {
+                        if let Err(e) = self.blocked_servername_mediaid.remove(servername_mediaid) {
+                            errors.push(e);
+                        }
+                    } else {
+                        errors.push(thumbnail_id_error());
+                    }
+                    errors.push(thumbnail_id_error());
+                };
+            }
+
+            // If we don't have the actual file downloaded anymore, remove the remaining
+            // metadata of the file
+            match self
+                .filehash_metadata
+                .get(&metadata.sha256_digest)
+                .map(|opt| opt.is_none())
+            {
+                Err(e) => errors.push(e),
+                Ok(true) => {
+                    if let Err(e) = self.purge_filehash(metadata.sha256_digest.clone(), false) {
+                        errors.push(e);
+                    }
+                }
+                Ok(false) => (),
+            }
+        };
+
+        let mut errors = Vec::new();
+
+        for (server_name, media_id) in media {
+            let mut key = server_name.as_bytes().to_vec();
+            key.push(0xff);
+            key.extend_from_slice(media_id.as_bytes());
+
+            match self
+                .servernamemediaid_metadata
+                .get(&key)
+                .map(|opt| opt.as_deref().map(parse_metadata))
+            {
+                Err(e) => {
+                    errors.push(e);
+                    continue;
+                }
+                Ok(None) => (),
+                Ok(Some(Err(e))) => {
+                    error!("Error parsing metadata for \"mxc://{server_name}/{media_id}\" from servernamemediaid_metadata: {e}");
+                    errors.push(e);
+                    continue;
+                }
+                Ok(Some(Ok(metadata))) => {
+                    maybe_remove_remaining_metadata(&metadata, &mut errors);
+                }
+            }
+
+            key.push(0xff);
+            for (_, v) in self.thumbnailid_metadata.scan_prefix(key) {
+                match parse_metadata(&v) {
+                    Ok(metadata) => {
+                        maybe_remove_remaining_metadata(&metadata, &mut errors);
+                    }
+                    Err(e) => {
+                        error!("Error parsing metadata for thumbnail of \"mxc://{server_name}/{media_id}\" from thumbnailid_metadata: {e}");
+                        errors.push(e);
+                    }
+                }
+            }
+        }
+
+        errors
+    }
+
+    fn list_blocked(&self) -> Vec<Result<BlockedMediaInfo>> {
+        let parse_servername = |parts: &mut Split<_, _>| {
+            OwnedServerName::try_from(
+                utils::string_from_bytes(parts.next().ok_or_else(|| {
+                    Error::BadDatabase("Invalid format of metadata of blocked media")
+                })?)
+                .map_err(|_| Error::BadDatabase("Invalid server_name String of blocked data"))?,
+            )
+            .map_err(|_| Error::BadDatabase("Invalid ServerName in blocked_servername_mediaid"))
+        };
+
+        let parse_string =
+            |parts: &mut Split<_, _>| {
+                utils::string_from_bytes(parts.next().ok_or_else(|| {
+                    Error::BadDatabase("Invalid format of metadata of blocked media")
+                })?)
+                .map_err(|_| Error::BadDatabase("Invalid string in blocked media metadata"))
+            };
+
+        let splitter = |b: &u8| *b == 0xff;
+
+        self.blocked_servername_mediaid
+            .iter()
+            .map(|(k, v)| {
+                let mut parts = k.split(splitter);
+
+                // Using map_err, as inspect_err causes lifetime issues
+                // "implementation of `FnOnce` is not general enough"
+                let log_error = |e| {
+                    error!("Error parsing key of blocked media: {e}");
+                    e
+                };
+
+                let server_name = parse_servername(&mut parts).map_err(log_error)?;
+
+                let media_id = parse_string(&mut parts).map_err(log_error)?;
+
+                let (unix_secs, reason) = v
+                    .split_at_checked(8)
+                    .map(|(secs, reason)| -> Result<(u64, Option<String>)> {
+                        Ok((
+                            secs.try_into()
+                                .map_err(|_| {
+                                    Error::bad_database(
+                                        "Invalid block time in blocked_servername_mediaid ",
+                                    )
+                                })
+                                .map(u64::from_be_bytes)?,
+                            if reason.is_empty() {
+                                None
+                            } else {
+                                Some(utils::string_from_bytes(reason).map_err(|_| {
+                                    Error::bad_database("Invalid string in blocked media metadata")
+                                })?)
+                            },
+                        ))
+                    })
+                    .ok_or_else(|| {
+                        Error::bad_database("Invalid format of value in blocked_servername_mediaid")
+                    })??;
+
+                let sha256_hex = self.servernamemediaid_metadata.get(&k)?.map(|mut meta| {
+                    meta.truncate(32);
+                    hex::encode(meta)
+                });
+
+                Ok(BlockedMediaInfo {
+                    server_name,
+                    media_id,
+                    unix_secs,
+                    reason,
+                    sha256_hex,
+                })
+            })
+            .collect()
+    }
+
+    fn is_blocked_filehash(&self, sha256_digest: &[u8]) -> Result<bool> {
+        for (filehash_servername_mediaid, _) in self
+            .filehash_servername_mediaid
+            .scan_prefix(sha256_digest.to_owned())
+        {
+            let servername_mediaid = filehash_servername_mediaid.get(32..).ok_or_else(|| {
+                error!(
+                    "Invalid format of key in filehash_servername_mediaid for media with sha256 content hash of {}",
+                    hex::encode(sha256_digest)
+                );
+                Error::BadDatabase("Invalid format of key in filehash_servername_mediaid")
+            })?;
+
+            if self
+                .blocked_servername_mediaid
+                .get(servername_mediaid)?
+                .is_some()
+            {
+                return Ok(true);
+            }
+        }
+
+        let thumbnail_id_error = || {
+            error!(
+                "Invalid format of key in filehash_thumbnail_id for media with sha256 content hash of {}",
+                hex::encode(sha256_digest)
+            );
+            Error::BadDatabase("Invalid format of value in filehash_thumbnailid")
+        };
+
+        for (thumbnail_id, _) in self
+            .filehash_thumbnailid
+            .scan_prefix(sha256_digest.to_owned())
+        {
+            let servername_mediaid = thumbnail_id
+                .get(
+                    32..thumbnail_id
+                        .len()
+                        .checked_sub(9)
+                        .ok_or_else(thumbnail_id_error)?,
+                )
+                .ok_or_else(thumbnail_id_error)?;
+
+            if self
+                .blocked_servername_mediaid
+                .get(servername_mediaid)?
+                .is_some()
+            {
+                return Ok(true);
+            }
+        }
+
+        Ok(false)
+    }
 }
 
 impl KeyValueDatabase {
+    /// Only checks whether the media id itself is blocked, and not associated filehashes
+    fn is_directly_blocked(&self, server_name: &ServerName, media_id: &str) -> Result<bool> {
+        let mut key = server_name.as_bytes().to_vec();
+        key.push(0xff);
+        key.extend_from_slice(media_id.as_bytes());
+
+        self.blocked_servername_mediaid
+            .get(&key)
+            .map(|x| x.is_some())
+    }
+
     fn purge_mediaid(
         &self,
         server_name: &ServerName,

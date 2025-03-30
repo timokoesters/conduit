@@ -199,6 +199,8 @@ async fn get_content(
     allow_remote: bool,
     authenticated: bool,
 ) -> Result<get_content::v1::Response, Error> {
+    services().media.check_blocked(server_name, &media_id)?;
+
     if let Ok(Some(FileMeta {
         content_disposition,
         content_type,
@@ -278,6 +280,8 @@ async fn get_content_as_filename(
     allow_remote: bool,
     authenticated: bool,
 ) -> Result<get_content_as_filename::v1::Response, Error> {
+    services().media.check_blocked(server_name, &media_id)?;
+
     if let Ok(Some(FileMeta {
         file, content_type, ..
     })) = services()
@@ -371,6 +375,8 @@ async fn get_content_thumbnail(
     allow_remote: bool,
     authenticated: bool,
 ) -> Result<get_content_thumbnail::v1::Response, Error> {
+    services().media.check_blocked(server_name, &media_id)?;
+
     if let Some(FileMeta {
         file,
         content_type,
