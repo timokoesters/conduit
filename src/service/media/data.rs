@@ -1,11 +1,9 @@
 use ruma::{OwnedServerName, ServerName, UserId};
 use sha2::{digest::Output, Sha256};
 
-use crate::{Error, Result};
+use crate::{config::MediaRetentionConfig, Error, Result};
 
-use super::BlockedMediaInfo;
-
-use super::DbFileMeta;
+use super::{BlockedMediaInfo, DbFileMeta, MediaType};
 
 pub trait Data: Send + Sync {
     #[allow(clippy::too_many_arguments)]
@@ -93,4 +91,24 @@ pub trait Data: Send + Sync {
     fn list_blocked(&self) -> Vec<Result<BlockedMediaInfo>>;
 
     fn is_blocked_filehash(&self, sha256_digest: &[u8]) -> Result<bool>;
+
+    /// Gets the files that need to be deleted from the media backend in order to meet the `space`
+    /// requirements, as specified in the retention config. Calling this also causes those files'
+    /// metadata to be deleted from the database.
+    fn files_to_delete(
+        &self,
+        sha256_digest: &[u8],
+        retention: &MediaRetentionConfig,
+        media_type: MediaType,
+        new_size: u64,
+    ) -> Result<Vec<Result<String>>>;
+
+    /// Gets the files that need to be deleted from the media backend in order to meet the
+    /// time-based requirements (`created` and `accessed`), as specified in the retention config.
+    /// Calling this also causes those files' metadata to be deleted from the database.
+    fn cleanup_time_retention(&self, retention: &MediaRetentionConfig) -> Vec<Result<String>>;
+
+    fn update_last_accessed(&self, server_name: &ServerName, media_id: &str) -> Result<()>;
+
+    fn update_last_accessed_filehash(&self, sha256_digest: &[u8]) -> Result<()>;
 }

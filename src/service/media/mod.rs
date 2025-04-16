@@ -1,5 +1,5 @@
 mod data;
-use std::{fs, io::Cursor};
+use std::{fs, io::Cursor, sync::Arc};
 
 pub use data::Data;
 use ruma::{
@@ -8,10 +8,10 @@ use ruma::{
     OwnedServerName, ServerName, UserId,
 };
 use sha2::{digest::Output, Digest, Sha256};
-use tracing::error;
+use tracing::{error, info};
 
 use crate::{
-    config::{DirectoryStructure, MediaConfig},
+    config::{DirectoryStructure, MediaBackendConfig},
     services, utils, Error, Result,
 };
 use image::imageops::FilterType;
@@ -34,6 +34,29 @@ pub struct FileMeta {
     pub file: Vec<u8>,
 }
 
+pub enum MediaType {
+    LocalMedia { thumbnail: bool },
+    RemoteMedia { thumbnail: bool },
+}
+
+impl MediaType {
+    pub fn new(server_name: &ServerName, thumbnail: bool) -> Self {
+        if server_name == services().globals.server_name() {
+            Self::LocalMedia { thumbnail }
+        } else {
+            Self::RemoteMedia { thumbnail }
+        }
+    }
+
+    pub fn is_thumb(&self) -> bool {
+        match self {
+            MediaType::LocalMedia { thumbnail } | MediaType::RemoteMedia { thumbnail } => {
+                *thumbnail
+            }
+        }
+    }
+}
+
 pub struct Service {
     pub db: &'static dyn Data,
 }
@@ -47,6 +70,34 @@ pub struct BlockedMediaInfo {
 }
 
 impl Service {
+    pub fn start_time_retention_checker(self: &Arc<Self>) {
+        let self2 = Arc::clone(self);
+        if let Some(cleanup_interval) = services().globals.config.media.retention.cleanup_interval()
+        {
+            tokio::spawn(async move {
+                let mut i = cleanup_interval;
+                loop {
+                    i.tick().await;
+                    let _ = self2.try_purge_time_retention().await;
+                }
+            });
+        }
+    }
+
+    async fn try_purge_time_retention(&self) -> Result<()> {
+        info!("Checking if any media should be deleted due to time-based retention policies");
+        let files = self
+            .db
+            .cleanup_time_retention(&services().globals.config.media.retention);
+
+        let count = files.iter().filter(|res| res.is_ok()).count();
+        info!("Found {count} media files to delete");
+
+        purge_files(files);
+
+        Ok(())
+    }
+
     /// Uploads a file.
     pub async fn create(
         &self,
@@ -58,6 +109,16 @@ impl Service {
         user_id: Option<&UserId>,
     ) -> Result<()> {
         let (sha256_digest, sha256_hex) = generate_digests(file);
+
+        for error in self.clear_required_space(
+            &sha256_digest,
+            MediaType::new(servername, false),
+            size(file)?,
+        )? {
+            error!(
+                "Error deleting file to clear space when downloading/creating new media file: {error}"
+            )
+        }
 
         self.db.create_file_metadata(
             sha256_digest,
@@ -93,6 +154,12 @@ impl Service {
     ) -> Result<()> {
         let (sha256_digest, sha256_hex) = generate_digests(file);
 
+        self.clear_required_space(
+            &sha256_digest,
+            MediaType::new(servername, true),
+            size(file)?,
+        )?;
+
         self.db.create_thumbnail_metadata(
             sha256_digest,
             size(file)?,
@@ -125,7 +192,7 @@ impl Service {
             return Ok(None);
         }
 
-        let file = get_file(&hex::encode(sha256_digest)).await?;
+        let file = self.get_file(&sha256_digest, None).await?;
 
         Ok(Some(FileMeta {
             content_disposition: content_disposition(filename, &content_type),
@@ -180,7 +247,9 @@ impl Service {
                 }
 
                 // Using saved thumbnail
-                let file = get_file(&hex::encode(sha256_digest)).await?;
+                let file = self
+                    .get_file(&sha256_digest, Some((servername, media_id)))
+                    .await?;
 
                 Ok(Some(FileMeta {
                     content_disposition: content_disposition(filename, &content_type),
@@ -202,7 +271,7 @@ impl Service {
 
                 let content_disposition = content_disposition(filename.clone(), &content_type);
                 // Generate a thumbnail
-                let file = get_file(&hex::encode(sha256_digest)).await?;
+                let file = self.get_file(&sha256_digest, None).await?;
 
                 if let Ok(image) = image::load_from_memory(&file) {
                     let original_width = image.width();
@@ -303,7 +372,7 @@ impl Service {
                 return Ok(None);
             }
 
-            let file = get_file(&hex::encode(sha256_digest)).await?;
+            let file = self.get_file(&sha256_digest, None).await?;
 
             Ok(Some(FileMeta {
                 content_disposition: content_disposition(filename, &content_type),
@@ -416,14 +485,73 @@ impl Service {
     pub fn list_blocked(&self) -> Vec<Result<BlockedMediaInfo>> {
         self.db.list_blocked()
     }
+
+    pub fn clear_required_space(
+        &self,
+        sha256_digest: &[u8],
+        media_type: MediaType,
+        new_size: u64,
+    ) -> Result<Vec<Error>> {
+        let files = self.db.files_to_delete(
+            sha256_digest,
+            &services().globals.config.media.retention,
+            media_type,
+            new_size,
+        )?;
+
+        let count = files.iter().filter(|r| r.is_ok()).count();
+
+        if count != 0 {
+            info!("Deleting {} files to clear space for new media file", count);
+        }
+
+        Ok(purge_files(files))
+    }
+
+    /// Fetches the file from the configured media backend, as well as updating the "last accessed"
+    /// part of the metadata of the file
+    ///
+    /// If specified, the original file will also have it's last accessed time updated, if present
+    /// (use when accessing thumbnails)
+    async fn get_file(
+        &self,
+        sha256_digest: &[u8],
+        original_file_id: Option<(&ServerName, &str)>,
+    ) -> Result<Vec<u8>> {
+        let file = match &services().globals.config.media.backend {
+            MediaBackendConfig::FileSystem {
+                path,
+                directory_structure,
+            } => {
+                let path = services().globals.get_media_path(
+                    path,
+                    directory_structure,
+                    &hex::encode(sha256_digest),
+                )?;
+
+                let mut file = Vec::new();
+                File::open(path).await?.read_to_end(&mut file).await?;
+
+                file
+            }
+        };
+
+        if let Some((server_name, media_id)) = original_file_id {
+            self.db.update_last_accessed(server_name, media_id)?;
+        }
+
+        self.db
+            .update_last_accessed_filehash(sha256_digest)
+            .map(|_| file)
+    }
 }
 
 /// Creates the media file, using the configured media backend
 ///
 /// Note: this function does NOT set the metadata related to the file
 pub async fn create_file(sha256_hex: &str, file: &[u8]) -> Result<()> {
-    match &services().globals.config.media {
-        MediaConfig::FileSystem {
+    match &services().globals.config.media.backend {
+        MediaBackendConfig::FileSystem {
             path,
             directory_structure,
         } => {
@@ -437,25 +565,6 @@ pub async fn create_file(sha256_hex: &str, file: &[u8]) -> Result<()> {
     }
 
     Ok(())
-}
-
-/// Fetches the file from the configured media backend
-async fn get_file(sha256_hex: &str) -> Result<Vec<u8>> {
-    Ok(match &services().globals.config.media {
-        MediaConfig::FileSystem {
-            path,
-            directory_structure,
-        } => {
-            let path = services()
-                .globals
-                .get_media_path(path, directory_structure, sha256_hex)?;
-
-            let mut file = Vec::new();
-            File::open(path).await?.read_to_end(&mut file).await?;
-
-            file
-        }
-    })
 }
 
 /// Purges the given files from the media backend
@@ -477,8 +586,8 @@ fn purge_files(hashes: Vec<Result<String>>) -> Vec<Error> {
 ///
 /// Note: this does NOT remove the related metadata from the database
 fn delete_file(sha256_hex: &str) -> Result<()> {
-    match &services().globals.config.media {
-        MediaConfig::FileSystem {
+    match &services().globals.config.media.backend {
+        MediaBackendConfig::FileSystem {
             path,
             directory_structure,
         } => {

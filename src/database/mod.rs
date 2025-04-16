@@ -1103,6 +1103,8 @@ impl KeyValueDatabase {
 
         services().sending.start_handler();
 
+        services().media.start_time_retention_checker();
+
         Self::start_cleanup_task().await;
         if services().globals.allow_check_for_updates() {
             Self::start_check_for_updates_task();

@@ -49,7 +49,7 @@ static SUB_TABLES: [&str; 3] = ["well_known", "tls", "media"]; // Not doing `pro
 
 // Yeah, I know it's terrible, but since it seems the container users dont want syntax like A[B][C]="...",
 // this is what we have to deal with. Also see: https://github.com/SergioBenitez/Figment/issues/12#issuecomment-801449465
-static SUB_SUB_TABLES: [&str; 1] = ["directory_structure"];
+static SUB_SUB_TABLES: [&str; 2] = ["directory_structure", "retention"];
 
 #[tokio::main]
 async fn main() {

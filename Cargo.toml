@@ -88,6 +88,9 @@ image = { version = "0.25", default-features = false, features = [
 # Used for creating media filenames
 hex = "0.4"
 sha2 = "0.10"
+# Used for parsing media retention policies from the config
+bytesize = { version = "2", features = ["serde"] }
+humantime-serde = "1"
 # Used to encode server public key
 base64 = "0.22"
 # Used when hashing the state

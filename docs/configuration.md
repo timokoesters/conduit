@@ -99,6 +99,61 @@ depth = 4
 length = 2
 ```
 
+#### Retention policies
+Over time, the amount of media will keep growing, even if they were only accessed once.
+Retention policies allow for media files to automatically be deleted if they meet certain crietia,
+allowing disk space to be saved.
+
+This can be configured via the `retention` field of the media config, which is an array with
+"scopes" specified
+- `scope`: specifies what type of media this policy applies to. If unset, all other scopes which
+  you have not configured will use this as a default. Possible values: `"local"`, `"remote"`,
+  `"thumbnail"`
+- `accessed`: the maximum amount of time since the media was last accessed,
+  in the form specified by [`humantime::parse_duration`](https://docs.rs/humantime/2.2.0/humantime/fn.parse_duration.html)
+  (e.g. `"240h"`, `"1400min"`, `"2months"`, etc.)
+- `created`: the maximum amount of time since the media was created after, in the same format as
+  `accessed` above.
+- `space`: the maximum amount of space all of the media in this scope can occupy (if no scope is
+  specified, this becomes the total for **all** media). If the creation/downloading of new media,
+  will cause this to be exceeded, the last accessed media will be deleted repetitively until there
+  is enough space for the new media. The format is specified by [`ByteSize`](https://docs.rs/bytesize/2.0.1/bytesize/index.html)
+  (e.g. `"10000MB"`, `"15GiB"`, `"1.5TB"`, etc.)
+
+Media needs to meet **all** the specified requirements to be kept, otherwise, it will be deleted.
+This means that thumbnails have to meet both the `"thumbnail"`, and either `"local"` or `"remote"`
+requirements in order to be kept.
+
+If the media does not meet the `accessed` or `created` requirement, they will be deleted during a
+periodic cleanup, which happens every 1/10th of the period of the shortest retention time, with a
+maximum frequency of every minute, and a minimum of every 24 hours. For example, if I set my
+`accessed` time for all media to `"2months"`, but override that to be `"48h"` for thumbnails,
+the cleanup will happen every 4.8 hours.
+
+##### Example
+```toml
+# Total of 40GB for all media
+[[global.media.retention]] # Notice the double "[]", due to this being a table item in an array
+space = "40G"
+
+# Delete remote media not accessed for 30 days, or older than 90 days
+[[global.media.retention]]
+scope = "remote"
+accessed = "30d"
+created = "90days" # you can mix and match between the long and short format
+
+# Delete local media not accessed for 1 year
+[[global.media.retention]]
+scope = "local"
+accessed = "1y"
+
+# Only store 1GB of thumbnails
+[[global.media.retention]]
+scope = "thumbnail"
+space = "1GB"
+
+```
+
 ### TLS
 The `tls` table contains the following fields:
 - `certs`: The path to the public PEM certificate

@@ -1,13 +1,16 @@
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashMap, HashSet},
     fmt,
     net::{IpAddr, Ipv4Addr},
     num::NonZeroU8,
     path::PathBuf,
+    time::Duration,
 };
 
+use bytesize::ByteSize;
 use ruma::{OwnedServerName, RoomVersionId};
 use serde::{de::IgnoredAny, Deserialize};
+use tokio::time::{interval, Interval};
 use tracing::warn;
 use url::Url;
 
@@ -221,23 +224,26 @@ impl From<IncompleteConfig> for Config {
             server: well_known_server,
         };
 
-        let media = match media {
-            IncompleteMediaConfig::FileSystem {
-                path,
-                directory_structure,
-            } => MediaConfig::FileSystem {
-                path: path.unwrap_or_else(|| {
-                    // We do this as we don't know if the path has a trailing slash, or even if the
-                    // path separator is a forward or backward slash
-                    [&database_path, "media"]
-                        .iter()
-                        .collect::<PathBuf>()
-                        .into_os_string()
-                        .into_string()
-                        .expect("Both inputs are valid UTF-8")
-                }),
-                directory_structure,
+        let media = MediaConfig {
+            backend: match media.backend {
+                IncompleteMediaBackendConfig::FileSystem {
+                    path,
+                    directory_structure,
+                } => MediaBackendConfig::FileSystem {
+                    path: path.unwrap_or_else(|| {
+                        // We do this as we don't know if the path has a trailing slash, or even if the
+                        // path separator is a forward or backward slash
+                        [&database_path, "media"]
+                            .iter()
+                            .collect::<PathBuf>()
+                            .into_os_string()
+                            .into_string()
+                            .expect("Both inputs are valid UTF-8")
+                    }),
+                    directory_structure,
+                },
             },
+            retention: media.retention.into(),
         };
 
         Config {
@@ -317,9 +323,159 @@ pub struct WellKnownConfig {
     pub server: OwnedServerName,
 }
 
+#[derive(Deserialize, Default)]
+pub struct IncompleteMediaConfig {
+    #[serde(flatten, default)]
+    pub backend: IncompleteMediaBackendConfig,
+    pub retention: IncompleteMediaRetentionConfig,
+}
+
+#[derive(Clone, Debug)]
+pub struct MediaConfig {
+    pub backend: MediaBackendConfig,
+    pub retention: MediaRetentionConfig,
+}
+
+type IncompleteMediaRetentionConfig = Option<HashSet<IncompleteScopedMediaRetentionConfig>>;
+
+#[derive(Clone, Debug)]
+pub struct MediaRetentionConfig {
+    pub scoped: HashMap<MediaRetentionScope, ScopedMediaRetentionConfig>,
+    pub global_space: Option<ByteSize>,
+}
+
+impl MediaRetentionConfig {
+    /// Interval for the duration-based retention policies to be checked & enforced
+    pub fn cleanup_interval(&self) -> Option<Interval> {
+        self.scoped
+            .values()
+            .filter_map(|scoped| match (scoped.created, scoped.accessed) {
+                (None, accessed) => accessed,
+                (created, None) => created,
+                (created, accessed) => created.min(accessed),
+            })
+            .map(|dur| {
+                dur.mul_f32(0.1)
+                    .max(Duration::from_secs(60).min(Duration::from_secs(60 * 60 * 24)))
+            })
+            .min()
+            .map(interval)
+    }
+}
+
+#[derive(Deserialize)]
+pub struct IncompleteScopedMediaRetentionConfig {
+    pub scope: Option<MediaRetentionScope>,
+    #[serde(default, with = "humantime_serde::option")]
+    pub accessed: Option<Duration>,
+    #[serde(default, with = "humantime_serde::option")]
+    pub created: Option<Duration>,
+    pub space: Option<ByteSize>,
+}
+
+impl From<IncompleteMediaRetentionConfig> for MediaRetentionConfig {
+    fn from(value: IncompleteMediaRetentionConfig) -> Self {
+        {
+            let mut scoped = HashMap::from([
+                (
+                    MediaRetentionScope::Remote,
+                    ScopedMediaRetentionConfig::default(),
+                ),
+                (
+                    MediaRetentionScope::Thumbnail,
+                    ScopedMediaRetentionConfig::default(),
+                ),
+            ]);
+            let mut fallback = None;
+
+            if let Some(retention) = value {
+                for IncompleteScopedMediaRetentionConfig {
+                    scope,
+                    accessed,
+                    space,
+                    created,
+                } in retention
+                {
+                    if let Some(scope) = scope {
+                        scoped.insert(
+                            scope,
+                            ScopedMediaRetentionConfig {
+                                accessed,
+                                space,
+                                created,
+                            },
+                        );
+                    } else {
+                        fallback = Some(ScopedMediaRetentionConfig {
+                            accessed,
+                            space,
+                            created,
+                        })
+                    }
+                }
+            }
+
+            if let Some(fallback) = fallback.clone() {
+                for scope in [
+                    MediaRetentionScope::Remote,
+                    MediaRetentionScope::Local,
+                    MediaRetentionScope::Thumbnail,
+                ] {
+                    scoped.entry(scope).or_insert_with(|| fallback.clone());
+                }
+            }
+
+            Self {
+                global_space: fallback.and_then(|global| global.space),
+                scoped,
+            }
+        }
+    }
+}
+
+impl std::hash::Hash for IncompleteScopedMediaRetentionConfig {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.scope.hash(state);
+    }
+}
+
+impl PartialEq for IncompleteScopedMediaRetentionConfig {
+    fn eq(&self, other: &Self) -> bool {
+        self.scope == other.scope
+    }
+}
+
+impl Eq for IncompleteScopedMediaRetentionConfig {}
+
+#[derive(Debug, Clone)]
+pub struct ScopedMediaRetentionConfig {
+    pub accessed: Option<Duration>,
+    pub created: Option<Duration>,
+    pub space: Option<ByteSize>,
+}
+
+impl Default for ScopedMediaRetentionConfig {
+    fn default() -> Self {
+        Self {
+            // 30 days
+            accessed: Some(Duration::from_secs(60 * 60 * 24 * 30)),
+            created: None,
+            space: None,
+        }
+    }
+}
+
+#[derive(Deserialize, Clone, Debug, Hash, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum MediaRetentionScope {
+    Remote,
+    Local,
+    Thumbnail,
+}
+
 #[derive(Deserialize)]
 #[serde(tag = "backend", rename_all = "lowercase")]
-pub enum IncompleteMediaConfig {
+pub enum IncompleteMediaBackendConfig {
     FileSystem {
         path: Option<String>,
         #[serde(default)]
@@ -327,7 +483,7 @@ pub enum IncompleteMediaConfig {
     },
 }
 
-impl Default for IncompleteMediaConfig {
+impl Default for IncompleteMediaBackendConfig {
     fn default() -> Self {
         Self::FileSystem {
             path: None,
@@ -337,7 +493,7 @@ impl Default for IncompleteMediaConfig {
 }
 
 #[derive(Debug, Clone)]
-pub enum MediaConfig {
+pub enum MediaBackendConfig {
     FileSystem {
         path: String,
         directory_structure: DirectoryStructure,

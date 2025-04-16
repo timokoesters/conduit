@@ -8,7 +8,7 @@ use ruma::{
 use crate::api::server_server::DestinationResponse;
 
 use crate::{
-    config::{DirectoryStructure, MediaConfig, TurnConfig},
+    config::{DirectoryStructure, MediaBackendConfig, TurnConfig},
     services, Config, Error, Result,
 };
 use futures_util::FutureExt;
@@ -230,7 +230,7 @@ impl Service {
 
         // Remove this exception once other media backends are added
         #[allow(irrefutable_let_patterns)]
-        if let MediaConfig::FileSystem { path, .. } = &s.config.media {
+        if let MediaBackendConfig::FileSystem { path, .. } = &s.config.media.backend {
             fs::create_dir_all(path)?;
         }
 
