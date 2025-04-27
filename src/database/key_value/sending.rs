@@ -89,11 +89,11 @@ impl service::sending::Data for KeyValueDatabase {
         outgoing_kind: &OutgoingKind,
     ) -> Box<dyn Iterator<Item = Result<(SendingEventType, Vec<u8>)>> + 'a> {
         let prefix = outgoing_kind.get_prefix();
-        return Box::new(
+        Box::new(
             self.servernameevent_data
                 .scan_prefix(prefix)
                 .map(|(k, v)| parse_servercurrentevent(&k, v).map(|(_, ev)| (ev, k))),
-        );
+        )
     }
 
     fn mark_as_active(&self, events: &[(SendingEventType, Vec<u8>)]) -> Result<()> {

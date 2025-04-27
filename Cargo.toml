@@ -19,7 +19,7 @@ repository = "https://gitlab.com/famedly/conduit"
 version = "0.10.0-alpha"
 
 # See also `rust-toolchain.toml`
-rust-version = "1.81.0"
+rust-version = "1.83.0"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
