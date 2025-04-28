@@ -12,10 +12,10 @@
       url = "github:nix-community/fenix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    crane = {
-      url = "github:ipetkov/crane?ref=master";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
+    # Pinned because crane's own automatic cross compilation configuration that they
+    # introduce in the next commit attempts to link the musl targets against glibc
+    # for some reason. Unpin once this is fixed.
+    crane.url = "github:ipetkov/crane?rev=bb1c9567c43e4434f54e9481eb4b8e8e0d50f0b5";
     attic.url = "github:zhaofengli/attic?ref=main";
   };
 
@@ -24,7 +24,7 @@
       # Keep sorted
       mkScope = pkgs: pkgs.lib.makeScope pkgs.newScope (self: {
         craneLib =
-          (inputs.crane.mkLib pkgs).overrideToolchain self.toolchain;
+          (inputs.crane.mkLib pkgs).overrideToolchain (_: self.toolchain);
 
         default = self.callPackage ./nix/pkgs/default {};
 
@@ -65,7 +65,14 @@
     in
     inputs.flake-utils.lib.eachDefaultSystem (system:
       let
-        pkgs = inputs.nixpkgs.legacyPackages.${system};
+        pkgs = (import inputs.nixpkgs {
+          inherit system;
+          
+          # libolm is deprecated, but we only need it for complement
+          config.permittedInsecurePackages = [
+            "olm-3.2.16"
+          ];
+        });
       in
       {
         packages = {

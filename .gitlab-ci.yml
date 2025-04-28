@@ -84,10 +84,10 @@ artifacts:
     - ./bin/nix-build-and-cache .#static-x86_64-unknown-linux-musl
     - cp result/bin/conduit x86_64-unknown-linux-musl
 
-    - mkdir -p target/release
-    - cp result/bin/conduit target/release
-    - direnv exec . cargo deb --no-build
-    - mv target/debian/*.deb x86_64-unknown-linux-musl.deb
+    - mkdir -p target/x86_64-unknown-linux-musl/release
+    - cp result/bin/conduit target/x86_64-unknown-linux-musl/release
+    - direnv exec . cargo deb --no-build --target x86_64-unknown-linux-musl
+    - mv target/x86_64-unknown-linux-musl/debian/*.deb x86_64-unknown-linux-musl.deb
 
     # Since the OCI image package is based on the binary package, this has the
     # fun side effect of uploading the normal binary too. Conduit users who are
@@ -105,6 +105,7 @@ artifacts:
 
     - mkdir -p target/aarch64-unknown-linux-musl/release
     - cp result/bin/conduit target/aarch64-unknown-linux-musl/release
+    # binary stripping requires target-specific binary (`strip`)
     - direnv exec . cargo deb --no-strip --no-build --target aarch64-unknown-linux-musl
     - mv target/aarch64-unknown-linux-musl/debian/*.deb aarch64-unknown-linux-musl.deb
 
