@@ -18,6 +18,7 @@ let
     let
       rocksdb' = rocksdb.override {
         enableJemalloc = builtins.elem "jemalloc" features;
+        enableLiburing = false;
       };
     in
     {
