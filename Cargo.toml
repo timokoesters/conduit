@@ -138,6 +138,7 @@ clap = { version = "4", default-features = false, features = [
   "usage",
 ] }
 humantime = "2"
+shell-words = "1.1.0"
 
 futures-util = { version = "0.3", default-features = false }
 # Used for reading the configuration from conduit.toml & environment variables

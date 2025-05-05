@@ -539,23 +539,26 @@ impl Service {
     // Parse chat messages from the admin room into an AdminCommand object
     fn parse_admin_command(&self, command_line: &str) -> std::result::Result<AdminCommand, String> {
         // Note: argv[0] is `@conduit:servername:`, which is treated as the main command
-        let mut argv: Vec<_> = command_line.split_whitespace().collect();
+        let mut argv = match shell_words::split(command_line) {
+            Ok(args) => args,
+            Err(e) => return Err(format!("Failed to parse admin command: {e}")),
+        };
 
         // Replace `help command` with `command --help`
         // Clap has a help subcommand, but it omits the long help description.
         if argv.len() > 1 && argv[1] == "help" {
             argv.remove(1);
-            argv.push("--help");
+            argv.push("--help".to_owned());
         }
 
         // Backwards compatibility with `register_appservice`-style commands
-        let command_with_dashes;
-        if argv.len() > 1 && argv[1].contains('_') {
-            command_with_dashes = argv[1].replace('_', "-");
-            argv[1] = &command_with_dashes;
+        if let Some(command) = argv.get_mut(1) {
+            if command.contains('_') {
+                *command = command.replace('_', "-");
+            }
         }
 
-        AdminCommand::try_parse_from(argv).map_err(|error| error.to_string())
+        AdminCommand::try_parse_from(&argv).map_err(|error| error.to_string())
     }
 
     async fn process_admin_command(
