@@ -10,7 +10,10 @@ use crate::{
     database::KeyValueDatabase,
     service::{
         self,
-        media::{BlockedMediaInfo, Data as _, DbFileMeta, MediaType},
+        media::{
+            BlockedMediaInfo, Data as _, DbFileMeta, FileInfo, MediaListItem, MediaQuery,
+            MediaQueryFileInfo, MediaQueryThumbInfo, MediaType, ServerNameOrUserId,
+        },
     },
     services, utils, Error, Result,
 };
@@ -162,6 +165,117 @@ impl service::media::Data for KeyValueDatabase {
             .get(&metadata.sha256_digest)?
             .map(|_| metadata)
             .ok_or_else(|| Error::BadRequest(ErrorKind::NotFound, "Media not found."))
+    }
+
+    fn query(&self, server_name: &ServerName, media_id: &str) -> Result<MediaQuery> {
+        let mut key = server_name.as_bytes().to_vec();
+        key.push(0xff);
+        key.extend_from_slice(media_id.as_bytes());
+
+        Ok(MediaQuery {
+            is_blocked: self.is_directly_blocked(server_name, media_id)?,
+            source_file: if let Some(DbFileMeta {
+                sha256_digest,
+                filename,
+                content_type,
+                unauthenticated_access_permitted,
+            }) = self
+                .servernamemediaid_metadata
+                .get(&key)?
+                .as_deref()
+                .map(parse_metadata)
+                .transpose()?
+            {
+                let sha256_hex = hex::encode(&sha256_digest);
+
+                let uploader_localpart = self
+                    .servernamemediaid_userlocalpart
+                    .get(&key)?
+                    .as_deref()
+                    .map(utils::string_from_bytes)
+                    .transpose()
+                    .map_err(|_| {
+                        error!("Invalid UTF-8 for uploader of mxc://{server_name}/{media_id}");
+                        Error::BadDatabase(
+                            "Invalid UTF-8 in value of servernamemediaid_userlocalpart",
+                        )
+                    })?;
+
+                let is_blocked_via_filehash = self.is_blocked_filehash(&sha256_digest)?;
+
+                let time_info = if let Some(filehash_meta) = self
+                    .filehash_metadata
+                    .get(&sha256_digest)?
+                    .map(FilehashMetadata::from_vec)
+                {
+                    Some(FileInfo {
+                        creation: filehash_meta.creation(&sha256_digest)?,
+                        last_access: filehash_meta.last_access(&sha256_digest)?,
+                        size: filehash_meta.size(&sha256_digest)?,
+                    })
+                } else {
+                    None
+                };
+
+                Some(MediaQueryFileInfo {
+                    uploader_localpart,
+                    sha256_hex,
+                    filename,
+                    content_type,
+                    unauthenticated_access_permitted,
+                    is_blocked_via_filehash,
+                    file_info: time_info,
+                })
+            } else {
+                None
+            },
+            thumbnails: {
+                key.push(0xff);
+
+                self.thumbnailid_metadata
+                    .scan_prefix(key)
+                    .map(|(k, v)| {
+                        let (width, height) = dimensions_from_thumbnailid(&k)?;
+
+                        let DbFileMeta {
+                            sha256_digest,
+                            filename,
+                            content_type,
+                            unauthenticated_access_permitted,
+                        } = parse_metadata(&v)?;
+
+                        let sha256_hex = hex::encode(&sha256_digest);
+
+                        let is_blocked_via_filehash = self.is_blocked_filehash(&sha256_digest)?;
+
+                        let time_info = if let Some(filehash_meta) = self
+                            .filehash_metadata
+                            .get(&sha256_digest)?
+                            .map(FilehashMetadata::from_vec)
+                        {
+                            Some(FileInfo {
+                                creation: filehash_meta.creation(&sha256_digest)?,
+                                last_access: filehash_meta.last_access(&sha256_digest)?,
+                                size: filehash_meta.size(&sha256_digest)?,
+                            })
+                        } else {
+                            None
+                        };
+
+                        Ok(MediaQueryThumbInfo {
+                            width,
+                            height,
+                            sha256_hex,
+                            filename,
+                            content_type,
+                            unauthenticated_access_permitted,
+                            is_blocked_via_filehash,
+                            file_info: time_info,
+                        })
+                    })
+                    .collect::<Result<_>>()?
+            },
+        })
     }
 
     fn purge_and_get_hashes(
@@ -642,6 +756,336 @@ impl service::media::Data for KeyValueDatabase {
         }
 
         errors
+    }
+
+    fn list(
+        &self,
+        server_name_or_user_id: Option<ServerNameOrUserId>,
+        include_thumbnails: bool,
+        content_type: Option<&str>,
+        before: Option<u64>,
+        after: Option<u64>,
+    ) -> Result<Vec<MediaListItem>> {
+        let filter_medialistitem = |item: MediaListItem| {
+            if content_type.is_none_or(|ct_filter| {
+                item.content_type
+                    .as_deref()
+                    .map(|item_ct| {
+                        if ct_filter.bytes().any(|char| char == b'/') {
+                            item_ct == ct_filter
+                        } else {
+                            item_ct.starts_with(&(ct_filter.to_owned() + "/"))
+                        }
+                    })
+                    .unwrap_or_default()
+            }) && before.is_none_or(|before| item.creation < before)
+                && after.is_none_or(|after| item.creation > after)
+            {
+                Some(item)
+            } else {
+                None
+            }
+        };
+
+        let parse_servernamemediaid_metadata_iter =
+            |v: &[u8], next_part: Option<&[u8]>, server_name: &ServerName| {
+                let media_id_bytes = next_part.ok_or_else(|| {
+                    Error::bad_database("Invalid format of key in servernamemediaid_metadata")
+                })?;
+                let media_id = utils::string_from_bytes(media_id_bytes).map_err(|_| {
+                    Error::bad_database("Invalid Media ID String in servernamemediaid_metadata")
+                })?;
+
+                let mut key = server_name.as_bytes().to_vec();
+                key.push(0xff);
+                key.extend_from_slice(media_id_bytes);
+
+                let uploader_localpart = self
+                    .servernamemediaid_userlocalpart
+                    .get(&key)?
+                    .as_deref()
+                    .map(utils::string_from_bytes)
+                    .transpose()
+                    .map_err(|_| {
+                        error!("Invalid localpart of uploader for mxc://{server_name}/{media_id}");
+                        Error::BadDatabase(
+                            "Invalid uploader localpart in servernamemediaid_userlocalpart",
+                        )
+                    })?;
+
+                let DbFileMeta {
+                    sha256_digest,
+                    filename,
+                    content_type,
+                    ..
+                } = parse_metadata(v)?;
+
+                self.filehash_metadata
+                    .get(&sha256_digest)?
+                    .map(FilehashMetadata::from_vec)
+                    .map(|meta| {
+                        Ok(filter_medialistitem(MediaListItem {
+                            server_name: server_name.to_owned(),
+                            media_id: media_id.clone(),
+                            uploader_localpart,
+                            content_type,
+                            filename,
+                            dimensions: None,
+                            size: meta.size(&sha256_digest)?,
+                            creation: meta.creation(&sha256_digest)?,
+                        }))
+                    })
+                    .transpose()
+                    .map(Option::flatten)
+            };
+
+        let parse_thumbnailid_metadata_iter =
+            |k: &[u8], v: &[u8], media_id_part: Option<&[u8]>, server_name: &ServerName| {
+                let media_id_bytes = media_id_part.ok_or_else(|| {
+                    Error::bad_database("Invalid format of key in servernamemediaid_metadata")
+                })?;
+                let media_id = utils::string_from_bytes(media_id_bytes).map_err(|_| {
+                    Error::bad_database("Invalid Media ID String in servernamemediaid_metadata")
+                })?;
+
+                let dimensions = dimensions_from_thumbnailid(k)?;
+
+                let DbFileMeta {
+                    sha256_digest,
+                    filename,
+                    content_type,
+                    ..
+                } = parse_metadata(v)?;
+
+                self.filehash_metadata
+                    .get(&sha256_digest)?
+                    .map(FilehashMetadata::from_vec)
+                    .map(|meta| {
+                        Ok(filter_medialistitem(MediaListItem {
+                            server_name: server_name.to_owned(),
+                            media_id,
+                            uploader_localpart: None,
+                            content_type,
+                            filename,
+                            dimensions: Some(dimensions),
+                            size: meta.size(&sha256_digest)?,
+                            creation: meta.creation(&sha256_digest)?,
+                        }))
+                    })
+                    .transpose()
+                    .map(Option::flatten)
+            };
+
+        match server_name_or_user_id {
+            Some(ServerNameOrUserId::ServerName(server_name)) => {
+                let mut prefix = server_name.as_bytes().to_vec();
+                prefix.push(0xff);
+
+                let mut media = self
+                    .servernamemediaid_metadata
+                    .scan_prefix(prefix.clone())
+                    .map(|(k, v)| {
+                        let mut parts = k.rsplit(|b: &u8| *b == 0xff);
+
+                        parse_servernamemediaid_metadata_iter(&v, parts.next(), &server_name)
+                    })
+                    .filter_map(Result::transpose)
+                    .collect::<Result<Vec<_>>>()?;
+
+                if include_thumbnails {
+                    media.append(
+                        &mut self
+                            .thumbnailid_metadata
+                            .scan_prefix(prefix)
+                            .map(|(k, v)| {
+                                let mut parts = k.split(|b: &u8| *b == 0xff);
+                                parts.next();
+
+                                parse_thumbnailid_metadata_iter(&k, &v, parts.next(), &server_name)
+                            })
+                            .filter_map(Result::transpose)
+                            .collect::<Result<Vec<_>>>()?,
+                    );
+                }
+
+                Ok(media)
+            }
+            Some(ServerNameOrUserId::UserId(user_id)) => {
+                let mut prefix = user_id.server_name().as_bytes().to_vec();
+                prefix.push(0xff);
+                prefix.extend_from_slice(user_id.localpart().as_bytes());
+                prefix.push(0xff);
+
+                self.servername_userlocalpart_mediaid
+                    .scan_prefix(prefix)
+                    .map(|(k, _)| -> Result<_> {
+                        let mut parts = k.rsplit(|b: &u8| *b == 0xff);
+
+                        let media_id_bytes = parts.next().ok_or_else(|| {
+                            Error::bad_database(
+                                "Invalid format of key in servername_userlocalpart_mediaid",
+                            )
+                        })?;
+                        let media_id = utils::string_from_bytes(media_id_bytes).map_err(|_| {
+                            Error::bad_database(
+                                "Invalid Media ID String in servername_userlocalpart_mediaid",
+                            )
+                        })?;
+
+                        let mut key = user_id.server_name().as_bytes().to_vec();
+                        key.push(0xff);
+                        key.extend_from_slice(media_id_bytes);
+
+                        let Some(DbFileMeta {
+                            sha256_digest,
+                            filename,
+                            content_type,
+                            ..
+                        }) = self
+                            .servernamemediaid_metadata
+                            .get(&key)?
+                            .as_deref()
+                            .map(parse_metadata)
+                            .transpose()?
+                        else {
+                            error!(
+                                "Missing metadata for \"mxc://{}/{media_id}\", despite storing it's uploader",
+                                user_id.server_name()
+                            );
+                            return Err(Error::BadDatabase(
+                                "Missing metadata for media, despite storing it's uploader",
+                            ));
+                        };
+
+                        let mut media = if let Some(item) = self
+                            .filehash_metadata
+                            .get(&sha256_digest)?
+                            .map(FilehashMetadata::from_vec)
+                            .map(|meta| {
+                                Ok::<_, Error>(filter_medialistitem(MediaListItem {
+                                    server_name: user_id.server_name().to_owned(),
+                                    media_id: media_id.clone(),
+                                    uploader_localpart: Some(user_id.localpart().to_owned()),
+                                    content_type,
+                                    filename,
+                                    dimensions: None,
+                                    size: meta.size(&sha256_digest)?,
+                                    creation: meta.creation(&sha256_digest)?,
+                                }))
+                            })
+                            .transpose()?
+                            .flatten()
+                        {
+                            vec![item]
+                        } else {
+                            Vec::new()
+                        };
+
+                        if include_thumbnails {
+                            key.push(0xff);
+
+                            media.append(
+                                &mut self
+                                    .thumbnailid_metadata
+                                    .scan_prefix(key)
+                                    .map(|(k, v)| {
+                                        let DbFileMeta {
+                                            sha256_digest,
+                                            filename,
+                                            content_type,
+                                            ..
+                                        } = parse_metadata(&v)?;
+
+                                        let dimensions = dimensions_from_thumbnailid(&k)?;
+
+                                        self.filehash_metadata
+                                            .get(&sha256_digest)?
+                                            .map(FilehashMetadata::from_vec)
+                                            .map(|meta| {
+                                                Ok(filter_medialistitem(MediaListItem {
+                                                    server_name: user_id.server_name().to_owned(),
+                                                    media_id: media_id.clone(),
+                                                    uploader_localpart: Some(
+                                                        user_id.localpart().to_owned(),
+                                                    ),
+                                                    content_type,
+                                                    filename,
+                                                    dimensions: Some(dimensions),
+                                                    size: meta.size(&sha256_digest)?,
+                                                    creation: meta.creation(&sha256_digest)?,
+                                                }))
+                                            })
+                                            .transpose()
+                                            .map(Option::flatten)
+                                    })
+                                    .filter_map(Result::transpose)
+                                    .collect::<Result<Vec<_>>>()?,
+                            );
+                        };
+
+                        Ok(media)
+                    })
+                    .collect::<Result<Vec<Vec<_>>>>()
+                    .map(|outer| outer.into_iter().flatten().collect::<Vec<MediaListItem>>())
+            }
+            None => {
+                let splitter = |b: &u8| *b == 0xff;
+
+                let get_servername = |parts: &mut Split<'_, u8, _>| -> Result<_> {
+                    let server_name = parts
+                        .next()
+                        .ok_or_else(|| {
+                            Error::bad_database(
+                                "Invalid format of key in servernamemediaid_metadata",
+                            )
+                        })
+                        .map(utils::string_from_bytes)?
+                        .map_err(|_| {
+                            Error::bad_database(
+                                "Invalid ServerName String in servernamemediaid_metadata",
+                            )
+                        })
+                        .map(OwnedServerName::try_from)?
+                        .map_err(|_| {
+                            Error::bad_database(
+                                "Invalid ServerName String in servernamemediaid_metadata",
+                            )
+                        })?;
+
+                    Ok(server_name)
+                };
+
+                let mut media = self
+                    .servernamemediaid_metadata
+                    .iter()
+                    .map(|(k, v)| {
+                        let mut parts = k.split(splitter);
+                        let server_name = get_servername(&mut parts)?;
+
+                        parse_servernamemediaid_metadata_iter(&v, parts.next(), &server_name)
+                    })
+                    .filter_map(Result::transpose)
+                    .collect::<Result<Vec<_>>>()?;
+
+                if include_thumbnails {
+                    media.append(
+                        &mut self
+                            .thumbnailid_metadata
+                            .iter()
+                            .map(|(k, v)| {
+                                let mut parts = k.split(splitter);
+                                let server_name = get_servername(&mut parts)?;
+
+                                parse_thumbnailid_metadata_iter(&k, &v, parts.next(), &server_name)
+                            })
+                            .filter_map(Result::transpose)
+                            .collect::<Result<Vec<_>>>()?,
+                    );
+                }
+
+                Ok(media)
+            }
+        }
     }
 
     fn list_blocked(&self) -> Vec<Result<BlockedMediaInfo>> {
@@ -1214,6 +1658,21 @@ fn parse_metadata(value: &[u8]) -> Result<DbFileMeta> {
         content_type,
         unauthenticated_access_permitted,
     })
+}
+
+/// Attempts to parse the width and height from a "thumbnail id", returning the
+/// width and height in that order
+fn dimensions_from_thumbnailid(thumbnail_id: &[u8]) -> Result<(u32, u32)> {
+    let (width, height) = thumbnail_id[thumbnail_id
+        .len()
+        .checked_sub(8)
+        .ok_or_else(|| Error::BadDatabase("Invalid format of dimensions from thumbnailid"))?..]
+        .split_at(4);
+
+    Ok((
+        u32::from_be_bytes(width.try_into().expect("Length of slice is 4")),
+        u32::from_be_bytes(height.try_into().expect("Length of slice is 4")),
+    ))
 }
 
 pub struct FilehashMetadata {

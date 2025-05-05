@@ -3,7 +3,9 @@ use sha2::{digest::Output, Sha256};
 
 use crate::{config::MediaRetentionConfig, Error, Result};
 
-use super::{BlockedMediaInfo, DbFileMeta, MediaType};
+use super::{
+    BlockedMediaInfo, DbFileMeta, MediaListItem, MediaQuery, MediaType, ServerNameOrUserId,
+};
 
 pub trait Data: Send + Sync {
     #[allow(clippy::too_many_arguments)]
@@ -44,6 +46,8 @@ pub trait Data: Send + Sync {
         height: u32,
     ) -> Result<DbFileMeta>;
 
+    fn query(&self, server_name: &ServerName, media_id: &str) -> Result<MediaQuery>;
+
     fn purge_and_get_hashes(
         &self,
         media: &[(OwnedServerName, String)],
@@ -82,6 +86,15 @@ pub trait Data: Send + Sync {
     ) -> Vec<Error>;
 
     fn unblock(&self, media: &[(OwnedServerName, String)]) -> Vec<Error>;
+
+    fn list(
+        &self,
+        server_name_or_user_id: Option<ServerNameOrUserId>,
+        include_thumbnails: bool,
+        content_type: Option<&str>,
+        before: Option<u64>,
+        after: Option<u64>,
+    ) -> Result<Vec<MediaListItem>>;
 
     /// Returns a Vec of:
     /// - The server the media is from

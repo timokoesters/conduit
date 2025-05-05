@@ -6,6 +6,7 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
+use bytesize::ByteSize;
 use chrono::DateTime;
 use clap::{Args, Parser};
 use regex::Regex;
@@ -39,7 +40,13 @@ use crate::{
     Error, PduEvent, Result,
 };
 
-use super::{media::BlockedMediaInfo, pdu::PduBuilder};
+use super::{
+    media::{
+        BlockedMediaInfo, FileInfo, MediaListItem, MediaQuery, MediaQueryFileInfo,
+        MediaQueryThumbInfo, ServerNameOrUserId,
+    },
+    pdu::PduBuilder,
+};
 
 #[cfg_attr(test, derive(Debug))]
 #[derive(Parser)]
@@ -123,6 +130,52 @@ enum AdminCommand {
         force: bool,
         #[command(flatten)]
         purge_media: DeactivatePurgeMediaArgs,
+    },
+
+    /// Shows information about the requested media
+    QueryMedia {
+        /// The MXC URI of the media you want to request information about
+        mxc: Box<MxcUri>,
+    },
+
+    /// Lists all the media matching the specified requirements
+    ListMedia {
+        #[command(flatten)]
+        user_server_filter: ListMediaArgs,
+
+        /// Whether to include thumbnails in the list.
+        /// It is recommended to do so if you are not only looking
+        /// for local media, as with remote media, the full media file
+        /// might not be downloaded, just the thumbnail
+        #[arg(short = 't', long)]
+        include_thumbnails: bool,
+
+        #[arg(short, long)]
+        /// The content-type media must have to be listed.
+        /// if only a "type" (as opposed to "type/subtype") is specified,
+        /// all media with that type are returned, no matter the sub-type.
+        ///
+        /// For example, if you request content-type "image", than files
+        /// of content type "image/png", "image/jpeg", etc. will be returned.
+        content_type: Option<String>,
+
+        #[arg(
+            short = 'b', long,
+            value_parser = humantime::parse_rfc3339_weak
+        )]
+        /// The point in time after which media had to be uploaded to be
+        /// shown (in the UTC timezone).
+        /// Should be in the format {YYYY}-{MM}-{DD}T{hh}:{mm}:{ss}
+        uploaded_before: Option<SystemTime>,
+
+        #[arg(
+            short = 'a', long,
+            value_parser = humantime::parse_rfc3339_weak
+        )]
+        /// The point in time before which media had to be uploaded to be
+        /// shown (in the UTC timezone).
+        /// Should be in the format {YYYY}-{MM}-{DD}T{hh}:{mm}:{ss}
+        uploaded_after: Option<SystemTime>,
     },
 
     /// Purge a list of media, formatted as MXC URIs
@@ -329,6 +382,22 @@ pub struct DeactivatePurgeMediaArgs {
     /// users, ensuring that the file is removed from the media backend, so only use this when all
     /// the media they uploaded is undesirable
     force_filehash: bool,
+}
+
+#[derive(Args, Debug)]
+#[group(required = false)]
+pub struct ListMediaArgs {
+    #[arg(short, long)]
+    /// The user that uploaded the media.
+    /// Only local media uploaders can be recorded, so specifying a non-local
+    /// user will always yield no results
+    user: Option<Box<UserId>>,
+
+    #[arg(short, long)]
+    /// The server from which the media originated from.
+    /// If you want to list local media, just set this to
+    /// be your own server's servername
+    server: Option<Box<ServerName>>,
 }
 
 #[derive(Debug)]
@@ -960,6 +1029,162 @@ impl Service {
                     )
                 }
             }
+            AdminCommand::QueryMedia { mxc } => {
+                let Ok((server_name, media_id)) = mxc.parts() else {
+                    return Ok(RoomMessageEventContent::text_plain("Invalid media MXC"));
+                };
+
+                let MediaQuery{ is_blocked, source_file, thumbnails } = services().media.query(server_name, media_id)?;
+                let mut message = format!("Is blocked Media ID: {is_blocked}");
+
+                if let Some(MediaQueryFileInfo {
+                    uploader_localpart,
+                    sha256_hex,
+                    filename,
+                    content_type,
+                    unauthenticated_access_permitted,
+                    is_blocked_via_filehash,
+                    file_info: time_info,
+                }) = source_file {
+                    message.push_str("\n\nInformation on full (non-thumbnail) file:\n");
+
+                    if let Some(FileInfo {
+                        creation,
+                        last_access,
+                        size,
+                    }) = time_info {
+                        message.push_str(&format!("\nIs stored: true\nCreated at: {}\nLast accessed at: {}\nSize of file: {}",
+                            DateTime::from_timestamp(creation.try_into().unwrap_or(i64::MAX),0).expect("Timestamp is within range"),
+                            DateTime::from_timestamp(last_access.try_into().unwrap_or(i64::MAX),0).expect("Timestamp is within range"),
+                            ByteSize::b(size).display().si()
+                        ));
+                    } else {
+                        message.push_str("\nIs stored: false");
+                    }
+
+                    message.push_str(&format!("\nIs accessible via unauthenticated media endpoints: {unauthenticated_access_permitted}"));
+                    message.push_str(&format!("\nSHA256 hash of file: {sha256_hex}"));
+                    message.push_str(&format!("\nIs blocked due to sharing SHA256 hash with blocked media: {is_blocked_via_filehash}"));
+
+                    if let Some(localpart) = uploader_localpart {
+                        message.push_str(&format!("\nUploader: @{localpart}:{server_name}"))
+                    }
+                    if let Some(filename) = filename {
+                        message.push_str(&format!("\nFilename: {filename}"))
+                    }
+                    if let Some(content_type) = content_type {
+                        message.push_str(&format!("\nContent-type: {content_type}"))
+                    }
+                }
+
+                if !thumbnails.is_empty() {
+                    message.push_str("\n\nInformation on thumbnails of media:");
+                }
+
+                for MediaQueryThumbInfo{
+                    width,
+                    height,
+                    sha256_hex,
+                    filename,
+                    content_type,
+                    unauthenticated_access_permitted,
+                    is_blocked_via_filehash,
+                    file_info: time_info,
+                } in thumbnails {
+                    message.push_str(&format!("\n\nDimensions: {width}x{height}"));
+                    if let Some(FileInfo {
+                        creation,
+                        last_access,
+                        size,
+                    }) = time_info {
+                        message.push_str(&format!("\nIs stored: true\nCreated at: {}\nLast accessed at: {}\nSize of file: {}",
+                            DateTime::from_timestamp(creation.try_into().unwrap_or(i64::MAX),0).expect("Timestamp is within range"),
+                            DateTime::from_timestamp(last_access.try_into().unwrap_or(i64::MAX),0).expect("Timestamp is within range"),
+                            ByteSize::b(size).display().si()
+                        ));
+                    } else {
+                        message.push_str("\nIs stored: false");
+                    }
+
+                    message.push_str(&format!("\nIs accessible via unauthenticated media endpoints: {unauthenticated_access_permitted}"));
+                    message.push_str(&format!("\nSHA256 hash of file: {sha256_hex}"));
+                    message.push_str(&format!("\nIs blocked due to sharing SHA256 hash with blocked media: {is_blocked_via_filehash}"));
+
+                    if let Some(filename) = filename {
+                        message.push_str(&format!("\nFilename: {filename}"))
+                    }
+                    if let Some(content_type) = content_type {
+                        message.push_str(&format!("\nContent-type: {content_type}"))
+                    }
+                }
+
+                RoomMessageEventContent::text_plain(message)
+            }
+            AdminCommand::ListMedia {
+                user_server_filter: ListMediaArgs {
+                    user,
+                    server,
+                },
+                include_thumbnails,
+                content_type,
+                uploaded_before,
+                uploaded_after,
+            } => {
+                let mut markdown_message = String::from(
+                    "| MXC URI | Dimensions (if thumbnail) | Created/Downloaded at | Uploader | Content-Type | Filename | Size |\n| --- | --- | --- | --- | --- | --- | --- |",
+                );
+                let mut html_message = String::from(
+                    r#"<table><thead><tr><th scope="col">MXC URI</th><th scope="col">Dimensions (if thumbnail)</th><th scope="col">Created/Downloaded at</th><th scope="col">Uploader</th><th scope="col">Content-Type</th><th scope="col">Filename</th><th scope="col">Size</th></tr></thead><tbody>"#,
+                );
+
+                for MediaListItem{
+                    server_name,
+                    media_id,
+                    uploader_localpart,
+                    content_type,
+                    filename,
+                    dimensions,
+                    size,
+                    creation,
+                } in services().media.list(
+                    user
+                    .map(ServerNameOrUserId::UserId)
+                    .or_else(|| server.map(ServerNameOrUserId::ServerName)),
+                    include_thumbnails,
+                    content_type.as_deref(),
+                    uploaded_before
+                        .map(|ts| ts.duration_since(UNIX_EPOCH))
+                        .transpose()
+                        .map_err(|_| Error::AdminCommand("Timestamp must be after unix epoch"))?
+                        .as_ref()
+                        .map(Duration::as_secs),
+                    uploaded_after
+                        .map(|ts| ts.duration_since(UNIX_EPOCH))
+                        .transpose()
+                        .map_err(|_| Error::AdminCommand("Timestamp must be after unix epoch"))?
+                        .as_ref()
+                        .map(Duration::as_secs)
+                )? {
+
+                    let user_id = uploader_localpart.map(|localpart| format!("@{localpart}:{server_name}")).unwrap_or_default();
+                    let content_type = content_type.unwrap_or_default();
+                    let filename = filename.unwrap_or_default();
+                    let dimensions = dimensions.map(|(w, h)| format!("{w}x{h}")).unwrap_or_default();
+                    let size = ByteSize::b(size).display().si();
+                    let creation = DateTime::from_timestamp(creation.try_into().unwrap_or(i64::MAX),0).expect("Timestamp is within range");
+
+                    markdown_message
+                        .push_str(&format!("\n| mxc://{server_name}/{media_id} | {dimensions} | {creation} | {user_id} | {content_type} | {filename} | {size} |"));
+
+                    html_message.push_str(&format!(
+                        "<tr><td>mxc://{server_name}/{media_id}</td><td>{dimensions}</td><td>{creation}</td><td>{user_id}</td><td>{content_type}</td><td>{filename}</td><td>{size}</td></tr>"
+                    ))
+                }
+
+                html_message.push_str("</tbody></table>");
+
+                RoomMessageEventContent::text_html(markdown_message, html_message)
+            },
             AdminCommand::PurgeMedia => media_from_body(body).map_or_else(
                 |message| message,
                 |media| {

@@ -28,6 +28,55 @@ use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
 };
 
+pub struct MediaQuery {
+    pub is_blocked: bool,
+    pub source_file: Option<MediaQueryFileInfo>,
+    pub thumbnails: Vec<MediaQueryThumbInfo>,
+}
+
+pub struct MediaQueryFileInfo {
+    pub uploader_localpart: Option<String>,
+    pub sha256_hex: String,
+    pub filename: Option<String>,
+    pub content_type: Option<String>,
+    pub unauthenticated_access_permitted: bool,
+    pub is_blocked_via_filehash: bool,
+    pub file_info: Option<FileInfo>,
+}
+
+pub struct MediaQueryThumbInfo {
+    pub width: u32,
+    pub height: u32,
+    pub sha256_hex: String,
+    pub filename: Option<String>,
+    pub content_type: Option<String>,
+    pub unauthenticated_access_permitted: bool,
+    pub is_blocked_via_filehash: bool,
+    pub file_info: Option<FileInfo>,
+}
+
+pub struct FileInfo {
+    pub creation: u64,
+    pub last_access: u64,
+    pub size: u64,
+}
+
+pub struct MediaListItem {
+    pub server_name: OwnedServerName,
+    pub media_id: String,
+    pub uploader_localpart: Option<String>,
+    pub content_type: Option<String>,
+    pub filename: Option<String>,
+    pub dimensions: Option<(u32, u32)>,
+    pub size: u64,
+    pub creation: u64,
+}
+
+pub enum ServerNameOrUserId {
+    ServerName(Box<ServerName>),
+    UserId(Box<UserId>),
+}
+
 pub struct FileMeta {
     pub content_disposition: ContentDisposition,
     pub content_type: Option<String>,
@@ -382,6 +431,11 @@ impl Service {
         }
     }
 
+    /// Returns information about the queried media
+    pub fn query(&self, server_name: &ServerName, media_id: &str) -> Result<MediaQuery> {
+        self.db.query(server_name, media_id)
+    }
+
     /// Purges all of the specified media.
     ///
     /// If `force_filehash` is true, all media and/or thumbnails which share sha256 content hashes
@@ -475,6 +529,24 @@ impl Service {
     /// Unblocks the specified media, allowing them from being accessed again
     pub fn unblock(&self, media: &[(OwnedServerName, String)]) -> Vec<Error> {
         self.db.unblock(media)
+    }
+
+    /// Returns a list of all the stored media, applying all the given filters to the results
+    pub fn list(
+        &self,
+        server_name_or_user_id: Option<ServerNameOrUserId>,
+        include_thumbnails: bool,
+        content_type: Option<&str>,
+        before: Option<u64>,
+        after: Option<u64>,
+    ) -> Result<Vec<MediaListItem>> {
+        self.db.list(
+            server_name_or_user_id,
+            include_thumbnails,
+            content_type,
+            before,
+            after,
+        )
     }
 
     /// Returns a Vec of:
