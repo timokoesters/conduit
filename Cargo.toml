@@ -84,6 +84,7 @@ image = { version = "0.25", default-features = false, features = [
   "gif",
   "jpeg",
   "png",
+  "webp",
 ] }
 # Used for creating media filenames
 hex = "0.4"

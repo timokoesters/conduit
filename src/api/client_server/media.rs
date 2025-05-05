@@ -193,7 +193,7 @@ pub async fn get_content_auth_route(
     get_content(&body.server_name, body.media_id.clone(), true, true).await
 }
 
-async fn get_content(
+pub async fn get_content(
     server_name: &ServerName,
     media_id: String,
     allow_remote: bool,
