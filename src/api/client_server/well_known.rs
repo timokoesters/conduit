@@ -1,6 +1,4 @@
-use ruma::api::client::discovery::discover_homeserver::{
-    self, HomeserverInfo, SlidingSyncProxyInfo,
-};
+use ruma::api::client::discovery::discover_homeserver::{self, HomeserverInfo};
 
 use crate::{services, Result, Ruma};
 
@@ -17,6 +15,5 @@ pub async fn well_known_client(
             base_url: client_url.clone(),
         },
         identity_server: None,
-        sliding_sync_proxy: Some(SlidingSyncProxyInfo { url: client_url }),
     })
 }

@@ -10,10 +10,7 @@ use ruma::{
     api::client::{
         device::Device,
         filter::FilterDefinition,
-        sync::sync_events::{
-            self,
-            v4::{ExtensionsConfig, SyncRequestList},
-        },
+        sync::sync_events::{self},
     },
     encryption::{CrossSigningKey, DeviceKeys, OneTimeKey},
     events::AnyToDeviceEvent,
@@ -25,10 +22,10 @@ use ruma::{
 use crate::{services, Error, Result};
 
 pub struct SlidingSyncCache {
-    lists: BTreeMap<String, SyncRequestList>,
-    subscriptions: BTreeMap<OwnedRoomId, sync_events::v4::RoomSubscription>,
+    lists: BTreeMap<String, sync_events::v5::request::List>,
+    subscriptions: BTreeMap<OwnedRoomId, sync_events::v5::request::RoomSubscription>,
     known_rooms: BTreeMap<String, BTreeMap<OwnedRoomId, u64>>, // For every room, the roomsince number
-    extensions: ExtensionsConfig,
+    extensions: sync_events::v5::request::Extensions,
 }
 
 pub struct Service {
@@ -60,7 +57,7 @@ impl Service {
         &self,
         user_id: OwnedUserId,
         device_id: OwnedDeviceId,
-        request: &mut sync_events::v4::Request,
+        request: &mut sync_events::v5::Request,
     ) -> BTreeMap<String, BTreeMap<OwnedRoomId, u64>> {
         let Some(conn_id) = request.conn_id.clone() else {
             return BTreeMap::new();
@@ -75,7 +72,7 @@ impl Service {
                         lists: BTreeMap::new(),
                         subscriptions: BTreeMap::new(),
                         known_rooms: BTreeMap::new(),
-                        extensions: ExtensionsConfig::default(),
+                        extensions: sync_events::v5::request::Extensions::default(),
                     }))
                 }),
         );
@@ -84,57 +81,22 @@ impl Service {
 
         for (list_id, list) in &mut request.lists {
             if let Some(cached_list) = cached.lists.get(list_id) {
-                if list.sort.is_empty() {
-                    list.sort.clone_from(&cached_list.sort);
-                };
                 if list.room_details.required_state.is_empty() {
                     list.room_details
                         .required_state
                         .clone_from(&cached_list.room_details.required_state);
                 };
-                list.room_details.timeline_limit = list
-                    .room_details
-                    .timeline_limit
-                    .or(cached_list.room_details.timeline_limit);
-                list.include_old_rooms = list
-                    .include_old_rooms
-                    .clone()
-                    .or(cached_list.include_old_rooms.clone());
                 match (&mut list.filters, cached_list.filters.clone()) {
                     (Some(list_filters), Some(cached_filters)) => {
-                        list_filters.is_dm = list_filters.is_dm.or(cached_filters.is_dm);
-                        if list_filters.spaces.is_empty() {
-                            list_filters.spaces = cached_filters.spaces;
-                        }
-                        list_filters.is_encrypted =
-                            list_filters.is_encrypted.or(cached_filters.is_encrypted);
                         list_filters.is_invite =
                             list_filters.is_invite.or(cached_filters.is_invite);
-                        if list_filters.room_types.is_empty() {
-                            list_filters.room_types = cached_filters.room_types;
-                        }
                         if list_filters.not_room_types.is_empty() {
                             list_filters.not_room_types = cached_filters.not_room_types;
                         }
-                        list_filters.room_name_like = list_filters
-                            .room_name_like
-                            .clone()
-                            .or(cached_filters.room_name_like);
-                        if list_filters.tags.is_empty() {
-                            list_filters.tags = cached_filters.tags;
-                        }
-                        if list_filters.not_tags.is_empty() {
-                            list_filters.not_tags = cached_filters.not_tags;
-                        }
                     }
                     (_, Some(cached_filters)) => list.filters = Some(cached_filters),
-                    (Some(list_filters), _) => list.filters = Some(list_filters.clone()),
                     (_, _) => {}
                 }
-                if list.bump_event_types.is_empty() {
-                    list.bump_event_types
-                        .clone_from(&cached_list.bump_event_types);
-                };
             }
             cached.lists.insert(list_id.clone(), list.clone());
         }
@@ -192,7 +154,7 @@ impl Service {
         user_id: OwnedUserId,
         device_id: OwnedDeviceId,
         conn_id: String,
-        subscriptions: BTreeMap<OwnedRoomId, sync_events::v4::RoomSubscription>,
+        subscriptions: BTreeMap<OwnedRoomId, sync_events::v5::request::RoomSubscription>,
     ) {
         let mut cache = self.connections.lock().unwrap();
         let cached = Arc::clone(
@@ -203,7 +165,7 @@ impl Service {
                         lists: BTreeMap::new(),
                         subscriptions: BTreeMap::new(),
                         known_rooms: BTreeMap::new(),
-                        extensions: ExtensionsConfig::default(),
+                        extensions: sync_events::v5::request::Extensions::default(),
                     }))
                 }),
         );
@@ -231,7 +193,7 @@ impl Service {
                         lists: BTreeMap::new(),
                         subscriptions: BTreeMap::new(),
                         known_rooms: BTreeMap::new(),
-                        extensions: ExtensionsConfig::default(),
+                        extensions: sync_events::v5::request::Extensions::default(),
                     }))
                 }),
         );

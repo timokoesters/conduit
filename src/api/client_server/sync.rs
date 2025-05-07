@@ -13,7 +13,6 @@ use ruma::{
                 KnockState, KnockedRoom, LeftRoom, Presence, RoomAccountData, RoomSummary, Rooms,
                 State, Timeline, ToDevice,
             },
-            v4::{SlidingOp, SlidingSyncRoomHero},
             DeviceLists, UnreadNotificationsCount,
         },
         uiaa::UiaaResponse,
@@ -1270,9 +1269,9 @@ fn share_encrypted_room(
         .any(|encrypted| encrypted))
 }
 
-pub async fn sync_events_v4_route(
-    body: Ruma<sync_events::v4::Request>,
-) -> Result<sync_events::v4::Response, RumaResponse<UiaaResponse>> {
+pub async fn sync_events_v5_route(
+    body: Ruma<sync_events::v5::Request>,
+) -> Result<sync_events::v5::Response, RumaResponse<UiaaResponse>> {
     let sender_user = body.sender_user.expect("user is authenticated");
     let sender_device = body.sender_device.expect("user is authenticated");
     let mut body = body.body;
@@ -1331,13 +1330,12 @@ pub async fn sync_events_v4_route(
         );
 
         for room_id in &all_joined_rooms {
-            let current_shortstatehash =
-                if let Some(s) = services().rooms.state.get_room_shortstatehash(room_id)? {
-                    s
-                } else {
-                    error!("Room {} has no state", room_id);
-                    continue;
-                };
+            let Some(current_shortstatehash) =
+                services().rooms.state.get_room_shortstatehash(room_id)?
+            else {
+                error!("Room {} has no state", room_id);
+                continue;
+            };
 
             let since_shortstatehash = services()
                 .rooms
@@ -1510,54 +1508,36 @@ pub async fn sync_events_v4_route(
 
         let mut new_known_rooms = BTreeSet::new();
 
+        for (mut start, mut end) in list.ranges {
+            start = start.clamp(uint!(0), UInt::from(all_joined_rooms.len() as u32 - 1));
+            end = end.clamp(start, UInt::from(all_joined_rooms.len() as u32 - 1));
+            let room_ids =
+                all_joined_rooms[(u64::from(start) as usize)..=(u64::from(end) as usize)].to_vec();
+            new_known_rooms.extend(room_ids.iter().cloned());
+            for room_id in &room_ids {
+                let todo_room =
+                    todo_rooms
+                        .entry(room_id.clone())
+                        .or_insert((BTreeSet::new(), 0, u64::MAX));
+                let limit = u64::from(list.room_details.timeline_limit).min(100);
+                todo_room
+                    .0
+                    .extend(list.room_details.required_state.iter().cloned());
+                todo_room.1 = todo_room.1.max(limit);
+                // 0 means unknown because it got out of date
+                todo_room.2 = todo_room.2.min(
+                    known_rooms
+                        .get(&list_id)
+                        .and_then(|k| k.get(room_id))
+                        .copied()
+                        .unwrap_or(0),
+                );
+            }
+        }
+
         lists.insert(
             list_id.clone(),
-            sync_events::v4::SyncList {
-                ops: list
-                    .ranges
-                    .into_iter()
-                    .map(|mut r| {
-                        r.0 =
-                            r.0.clamp(uint!(0), UInt::from(all_joined_rooms.len() as u32 - 1));
-                        r.1 =
-                            r.1.clamp(r.0, UInt::from(all_joined_rooms.len() as u32 - 1));
-                        let room_ids = all_joined_rooms
-                            [(u64::from(r.0) as usize)..=(u64::from(r.1) as usize)]
-                            .to_vec();
-                        new_known_rooms.extend(room_ids.iter().cloned());
-                        for room_id in &room_ids {
-                            let todo_room = todo_rooms.entry(room_id.clone()).or_insert((
-                                BTreeSet::new(),
-                                0,
-                                u64::MAX,
-                            ));
-                            let limit = list
-                                .room_details
-                                .timeline_limit
-                                .map_or(10, u64::from)
-                                .min(100);
-                            todo_room
-                                .0
-                                .extend(list.room_details.required_state.iter().cloned());
-                            todo_room.1 = todo_room.1.max(limit);
-                            // 0 means unknown because it got out of date
-                            todo_room.2 = todo_room.2.min(
-                                known_rooms
-                                    .get(&list_id)
-                                    .and_then(|k| k.get(room_id))
-                                    .copied()
-                                    .unwrap_or(0),
-                            );
-                        }
-                        sync_events::v4::SyncOp {
-                            op: SlidingOp::Sync,
-                            range: Some(r),
-                            index: None,
-                            room_ids,
-                            room_id: None,
-                        }
-                    })
-                    .collect(),
+            sync_events::v5::response::List {
                 count: UInt::from(all_joined_rooms.len() as u32),
             },
         );
@@ -1582,7 +1562,7 @@ pub async fn sync_events_v4_route(
         let todo_room = todo_rooms
             .entry(room_id.clone())
             .or_insert((BTreeSet::new(), 0, u64::MAX));
-        let limit = room.timeline_limit.map_or(10, u64::from).min(100);
+        let limit = u64::from(room.timeline_limit).min(100);
         todo_room.0.extend(room.required_state.iter().cloned());
         todo_room.1 = todo_room.1.max(limit);
         // 0 means unknown because it got out of date
@@ -1594,11 +1574,6 @@ pub async fn sync_events_v4_route(
                 .unwrap_or(0),
         );
         known_subscription_rooms.insert(room_id.clone());
-    }
-
-    for r in body.unsubscribe_rooms {
-        known_subscription_rooms.remove(&r);
-        body.room_subscriptions.remove(&r);
     }
 
     if let Some(conn_id) = &body.conn_id {
@@ -1656,6 +1631,11 @@ pub async fn sync_events_v4_route(
             .map(|(_, pdu)| pdu.to_sync_room_event())
             .collect();
 
+        let bump_stamp = timeline_pdus
+            .iter()
+            .map(|(_, pdu)| pdu.origin_server_ts)
+            .max();
+
         let required_state = required_state_request
             .iter()
             .flat_map(|state| {
@@ -1683,7 +1663,7 @@ pub async fn sync_events_v4_route(
                     .get_member(room_id, &member)
                     .ok()
                     .flatten()
-                    .map(|memberevent| SlidingSyncRoomHero {
+                    .map(|memberevent| sync_events::v5::response::Hero {
                         user_id: member,
                         name: memberevent.displayname,
                         avatar: memberevent.avatar_url,
@@ -1720,7 +1700,7 @@ pub async fn sync_events_v4_route(
 
         rooms.insert(
             room_id.clone(),
-            sync_events::v4::SlidingSyncRoom {
+            sync_events::v5::response::Room {
                 name: services().rooms.state_accessor.get_name(room_id)?.or(name),
                 avatar: if let Some(avatar) = avatar {
                     JsOption::Some(avatar)
@@ -1773,7 +1753,7 @@ pub async fn sync_events_v4_route(
                         .into(),
                 ),
                 num_live: None, // Count events in timeline greater than global sync counter
-                timestamp: None,
+                bump_stamp,
                 heroes: if body
                     .room_subscriptions
                     .get(room_id)
@@ -1801,15 +1781,14 @@ pub async fn sync_events_v4_route(
         let _ = tokio::time::timeout(duration, watcher).await;
     }
 
-    Ok(sync_events::v4::Response {
-        initial: globalsince == 0,
+    Ok(sync_events::v5::Response {
         txn_id: body.txn_id.clone(),
         pos: next_batch.to_string(),
         lists,
         rooms,
-        extensions: sync_events::v4::Extensions {
+        extensions: sync_events::v5::response::Extensions {
             to_device: if body.extensions.to_device.enabled.unwrap_or(false) {
-                Some(sync_events::v4::ToDevice {
+                Some(sync_events::v5::response::ToDevice {
                     events: services()
                         .users
                         .get_to_device_events(&sender_user, &sender_device)?,
@@ -1818,7 +1797,7 @@ pub async fn sync_events_v4_route(
             } else {
                 None
             },
-            e2ee: sync_events::v4::E2EE {
+            e2ee: sync_events::v5::response::E2EE {
                 device_lists: DeviceLists {
                     changed: device_list_changes.into_iter().collect(),
                     left: device_list_left.into_iter().collect(),
@@ -1829,7 +1808,7 @@ pub async fn sync_events_v4_route(
                 // Fallback keys are not yet supported
                 device_unused_fallback_key_types: None,
             },
-            account_data: sync_events::v4::AccountData {
+            account_data: sync_events::v5::response::AccountData {
                 global: if body.extensions.account_data.enabled.unwrap_or(false) {
                     services()
                         .account_data
@@ -1848,13 +1827,12 @@ pub async fn sync_events_v4_route(
                 },
                 rooms: BTreeMap::new(),
             },
-            receipts: sync_events::v4::Receipts {
+            receipts: sync_events::v5::response::Receipts {
                 rooms: BTreeMap::new(),
             },
-            typing: sync_events::v4::Typing {
+            typing: sync_events::v5::response::Typing {
                 rooms: BTreeMap::new(),
             },
         },
-        delta_token: None,
     })
 }
