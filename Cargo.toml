@@ -171,7 +171,7 @@ features = [
   "ring-compat",
   "state-res",
   "unstable-msc2448",
-  "unstable-msc3575",
+  "unstable-msc4186",
 ]
 git = "https://github.com/ruma/ruma.git"
 
