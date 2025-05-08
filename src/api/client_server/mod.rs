@@ -9,7 +9,7 @@ mod device;
 mod directory;
 mod filter;
 mod keys;
-mod media;
+pub mod media;
 mod membership;
 mod message;
 mod openid;

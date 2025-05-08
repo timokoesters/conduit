@@ -45,35 +45,55 @@ use tikv_jemallocator::Jemalloc;
 #[global_allocator]
 static GLOBAL: Jemalloc = Jemalloc;
 
-static SUB_TABLES: [&str; 2] = ["well_known", "tls"]; // Not doing `proxy` cause setting that with env vars would be a pain
+static SUB_TABLES: [&str; 3] = ["well_known", "tls", "media"]; // Not doing `proxy` cause setting that with env vars would be a pain
+
+// Yeah, I know it's terrible, but since it seems the container users dont want syntax like A[B][C]="...",
+// this is what we have to deal with. Also see: https://github.com/SergioBenitez/Figment/issues/12#issuecomment-801449465
+static SUB_SUB_TABLES: [&str; 2] = ["directory_structure", "retention"];
 
 #[tokio::main]
 async fn main() {
     clap::parse();
 
     // Initialize config
-    let raw_config =
-        Figment::new()
-            .merge(
-                Toml::file(Env::var("CONDUIT_CONFIG").expect(
+    let raw_config = Figment::new()
+        .merge(
+            Toml::file(
+                Env::var("CONDUIT_CONFIG").expect(
                     "The CONDUIT_CONFIG env var needs to be set. Example: /etc/conduit.toml",
-                ))
-                .nested(),
+                ),
             )
-            .merge(Env::prefixed("CONDUIT_").global().map(|k| {
-                let mut key: Uncased = k.into();
+            .nested(),
+        )
+        .merge(Env::prefixed("CONDUIT_").global().map(|k| {
+            let mut key: Uncased = k.into();
 
-                for table in SUB_TABLES {
-                    if k.starts_with(&(table.to_owned() + "_")) {
-                        key = Uncased::from(
-                            table.to_owned() + "." + k[table.len() + 1..k.len()].as_str(),
-                        );
-                        break;
+            'outer: for table in SUB_TABLES {
+                if k.starts_with(&(table.to_owned() + "_")) {
+                    for sub_table in SUB_SUB_TABLES {
+                        if k.starts_with(&(table.to_owned() + "_" + sub_table + "_")) {
+                            key = Uncased::from(
+                                table.to_owned()
+                                    + "."
+                                    + sub_table
+                                    + "."
+                                    + k[table.len() + 1 + sub_table.len() + 1..k.len()].as_str(),
+                            );
+
+                            break 'outer;
+                        }
                     }
-                }
 
-                key
-            }));
+                    key = Uncased::from(
+                        table.to_owned() + "." + k[table.len() + 1..k.len()].as_str(),
+                    );
+
+                    break;
+                }
+            }
+
+            key
+        }));
 
     let config = match raw_config.extract::<Config>() {
         Ok(s) => s,

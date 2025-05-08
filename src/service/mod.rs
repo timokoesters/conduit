@@ -34,7 +34,7 @@ pub struct Services {
     pub admin: Arc<admin::Service>,
     pub globals: globals::Service,
     pub key_backups: key_backups::Service,
-    pub media: media::Service,
+    pub media: Arc<media::Service>,
     pub sending: Arc<sending::Service>,
 }
 
@@ -119,7 +119,7 @@ impl Services {
             account_data: account_data::Service { db },
             admin: admin::Service::build(),
             key_backups: key_backups::Service { db },
-            media: media::Service { db },
+            media: Arc::new(media::Service { db }),
             sending: sending::Service::build(db, &config),
 
             globals: globals::Service::load(db, config)?,

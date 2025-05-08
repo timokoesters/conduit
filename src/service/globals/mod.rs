@@ -7,7 +7,10 @@ use ruma::{
 
 use crate::api::server_server::DestinationResponse;
 
-use crate::{config::TurnConfig, services, Config, Error, Result};
+use crate::{
+    config::{DirectoryStructure, MediaBackendConfig, TurnConfig},
+    services, Config, Error, Result,
+};
 use futures_util::FutureExt;
 use hickory_resolver::TokioAsyncResolver;
 use hyper_util::client::legacy::connect::dns::{GaiResolver, Name as HyperName};
@@ -34,8 +37,6 @@ use std::{
 use tokio::sync::{broadcast, watch::Receiver, Mutex, RwLock, Semaphore};
 use tower_service::Service as TowerService;
 use tracing::{error, info};
-
-use base64::{engine::general_purpose, Engine as _};
 
 type WellKnownMap = HashMap<OwnedServerName, DestinationResponse>;
 type TlsNameMap = HashMap<String, (Vec<IpAddr>, u16)>;
@@ -227,7 +228,11 @@ impl Service {
             shutdown: AtomicBool::new(false),
         };
 
-        fs::create_dir_all(s.get_media_folder())?;
+        // Remove this exception once other media backends are added
+        #[allow(irrefutable_let_patterns)]
+        if let MediaBackendConfig::FileSystem { path, .. } = &s.config.media.backend {
+            fs::create_dir_all(path)?;
+        }
 
         if !s
             .supported_room_versions()
@@ -349,7 +354,18 @@ impl Service {
     }
 
     pub fn turn(&self) -> Option<TurnConfig> {
-        self.config.turn()
+        // We have to clone basically the entire thing on `/turnServers` otherwise
+        self.config.turn.clone()
+    }
+
+    pub fn well_known_server(&self) -> OwnedServerName {
+        // Same as above, but for /.well-known/matrix/server
+        self.config.well_known.server.clone()
+    }
+
+    pub fn well_known_client(&self) -> String {
+        // Same as above, but for /.well-known/matrix/client
+        self.config.well_known.client.clone()
     }
 
     pub fn dns_resolver(&self) -> &TokioAsyncResolver {
@@ -466,27 +482,32 @@ impl Service {
         self.db.bump_database_version(new_version)
     }
 
-    pub fn get_media_folder(&self) -> PathBuf {
+    pub fn get_media_path(
+        &self,
+        media_directory: &str,
+        directory_structure: &DirectoryStructure,
+        sha256_hex: &str,
+    ) -> Result<PathBuf> {
         let mut r = PathBuf::new();
-        r.push(self.config.database_path.clone());
-        r.push("media");
-        r
-    }
+        r.push(media_directory);
 
-    pub fn get_media_file(&self, key: &[u8]) -> PathBuf {
-        let mut r = PathBuf::new();
-        r.push(self.config.database_path.clone());
-        r.push("media");
-        r.push(general_purpose::URL_SAFE_NO_PAD.encode(key));
-        r
-    }
+        if let DirectoryStructure::Deep { length, depth } = directory_structure {
+            let mut filename = sha256_hex;
+            for _ in 0..depth.get() {
+                let (current_path, next) = filename.split_at(length.get().into());
+                filename = next;
+                r.push(current_path);
+            }
 
-    pub fn well_known_server(&self) -> OwnedServerName {
-        self.config.well_known_server()
-    }
+            // Create all directories leading up to file
+            fs::create_dir_all(&r).inspect_err(|e| error!("Error creating leading directories for media with sha256 hash of {sha256_hex}: {e}"))?;
 
-    pub fn well_known_client(&self) -> String {
-        self.config.well_known_client()
+            r.push(filename);
+        } else {
+            r.push(sha256_hex);
+        }
+
+        Ok(r)
     }
 
     pub fn shutdown(&self) {

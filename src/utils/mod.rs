@@ -18,6 +18,13 @@ pub fn millis_since_unix_epoch() -> u64 {
         .as_millis() as u64
 }
 
+pub fn secs_since_unix_epoch() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("time is valid")
+        .as_secs()
+}
+
 pub fn increment(old: Option<&[u8]>) -> Option<Vec<u8>> {
     let number = match old.map(|bytes| bytes.try_into()) {
         Some(Ok(bytes)) => {
@@ -127,7 +134,7 @@ pub fn deserialize_from_str<
     deserializer: D,
 ) -> Result<T, D::Error> {
     struct Visitor<T: FromStr<Err = E>, E>(std::marker::PhantomData<T>);
-    impl<'de, T: FromStr<Err = Err>, Err: fmt::Display> serde::de::Visitor<'de> for Visitor<T, Err> {
+    impl<T: FromStr<Err = Err>, Err: fmt::Display> serde::de::Visitor<'_> for Visitor<T, Err> {
         type Value = T;
         fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
             write!(formatter, "a parsable string")
@@ -149,7 +156,7 @@ pub fn deserialize_from_str<
 /// string when passed to a format string.
 pub struct HtmlEscape<'a>(pub &'a str);
 
-impl<'a> fmt::Display for HtmlEscape<'a> {
+impl fmt::Display for HtmlEscape<'_> {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Because the internet is always right, turns out there's not that many
         // characters to escape: http://stackoverflow.com/questions/7381974
