@@ -12,6 +12,7 @@ use ruma::{
         AnyStrippedStateEvent, StateEventType, TimelineEventType,
         RECOMMENDED_STRIPPED_STATE_EVENT_TYPES,
     },
+    room_version_rules::AuthorizationRules,
     serde::Raw,
     state_res::{self, StateMap},
     EventId, OwnedEventId, RoomId, RoomVersionId, UserId,
@@ -338,6 +339,7 @@ impl Service {
         sender: &UserId,
         state_key: Option<&str>,
         content: &serde_json::value::RawValue,
+        auth_rules: &AuthorizationRules,
     ) -> Result<StateMap<Arc<PduEvent>>> {
         let shortstatehash = if let Some(current_shortstatehash) =
             services().rooms.state.get_room_shortstatehash(room_id)?
@@ -347,8 +349,9 @@ impl Service {
             return Ok(HashMap::new());
         };
 
-        let auth_events = state_res::auth_types_for_event(kind, sender, state_key, content)
-            .expect("content is a valid JSON object");
+        let auth_events =
+            state_res::auth_types_for_event(kind, sender, state_key, content, auth_rules)
+                .expect("content is a valid JSON object");
 
         let mut sauthevents = auth_events
             .into_iter()

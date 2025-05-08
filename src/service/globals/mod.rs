@@ -12,7 +12,7 @@ use crate::{
     services, Config, Error, Result,
 };
 use futures_util::FutureExt;
-use hickory_resolver::TokioAsyncResolver;
+use hickory_resolver::TokioResolver;
 use hyper_util::client::legacy::connect::dns::{GaiResolver, Name as HyperName};
 use reqwest::dns::{Addrs, Name, Resolve, Resolving};
 use ruma::{
@@ -54,7 +54,7 @@ pub struct Service {
     pub config: Config,
     allow_registration: RwLock<bool>,
     keypair: Arc<ruma::signatures::Ed25519KeyPair>,
-    dns_resolver: TokioAsyncResolver,
+    dns_resolver: TokioResolver,
     jwt_decoding_key: Option<jsonwebtoken::DecodingKey>,
     federation_client: reqwest::Client,
     default_client: reqwest::Client,
@@ -200,13 +200,15 @@ impl Service {
             db,
             config,
             keypair: Arc::new(keypair),
-            dns_resolver: TokioAsyncResolver::tokio_from_system_conf().map_err(|e| {
-                error!(
-                    "Failed to set up trust dns resolver with system config: {}",
-                    e
-                );
-                Error::bad_config("Failed to set up trust dns resolver with system config.")
-            })?,
+            dns_resolver: TokioResolver::builder_tokio()
+                .map_err(|e| {
+                    error!(
+                        "Failed to set up trust dns resolver with system config: {}",
+                        e
+                    );
+                    Error::bad_config("Failed to set up trust dns resolver with system config.")
+                })?
+                .build(),
             actual_destination_cache: Arc::new(RwLock::new(WellKnownMap::new())),
             tls_name_override,
             federation_client,
@@ -368,7 +370,7 @@ impl Service {
         self.config.well_known.client.clone()
     }
 
-    pub fn dns_resolver(&self) -> &TokioAsyncResolver {
+    pub fn dns_resolver(&self) -> &TokioResolver {
         &self.dns_resolver
     }
 

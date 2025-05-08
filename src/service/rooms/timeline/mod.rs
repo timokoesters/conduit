@@ -21,7 +21,7 @@ use ruma::{
         GlobalAccountDataEventType, StateEventType, TimelineEventType,
     },
     push::{Action, Ruleset, Tweak},
-    state_res::{self, Event, RoomVersion},
+    state_res::{self, Event},
     uint, user_id, CanonicalJsonObject, CanonicalJsonValue, EventId, MilliSecondsSinceUnixEpoch,
     OwnedEventId, OwnedRoomId, OwnedServerName, RoomId, RoomVersionId, ServerName, UserId,
 };
@@ -701,7 +701,9 @@ impl Service {
                 }
             })?;
 
-        let room_version = RoomVersion::new(&room_version_id).expect("room version is supported");
+        let room_version_rules = room_version_id
+            .rules()
+            .expect("Supported room version has rules");
 
         let auth_events = services().rooms.state.get_auth_events(
             room_id,
@@ -709,6 +711,7 @@ impl Service {
             sender,
             state_key.as_deref(),
             &content,
+            &room_version_rules.authorization,
         )?;
 
         // Our depth is the maximum depth of prev_events + 1
@@ -766,15 +769,11 @@ impl Service {
             signatures: None,
         };
 
-        let auth_check = state_res::auth_check(&room_version, &pdu, |k, s| {
+        if state_res::auth_check(&room_version_rules.authorization, &pdu, |k, s| {
             auth_events.get(&(k.clone(), s.to_owned()))
         })
-        .map_err(|e| {
-            error!("{:?}", e);
-            Error::bad_database("Auth check failed.")
-        })?;
-
-        if !auth_check {
+        .is_err()
+        {
             return Err(Error::BadRequest(
                 ErrorKind::forbidden(),
                 "Event is not authorized.",
@@ -798,7 +797,7 @@ impl Service {
             services().globals.server_name().as_str(),
             services().globals.keypair(),
             &mut pdu_json,
-            &room_version_id,
+            &room_version_rules.redaction,
         ) {
             Ok(_) => {}
             Err(e) => {
@@ -818,8 +817,13 @@ impl Service {
         // Generate event id
         pdu.event_id = EventId::parse_arc(format!(
             "${}",
-            ruma::signatures::reference_hash(&pdu_json, &room_version_id)
-                .expect("Event format validated when event was hashed")
+            ruma::signatures::reference_hash(
+                &pdu_json,
+                &room_version_id
+                    .rules()
+                    .expect("Supported room version has rules")
+            )
+            .expect("Event format validated when event was hashed")
         ))
         .expect("ruma's reference hashes are valid event ids");
 
@@ -1139,7 +1143,13 @@ impl Service {
             }
 
             let room_version_id = services().rooms.state.get_room_version(&pdu.room_id)?;
-            pdu.redact(room_version_id, reason)?;
+            pdu.redact(
+                room_version_id
+                    .rules()
+                    .expect("Supported room version has rules")
+                    .redaction,
+                reason,
+            )?;
 
             self.replace_pdu(
                 &pdu_id,

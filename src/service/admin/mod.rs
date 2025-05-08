@@ -32,6 +32,7 @@ use ruma::{
         },
         TimelineEventType,
     },
+    room_version_rules::RoomVersionRules,
     EventId, MilliSecondsSinceUnixEpoch, MxcUri, OwnedMxcUri, OwnedRoomAliasId, OwnedRoomId,
     OwnedServerName, RoomAliasId, RoomId, RoomVersionId, ServerName, UserId,
 };
@@ -685,7 +686,7 @@ impl Service {
                     let string = body[1..body.len() - 1].join("\n");
                     match serde_json::from_str(&string) {
                         Ok(value) => {
-                            match ruma::signatures::reference_hash(&value, &RoomVersionId::V6) {
+                            match ruma::signatures::reference_hash(&value, &RoomVersionRules::V11) {
                                 Ok(hash) => {
                                     let event_id = EventId::parse(format!("${hash}"));
 
@@ -1160,6 +1161,7 @@ impl Service {
                             thumbnail_info: None,
                             thumbnail_source: None,
                             blurhash: None,
+                            thumbhash: None,
                         })),
                     })
                 } else {
@@ -1534,7 +1536,7 @@ impl Service {
                                 services().globals.server_name().as_str(),
                                 services().globals.keypair(),
                                 &mut value,
-                                &room_version_id,
+                                &room_version_id.rules().expect("Supported room version has rules").redaction,
                             ) {
                                 RoomMessageEventContent::text_plain(format!("Invalid event: {e}"))
                             } else {

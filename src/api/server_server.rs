@@ -815,7 +815,12 @@ pub fn parse_incoming_pdu(
 
     let room_version_id = services().rooms.state.get_room_version(&room_id)?;
 
-    let (event_id, value) = match gen_event_id_canonical_json(pdu, &room_version_id) {
+    let (event_id, value) = match gen_event_id_canonical_json(
+        pdu,
+        &room_version_id
+            .rules()
+            .expect("Supported room version has rules"),
+    ) {
         Ok(t) => t,
         Err(e) => {
             // Event could not be converted to canonical json
@@ -1756,7 +1761,12 @@ async fn append_member_pdu(
     // We do not add the event_id field to the pdu here because of signature and hashes checks
     let room_version_id = services().rooms.state.get_room_version(room_id)?;
 
-    let (event_id, mut value) = match gen_event_id_canonical_json(pdu, &room_version_id) {
+    let (event_id, mut value) = match gen_event_id_canonical_json(
+        pdu,
+        &room_version_id
+            .rules()
+            .expect("Supported room version has rules"),
+    ) {
         Ok(t) => t,
         Err(_) => {
             // Event could not be converted to canonical json
@@ -1845,7 +1855,10 @@ async fn append_member_pdu(
             services().globals.server_name().as_str(),
             services().globals.keypair(),
             &mut value,
-            &room_version_id,
+            &room_version_id
+                .rules()
+                .expect("Supported room version has rules")
+                .redaction,
         )
         .map_err(|_| Error::BadRequest(ErrorKind::InvalidParam, "Failed to sign event."))?;
     }
@@ -2099,15 +2112,23 @@ pub async fn create_invite_route(
         services().globals.server_name().as_str(),
         services().globals.keypair(),
         &mut signed_event,
-        &room_version,
+        &room_version
+            .rules()
+            .expect("Supported room version has rules")
+            .redaction,
     )
     .map_err(|_| Error::BadRequest(ErrorKind::InvalidParam, "Failed to sign event."))?;
 
     // Generate event id
     let event_id = EventId::parse(format!(
         "${}",
-        ruma::signatures::reference_hash(&signed_event, &room_version)
-            .expect("Event format validated when event was hashed")
+        ruma::signatures::reference_hash(
+            &signed_event,
+            &room_version
+                .rules()
+                .expect("Supported room version has rules")
+        )
+        .expect("Event format validated when event was hashed")
     ))
     .expect("ruma's reference hashes are valid event ids");
 

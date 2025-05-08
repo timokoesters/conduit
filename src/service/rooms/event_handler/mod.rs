@@ -31,7 +31,8 @@ use ruma::{
         StateEventType, TimelineEventType,
     },
     int,
-    state_res::{self, RoomVersion, StateMap},
+    room_version_rules::{AuthorizationRules, RoomVersionRules},
+    state_res::{self, StateMap},
     uint, CanonicalJsonObject, CanonicalJsonValue, EventId, MilliSecondsSinceUnixEpoch,
     OwnedServerName, OwnedServerSigningKeyId, RoomId, RoomVersionId, ServerName,
 };
@@ -150,7 +151,9 @@ impl Service {
                 origin,
                 &create_event,
                 room_id,
-                room_version_id,
+                &room_version_id
+                    .rules()
+                    .expect("Supported room version has rules"),
                 pub_key_map,
                 incoming_pdu.prev_events.clone(),
             )
@@ -319,8 +322,9 @@ impl Service {
                 })?;
 
             let room_version_id = &create_event_content.room_version;
-            let room_version =
-                RoomVersion::new(room_version_id).expect("room version is supported");
+            let room_version_rules = room_version_id
+                .rules()
+                .expect("Supported room version has rules");
 
             // TODO: For RoomVersion6 we must check that Raw<..> is canonical do we anywhere?: https://matrix.org/docs/spec/rooms/v6#canonical-json
 
@@ -362,7 +366,7 @@ impl Service {
             );
 
             let mut val =
-                match ruma::signatures::verify_event(&filtered_keys, &value, room_version_id) {
+                match ruma::signatures::verify_event(&filtered_keys, &value, &room_version_rules) {
                     Err(e) => {
                         // Drop
                         warn!("Dropping bad event {}: {}", event_id, e,);
@@ -374,7 +378,11 @@ impl Service {
                     Ok(ruma::signatures::Verified::Signatures) => {
                         // Redact
                         warn!("Calculated hash does not match: {}", event_id);
-                        let obj = match ruma::canonical_json::redact(value, room_version_id, None) {
+                        let obj = match ruma::canonical_json::redact(
+                            value,
+                            &room_version_rules.redaction,
+                            None,
+                        ) {
                             Ok(obj) => obj,
                             Err(_) => {
                                 return Err(Error::BadRequest(
@@ -426,7 +434,7 @@ impl Service {
                         .collect::<Vec<_>>(),
                     create_event,
                     room_id,
-                    room_version_id,
+                    &room_version_rules,
                     pub_key_map,
                 )
                 .await;
@@ -483,10 +491,12 @@ impl Service {
                 ));
             }
 
-            if !state_res::event_auth::auth_check(&room_version, &incoming_pdu, |k, s| {
-                auth_events.get(&(k.to_string().into(), s.to_owned()))
-            })
-            .map_err(|_e| Error::BadRequest(ErrorKind::InvalidParam, "Auth check failed"))?
+            if state_res::event_auth::auth_check(
+                &room_version_rules.authorization,
+                &incoming_pdu,
+                |k, s| auth_events.get(&(k.to_string().into(), s.to_owned())),
+            )
+            .is_err()
             {
                 return Err(Error::BadRequest(
                     ErrorKind::InvalidParam,
@@ -543,7 +553,9 @@ impl Service {
             })?;
 
         let room_version_id = &create_event_content.room_version;
-        let room_version = RoomVersion::new(room_version_id).expect("room version is supported");
+        let room_version_rules = room_version_id
+            .rules()
+            .expect("Supported room version has rules");
 
         // 10. Fetch missing state and auth chain events by calling /state_ids at backwards extremities
         //     doing all the checks in this list starting at 1. These are not timeline events.
@@ -674,14 +686,21 @@ impl Service {
 
                 let lock = services().globals.stateres_mutex.lock();
 
-                let result =
-                    state_res::resolve(room_version_id, &fork_states, auth_chain_sets, |id| {
+                let result = state_res::resolve(
+                    &room_version_id
+                        .rules()
+                        .expect("Supported room version has rules")
+                        .authorization,
+                    &fork_states,
+                    auth_chain_sets,
+                    |id| {
                         let res = services().rooms.timeline.get_pdu(id);
                         if let Err(e) = &res {
                             error!("LOOK AT ME Failed to fetch event: {}", e);
                         }
                         res.ok().flatten()
-                    });
+                    },
+                );
                 drop(lock);
 
                 state_at_incoming_event = match result {
@@ -734,7 +753,7 @@ impl Service {
                             &collect,
                             create_event,
                             room_id,
-                            room_version_id,
+                            &room_version_rules,
                             pub_key_map,
                         )
                         .await;
@@ -789,8 +808,10 @@ impl Service {
 
         debug!("Starting auth check");
         // 11. Check the auth of the event passes based on the state of the event
-        let check_result =
-            state_res::event_auth::auth_check(&room_version, &incoming_pdu, |k, s| {
+        if state_res::event_auth::auth_check(
+            &room_version_rules.authorization,
+            &incoming_pdu,
+            |k, s| {
                 services()
                     .rooms
                     .short
@@ -799,10 +820,10 @@ impl Service {
                     .flatten()
                     .and_then(|shortstatekey| state_at_incoming_event.get(&shortstatekey))
                     .and_then(|event_id| services().rooms.timeline.get_pdu(event_id).ok().flatten())
-            })
-            .map_err(|_e| Error::BadRequest(ErrorKind::InvalidParam, "Auth check failed."))?;
-
-        if !check_result {
+            },
+        )
+        .is_err()
+        {
             return Err(Error::bad_database(
                 "Event has failed auth check with state at the event.",
             ));
@@ -816,12 +837,15 @@ impl Service {
             &incoming_pdu.sender,
             incoming_pdu.state_key.as_deref(),
             &incoming_pdu.content,
+            &room_version_rules.authorization,
         )?;
 
-        let soft_fail = !state_res::event_auth::auth_check(&room_version, &incoming_pdu, |k, s| {
-            auth_events.get(&(k.clone(), s.to_owned()))
-        })
-        .map_err(|_e| Error::BadRequest(ErrorKind::InvalidParam, "Auth check failed."))?
+        let soft_fail = state_res::event_auth::auth_check(
+            &room_version_rules.authorization,
+            &incoming_pdu,
+            |k, s| auth_events.get(&(k.clone(), s.to_owned())),
+        )
+        .is_err()
             || incoming_pdu.kind == TimelineEventType::RoomRedaction
                 && match room_version_id {
                     RoomVersionId::V1
@@ -932,7 +956,7 @@ impl Service {
             }
 
             let new_room_state = self
-                .resolve_state(room_id, room_version_id, state_after)
+                .resolve_state(room_id, &room_version_rules.authorization, state_after)
                 .await?;
 
             // Set the new room state to the resolved state
@@ -1009,7 +1033,7 @@ impl Service {
     async fn resolve_state(
         &self,
         room_id: &RoomId,
-        room_version_id: &RoomVersionId,
+        auth_rules: &AuthorizationRules,
         incoming_state: HashMap<u64, Arc<EventId>>,
     ) -> Result<Arc<HashSet<CompressedStateEvent>>> {
         debug!("Loading current room state ids");
@@ -1068,12 +1092,8 @@ impl Service {
         };
 
         let lock = services().globals.stateres_mutex.lock();
-        let state = match state_res::resolve(
-            room_version_id,
-            &fork_states,
-            auth_chain_sets,
-            fetch_event,
-        ) {
+        let state = match state_res::resolve(auth_rules, &fork_states, auth_chain_sets, fetch_event)
+        {
             Ok(new_state) => new_state,
             Err(_) => {
                 return Err(Error::bad_database("State resolution failed, either an event could not be found or deserialization"));
@@ -1118,7 +1138,7 @@ impl Service {
         events: &'a [Arc<EventId>],
         create_event: &'a PduEvent,
         room_id: &'a RoomId,
-        room_version_id: &'a RoomVersionId,
+        room_version_rules: &'a RoomVersionRules,
         pub_key_map: &'a RwLock<BTreeMap<String, SigningKeys>>,
     ) -> AsyncRecursiveType<'a, Vec<(Arc<PduEvent>, Option<BTreeMap<String, CanonicalJsonValue>>)>>
     {
@@ -1207,7 +1227,8 @@ impl Service {
                         Ok(res) => {
                             info!("Got {} over federation", next_id);
                             let (calculated_event_id, value) =
-                                match pdu::gen_event_id_canonical_json(&res.pdu, room_version_id) {
+                                match pdu::gen_event_id_canonical_json(&res.pdu, room_version_rules)
+                                {
                                     Ok(t) => t,
                                     Err(_) => {
                                         back_off((*next_id).to_owned()).await;
@@ -1301,7 +1322,7 @@ impl Service {
         origin: &ServerName,
         create_event: &PduEvent,
         room_id: &RoomId,
-        room_version_id: &RoomVersionId,
+        room_version_rules: &RoomVersionRules,
         pub_key_map: &RwLock<BTreeMap<String, SigningKeys>>,
         initial_set: Vec<Arc<EventId>>,
     ) -> Result<(
@@ -1327,7 +1348,7 @@ impl Service {
                     &[prev_event_id.clone()],
                     create_event,
                     room_id,
-                    room_version_id,
+                    room_version_rules,
                     pub_key_map,
                 )
                 .await
@@ -1456,7 +1477,7 @@ impl Service {
         &self,
         pdu: &RawJsonValue,
         servers: &mut BTreeMap<OwnedServerName, BTreeMap<OwnedServerSigningKeyId, QueryCriteria>>,
-        room_version: &RoomVersionId,
+        room_version_rules: &RoomVersionRules,
         pub_key_map: &mut RwLockWriteGuard<'_, BTreeMap<String, SigningKeys>>,
     ) -> Result<()> {
         let value: CanonicalJsonObject = serde_json::from_str(pdu.get()).map_err(|e| {
@@ -1466,7 +1487,7 @@ impl Service {
 
         let event_id = format!(
             "${}",
-            ruma::signatures::reference_hash(&value, room_version)
+            ruma::signatures::reference_hash(&value, room_version_rules)
                 .map_err(|_| Error::BadRequest(ErrorKind::BadJson, "Invalid PDU format"))?
         );
         let event_id = <&EventId>::try_from(event_id.as_str())
@@ -1548,7 +1569,7 @@ impl Service {
     pub(crate) async fn fetch_join_signing_keys(
         &self,
         event: &create_join_event::v2::Response,
-        room_version: &RoomVersionId,
+        room_version_rules: &RoomVersionRules,
         pub_key_map: &RwLock<BTreeMap<String, SigningKeys>>,
     ) -> Result<()> {
         let mut servers: BTreeMap<
@@ -1563,12 +1584,12 @@ impl Service {
             // Servers we couldn't find in the cache will be added to `servers`
             for pdu in &event.room_state.state {
                 let _ = self
-                    .get_server_keys_from_cache(pdu, &mut servers, room_version, &mut pkm)
+                    .get_server_keys_from_cache(pdu, &mut servers, room_version_rules, &mut pkm)
                     .await;
             }
             for pdu in &event.room_state.auth_chain {
                 let _ = self
-                    .get_server_keys_from_cache(pdu, &mut servers, room_version, &mut pkm)
+                    .get_server_keys_from_cache(pdu, &mut servers, room_version_rules, &mut pkm)
                     .await;
             }
 

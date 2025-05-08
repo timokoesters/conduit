@@ -12,7 +12,7 @@ use ruma::{
     serde::Raw,
     EventId, MilliSecondsSinceUnixEpoch, RoomId, UserId,
 };
-use tracing::log::warn;
+use tracing::warn;
 
 /// # `PUT /_matrix/client/r0/rooms/{roomId}/state/{eventType}/{stateKey}`
 ///

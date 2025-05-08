@@ -20,6 +20,7 @@ use ruma::{
         },
         TimelineEventType,
     },
+    room_version_rules::RoomVersionRules,
     state_res, CanonicalJsonObject, CanonicalJsonValue, EventId, MilliSecondsSinceUnixEpoch,
     OwnedEventId, OwnedServerName, OwnedUserId, RoomId, RoomVersionId, UserId,
 };
@@ -91,12 +92,15 @@ impl Service {
                 }
                 _ => return Err(Error::BadServerResponse("Room version is not supported")),
             };
+            let room_version_rules = room_version_id
+                .rules()
+                .expect("Supported room version has rules");
 
             let (event_id, mut join_event, _) = self.populate_membership_template(
                 &make_join_response.event,
                 sender_user,
                 reason,
-                &room_version_id,
+                &room_version_rules,
                 MembershipState::Join,
             )?;
 
@@ -119,7 +123,7 @@ impl Service {
             if let Some(signed_raw) = &send_join_response.room_state.event {
                 info!("There is a signed event. This room is probably using restricted joins. Adding signature to our event");
                 let (signed_event_id, signed_value) =
-                    match gen_event_id_canonical_json(signed_raw, &room_version_id) {
+                    match gen_event_id_canonical_json(signed_raw, &room_version_rules) {
                         Ok(t) => t,
                         Err(_) => {
                             // Event could not be converted to canonical json
@@ -178,7 +182,13 @@ impl Service {
             services()
                 .rooms
                 .event_handler
-                .fetch_join_signing_keys(&send_join_response, &room_version_id, &pub_key_map)
+                .fetch_join_signing_keys(
+                    &send_join_response,
+                    &room_version_id
+                        .rules()
+                        .expect("Supported room version has rules"),
+                    &pub_key_map,
+                )
                 .await?;
 
             info!("Going through send_join response room_state");
@@ -230,8 +240,11 @@ impl Service {
             }
 
             info!("Running send_join auth check");
-            let authenticated = state_res::event_auth::auth_check(
-                &state_res::RoomVersion::new(&room_version_id).expect("room version is supported"),
+            if let Err(e) = state_res::event_auth::auth_check(
+                &room_version_id
+                    .rules()
+                    .expect("Supported room version has rules")
+                    .authorization,
                 &parsed_join_pdu,
                 |k, s| {
                     services()
@@ -248,18 +261,13 @@ impl Service {
                         )
                         .ok()?
                 },
-            )
-            .map_err(|e| {
+            ) {
                 warn!("Auth check failed: {e}");
-                Error::BadRequest(ErrorKind::InvalidParam, "Auth check failed")
-            })?;
-
-            if !authenticated {
                 return Err(Error::BadRequest(
                     ErrorKind::InvalidParam,
                     "Auth check failed",
                 ));
-            }
+            };
 
             info!("Saving state from send_join");
             let (statehash_before_join, new, removed) =
@@ -424,7 +432,9 @@ impl Service {
                     &make_join_response.event,
                     sender_user,
                     reason,
-                    &room_version_id,
+                    &room_version_id
+                        .rules()
+                        .expect("Supported room version has rules"),
                     MembershipState::Join,
                 )?;
 
@@ -442,8 +452,12 @@ impl Service {
                     .await?;
 
                 let pdu = if let Some(signed_raw) = send_join_response.room_state.event {
-                    let (signed_event_id, signed_pdu) =
-                        gen_event_id_canonical_json(&signed_raw, &room_version_id)?;
+                    let (signed_event_id, signed_pdu) = gen_event_id_canonical_json(
+                        &signed_raw,
+                        &room_version_id
+                            .rules()
+                            .expect("Supported room version has rules"),
+                    )?;
 
                     if signed_event_id != event_id {
                         return Err(Error::BadServerResponse(
@@ -491,7 +505,7 @@ impl Service {
         member_template: &RawJsonValue,
         sender_user: &UserId,
         reason: Option<String>,
-        room_version_id: &RoomVersionId,
+        room_version_rules: &RoomVersionRules,
         membership: MembershipState,
     ) -> Result<(OwnedEventId, BTreeMap<String, CanonicalJsonValue>, bool), Error> {
         let mut member_event_stub: CanonicalJsonObject =
@@ -545,13 +559,13 @@ impl Service {
             services().globals.server_name().as_str(),
             services().globals.keypair(),
             &mut member_event_stub,
-            room_version_id,
+            &room_version_rules.redaction,
         )
         .expect("event is valid, we just created it");
 
         let event_id = format!(
             "${}",
-            ruma::signatures::reference_hash(&member_event_stub, room_version_id)
+            ruma::signatures::reference_hash(&member_event_stub, room_version_rules)
                 .expect("Event format validated when event was hashed")
         );
 
@@ -616,8 +630,13 @@ async fn validate_and_add_event_id(
     })?;
     let event_id = EventId::parse(format!(
         "${}",
-        ruma::signatures::reference_hash(&value, room_version)
-            .map_err(|_| Error::BadRequest(ErrorKind::BadJson, "Invalid PDU format"))?
+        ruma::signatures::reference_hash(
+            &value,
+            &room_version
+                .rules()
+                .expect("Supported room version has rules")
+        )
+        .map_err(|_| Error::BadRequest(ErrorKind::BadJson, "Invalid PDU format"))?
     ))
     .expect("ruma's reference hashes are valid event ids");
 
@@ -683,7 +702,13 @@ async fn validate_and_add_event_id(
             .globals
             .filter_keys_server_map(unfiltered_keys, origin_server_ts, room_version);
 
-    if let Err(e) = ruma::signatures::verify_event(&keys, &value, room_version) {
+    if let Err(e) = ruma::signatures::verify_event(
+        &keys,
+        &value,
+        &room_version
+            .rules()
+            .expect("Supported room version has rules"),
+    ) {
         warn!("Event {} failed verification {:?} {}", event_id, pdu, e);
         back_off(event_id).await;
         return Err(Error::BadServerResponse("Event failed verification."));

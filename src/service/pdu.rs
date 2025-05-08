@@ -8,9 +8,10 @@ use ruma::{
         AnyEphemeralRoomEvent, AnyMessageLikeEvent, AnyStateEvent, AnyStrippedStateEvent,
         AnySyncStateEvent, AnySyncTimelineEvent, AnyTimelineEvent, StateEvent, TimelineEventType,
     },
+    room_version_rules::{RedactionRules, RoomVersionRules},
     serde::Raw,
     state_res, CanonicalJsonObject, CanonicalJsonValue, EventId, MilliSecondsSinceUnixEpoch,
-    OwnedEventId, OwnedRoomId, OwnedUserId, RoomId, RoomVersionId, UInt, UserId,
+    OwnedEventId, OwnedRoomId, OwnedUserId, RoomId, UInt, UserId,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{
@@ -54,14 +55,14 @@ impl PduEvent {
     #[tracing::instrument(skip(self))]
     pub fn redact(
         &mut self,
-        room_version_id: RoomVersionId,
+        redaction_rules: RedactionRules,
         reason: &PduEvent,
     ) -> crate::Result<()> {
         self.unsigned = None;
 
         let mut content = serde_json::from_str(self.content.get())
             .map_err(|_| Error::bad_database("PDU in db has invalid content."))?;
-        redact_content_in_place(&mut content, &room_version_id, self.kind.to_string())
+        redact_content_in_place(&mut content, &redaction_rules, self.kind.to_string())
             .map_err(|e| Error::RedactionError(self.sender.server_name().to_owned(), e))?;
 
         self.unsigned = Some(to_raw_value(&json!({
@@ -433,7 +434,7 @@ impl Ord for PduEvent {
 /// Returns a tuple of the new `EventId` and the PDU as a `BTreeMap<String, CanonicalJsonValue>`.
 pub(crate) fn gen_event_id_canonical_json(
     pdu: &RawJsonValue,
-    room_version_id: &RoomVersionId,
+    room_version_rules: &RoomVersionRules,
 ) -> crate::Result<(OwnedEventId, CanonicalJsonObject)> {
     let value: CanonicalJsonObject = serde_json::from_str(pdu.get()).map_err(|e| {
         warn!("Error parsing incoming event {:?}: {:?}", pdu, e);
@@ -443,7 +444,7 @@ pub(crate) fn gen_event_id_canonical_json(
     let event_id = format!(
         "${}",
         // Anything higher than version3 behaves the same
-        ruma::signatures::reference_hash(&value, room_version_id)
+        ruma::signatures::reference_hash(&value, room_version_rules)
             .map_err(|_| Error::BadRequest(ErrorKind::BadJson, "Invalid PDU format"))?
     )
     .try_into()

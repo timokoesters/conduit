@@ -178,13 +178,25 @@ pub async fn knock_room_route(
 
         info!("make_knock finished");
 
-        let room_version_id = knock_template.room_version;
+        let room_version_id = match knock_template.room_version {
+            version
+                if services()
+                    .globals
+                    .supported_room_versions()
+                    .contains(&version) =>
+            {
+                version
+            }
+            _ => return Err(Error::BadServerResponse("Room version is not supported")),
+        };
 
         let (event_id, knock_event, _) = services().rooms.helpers.populate_membership_template(
             &knock_template.event,
             sender_user,
             body.reason,
-            &room_version_id,
+            &room_version_id
+                .rules()
+                .expect("Supported room version has rules"),
             MembershipState::Knock,
         )?;
 
@@ -716,8 +728,12 @@ pub(crate) async fn invite_helper<'a>(
         let pub_key_map = RwLock::new(BTreeMap::new());
 
         // We do not add the event_id field to the pdu here because of signature and hashes checks
-        let (event_id, value) = match gen_event_id_canonical_json(&response.event, &room_version_id)
-        {
+        let (event_id, value) = match gen_event_id_canonical_json(
+            &response.event,
+            &room_version_id
+                .rules()
+                .expect("Supported room version has rules"),
+        ) {
             Ok(t) => t,
             Err(_) => {
                 // Event could not be converted to canonical json
@@ -1025,15 +1041,23 @@ async fn remote_leave_room(user_id: &UserId, room_id: &RoomId) -> Result<()> {
         services().globals.server_name().as_str(),
         services().globals.keypair(),
         &mut leave_event_stub,
-        &room_version_id,
+        &room_version_id
+            .rules()
+            .expect("Supported room version has rules")
+            .redaction,
     )
     .expect("event is valid, we just created it");
 
     // Generate event id
     let event_id = EventId::parse(format!(
         "${}",
-        ruma::signatures::reference_hash(&leave_event_stub, &room_version_id)
-            .expect("Event format validated when event was hashed")
+        ruma::signatures::reference_hash(
+            &leave_event_stub,
+            &room_version_id
+                .rules()
+                .expect("Supported room version has rules")
+        )
+        .expect("Event format validated when event was hashed")
     ))
     .expect("ruma's reference hashes are valid event ids");
 

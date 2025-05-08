@@ -19,6 +19,7 @@ use http::{
     header::{self, HeaderName, CONTENT_SECURITY_POLICY},
     Method, StatusCode, Uri,
 };
+use opentelemetry::trace::TracerProvider;
 use ruma::api::{
     client::{
         error::{Error as RumaError, ErrorBody, ErrorKind},
@@ -105,15 +106,21 @@ async fn main() {
 
     config.warn_deprecated();
 
-    if config.allow_jaeger {
+    let jaeger = if config.allow_jaeger {
         opentelemetry::global::set_text_map_propagator(
             opentelemetry_jaeger_propagator::Propagator::new(),
         );
-        let tracer = opentelemetry_otlp::new_pipeline()
-            .tracing()
-            .with_exporter(opentelemetry_otlp::new_exporter().tonic())
-            .install_batch(opentelemetry_sdk::runtime::Tokio)
+        let exporter = opentelemetry_otlp::SpanExporter::builder()
+            .with_tonic()
+            .build()
             .unwrap();
+
+        let provider = opentelemetry_sdk::trace::SdkTracerProvider::builder()
+            .with_simple_exporter(exporter)
+            .build();
+
+        let tracer = provider.tracer("");
+
         let telemetry = tracing_opentelemetry::layer().with_tracer(tracer);
 
         let filter_layer = match EnvFilter::try_new(&config.log) {
@@ -130,6 +137,8 @@ async fn main() {
             .with(filter_layer)
             .with(telemetry);
         tracing::subscriber::set_global_default(subscriber).unwrap();
+
+        Some(provider)
     } else if config.tracing_flame {
         let registry = tracing_subscriber::Registry::default();
         let (flame_layer, _guard) =
@@ -140,6 +149,8 @@ async fn main() {
 
         let subscriber = registry.with(filter_layer).with(flame_layer);
         tracing::subscriber::set_global_default(subscriber).unwrap();
+
+        None
     } else {
         let registry = tracing_subscriber::Registry::default();
         let fmt_layer = tracing_subscriber::fmt::Layer::new();
@@ -153,7 +164,9 @@ async fn main() {
 
         let subscriber = registry.with(filter_layer).with(fmt_layer);
         tracing::subscriber::set_global_default(subscriber).unwrap();
-    }
+
+        None
+    };
 
     // This is needed for opening lots of file descriptors, which tends to
     // happen more often when using RocksDB and making lots of federation
@@ -171,13 +184,12 @@ async fn main() {
 
         std::process::exit(1);
     };
-    let config = &services().globals.config;
 
     info!("Starting server");
     run_server().await.unwrap();
 
-    if config.allow_jaeger {
-        opentelemetry::global::shutdown_tracer_provider();
+    if let Some(provider) = jaeger {
+        let _ = provider.shutdown();
     }
 }
 

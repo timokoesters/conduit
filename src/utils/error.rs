@@ -60,7 +60,7 @@ pub enum Error {
     BadDatabase(&'static str),
     #[error("uiaa")]
     Uiaa(UiaaInfo),
-    #[error("{}: {1}",.0.errcode())]
+    #[error("{n}: {1}", n = _0.errcode())]
     BadRequest(ErrorKind, &'static str),
     #[error("{0}")]
     Conflict(&'static str), // This is only needed for when a room alias already exists
@@ -70,6 +70,9 @@ pub enum Error {
     #[cfg(feature = "conduit_bin")]
     #[error("{0}")]
     PathError(#[from] axum::extract::rejection::PathRejection),
+    #[cfg(feature = "conduit_bin")]
+    #[error("{0}")]
+    TypedHeaderError(#[from] axum_extra::typed_header::TypedHeaderRejection),
     #[error("{0}")]
     AdminCommand(&'static str),
     #[error("from {0}: {1}")]

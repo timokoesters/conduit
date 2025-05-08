@@ -59,8 +59,8 @@ pub fn string_from_bytes(bytes: &[u8]) -> Result<String, std::string::FromUtf8Er
 }
 
 pub fn random_string(length: usize) -> String {
-    thread_rng()
-        .sample_iter(&rand::distributions::Alphanumeric)
+    rand::rng()
+        .sample_iter(&rand::distr::Alphanumeric)
         .take(length)
         .map(char::from)
         .collect()

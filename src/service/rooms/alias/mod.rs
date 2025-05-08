@@ -122,7 +122,7 @@ impl Service {
                 .await?;
 
             let mut servers = response.servers;
-            servers.shuffle(&mut rand::thread_rng());
+            servers.shuffle(&mut rand::rng());
 
             return Ok(get_alias::v3::Response::new(response.room_id, servers));
         }
