@@ -14,8 +14,6 @@ This is only recommended if Conduit is on the same physical server as the server
 as servers don't always seem to cache the response, leading to slower response times otherwise, but it should also work if you
 are connected to the server running Conduit using something like a VPN.
 
-> **Note**: this will automatically allow you to use [sliding sync][0] without any extra configuration
-
 To configure it, use the following options in the `global.well_known` table:
 | Field | Type | Description | Default |
 | --- | --- | --- | --- |
@@ -63,7 +61,3 @@ Access-Control-Allow-Origin: *
 Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS
 Access-Control-Allow-Headers: X-Requested-With, Content-Type, Authorization
 ```
-
-If you also want to be able to use [sliding sync][0], look [here](faq.md#how-do-i-setup-sliding-sync).
-
-[0]: https://matrix.org/blog/2023/09/matrix-2-0/#sliding-sync

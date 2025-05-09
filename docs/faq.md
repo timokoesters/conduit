@@ -13,23 +13,9 @@ You can simply stop Conduit, make a copy or file system snapshot of the database
 
 > **Note**: When using a file system snapshot, it is not required that you stop the server, but it is still recommended as it is the safest option and should ensure your database is not left in an inconsistent state.
 
-## How do I setup sliding sync?
+## How do I setup simplified sliding sync?
 
-If you use the [automatic method for delegation](delegation.md#automatic-recommended) or just proxy `.well-known/matrix/client` to Conduit, sliding sync should work with no extra configuration.
-If you don't, continue below.
-
-You need to add a `org.matrix.msc3575.proxy` field to your `.well-known/matrix/client` response which contains a url which Conduit is accessible behind.
-Here is an example:
-```json
-{
-~  "m.homeserver": {
-~    "base_url": "https://matrix.example.org"
-~  },
-  "org.matrix.msc3575.proxy": {
-    "url": "https://matrix.example.org"
-  }
-}
-```
+You don't need to! If your Conduit instance is reachable, simplified sliding sync should work right out of the box, no delegation required
 
 ## Can I migrate from Synapse to Conduit?
 
