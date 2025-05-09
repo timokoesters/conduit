@@ -527,8 +527,8 @@ impl Default for DirectoryStructure {
 #[derive(Deserialize)]
 #[serde(untagged)]
 enum ShadowDirectoryStructure {
-    Flat {},
     Deep { length: NonZeroU8, depth: NonZeroU8 },
+    Flat {},
 }
 
 impl TryFrom<ShadowDirectoryStructure> for DirectoryStructure {

@@ -459,7 +459,7 @@ impl KeyValueDatabase {
         }
 
         // If the database has any data, perform data migrations before starting
-        let latest_database_version = 17;
+        let latest_database_version = 18;
 
         if services().users.count()? > 0 {
             // MIGRATIONS
@@ -1050,9 +1050,44 @@ impl KeyValueDatabase {
                         return Err(e);
                     }
                 }
-                services().globals.bump_database_version(17)?;
+                services().globals.bump_database_version(18)?;
 
-                warn!("Migration: 16 -> 17 finished");
+                warn!("Migration: 16 -> 18 finished");
+            }
+
+            if services().globals.database_version()? < 18 {
+                if let crate::config::MediaBackendConfig::FileSystem {
+                    path,
+                    directory_structure: crate::config::DirectoryStructure::Deep { length, depth },
+                } = &services().globals.config.media.backend
+                {
+                    for file in fs::read_dir(path)
+                        .unwrap()
+                        .filter_map(Result::ok)
+                        .filter(|entry| {
+                            entry.file_name().len() == 64
+                                && entry.path().parent().and_then(|parent| parent.to_str())
+                                    == Some(path.as_str())
+                        })
+                    {
+                        tokio::fs::rename(
+                            file.path(),
+                            services().globals.get_media_path(
+                                path.as_str(),
+                                &crate::config::DirectoryStructure::Deep {
+                                    length: *length,
+                                    depth: *depth,
+                                },
+                                file.file_name().to_str().unwrap(),
+                            )?,
+                        )
+                        .await?;
+                    }
+                }
+
+                services().globals.bump_database_version(18)?;
+
+                warn!("Migration: 17 -> 18 finished");
             }
 
             assert_eq!(
