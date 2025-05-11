@@ -406,11 +406,12 @@ impl service::users::Data for KeyValueDatabase {
             self.onetimekeyid_onetimekeys
                 .scan_prefix(userdeviceid)
                 .map(|(bytes, _)| {
-                    serde_json::from_slice::<OneTimeKeyAlgorithm>(
+                    serde_json::from_slice::<OwnedOneTimeKeyId>(
                         bytes.rsplit(|&b| b == 0xff).next().ok_or_else(|| {
                             Error::bad_database("OneTimeKey ID in db is invalid.")
                         })?,
                     )
+                    .map(|key_id| key_id.algorithm())
                     .map_err(|_| Error::bad_database("DeviceKeyId in db is invalid."))
                 })
         {
