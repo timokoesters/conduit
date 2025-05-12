@@ -26,6 +26,13 @@ pub async fn get_supported_versions_route(
             "v1.3".to_owned(),
             "v1.4".to_owned(),
             "v1.5".to_owned(),
+            "v1.6".to_owned(),
+            "v1.7".to_owned(),
+            "v1.8".to_owned(),
+            "v1.9".to_owned(),
+            "v1.10".to_owned(),
+            "v1.11".to_owned(), // Needed for Element-* to use authenticated media endpoints
+            "v1.12".to_owned(), // Clarifies that guests can use auth media, which Element-* might depend on support being declared
         ],
         unstable_features: BTreeMap::from_iter([
             ("org.matrix.e2e_cross_signing".to_owned(), true),
