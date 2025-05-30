@@ -16,7 +16,7 @@ license = "Apache-2.0"
 name = "conduit"
 readme = "README.md"
 repository = "https://gitlab.com/famedly/conduit"
-version = "0.10.3"
+version = "0.10.4"
 
 # See also `rust-toolchain.toml`
 rust-version = "1.83.0"
