@@ -9,6 +9,7 @@ use std::{
 use bytesize::ByteSize;
 use chrono::DateTime;
 use clap::{Args, Parser};
+use futures_util::future::Either;
 use image::GenericImageView;
 use regex::Regex;
 use ruma::{
@@ -955,6 +956,7 @@ impl Service {
                         services()
                             .media
                             .purge_from_user(&user_id, purge_media.force_filehash, after)
+                            .await
                             .len()
                     } else {
                         0
@@ -1023,6 +1025,7 @@ impl Service {
                             failed_count += services()
                                 .media
                                 .purge_from_user(user_id, purge_media.force_filehash, after)
+                                .await
                                 .len();
                         }
                     }
@@ -1250,9 +1253,9 @@ impl Service {
                 RoomMessageEventContent::text_html(markdown_message, html_message).into()
             },
             AdminCommand::PurgeMedia => media_from_body(body).map_or_else(
-                |message| message,
-                |media| {
-                    let failed_count = services().media.purge(&media, true).len();
+                |message| Either::Left(async move { message }),
+                |media| Either::Right(async move {
+                    let failed_count = services().media.purge(&media, true).await.len();
 
                     if failed_count == 0 {
                         RoomMessageEventContent::text_plain("Successfully purged media")
@@ -1261,8 +1264,8 @@ impl Service {
                             "Failed to delete {failed_count} media, check logs for more details"
                         ))
                     }.into()
-                },
-            ),
+                }),
+            ).await,
             AdminCommand::PurgeMediaFromUsers {
                 from_last,
                 force_filehash,
@@ -1282,6 +1285,7 @@ impl Service {
                         failed_count += services()
                             .media
                             .purge_from_user(user_id, force_filehash, after)
+                            .await
                             .len();
                     }
 
@@ -1314,6 +1318,7 @@ impl Service {
                 let failed_count = services()
                     .media
                     .purge_from_server(&server_name, force_filehash, after)
+                    .await
                     .len();
 
                 if failed_count == 0 {
@@ -1327,11 +1332,11 @@ impl Service {
                 }.into()
             }
             AdminCommand::BlockMedia { and_purge, reason } => media_from_body(body).map_or_else(
-                |message| message,
-                |media| {
+                |message| Either::Left(async move { message }),
+                |media| Either::Right(async move {
                     let failed_count = services().media.block(&media, reason).len();
                     let failed_purge_count = if and_purge {
-                        services().media.purge(&media, true).len()
+                        services().media.purge(&media, true).await.len()
                     } else {
                         0
                     };
@@ -1348,8 +1353,8 @@ impl Service {
                             "Failed to block {failed_count}, and purge {failed_purge_count} media, check logs for more details"
                         ))
                     }.into()
-                },
-            ),
+                }),
+            ).await,
             AdminCommand::BlockMediaFromUsers { from_last, reason } => {
                 let after = from_last.map(unix_secs_from_duration).transpose()?;
 
