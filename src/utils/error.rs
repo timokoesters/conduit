@@ -52,6 +52,8 @@ pub enum Error {
         source: std::io::Error,
     },
     #[error("{0}")]
+    BadS3Response(&'static str),
+    #[error("{0}")]
     BadServerResponse(&'static str),
     #[error("{0}")]
     BadConfig(&'static str),
@@ -90,6 +92,11 @@ impl Error {
     pub fn bad_config(message: &'static str) -> Self {
         error!("BadConfig: {}", message);
         Self::BadConfig(message)
+    }
+
+    pub fn bad_s3_response(message: &'static str) -> Self {
+        info!("BadS3Response: {}", message);
+        Self::BadS3Response(message)
     }
 }
 

@@ -3,6 +3,7 @@ use std::{io::Cursor, sync::Arc};
 
 pub use data::Data;
 use futures_util::{stream, StreamExt};
+use http::StatusCode;
 use ruma::{
     api::client::{error::ErrorKind, media::is_safe_inline_content_type},
     http_headers::{ContentDisposition, ContentDispositionType},
@@ -621,16 +622,23 @@ impl Service {
                 credentials,
                 duration,
             } => {
+                let sha256_hex = hex::encode(sha256_digest);
                 let url = bucket
-                    .get_object(Some(credentials), &hex::encode(sha256_digest))
+                    .get_object(Some(credentials), &sha256_hex)
                     .sign(*duration);
 
                 let client = services().globals.default_client();
                 let resp = client.get(url).send().await?;
 
+                if resp.status() == StatusCode::NOT_FOUND {
+                    return Err(Error::BadRequest(
+                        ErrorKind::NotFound,
+                        "File does not exist",
+                    ));
+                }
                 if !resp.status().is_success() {
-                    warn!("S3 request error:\n{}", resp.text().await?);
-                    return Err(Error::bad_database("Cannot read media file"));
+                    warn!("S3 request error ({}):\n{}", sha256_hex, resp.text().await?);
+                    return Err(Error::bad_s3_response("Cannot read media file"));
                 }
 
                 resp.bytes().await?.to_vec()
@@ -681,8 +689,8 @@ pub async fn create_file(sha256_hex: &str, file: &[u8]) -> Result<()> {
             let resp = client.put(url).body(file.to_vec()).send().await?;
 
             if !resp.status().is_success() {
-                warn!("S3 request error:\n{}", resp.text().await?);
-                return Err(Error::bad_database("Cannot write media file"));
+                warn!("S3 request error ({}):\n{}", sha256_hex, resp.text().await?);
+                return Err(Error::bad_s3_response("Cannot write media file"));
             }
         }
     }
@@ -768,8 +776,8 @@ async fn delete_file(sha256_hex: &str) -> Result<()> {
             let resp = client.delete(url).send().await?;
 
             if !resp.status().is_success() {
-                warn!("S3 request error:\n{}", resp.text().await?);
-                return Err(Error::bad_database("Cannot delete media file"));
+                warn!("S3 request error ({}):\n{}", sha256_hex, resp.text().await?);
+                return Err(Error::bad_s3_response("Cannot delete media file"));
             }
         }
     }
