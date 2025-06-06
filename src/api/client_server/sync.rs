@@ -1509,10 +1509,13 @@ pub async fn sync_events_v5_route(
         let mut new_known_rooms = BTreeSet::new();
 
         for (mut start, mut end) in list.ranges {
-            start = start.clamp(uint!(0), UInt::from(all_joined_rooms.len() as u32 - 1));
-            end = end.clamp(start, UInt::from(all_joined_rooms.len() as u32 - 1));
+            start = start.clamp(
+                uint!(0),
+                UInt::from(all_joined_rooms.len().saturating_sub(1) as u32),
+            );
+            end = end.clamp(start, UInt::from(all_joined_rooms.len() as u32));
             let room_ids =
-                all_joined_rooms[(u64::from(start) as usize)..=(u64::from(end) as usize)].to_vec();
+                all_joined_rooms[(u64::from(start) as usize)..(u64::from(end) as usize)].to_vec();
             new_known_rooms.extend(room_ids.iter().cloned());
             for room_id in &room_ids {
                 let todo_room =
