@@ -250,6 +250,8 @@ impl From<IncompleteConfig> for Config {
                     secret,
                     duration,
                     bucket_use_path,
+                    path,
+                    directory_structure,
                 } => {
                     let path_style = if bucket_use_path {
                         rusty_s3::UrlStyle::Path
@@ -263,9 +265,11 @@ impl From<IncompleteConfig> for Config {
                     let credentials = rusty_s3::Credentials::new(key, secret);
 
                     MediaBackendConfig::S3 {
-                        bucket: bucket,
-                        credentials: credentials,
+                        bucket,
+                        credentials,
                         duration: Duration::from_secs(duration),
+                        path,
+                        directory_structure,
                     }
                 }
             },
@@ -517,6 +521,9 @@ pub enum IncompleteMediaBackendConfig {
         duration: u64,
         #[serde(default = "false_fn")]
         bucket_use_path: bool,
+        path: Option<String>,
+        #[serde(default)]
+        directory_structure: DirectoryStructure,
     },
 }
 
@@ -539,6 +546,8 @@ pub enum MediaBackendConfig {
         bucket: rusty_s3::Bucket,
         credentials: rusty_s3::Credentials,
         duration: Duration,
+        path: Option<String>,
+        directory_structure: DirectoryStructure,
     },
 }
 

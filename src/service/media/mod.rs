@@ -621,10 +621,16 @@ impl Service {
                 bucket,
                 credentials,
                 duration,
+                path,
+                directory_structure,
             } => {
                 let sha256_hex = hex::encode(sha256_digest);
+                let file_name = services()
+                    .globals
+                    .split_media_path(path.as_deref(), directory_structure, &sha256_hex)?
+                    .join("/");
                 let url = bucket
-                    .get_object(Some(credentials), &sha256_hex)
+                    .get_object(Some(credentials), &file_name)
                     .sign(*duration);
 
                 let client = services().globals.default_client();
@@ -680,9 +686,16 @@ pub async fn create_file(sha256_hex: &str, file: &[u8]) -> Result<()> {
             bucket,
             credentials,
             duration,
+            path,
+            directory_structure,
         } => {
+            let file_name = services()
+                .globals
+                .split_media_path(path.as_deref(), directory_structure, sha256_hex)?
+                .join("/");
+
             let url = bucket
-                .put_object(Some(credentials), sha256_hex)
+                .put_object(Some(credentials), &file_name)
                 .sign(*duration);
 
             let client = services().globals.default_client();
@@ -767,9 +780,15 @@ async fn delete_file(sha256_hex: &str) -> Result<()> {
             bucket,
             credentials,
             duration,
+            path,
+            directory_structure,
         } => {
+            let file_name = services()
+                .globals
+                .split_media_path(path.as_deref(), directory_structure, sha256_hex)?
+                .join("/");
             let url = bucket
-                .delete_object(Some(credentials), sha256_hex)
+                .delete_object(Some(credentials), &file_name)
                 .sign(*duration);
 
             let client = services().globals.default_client();
