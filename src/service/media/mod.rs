@@ -1,5 +1,5 @@
 mod data;
-use std::{fs, io::Cursor, sync::Arc};
+use std::{io::Cursor, sync::Arc};
 
 pub use data::Data;
 use futures_util::{stream, StreamExt};
@@ -26,7 +26,7 @@ pub struct DbFileMeta {
 }
 
 use tokio::{
-    fs::File,
+    fs::{self, File},
     io::{AsyncReadExt, AsyncWriteExt},
 };
 
@@ -662,7 +662,7 @@ pub async fn create_file(sha256_hex: &str, file: &[u8]) -> Result<()> {
 
             // Create all directories leading up to file
             if let Some(parent) = path.parent() {
-                fs::create_dir_all(&parent).inspect_err(|e| error!("Error creating leading directories for media with sha256 hash of {sha256_hex}: {e}"))?;
+                fs::create_dir_all(&parent).await.inspect_err(|e| error!("Error creating leading directories for media with sha256 hash of {sha256_hex}: {e}"))?;
             }
 
             let mut f = File::create(path).await?;
@@ -727,7 +727,7 @@ async fn delete_file(sha256_hex: &str) -> Result<()> {
                     .globals
                     .get_media_path(path, directory_structure, sha256_hex)?;
 
-            if let Err(e) = fs::remove_file(&path) {
+            if let Err(e) = fs::remove_file(&path).await {
                 // Multiple files with the same filehash might be requseted to be deleted
                 if e.kind() != std::io::ErrorKind::NotFound {
                     error!("Error removing media from filesystem: {e}");
@@ -742,7 +742,7 @@ async fn delete_file(sha256_hex: &str) -> Result<()> {
                     // Here at the start so that the first time, the file gets removed from the path
                     path.pop();
 
-                    if let Err(e) = fs::remove_dir(&path) {
+                    if let Err(e) = fs::remove_dir(&path).await {
                         if e.kind() == std::io::ErrorKind::DirectoryNotEmpty {
                             break;
                         } else {
