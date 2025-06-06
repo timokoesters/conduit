@@ -499,9 +499,6 @@ impl Service {
                 r.push(current_path);
             }
 
-            // Create all directories leading up to file
-            fs::create_dir_all(&r).inspect_err(|e| error!("Error creating leading directories for media with sha256 hash of {sha256_hex}: {e}"))?;
-
             r.push(filename);
         } else {
             r.push(sha256_hex);
