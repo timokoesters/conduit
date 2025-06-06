@@ -242,6 +242,32 @@ impl From<IncompleteConfig> for Config {
                     }),
                     directory_structure,
                 },
+                IncompleteMediaBackendConfig::S3 {
+                    endpoint,
+                    bucket,
+                    region,
+                    key,
+                    secret,
+                    duration,
+                    bucket_use_path,
+                } => {
+                    let path_style = if bucket_use_path {
+                        rusty_s3::UrlStyle::Path
+                    } else {
+                        rusty_s3::UrlStyle::VirtualHost
+                    };
+
+                    let bucket = rusty_s3::Bucket::new(endpoint, path_style, bucket, region)
+                        .expect("Invalid S3 config");
+
+                    let credentials = rusty_s3::Credentials::new(key, secret);
+
+                    MediaBackendConfig::S3 {
+                        bucket: bucket,
+                        credentials: credentials,
+                        duration: Duration::from_secs(duration),
+                    }
+                }
             },
             retention: media.retention.into(),
         };
@@ -481,6 +507,17 @@ pub enum IncompleteMediaBackendConfig {
         #[serde(default)]
         directory_structure: DirectoryStructure,
     },
+    S3 {
+        endpoint: Url,
+        bucket: String,
+        region: String,
+        key: String,
+        secret: String,
+        #[serde(default = "default_s3_duration")]
+        duration: u64,
+        #[serde(default = "false_fn")]
+        bucket_use_path: bool,
+    },
 }
 
 impl Default for IncompleteMediaBackendConfig {
@@ -497,6 +534,11 @@ pub enum MediaBackendConfig {
     FileSystem {
         path: String,
         directory_structure: DirectoryStructure,
+    },
+    S3 {
+        bucket: rusty_s3::Bucket,
+        credentials: rusty_s3::Credentials,
+        duration: Duration,
     },
 }
 
@@ -726,4 +768,8 @@ fn default_openid_token_ttl() -> u64 {
 // I know, it's a great name
 pub fn default_default_room_version() -> RoomVersionId {
     RoomVersionId::V10
+}
+
+fn default_s3_duration() -> u64 {
+    30
 }

@@ -230,8 +230,6 @@ impl Service {
             shutdown: AtomicBool::new(false),
         };
 
-        // Remove this exception once other media backends are added
-        #[allow(irrefutable_let_patterns)]
         if let MediaBackendConfig::FileSystem { path, .. } = &s.config.media.backend {
             fs::create_dir_all(path)?;
         }

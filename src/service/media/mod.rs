@@ -8,8 +8,9 @@ use ruma::{
     http_headers::{ContentDisposition, ContentDispositionType},
     OwnedServerName, ServerName, UserId,
 };
+use rusty_s3::S3Action;
 use sha2::{digest::Output, Digest, Sha256};
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 use crate::{
     config::{DirectoryStructure, MediaBackendConfig},
@@ -615,6 +616,25 @@ impl Service {
 
                 file
             }
+            MediaBackendConfig::S3 {
+                bucket,
+                credentials,
+                duration,
+            } => {
+                let url = bucket
+                    .get_object(Some(credentials), &hex::encode(sha256_digest))
+                    .sign(*duration);
+
+                let client = services().globals.default_client();
+                let resp = client.get(url).send().await?;
+
+                if !resp.status().is_success() {
+                    warn!("S3 request error:\n{}", resp.text().await?);
+                    return Err(Error::bad_database("Cannot read media file"));
+                }
+
+                resp.bytes().await?.to_vec()
+            }
         };
 
         if let Some((server_name, media_id)) = original_file_id {
@@ -642,6 +662,23 @@ pub async fn create_file(sha256_hex: &str, file: &[u8]) -> Result<()> {
 
             let mut f = File::create(path).await?;
             f.write_all(file).await?;
+        }
+        MediaBackendConfig::S3 {
+            bucket,
+            credentials,
+            duration,
+        } => {
+            let url = bucket
+                .put_object(Some(credentials), sha256_hex)
+                .sign(*duration);
+
+            let client = services().globals.default_client();
+            let resp = client.put(url).body(file.to_vec()).send().await?;
+
+            if !resp.status().is_success() {
+                warn!("S3 request error:\n{}", resp.text().await?);
+                return Err(Error::bad_database("Cannot write media file"));
+            }
         }
     }
 
@@ -711,6 +748,23 @@ async fn delete_file(sha256_hex: &str) -> Result<()> {
 
                     depth -= 1;
                 }
+            }
+        }
+        MediaBackendConfig::S3 {
+            bucket,
+            credentials,
+            duration,
+        } => {
+            let url = bucket
+                .delete_object(Some(credentials), sha256_hex)
+                .sign(*duration);
+
+            let client = services().globals.default_client();
+            let resp = client.delete(url).send().await?;
+
+            if !resp.status().is_success() {
+                warn!("S3 request error:\n{}", resp.text().await?);
+                return Err(Error::bad_database("Cannot delete media file"));
             }
         }
     }
