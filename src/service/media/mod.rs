@@ -2,17 +2,21 @@ mod data;
 use std::{io::Cursor, sync::Arc};
 
 pub use data::Data;
-use futures_util::{stream, StreamExt};
+use http::StatusCode;
 use ruma::{
     api::client::{error::ErrorKind, media::is_safe_inline_content_type},
     http_headers::{ContentDisposition, ContentDispositionType},
     OwnedServerName, ServerName, UserId,
 };
+use rusty_s3::{
+    actions::{DeleteObjectsResponse, ObjectIdentifier},
+    S3Action,
+};
 use sha2::{digest::Output, Digest, Sha256};
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 use crate::{
-    config::{DirectoryStructure, MediaBackendConfig},
+    config::{DirectoryStructure, MediaBackendConfig, S3MediaBackend},
     services, utils, Error, Result,
 };
 use image::imageops::FilterType;
@@ -615,6 +619,39 @@ impl Service {
 
                 file
             }
+            MediaBackendConfig::S3(s3) => {
+                let sha256_hex = hex::encode(sha256_digest);
+                let file_name = services()
+                    .globals
+                    .split_media_path(s3.path.as_deref(), &s3.directory_structure, &sha256_hex)
+                    .join("/");
+                let url = s3
+                    .bucket
+                    .get_object(Some(&s3.credentials), &file_name)
+                    .sign(s3.duration);
+
+                let client = services().globals.default_client();
+                let resp = client.get(url).send().await?;
+
+                if resp.status() == StatusCode::NOT_FOUND {
+                    return Err(Error::BadRequest(
+                        ErrorKind::NotFound,
+                        "File does not exist",
+                    ));
+                }
+                if !resp.status().is_success() {
+                    error!(
+                        "Failed to get file with sha256 hash of \"{}\" from S3 bucket: {}",
+                        sha256_hex,
+                        resp.text().await?
+                    );
+                    return Err(Error::BadS3Response(
+                        "Failed to get media file from S3 bucket",
+                    ));
+                }
+
+                resp.bytes().await?.to_vec()
+            }
         };
 
         if let Some((server_name, media_id)) = original_file_id {
@@ -650,79 +687,175 @@ pub async fn create_file(sha256_hex: &str, file: &[u8]) -> Result<()> {
             let mut f = File::create(path).await?;
             f.write_all(file).await?;
         }
+        MediaBackendConfig::S3(s3) => {
+            let file_name = services()
+                .globals
+                .split_media_path(s3.path.as_deref(), &s3.directory_structure, sha256_hex)
+                .join("/");
+
+            let url = s3
+                .bucket
+                .put_object(Some(&s3.credentials), &file_name)
+                .sign(s3.duration);
+
+            let client = services().globals.default_client();
+            let resp = client.put(url).body(file.to_vec()).send().await?;
+
+            if !resp.status().is_success() {
+                error!(
+                    "Failed to upload file with sha256 hash of \"{}\" to S3 bucket: {}",
+                    sha256_hex,
+                    resp.text().await?
+                );
+                return Err(Error::BadS3Response(
+                    "Failed to upload media file to S3 bucket",
+                ));
+            }
+        }
     }
 
     Ok(())
 }
+
+/// The size of a chunk for S3 delete operation.
+const S3_CHUNK_SIZE: usize = 1000;
 
 /// Purges the given files from the media backend
 /// Returns a `Vec` of errors that occurred when attempting to delete the files
 ///
 /// Note: this does NOT remove the related metadata from the database
 async fn purge_files(hashes: Vec<Result<String>>) -> Vec<Error> {
-    stream::iter(hashes)
-        .then(|hash| async move {
-            match hash {
-                Ok(v) => delete_file(&v).await,
-                Err(e) => Err(e),
-            }
-        })
-        .filter_map(|r| async {
-            if let Err(e) = r {
-                Some(e)
-            } else {
-                None
-            }
-        })
-        .collect()
-        .await
-}
+    let (ok_values, err_values): (Vec<_>, Vec<_>) =
+        hashes.into_iter().partition(|result| result.is_ok());
 
-/// Deletes the given file from the media backend
-///
-/// Note: this does NOT remove the related metadata from the database
-async fn delete_file(sha256_hex: &str) -> Result<()> {
+    let mut result: Vec<Error> = err_values.into_iter().map(Result::unwrap_err).collect();
+
+    let to_delete: Vec<String> = ok_values.into_iter().map(Result::unwrap).collect();
+
     match &services().globals.config.media.backend {
         MediaBackendConfig::FileSystem {
             path,
             directory_structure,
         } => {
-            let mut path =
-                services()
-                    .globals
-                    .get_media_path(path, directory_structure, sha256_hex)?;
-
-            if let Err(e) = fs::remove_file(&path).await {
-                // Multiple files with the same filehash might be requseted to be deleted
-                if e.kind() != std::io::ErrorKind::NotFound {
-                    error!("Error removing media from filesystem: {e}");
-                    Err(e)?;
+            for v in to_delete {
+                if let Err(err) = delete_file_fs(path, directory_structure, &v).await {
+                    result.push(err);
                 }
             }
-
-            if let DirectoryStructure::Deep { length: _, depth } = directory_structure {
-                let mut depth = depth.get();
-
-                while depth > 0 {
-                    // Here at the start so that the first time, the file gets removed from the path
-                    path.pop();
-
-                    if let Err(e) = fs::remove_dir(&path).await {
-                        if e.kind() == std::io::ErrorKind::DirectoryNotEmpty {
-                            break;
-                        } else {
-                            error!("Error removing empty media directories: {e}");
-                            Err(e)?;
-                        }
+        }
+        MediaBackendConfig::S3(s3) => {
+            for chunk in to_delete.chunks(S3_CHUNK_SIZE) {
+                match delete_files_s3(s3, chunk).await {
+                    Ok(errors) => {
+                        result.extend(errors);
                     }
-
-                    depth -= 1;
+                    Err(error) => {
+                        result.push(error);
+                    }
                 }
             }
         }
     }
 
+    result
+}
+
+/// Deletes the given file from the fs media backend
+///
+/// Note: this does NOT remove the related metadata from the database
+async fn delete_file_fs(
+    path: &str,
+    directory_structure: &DirectoryStructure,
+    sha256_hex: &str,
+) -> Result<()> {
+    let mut path = services()
+        .globals
+        .get_media_path(path, directory_structure, sha256_hex)?;
+
+    if let Err(e) = fs::remove_file(&path).await {
+        // Multiple files with the same filehash might be requseted to be deleted
+        if e.kind() != std::io::ErrorKind::NotFound {
+            error!("Error removing media from filesystem: {e}");
+            Err(e)?;
+        }
+    }
+
+    if let DirectoryStructure::Deep { length: _, depth } = directory_structure {
+        let mut depth = depth.get();
+
+        while depth > 0 {
+            // Here at the start so that the first time, the file gets removed from the path
+            path.pop();
+
+            if let Err(e) = fs::remove_dir(&path).await {
+                if e.kind() == std::io::ErrorKind::DirectoryNotEmpty {
+                    break;
+                } else {
+                    error!("Error removing empty media directories: {e}");
+                    Err(e)?;
+                }
+            }
+
+            depth -= 1;
+        }
+    }
+
     Ok(())
+}
+
+/// Deletes the given files from the s3 media backend
+///
+/// Note: this does NOT remove the related metadata from the database
+async fn delete_files_s3(s3: &S3MediaBackend, files: &[String]) -> Result<Vec<Error>> {
+    let objects: Vec<ObjectIdentifier> = files
+        .iter()
+        .map(|v| {
+            services()
+                .globals
+                .split_media_path(s3.path.as_deref(), &s3.directory_structure, v)
+                .join("/")
+        })
+        .map(|v| ObjectIdentifier::new(v.to_string()))
+        .collect();
+
+    let mut request = s3
+        .bucket
+        .delete_objects(Some(&s3.credentials), objects.iter());
+    request.set_quiet(true);
+
+    let url = request.sign(s3.duration);
+    let (body, md5) = request.body_with_md5();
+
+    let client = services().globals.default_client();
+    let resp = client
+        .post(url)
+        .header("Content-MD5", md5)
+        .body(body)
+        .send()
+        .await?;
+
+    if !resp.status().is_success() {
+        error!(
+            "Failed to delete files from S3 bucket: {}",
+            resp.text().await?
+        );
+        return Err(Error::BadS3Response(
+            "Failed to delete media files from S3 bucket",
+        ));
+    }
+
+    let parsed = DeleteObjectsResponse::parse(resp.text().await?).map_err(|e| {
+        warn!("Cannot parse S3 response: {}", e);
+        Error::BadS3Response("Cannot parse S3 response")
+    })?;
+
+    let result = parsed
+        .errors
+        .into_iter()
+        .map(|v| Error::CannotDeleteS3File(v.message))
+        .collect();
+
+    Ok(result)
 }
 
 /// Creates a content disposition with the given `filename`, using the `content_type` to determine whether

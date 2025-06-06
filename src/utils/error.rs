@@ -52,6 +52,10 @@ pub enum Error {
         source: std::io::Error,
     },
     #[error("{0}")]
+    BadS3Response(&'static str),
+    #[error("Could not delete S3 file: {0}")]
+    CannotDeleteS3File(String), // This is only needed when an S3 deletion fails
+    #[error("{0}")]
     BadServerResponse(&'static str),
     #[error("{0}")]
     BadConfig(&'static str),

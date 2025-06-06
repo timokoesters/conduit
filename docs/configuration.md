@@ -99,6 +99,33 @@ depth = 4
 length = 2
 ```
 
+#### S3 backend
+The S3 backend has the following fields:
+- `endpoint`: The URL of the S3 endpoint to connect to
+- `bucket`: The name of the S3 bucket to use for storage. This bucket must already exist and your credentials must have access to it
+- `region`: The region where your S3 bucket is located
+- `path`: The base directory where all the media files will be stored (defaults to
+  root of the bucket)
+- `key`: Your Access Key ID
+- `secret`: Your Secret Access Key
+- `duration`:  The time (in seconds) that signed requests to the S3 bucket will be valid (default: `  30`)
+- `bucket_use_path`: Controls the structure of the path to files in S3. If `true`, the bucket name will be included as part of the file path. If `false` (or omitted), it will be used as the bucket name in the domain name
+- `directory_structure`: This is a table, used to configure how files are to be distributed within
+  the media directory (see [Filesystem backend](#filesystem-backend) for details)
+
+##### Example:
+```toml
+[global.media]
+backend = "s3"
+endpoint = "http://minio:9000"
+bucket = "test"
+region = "minio"
+key = "<s3_key>"
+secret = "<s3_secret>"
+duration = 15
+bucket_use_path = false
+```
+
 #### Retention policies
 Over time, the amount of media will keep growing, even if they were only accessed once.
 Retention policies allow for media files to automatically be deleted if they meet certain crietia,

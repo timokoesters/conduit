@@ -242,6 +242,7 @@ impl From<IncompleteConfig> for Config {
                     }),
                     directory_structure,
                 },
+                IncompleteMediaBackendConfig::S3(value) => MediaBackendConfig::S3(value),
             },
             retention: media.retention.into(),
         };
@@ -481,6 +482,7 @@ pub enum IncompleteMediaBackendConfig {
         #[serde(default)]
         directory_structure: DirectoryStructure,
     },
+    S3(S3MediaBackend),
 }
 
 impl Default for IncompleteMediaBackendConfig {
@@ -498,6 +500,7 @@ pub enum MediaBackendConfig {
         path: String,
         directory_structure: DirectoryStructure,
     },
+    S3(S3MediaBackend),
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -552,6 +555,58 @@ impl TryFrom<ShadowDirectoryStructure> for DirectoryStructure {
             }
         }
     }
+}
+
+#[derive(Deserialize)]
+struct ShadowS3MediaBackend {
+    endpoint: Url,
+    bucket: String,
+    region: String,
+    path: Option<String>,
+
+    key: String,
+    secret: String,
+
+    #[serde(default = "default_s3_duration")]
+    duration: u64,
+    #[serde(default = "false_fn")]
+    bucket_use_path: bool,
+    #[serde(default)]
+    directory_structure: DirectoryStructure,
+}
+
+impl TryFrom<ShadowS3MediaBackend> for S3MediaBackend {
+    type Error = Error;
+
+    fn try_from(value: ShadowS3MediaBackend) -> Result<Self, Self::Error> {
+        let path_style = if value.bucket_use_path {
+            rusty_s3::UrlStyle::Path
+        } else {
+            rusty_s3::UrlStyle::VirtualHost
+        };
+        let credentials = rusty_s3::Credentials::new(value.key, value.secret);
+
+        match rusty_s3::Bucket::new(value.endpoint, path_style, value.bucket, value.region) {
+            Ok(bucket) => Ok(S3MediaBackend {
+                bucket: Box::new(bucket),
+                credentials: Box::new(credentials),
+                duration: Duration::from_secs(value.duration),
+                path: value.path,
+                directory_structure: value.directory_structure,
+            }),
+            Err(_) => Err(Error::bad_config("Invalid S3 config")),
+        }
+    }
+}
+
+#[derive(Deserialize, Debug, Clone)]
+#[serde(try_from = "ShadowS3MediaBackend")]
+pub struct S3MediaBackend {
+    pub bucket: Box<rusty_s3::Bucket>,
+    pub credentials: Box<rusty_s3::Credentials>,
+    pub duration: Duration,
+    pub path: Option<String>,
+    pub directory_structure: DirectoryStructure,
 }
 
 const DEPRECATED_KEYS: &[&str] = &[
@@ -726,4 +781,8 @@ fn default_openid_token_ttl() -> u64 {
 // I know, it's a great name
 pub fn default_default_room_version() -> RoomVersionId {
     RoomVersionId::V12
+}
+
+fn default_s3_duration() -> u64 {
+    30
 }

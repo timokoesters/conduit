@@ -231,8 +231,6 @@ impl Service {
             shutdown: AtomicBool::new(false),
         };
 
-        // Remove this exception once other media backends are added
-        #[allow(irrefutable_let_patterns)]
         if let MediaBackendConfig::FileSystem { path, .. } = &s.config.media.backend {
             fs::create_dir_all(path)?;
         }
@@ -488,23 +486,40 @@ impl Service {
         directory_structure: &DirectoryStructure,
         sha256_hex: &str,
     ) -> Result<PathBuf> {
-        let mut r = PathBuf::new();
-        r.push(media_directory);
+        Ok(PathBuf::from_iter(self.split_media_path(
+            Some(media_directory),
+            directory_structure,
+            sha256_hex,
+        )))
+    }
 
-        if let DirectoryStructure::Deep { length, depth } = directory_structure {
-            let mut filename = sha256_hex;
-            for _ in 0..depth.get() {
-                let (current_path, next) = filename.split_at(length.get().into());
-                filename = next;
-                r.push(current_path);
+    pub fn split_media_path<'a>(
+        &self,
+        media_directory: Option<&'a str>,
+        directory_structure: &DirectoryStructure,
+        sha256_hex: &'a str,
+    ) -> Vec<&'a str> {
+        match directory_structure {
+            DirectoryStructure::Flat => match media_directory {
+                Some(path) => vec![path, sha256_hex],
+                None => vec![sha256_hex],
+            },
+            DirectoryStructure::Deep { length, depth } => {
+                let mut r: Vec<&'a str> = Vec::with_capacity((depth.get() + 2).into());
+                if let Some(path) = media_directory {
+                    r.push(path);
+                }
+                let mut filename = sha256_hex;
+                for _ in 0..depth.get() {
+                    let (current_path, next) = filename.split_at(length.get().into());
+                    filename = next;
+                    r.push(current_path);
+                }
+                r.push(filename);
+
+                r
             }
-
-            r.push(filename);
-        } else {
-            r.push(sha256_hex);
         }
-
-        Ok(r)
     }
 
     pub async fn shutdown(&self) {
