@@ -265,8 +265,8 @@ impl From<IncompleteConfig> for Config {
                     let credentials = rusty_s3::Credentials::new(key, secret);
 
                     MediaBackendConfig::S3 {
-                        bucket,
-                        credentials,
+                        bucket: Box::new(bucket),
+                        credentials: Box::new(credentials),
                         duration: Duration::from_secs(duration),
                         path,
                         directory_structure,
@@ -543,8 +543,8 @@ pub enum MediaBackendConfig {
         directory_structure: DirectoryStructure,
     },
     S3 {
-        bucket: rusty_s3::Bucket,
-        credentials: rusty_s3::Credentials,
+        bucket: Box<rusty_s3::Bucket>,
+        credentials: Box<rusty_s3::Credentials>,
         duration: Duration,
         path: Option<String>,
         directory_structure: DirectoryStructure,
