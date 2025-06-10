@@ -93,11 +93,6 @@ impl Error {
         error!("BadConfig: {}", message);
         Self::BadConfig(message)
     }
-
-    pub fn bad_s3_response(message: &'static str) -> Self {
-        info!("BadS3Response: {}", message);
-        Self::BadS3Response(message)
-    }
 }
 
 impl Error {

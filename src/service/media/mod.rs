@@ -643,8 +643,8 @@ impl Service {
                     ));
                 }
                 if !resp.status().is_success() {
-                    warn!("S3 request error ({}):\n{}", sha256_hex, resp.text().await?);
-                    return Err(Error::bad_s3_response("Cannot read media file"));
+                    error!("Failed to get file with sha256 hash of \"{}\" from S3 bucket: {}", sha256_hex, resp.text().await?);
+                    return Err(Error::BadS3Response("Failed to get media file from S3 bucket"));
                 }
 
                 resp.bytes().await?.to_vec()
@@ -702,8 +702,8 @@ pub async fn create_file(sha256_hex: &str, file: &[u8]) -> Result<()> {
             let resp = client.put(url).body(file.to_vec()).send().await?;
 
             if !resp.status().is_success() {
-                warn!("S3 request error ({}):\n{}", sha256_hex, resp.text().await?);
-                return Err(Error::bad_s3_response("Cannot write media file"));
+                error!("Failed to upload file with sha256 hash of \"{}\" to S3 bucket: {}", sha256_hex, resp.text().await?);
+                return Err(Error::BadS3Response("Failed to upload media file to S3 bucket"));
             }
         }
     }
@@ -795,8 +795,8 @@ async fn delete_file(sha256_hex: &str) -> Result<()> {
             let resp = client.delete(url).send().await?;
 
             if !resp.status().is_success() {
-                warn!("S3 request error ({}):\n{}", sha256_hex, resp.text().await?);
-                return Err(Error::bad_s3_response("Cannot delete media file"));
+                error!("Failed to delete file with sha256 hash of \"{}\" from S3 bucket: {}", sha256_hex, resp.text().await?);
+                return Err(Error::BadS3Response("Failed to delete media file from S3 bucket"));
             }
         }
     }
