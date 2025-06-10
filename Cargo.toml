@@ -46,10 +46,8 @@ tower-http = { version = "0.6", features = [
   "util",
 ] }
 tower-service = "0.3"
-
 # Async runtime and utilities
 tokio = { version = "1", features = ["fs", "macros", "signal", "sync"] }
-
 # Used for the http request / response body type for Ruma endpoints used with reqwest
 bytes = "1"
 http = "1"
@@ -111,17 +109,14 @@ tracing = "0.1"
 tracing-flame = "0.2.0"
 tracing-opentelemetry = "0.30"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-
 lru-cache = "0.1.2"
 parking_lot = { version = "0.12", optional = true }
 rusqlite = { version = "0.35", optional = true, features = ["bundled"] }
-
 # crossbeam = { version = "0.8.2", optional = true }
 num_cpus = "1"
 threadpool = "1"
 # Used for ruma wrapper
 serde_html_form = "0.2"
-
 thread_local = "1"
 # used for TURN server authentication
 hmac = "0.12"
@@ -138,24 +133,20 @@ clap = { version = "4", default-features = false, features = [
 ] }
 humantime = "2"
 shell-words = "1.1.0"
-
 futures-util = { version = "0.3", default-features = false }
 # Used for reading the configuration from conduit.toml & environment variables
 figment = { version = "0.10", features = ["env", "toml"] }
-
 # Validating urls in config
 url = { version = "2", features = ["serde"] }
-
 async-trait = "0.1"
 tikv-jemallocator = { version = "0.6", features = [
   "unprefixed_malloc_on_supported_platforms",
 ], optional = true }
-
 sd-notify = { version = "0.4", optional = true }
 # Used for inspecting request errors
 http-body-util = "0.1.3"
-
 rusty-s3 = "0.7.0"
+# Used for S3 media backend
 
 # Used for matrix spec type definitions and helpers
 [dependencies.ruma]
