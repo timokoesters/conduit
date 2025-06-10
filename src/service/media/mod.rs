@@ -681,8 +681,10 @@ pub async fn create_file(sha256_hex: &str, file: &[u8]) -> Result<()> {
                 .get_media_path(path, directory_structure, sha256_hex)?;
 
             // Create all directories leading up to file
-            if let Some(parent) = path.parent() {
-                fs::create_dir_all(&parent).await.inspect_err(|e| error!("Error creating leading directories for media with sha256 hash of {sha256_hex}: {e}"))?;
+            if let DirectoryStructure::Deep { .. } = directory_structure {
+                if let Some(parent) = path.parent() {
+                    fs::create_dir_all(&parent).await.inspect_err(|e| error!("Error creating leading directories for media with sha256 hash of {sha256_hex}: {e}"))?;
+                }
             }
 
             let mut f = File::create(path).await?;
