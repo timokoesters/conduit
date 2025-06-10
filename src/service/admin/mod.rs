@@ -589,7 +589,8 @@ impl Service {
                     RoomMessageEventContent::text_plain(
                         "Expected code block in command body. Add --help for details.",
                     )
-                }.into()
+                }
+                .into()
             }
             AdminCommand::UnregisterAppservice {
                 appservice_identifier,
@@ -602,7 +603,8 @@ impl Service {
                 Err(e) => RoomMessageEventContent::text_plain(format!(
                     "Failed to unregister appservice: {e}"
                 )),
-            }.into(),
+            }
+            .into(),
             AdminCommand::ListAppservices => {
                 let appservices = services().appservice.iter_ids().await;
                 let output = format!(
@@ -640,7 +642,8 @@ impl Service {
                     RoomMessageEventContent::text_plain(&msg)
                 }
                 Err(e) => RoomMessageEventContent::text_plain(e.to_string()),
-            }.into(),
+            }
+            .into(),
             AdminCommand::IncomingFederation => {
                 let map = services().globals.roomid_federationhandletime.read().await;
                 let mut msg: String = format!("Handling {} incoming pdus:\n", map.len());
@@ -681,7 +684,8 @@ impl Service {
                     ))
                 } else {
                     RoomMessageEventContent::text_plain("Event not found.")
-                }.into()
+                }
+                .into()
             }
             AdminCommand::ParsePdu => {
                 if body.len() > 2 && body[0].trim() == "```" && body.last().unwrap().trim() == "```"
@@ -715,7 +719,8 @@ impl Service {
                     }
                 } else {
                     RoomMessageEventContent::text_plain("Expected code block in command body.")
-                }.into()
+                }
+                .into()
             }
             AdminCommand::GetPdu { event_id } => {
                 let mut outlier = false;
@@ -753,7 +758,8 @@ impl Service {
                         )
                     }
                     None => RoomMessageEventContent::text_plain("PDU not found."),
-                }.into()
+                }
+                .into()
             }
             AdminCommand::MemoryUsage => {
                 let response1 = services().memory_usage().await;
@@ -761,7 +767,8 @@ impl Service {
 
                 RoomMessageEventContent::text_plain(format!(
                     "Services:\n{response1}\n\nDatabase:\n{response2}"
-                )).into()
+                ))
+                .into()
             }
             AdminCommand::ClearDatabaseCaches { amount } => {
                 services().globals.db.clear_caches(amount);
@@ -786,7 +793,8 @@ impl Service {
                     Err(e) => {
                         return Ok(RoomMessageEventContent::text_plain(format!(
                             "The supplied username is not a valid username: {e}"
-                        )).into())
+                        ))
+                        .into())
                     }
                 };
 
@@ -794,7 +802,8 @@ impl Service {
                 if user_id.server_name() != services().globals.server_name() {
                     return Ok(RoomMessageEventContent::text_plain(
                         "The specified user is not from this server!",
-                    ).into());
+                    )
+                    .into());
                 };
 
                 // Check if the specified user is valid
@@ -808,7 +817,8 @@ impl Service {
                 {
                     return Ok(RoomMessageEventContent::text_plain(
                         "The specified user does not exist!",
-                    ).into());
+                    )
+                    .into());
                 }
 
                 let new_password = utils::random_string(AUTO_GEN_PASSWORD_LENGTH);
@@ -823,7 +833,8 @@ impl Service {
                     Err(e) => RoomMessageEventContent::text_plain(format!(
                         "Couldn't reset the password for user {user_id}: {e}"
                     )),
-                }.into()
+                }
+                .into()
             }
             AdminCommand::CreateUser { username, password } => {
                 let password =
@@ -837,7 +848,8 @@ impl Service {
                     Err(e) => {
                         return Ok(RoomMessageEventContent::text_plain(format!(
                             "The supplied username is not a valid username: {e}"
-                        )).into())
+                        ))
+                        .into())
                     }
                 };
 
@@ -845,18 +857,21 @@ impl Service {
                 if user_id.server_name() != services().globals.server_name() {
                     return Ok(RoomMessageEventContent::text_plain(
                         "The specified user is not from this server!",
-                    ).into());
+                    )
+                    .into());
                 };
 
                 if user_id.is_historical() {
                     return Ok(RoomMessageEventContent::text_plain(format!(
                         "Userid {user_id} is not allowed due to historical"
-                    )).into());
+                    ))
+                    .into());
                 }
                 if services().users.exists(&user_id)? {
                     return Ok(RoomMessageEventContent::text_plain(format!(
                         "Userid {user_id} already exists"
-                    )).into());
+                    ))
+                    .into());
                 }
                 // Create user
                 services().users.create(&user_id, Some(password.as_str()))?;
@@ -893,26 +908,26 @@ impl Service {
                 // Inhibit login does not work for guests
                 RoomMessageEventContent::text_plain(format!(
                     "Created user with user_id: {user_id} and password: {password}"
-                )).into()
+                ))
+                .into()
             }
-            AdminCommand::AllowRegistration { status } => {
-                if let Some(status) = status {
-                    services().globals.set_registration(status).await;
-                    RoomMessageEventContent::text_plain(if status {
-                        "Registration is now enabled"
-                    } else {
-                        "Registration is now disabled"
-                    })
+            AdminCommand::AllowRegistration { status } => if let Some(status) = status {
+                services().globals.set_registration(status).await;
+                RoomMessageEventContent::text_plain(if status {
+                    "Registration is now enabled"
                 } else {
-                    RoomMessageEventContent::text_plain(
-                        if services().globals.allow_registration().await {
-                            "Registration is currently enabled"
-                        } else {
-                            "Registration is currently disabled"
-                        },
-                    )
-                }.into()
+                    "Registration is now disabled"
+                })
+            } else {
+                RoomMessageEventContent::text_plain(
+                    if services().globals.allow_registration().await {
+                        "Registration is currently enabled"
+                    } else {
+                        "Registration is currently disabled"
+                    },
+                )
             }
+            .into(),
             AdminCommand::DisableRoom { room_id } => {
                 services().rooms.metadata.disable_room(&room_id, true)?;
                 RoomMessageEventContent::text_plain("Room disabled.").into()
@@ -1031,7 +1046,10 @@ impl Service {
 
                     let mut message = format!("Deactivated {deactivation_count} accounts.");
                     if !admins.is_empty() {
-                        message.push_str(&format!("\nSkipped admin accounts: {:?}. Use --force to deactivate admin accounts",admins.join(", ")));
+                        message.push_str(&format!(
+                        "\nSkipped admin accounts: {:?}. Use --force to deactivate admin accounts",
+                        admins.join(", ")
+                    ));
                     }
                     if failed_count != 0 {
                         message.push_str(&format!(
@@ -1044,14 +1062,19 @@ impl Service {
                     RoomMessageEventContent::text_plain(
                         "Expected code block in command body. Add --help for details.",
                     )
-                }.into()
+                }
+                .into()
             }
             AdminCommand::QueryMedia { mxc } => {
                 let Ok((server_name, media_id)) = mxc.parts() else {
                     return Ok(RoomMessageEventContent::text_plain("Invalid media MXC").into());
                 };
 
-                let MediaQuery{ is_blocked, source_file, thumbnails } = services().media.query(server_name, media_id)?;
+                let MediaQuery {
+                    is_blocked,
+                    source_file,
+                    thumbnails,
+                } = services().media.query(server_name, media_id)?;
                 let mut message = format!("Is blocked Media ID: {is_blocked}");
 
                 if let Some(MediaQueryFileInfo {
@@ -1062,14 +1085,16 @@ impl Service {
                     unauthenticated_access_permitted,
                     is_blocked_via_filehash,
                     file_info: time_info,
-                }) = source_file {
+                }) = source_file
+                {
                     message.push_str("\n\nInformation on full (non-thumbnail) file:\n");
 
                     if let Some(FileInfo {
                         creation,
                         last_access,
                         size,
-                    }) = time_info {
+                    }) = time_info
+                    {
                         message.push_str(&format!("\nIs stored: true\nCreated at: {}\nLast accessed at: {}\nSize of file: {}",
                             DateTime::from_timestamp(creation.try_into().unwrap_or(i64::MAX),0).expect("Timestamp is within range"),
                             DateTime::from_timestamp(last_access.try_into().unwrap_or(i64::MAX),0).expect("Timestamp is within range"),
@@ -1098,7 +1123,7 @@ impl Service {
                     message.push_str("\n\nInformation on thumbnails of media:");
                 }
 
-                for MediaQueryThumbInfo{
+                for MediaQueryThumbInfo {
                     width,
                     height,
                     sha256_hex,
@@ -1107,13 +1132,15 @@ impl Service {
                     unauthenticated_access_permitted,
                     is_blocked_via_filehash,
                     file_info: time_info,
-                } in thumbnails {
+                } in thumbnails
+                {
                     message.push_str(&format!("\n\nDimensions: {width}x{height}"));
                     if let Some(FileInfo {
                         creation,
                         last_access,
                         size,
-                    }) = time_info {
+                    }) = time_info
+                    {
                         message.push_str(&format!("\nIs stored: true\nCreated at: {}\nLast accessed at: {}\nSize of file: {}",
                             DateTime::from_timestamp(creation.try_into().unwrap_or(i64::MAX),0).expect("Timestamp is within range"),
                             DateTime::from_timestamp(last_access.try_into().unwrap_or(i64::MAX),0).expect("Timestamp is within range"),
@@ -1147,7 +1174,8 @@ impl Service {
                     file,
                     content_type,
                     content_disposition,
-                } = client_server::media::get_content(server_name, media_id.to_owned(), true, true).await?;
+                } = client_server::media::get_content(server_name, media_id.to_owned(), true, true)
+                    .await?;
 
                 if let Ok(image) = image::load_from_memory(&file) {
                     let filename = content_disposition.and_then(|cd| cd.filename);
@@ -1187,10 +1215,7 @@ impl Service {
                 }
             }
             AdminCommand::ListMedia {
-                user_server_filter: ListMediaArgs {
-                    user,
-                    server,
-                },
+                user_server_filter: ListMediaArgs { user, server },
                 include_thumbnails,
                 content_type,
                 uploaded_before,
@@ -1203,7 +1228,7 @@ impl Service {
                     r#"<table><thead><tr><th scope="col">MXC URI</th><th scope="col">Dimensions (if thumbnail)</th><th scope="col">Created/Downloaded at</th><th scope="col">Uploader</th><th scope="col">Content-Type</th><th scope="col">Filename</th><th scope="col">Size</th></tr></thead><tbody>"#,
                 );
 
-                for MediaListItem{
+                for MediaListItem {
                     server_name,
                     media_id,
                     uploader_localpart,
@@ -1213,9 +1238,8 @@ impl Service {
                     size,
                     creation,
                 } in services().media.list(
-                    user
-                    .map(ServerNameOrUserId::UserId)
-                    .or_else(|| server.map(ServerNameOrUserId::ServerName)),
+                    user.map(ServerNameOrUserId::UserId)
+                        .or_else(|| server.map(ServerNameOrUserId::ServerName)),
                     include_thumbnails,
                     content_type.as_deref(),
                     uploaded_before
@@ -1229,15 +1253,20 @@ impl Service {
                         .transpose()
                         .map_err(|_| Error::AdminCommand("Timestamp must be after unix epoch"))?
                         .as_ref()
-                        .map(Duration::as_secs)
+                        .map(Duration::as_secs),
                 )? {
-
-                    let user_id = uploader_localpart.map(|localpart| format!("@{localpart}:{server_name}")).unwrap_or_default();
+                    let user_id = uploader_localpart
+                        .map(|localpart| format!("@{localpart}:{server_name}"))
+                        .unwrap_or_default();
                     let content_type = content_type.unwrap_or_default();
                     let filename = filename.unwrap_or_default();
-                    let dimensions = dimensions.map(|(w, h)| format!("{w}x{h}")).unwrap_or_default();
+                    let dimensions = dimensions
+                        .map(|(w, h)| format!("{w}x{h}"))
+                        .unwrap_or_default();
                     let size = ByteSize::b(size).display().si();
-                    let creation = DateTime::from_timestamp(creation.try_into().unwrap_or(i64::MAX),0).expect("Timestamp is within range");
+                    let creation =
+                        DateTime::from_timestamp(creation.try_into().unwrap_or(i64::MAX), 0)
+                            .expect("Timestamp is within range");
 
                     markdown_message
                         .push_str(&format!("\n| mxc://{server_name}/{media_id} | {dimensions} | {creation} | {user_id} | {content_type} | {filename} | {size} |"));
@@ -1250,7 +1279,7 @@ impl Service {
                 html_message.push_str("</tbody></table>");
 
                 RoomMessageEventContent::text_html(markdown_message, html_message).into()
-            },
+            }
             AdminCommand::PurgeMedia => match media_from_body(body) {
                 Ok(media) => {
                     let failed_count = services().media.purge(&media, true).await.len();
@@ -1261,10 +1290,11 @@ impl Service {
                         RoomMessageEventContent::text_plain(format!(
                             "Failed to delete {failed_count} media, check logs for more details"
                         ))
-                    }.into()
-                },
+                    }
+                    .into()
+                }
                 Err(message) => message,
-            }
+            },
             AdminCommand::PurgeMediaFromUsers {
                 from_last,
                 force_filehash,
@@ -1299,7 +1329,8 @@ impl Service {
                     RoomMessageEventContent::text_plain(
                         "Expected code block in command body. Add --help for details.",
                     )
-                }.into()
+                }
+                .into()
             }
             AdminCommand::PurgeMediaFromServer {
                 server_id: server_name,
@@ -1328,10 +1359,11 @@ impl Service {
                     RoomMessageEventContent::text_plain(format!(
                         "Failed to purge {failed_count} media, check logs for more details"
                     ))
-                }.into()
+                }
+                .into()
             }
             AdminCommand::BlockMedia { and_purge, reason } => match media_from_body(body) {
-                Ok(media) =>{
+                Ok(media) => {
                     let failed_count = services().media.block(&media, reason).len();
                     let failed_purge_count = if and_purge {
                         services().media.purge(&media, true).await.len()
@@ -1351,9 +1383,9 @@ impl Service {
                             "Failed to block {failed_count}, and purge {failed_purge_count} media, check logs for more details"
                         ))
                     }.into()
-                },
+                }
                 Err(message) => message,
-            }
+            },
             AdminCommand::BlockMediaFromUsers { from_last, reason } => {
                 let after = from_last.map(unix_secs_from_duration).transpose()?;
 
@@ -1389,7 +1421,8 @@ impl Service {
                     RoomMessageEventContent::text_plain(
                         "Expected code block in command body. Add --help for details.",
                     )
-                }.into()
+                }
+                .into()
             }
             AdminCommand::ListBlockedMedia => {
                 let mut markdown_message = String::from(
@@ -1406,7 +1439,8 @@ impl Service {
                         unix_secs,
                         reason,
                         sha256_hex,
-                    }) = media else {
+                    }) = media
+                    else {
                         continue;
                     };
 
@@ -1419,8 +1453,9 @@ impl Service {
                         .flatten()
                         .expect("Time is valid");
 
-                    markdown_message
-                        .push_str(&format!("\n| {sha256_hex} | mxc://{server_name}/{media_id} | {time} | {reason} |"));
+                    markdown_message.push_str(&format!(
+                        "\n| {sha256_hex} | mxc://{server_name}/{media_id} | {time} | {reason} |"
+                    ));
 
                     html_message.push_str(&format!(
                         "<tr><td>{sha256_hex}</td><td>mxc://{server_name}/{media_id}</td><td>{time}</td><td>{reason}</td></tr>",
@@ -1442,7 +1477,8 @@ impl Service {
                         RoomMessageEventContent::text_plain(format!(
                             "Failed to unblock {failed_count} media, check logs for more details"
                         ))
-                    }.into()
+                    }
+                    .into()
                 },
             ),
             AdminCommand::SignJson => {
@@ -1467,7 +1503,8 @@ impl Service {
                     RoomMessageEventContent::text_plain(
                         "Expected code block in command body. Add --help for details.",
                     )
-                }.into()
+                }
+                .into()
             }
             AdminCommand::VerifyJson => {
                 if body.len() > 2 && body[0].trim() == "```" && body.last().unwrap().trim() == "```"
@@ -1528,7 +1565,8 @@ impl Service {
                     RoomMessageEventContent::text_plain(
                         "Expected code block in command body. Add --help for details.",
                     )
-                }.into()
+                }
+                .into()
             }
             AdminCommand::HashAndSignEvent { room_version_id } => {
                 if body.len() > 2
@@ -1543,7 +1581,10 @@ impl Service {
                                 services().globals.server_name().as_str(),
                                 services().globals.keypair(),
                                 &mut value,
-                                &room_version_id.rules().expect("Supported room version has rules").redaction,
+                                &room_version_id
+                                    .rules()
+                                    .expect("Supported room version has rules")
+                                    .redaction,
                             ) {
                                 RoomMessageEventContent::text_plain(format!("Invalid event: {e}"))
                             } else {
@@ -1558,7 +1599,8 @@ impl Service {
                     RoomMessageEventContent::text_plain(
                         "Expected code block in command body. Add --help for details.",
                     )
-                }.into()
+                }
+                .into()
             }
             AdminCommand::RemoveAlias { alias } => {
                 if alias.server_name() != services().globals.server_name() {
@@ -1583,7 +1625,8 @@ impl Service {
                         .alias
                         .remove_alias(&alias, services().globals.server_user())?;
                     RoomMessageEventContent::text_plain("Alias removed successfully")
-                }.into()
+                }
+                .into()
             }
         };
 
