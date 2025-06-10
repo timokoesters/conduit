@@ -515,13 +515,15 @@ pub enum IncompleteMediaBackendConfig {
         endpoint: Url,
         bucket: String,
         region: String,
+        path: Option<String>,
+
         key: String,
         secret: String,
+
         #[serde(default = "default_s3_duration")]
         duration: u64,
         #[serde(default = "false_fn")]
         bucket_use_path: bool,
-        path: Option<String>,
         #[serde(default)]
         directory_structure: DirectoryStructure,
     },
