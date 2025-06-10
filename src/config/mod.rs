@@ -246,11 +246,11 @@ impl From<IncompleteConfig> for Config {
                     endpoint,
                     bucket,
                     region,
+                    path,
                     key,
                     secret,
                     duration,
                     bucket_use_path,
-                    path,
                     directory_structure,
                 } => {
                     let path_style = if bucket_use_path {

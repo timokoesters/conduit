@@ -11,7 +11,7 @@ use ruma::{
 };
 use rusty_s3::S3Action;
 use sha2::{digest::Output, Digest, Sha256};
-use tracing::{error, info, warn};
+use tracing::{error, info};
 
 use crate::{
     config::{DirectoryStructure, MediaBackendConfig},
@@ -643,8 +643,14 @@ impl Service {
                     ));
                 }
                 if !resp.status().is_success() {
-                    error!("Failed to get file with sha256 hash of \"{}\" from S3 bucket: {}", sha256_hex, resp.text().await?);
-                    return Err(Error::BadS3Response("Failed to get media file from S3 bucket"));
+                    error!(
+                        "Failed to get file with sha256 hash of \"{}\" from S3 bucket: {}",
+                        sha256_hex,
+                        resp.text().await?
+                    );
+                    return Err(Error::BadS3Response(
+                        "Failed to get media file from S3 bucket",
+                    ));
                 }
 
                 resp.bytes().await?.to_vec()
@@ -702,8 +708,14 @@ pub async fn create_file(sha256_hex: &str, file: &[u8]) -> Result<()> {
             let resp = client.put(url).body(file.to_vec()).send().await?;
 
             if !resp.status().is_success() {
-                error!("Failed to upload file with sha256 hash of \"{}\" to S3 bucket: {}", sha256_hex, resp.text().await?);
-                return Err(Error::BadS3Response("Failed to upload media file to S3 bucket"));
+                error!(
+                    "Failed to upload file with sha256 hash of \"{}\" to S3 bucket: {}",
+                    sha256_hex,
+                    resp.text().await?
+                );
+                return Err(Error::BadS3Response(
+                    "Failed to upload media file to S3 bucket",
+                ));
             }
         }
     }
@@ -795,8 +807,14 @@ async fn delete_file(sha256_hex: &str) -> Result<()> {
             let resp = client.delete(url).send().await?;
 
             if !resp.status().is_success() {
-                error!("Failed to delete file with sha256 hash of \"{}\" from S3 bucket: {}", sha256_hex, resp.text().await?);
-                return Err(Error::BadS3Response("Failed to delete media file from S3 bucket"));
+                error!(
+                    "Failed to delete file with sha256 hash of \"{}\" from S3 bucket: {}",
+                    sha256_hex,
+                    resp.text().await?
+                );
+                return Err(Error::BadS3Response(
+                    "Failed to delete media file from S3 bucket",
+                ));
             }
         }
     }
