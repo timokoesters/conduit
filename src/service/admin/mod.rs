@@ -9,7 +9,6 @@ use std::{
 use bytesize::ByteSize;
 use chrono::DateTime;
 use clap::{Args, Parser};
-use futures_util::future::Either;
 use image::GenericImageView;
 use regex::Regex;
 use ruma::{
@@ -1252,9 +1251,8 @@ impl Service {
 
                 RoomMessageEventContent::text_html(markdown_message, html_message).into()
             },
-            AdminCommand::PurgeMedia => media_from_body(body).map_or_else(
-                |message| Either::Left(async move { message }),
-                |media| Either::Right(async move {
+            AdminCommand::PurgeMedia => match media_from_body(body) {
+                Ok(media) => {
                     let failed_count = services().media.purge(&media, true).await.len();
 
                     if failed_count == 0 {
@@ -1264,8 +1262,9 @@ impl Service {
                             "Failed to delete {failed_count} media, check logs for more details"
                         ))
                     }.into()
-                }),
-            ).await,
+                },
+                Err(message) => message,
+            }
             AdminCommand::PurgeMediaFromUsers {
                 from_last,
                 force_filehash,
@@ -1331,9 +1330,8 @@ impl Service {
                     ))
                 }.into()
             }
-            AdminCommand::BlockMedia { and_purge, reason } => media_from_body(body).map_or_else(
-                |message| Either::Left(async move { message }),
-                |media| Either::Right(async move {
+            AdminCommand::BlockMedia { and_purge, reason } => match media_from_body(body) {
+                Ok(media) =>{
                     let failed_count = services().media.block(&media, reason).len();
                     let failed_purge_count = if and_purge {
                         services().media.purge(&media, true).await.len()
@@ -1353,8 +1351,9 @@ impl Service {
                             "Failed to block {failed_count}, and purge {failed_purge_count} media, check logs for more details"
                         ))
                     }.into()
-                }),
-            ).await,
+                },
+                Err(message) => message,
+            }
             AdminCommand::BlockMediaFromUsers { from_last, reason } => {
                 let after = from_last.map(unix_secs_from_duration).transpose()?;
 
