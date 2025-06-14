@@ -7,6 +7,7 @@ use crate::{
         globals::SigningKeys,
         media::FileMeta,
         pdu::{PduBuilder, gen_event_id_canonical_json},
+        rate_limiting::Target,
     },
     services, utils,
 };
@@ -2244,6 +2245,13 @@ pub async fn create_invite_route(
 pub async fn get_content_route(
     body: Ruma<get_content::v1::Request>,
 ) -> Result<get_content::v1::Response> {
+    let sender_servername = body
+        .sender_servername
+        .as_ref()
+        .expect("server is authenticated");
+
+    let target = Some(Target::Server(sender_servername.to_owned()));
+
     services()
         .media
         .check_blocked(services().globals.server_name(), &body.media_id)?;
@@ -2254,7 +2262,11 @@ pub async fn get_content_route(
         file,
     }) = services()
         .media
-        .get(services().globals.server_name(), &body.media_id, true)
+        .get(
+            services().globals.server_name(),
+            &body.media_id,
+            target.clone(),
+        )
         .await?
     {
         Ok(get_content::v1::Response::new(
@@ -2276,6 +2288,13 @@ pub async fn get_content_route(
 pub async fn get_content_thumbnail_route(
     body: Ruma<get_content_thumbnail::v1::Request>,
 ) -> Result<get_content_thumbnail::v1::Response> {
+    let Ruma::<get_content_thumbnail::v1::Request> {
+        body,
+        sender_servername,
+        ..
+    } = body;
+    let sender_servername = sender_servername.expect("server is authenticated");
+
     services()
         .media
         .check_blocked(services().globals.server_name(), &body.media_id)?;
@@ -2295,7 +2314,7 @@ pub async fn get_content_thumbnail_route(
             body.height
                 .try_into()
                 .map_err(|_| Error::BadRequest(ErrorKind::InvalidParam, "Width is invalid."))?,
-            true,
+            Some(Target::Server(sender_servername)),
         )
         .await?
     else {

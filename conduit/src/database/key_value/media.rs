@@ -204,19 +204,7 @@ impl service::media::Data for KeyValueDatabase {
 
                 let is_blocked_via_filehash = self.is_blocked_filehash(&sha256_digest)?;
 
-                let time_info = if let Some(filehash_meta) = self
-                    .filehash_metadata
-                    .get(&sha256_digest)?
-                    .map(FilehashMetadata::from_vec)
-                {
-                    Some(FileInfo {
-                        creation: filehash_meta.creation(&sha256_digest)?,
-                        last_access: filehash_meta.last_access(&sha256_digest)?,
-                        size: filehash_meta.size(&sha256_digest)?,
-                    })
-                } else {
-                    None
-                };
+                let file_info = self.file_info(&sha256_digest)?;
 
                 Some(MediaQueryFileInfo {
                     uploader_localpart,
@@ -225,7 +213,7 @@ impl service::media::Data for KeyValueDatabase {
                     content_type,
                     unauthenticated_access_permitted,
                     is_blocked_via_filehash,
-                    file_info: time_info,
+                    file_info,
                 })
             } else {
                 None
@@ -1357,6 +1345,24 @@ impl service::media::Data for KeyValueDatabase {
             // File was probably deleted just as we were fetching it, so nothing to do
             Ok(())
         }
+    }
+
+    fn file_info(&self, sha256_digest: &[u8]) -> Result<Option<FileInfo>, Error> {
+        Ok(
+            if let Some(filehash_meta) = self
+                .filehash_metadata
+                .get(sha256_digest)?
+                .map(FilehashMetadata::from_vec)
+            {
+                Some(FileInfo {
+                    creation: filehash_meta.creation(sha256_digest)?,
+                    last_access: filehash_meta.last_access(sha256_digest)?,
+                    size: filehash_meta.size(sha256_digest)?,
+                })
+            } else {
+                None
+            },
+        )
     }
 }
 

@@ -3,7 +3,7 @@ use std::{
     error::Error as _,
     iter::FromIterator,
     net::{IpAddr, SocketAddr},
-    str,
+    str::{self, FromStr},
 };
 
 use axum::{
@@ -30,11 +30,12 @@ use serde::Deserialize;
 use tracing::{debug, error, warn};
 
 use super::{Ruma, RumaResponse};
-use crate::{Error, Result, service::appservice::RegistrationInfo, services, config::IpAddrDetection, };
+use crate::{Error, Result, services, config::IpAddrDetection, service::{appservice::RegistrationInfo, rate_limiting::Target}, };
 
 enum Token {
     Appservice(Box<RegistrationInfo>),
     User((OwnedUserId, OwnedDeviceId)),
+    AuthRateLimited(Error),
     Invalid,
     None,
 }
@@ -120,7 +121,17 @@ where
             };
 
         let token = if let Some(token) = token {
-            if let Some(reg_info) = services().appservice.find_from_token(token).await {
+            let mut rate_limited = None;
+
+            if let Some(ip_addr) = sender_ip_address {
+                if let Err(instant) = services().rate_limiting.pre_auth_check(ip_addr).await {
+                    rate_limited = Some(instant);
+                }
+            }
+
+            if let Some(instant) = rate_limited {
+                Token::AuthRateLimited(instant)
+            } else if let Some(reg_info) = services().appservice.find_from_token(token).await {
                 Token::Appservice(Box::new(reg_info.clone()))
             } else if let Some((user_id, device_id)) = services().users.find_from_token(token)? {
                 Token::User((user_id, device_id))
@@ -135,6 +146,23 @@ where
 
         let (sender_user, sender_device, sender_servername, appservice_info) =
             match (metadata.authentication, token) {
+                (
+                    AuthScheme::AccessToken
+                    | AuthScheme::AppserviceToken
+                    | AuthScheme::AccessTokenOptional
+                    | AuthScheme::AppserviceTokenOptional,
+                    Token::AuthRateLimited(instant),
+                ) => {
+                    services()
+                        .rate_limiting
+                        .update_post_auth_failure(
+                            sender_ip_address
+                                .expect("Token variant could only be set if sender ip was Some"),
+                        )
+                        .await;
+
+                    return Err(instant);
+                }
                 (_, Token::Invalid) => {
                     // OpenID endpoint uses a query param with the same name, drop this once query params for user auth are removed from the spec
                     if query_params.access_token.is_some() {
@@ -195,7 +223,7 @@ where
                     AuthScheme::AccessToken | AuthScheme::AccessTokenOptional | AuthScheme::None,
                     Token::User((user_id, device_id)),
                 ) => (Some(user_id), Some(device_id), None, None),
-                (AuthScheme::ServerSignatures, Token::None) => {
+                (AuthScheme::ServerSignatures, Token::None | Token::AuthRateLimited(_)) => {
                     let TypedHeader(Authorization(x_matrix)) = parts
                         .extract::<TypedHeader<Authorization<XMatrix>>>()
                         .await
@@ -327,7 +355,8 @@ where
                     | AuthScheme::AppserviceTokenOptional
                     | AuthScheme::AccessTokenOptional,
                     Token::None,
-                ) => (None, None, None, None),
+                )
+                | (AuthScheme::None, Token::AuthRateLimited(_)) => (None, None, None, None),
                 (AuthScheme::ServerSignatures, Token::Appservice(_) | Token::User(_)) => {
                     return Err(Error::BadRequest(
                         ErrorKind::Unauthorized,
@@ -344,6 +373,23 @@ where
                     ));
                 }
             };
+
+        let sender_ip_address = parts
+            .headers
+            .get("X-Forwarded-For")
+            .and_then(|header| header.to_str().ok())
+            .map(|header| header.split_once(',').map(|(ip, _)| ip).unwrap_or(header))
+            .and_then(|ip| IpAddr::from_str(ip).ok());
+
+        let target = if let Some(server_name) = sender_servername.clone() {
+            Some(Target::Server(server_name))
+        } else if let Some(user) = &sender_user {
+            Some(Target::from_client_request(appservice_info.clone(), user))
+        } else {
+            sender_ip_address.map(Target::Ip)
+        };
+
+        services().rate_limiting.check(target, metadata).await?;
 
         let mut http_request = Request::builder().uri(parts.uri).method(parts.method);
         *http_request.headers_mut().unwrap() = parts.headers;
@@ -395,6 +441,7 @@ where
             sender_servername,
             appservice_info,
             json_body,
+            sender_ip_address,
         })
     }
 }

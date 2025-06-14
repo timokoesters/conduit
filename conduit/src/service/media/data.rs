@@ -1,7 +1,7 @@
 use ruma::{OwnedServerName, ServerName, UserId};
 use sha2::{Sha256, digest::Output};
 
-use crate::{Error, Result, config::MediaRetentionConfig};
+use crate::{Error, Result, config::MediaRetentionConfig, service::media::FileInfo};
 
 use super::{
     BlockedMediaInfo, DbFileMeta, MediaListItem, MediaQuery, MediaType, ServerNameOrUserId,
@@ -124,4 +124,7 @@ pub trait Data: Send + Sync {
     fn update_last_accessed(&self, server_name: &ServerName, media_id: &str) -> Result<()>;
 
     fn update_last_accessed_filehash(&self, sha256_digest: &[u8]) -> Result<()>;
+
+    /// Returns the known information about a file
+    fn file_info(&self, sha256_digest: &[u8]) -> Result<Option<FileInfo>>;
 }
