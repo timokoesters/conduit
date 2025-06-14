@@ -41,6 +41,7 @@ use tokio::sync::{mpsc, Mutex, RwLock};
 
 use crate::{
     api::client_server::{self, leave_all_rooms, AUTO_GEN_PASSWORD_LENGTH},
+    service::rate_limiting::Target,
     services,
     utils::{self, HtmlEscape},
     Error, PduEvent, Result,
@@ -1174,8 +1175,12 @@ impl Service {
                     file,
                     content_type,
                     content_disposition,
-                } = client_server::media::get_content(server_name, media_id.to_owned(), true, true)
-                    .await?;
+                } = client_server::media::get_content(
+                    server_name,
+                    media_id.to_owned(),
+                    Some(Target::User(services().globals.server_user().to_owned())),
+                )
+                .await?;
 
                 if let Ok(image) = image::load_from_memory(&file) {
                     let filename = content_disposition.and_then(|cd| cd.filename);
