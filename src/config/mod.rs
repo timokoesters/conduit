@@ -17,7 +17,9 @@ use url::Url;
 use crate::Error;
 
 mod proxy;
-use self::proxy::ProxyConfig;
+pub mod rate_limiting;
+
+use self::{proxy::ProxyConfig, rate_limiting::Config as RateLimitingConfig};
 
 const SHA256_HEX_LENGTH: u8 = 64;
 
@@ -92,6 +94,8 @@ pub struct IncompleteConfig {
     #[serde(default)]
     pub media: IncompleteMediaConfig,
 
+    pub rate_limiting: RateLimitingConfig,
+
     pub emergency_password: Option<String>,
 
     #[serde(flatten)]
@@ -137,6 +141,8 @@ pub struct Config {
     pub turn: Option<TurnConfig>,
 
     pub media: MediaConfig,
+
+    pub rate_limiting: RateLimitingConfig,
 
     pub emergency_password: Option<String>,
 
@@ -184,6 +190,7 @@ impl From<IncompleteConfig> for Config {
             turn_ttl,
             turn,
             media,
+            rate_limiting,
             emergency_password,
             catchall,
         } = val;
@@ -281,6 +288,7 @@ impl From<IncompleteConfig> for Config {
             log,
             turn,
             media,
+            rate_limiting,
             emergency_password,
             catchall,
         }

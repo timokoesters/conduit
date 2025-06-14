@@ -17,6 +17,7 @@ pub mod key_backups;
 pub mod media;
 pub mod pdu;
 pub mod pusher;
+pub mod rate_limiting;
 pub mod rooms;
 pub mod sending;
 pub mod transaction_ids;
@@ -36,6 +37,7 @@ pub struct Services {
     pub key_backups: key_backups::Service,
     pub media: Arc<media::Service>,
     pub sending: Arc<sending::Service>,
+    pub rate_limiting: Arc<rate_limiting::Service>,
 }
 
 impl Services {
@@ -122,6 +124,8 @@ impl Services {
             key_backups: key_backups::Service { db },
             media: Arc::new(media::Service { db }),
             sending: sending::Service::build(db, &config),
+
+            rate_limiting: rate_limiting::Service::build(&config),
 
             globals: globals::Service::load(db, config)?,
         })

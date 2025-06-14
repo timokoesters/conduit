@@ -17,6 +17,7 @@ use tracing::{error, info, warn};
 
 use crate::{
     config::{DirectoryStructure, MediaBackendConfig, S3MediaBackend},
+    service::rate_limiting::Target,
     services, utils, Error, Result,
 };
 use image::imageops::FilterType;
@@ -237,7 +238,7 @@ impl Service {
         &self,
         servername: &ServerName,
         media_id: &str,
-        authenticated: bool,
+        target: Option<Target>,
     ) -> Result<Option<FileMeta>> {
         let DbFileMeta {
             sha256_digest,
@@ -246,11 +247,18 @@ impl Service {
             unauthenticated_access_permitted,
         } = self.db.search_file_metadata(servername, media_id)?;
 
-        if !(authenticated || unauthenticated_access_permitted) {
+        if !(target.as_ref().is_some_and(Target::is_authenticated)
+            || unauthenticated_access_permitted)
+        {
             return Ok(None);
         }
 
         let file = self.get_file(&sha256_digest, None).await?;
+
+        services()
+            .rate_limiting
+            .check_media_download(target, size(&file)?)
+            .await?;
 
         Ok(Some(FileMeta {
             content_disposition: content_disposition(filename, &content_type),
@@ -288,7 +296,7 @@ impl Service {
         media_id: &str,
         width: u32,
         height: u32,
-        authenticated: bool,
+        target: Option<Target>,
     ) -> Result<Option<FileMeta>> {
         if let Some((width, height, crop)) = self.thumbnail_properties(width, height) {
             if let Ok(DbFileMeta {
@@ -300,9 +308,18 @@ impl Service {
                 .db
                 .search_thumbnail_metadata(servername, media_id, width, height)
             {
-                if !(authenticated || unauthenticated_access_permitted) {
+                if !(target.as_ref().is_some_and(Target::is_authenticated)
+                    || unauthenticated_access_permitted)
+                {
                     return Ok(None);
                 }
+
+                let file_info = self.file_info(&sha256_digest)?;
+
+                services()
+                    .rate_limiting
+                    .check_media_download(target, file_info.size)
+                    .await?;
 
                 // Using saved thumbnail
                 let file = self
@@ -314,19 +331,15 @@ impl Service {
                     content_type,
                     file,
                 }))
-            } else if !authenticated {
+            } else if !target.as_ref().is_some_and(Target::is_authenticated) {
                 return Ok(None);
             } else if let Ok(DbFileMeta {
                 sha256_digest,
                 filename,
                 content_type,
-                unauthenticated_access_permitted,
+                ..
             }) = self.db.search_file_metadata(servername, media_id)
             {
-                if !(authenticated || unauthenticated_access_permitted) {
-                    return Ok(None);
-                }
-
                 let content_disposition = content_disposition(filename.clone(), &content_type);
                 // Generate a thumbnail
                 let file = self.get_file(&sha256_digest, None).await?;
@@ -426,7 +439,9 @@ impl Service {
                 return Ok(None);
             };
 
-            if !(authenticated || unauthenticated_access_permitted) {
+            if !(target.as_ref().is_some_and(Target::is_authenticated)
+                || unauthenticated_access_permitted)
+            {
                 return Ok(None);
             }
 
@@ -661,6 +676,13 @@ impl Service {
         self.db
             .update_last_accessed_filehash(sha256_digest)
             .map(|_| file)
+    }
+
+    fn file_info(&self, sha256_digest: &[u8]) -> Result<FileInfo> {
+        self.db
+            .file_info(sha256_digest)
+            .transpose()
+            .unwrap_or_else(|| Err(Error::BadRequest(ErrorKind::NotFound, "Fi)le not found")))
     }
 }
 
