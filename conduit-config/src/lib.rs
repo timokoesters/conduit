@@ -17,7 +17,9 @@ use url::Url;
 
 pub mod error;
 mod proxy;
-use self::proxy::ProxyConfig;
+pub mod rate_limiting;
+
+use self::{proxy::ProxyConfig, rate_limiting::Config as RateLimitingConfig};
 
 const SHA256_HEX_LENGTH: u8 = 64;
 
@@ -98,6 +100,9 @@ pub struct IncompleteConfig {
     #[serde(default)]
     pub media: IncompleteMediaConfig,
 
+    #[serde(default)]
+    pub rate_limiting: RateLimitingConfig,
+
     pub emergency_password: Option<String>,
 
     #[serde(flatten)]
@@ -147,6 +152,8 @@ pub struct Config {
 
     pub media: MediaConfig,
 
+    pub rate_limiting: RateLimitingConfig,
+
     pub emergency_password: Option<String>,
 
     pub catchall: BTreeMap<String, IgnoredAny>,
@@ -194,6 +201,7 @@ impl From<IncompleteConfig> for Config {
             turn_ttl,
             turn,
             media,
+            rate_limiting,
             emergency_password,
             catchall,
             ignored_keys,
@@ -295,6 +303,7 @@ impl From<IncompleteConfig> for Config {
             ip_address_detection,
             turn,
             media,
+            rate_limiting,
             emergency_password,
             catchall,
             ignored_keys,

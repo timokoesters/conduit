@@ -3,7 +3,7 @@ use std::{
     error::Error as _,
     iter::FromIterator,
     net::{IpAddr, SocketAddr},
-    str,
+    str::{self, FromStr},
 };
 
 use axum::{
@@ -18,6 +18,7 @@ use axum_extra::{
     typed_header::TypedHeaderRejectionReason,
 };
 use bytes::{BufMut, BytesMut};
+use conduit_config::IpAddrDetection;
 use http::{Request, StatusCode};
 use ruma::{
     CanonicalJsonValue, MilliSecondsSinceUnixEpoch, OwnedDeviceId, OwnedUserId, UserId,
@@ -31,12 +32,15 @@ use tracing::{debug, error, warn};
 
 use super::{Ruma, RumaResponse};
 use crate::{
-    Error, Result, config::IpAddrDetection, service::appservice::RegistrationInfo, services,
+    Error, Result,
+    service::{appservice::RegistrationInfo, rate_limiting::Target},
+    services,
 };
 
 enum Token {
     Appservice(Box<RegistrationInfo>),
     User((OwnedUserId, OwnedDeviceId)),
+    AuthRateLimited(Error),
     Invalid,
     None,
 }
@@ -122,7 +126,17 @@ where
             };
 
         let token = if let Some(token) = token {
-            if let Some(reg_info) = services().appservice.find_from_token(token).await {
+            let mut rate_limited = None;
+
+            if let Some(ip_addr) = sender_ip_address {
+                if let Err(instant) = services().rate_limiting.pre_auth_check(ip_addr).await {
+                    rate_limited = Some(instant);
+                }
+            }
+
+            if let Some(instant) = rate_limited {
+                Token::AuthRateLimited(instant)
+            } else if let Some(reg_info) = services().appservice.find_from_token(token).await {
                 Token::Appservice(Box::new(reg_info.clone()))
             } else if let Some((user_id, device_id)) = services().users.find_from_token(token)? {
                 Token::User((user_id, device_id))
@@ -135,217 +149,243 @@ where
 
         let mut json_body = serde_json::from_slice::<CanonicalJsonValue>(&body).ok();
 
-        let (sender_user, sender_device, sender_servername, appservice_info) =
-            match (metadata.authentication, token) {
-                (_, Token::Invalid) => {
-                    // OpenID endpoint uses a query param with the same name, drop this once query params for user auth are removed from the spec
-                    if query_params.access_token.is_some() {
-                        (None, None, None, None)
+        let (sender_user, sender_device, sender_servername, appservice_info) = match (
+            metadata.authentication,
+            token,
+        ) {
+            (_, Token::AuthRateLimited(instant)) => {
+                return Err(instant);
+            }
+            (_, Token::Invalid) => {
+                // OpenID endpoint uses a query param with the same name, drop this once query params for user auth are removed from the spec
+                if query_params.access_token.is_some() {
+                    (None, None, None, None)
+                } else {
+                    if let Some(addr) = sender_ip_address {
+                        services()
+                            .rate_limiting
+                            .update_post_auth_failure(addr)
+                            .await;
                     } else {
-                        return Err(Error::BadRequest(
-                            ErrorKind::UnknownToken { soft_logout: false },
-                            "Unknown access token.",
-                        ));
+                        error!(
+                            "Auth failure occurred, but IP address was not extracted. Please check your Conduit & reverse proxy configuration, as if nothing is done, an attacker can brute-force access tokens and login to user's accounts"
+                        );
                     }
+
+                    return Err(Error::BadRequest(
+                        ErrorKind::UnknownToken { soft_logout: false },
+                        "Unknown access token.",
+                    ));
                 }
-                (AuthScheme::AccessToken, Token::Appservice(info)) => {
-                    let user_id = query_params
-                        .user_id
-                        .map_or_else(
-                            || {
-                                UserId::parse_with_server_name(
-                                    info.registration.sender_localpart.as_str(),
-                                    services().globals.server_name(),
-                                )
-                            },
-                            UserId::parse,
-                        )
-                        .map_err(|_| {
-                            Error::BadRequest(ErrorKind::InvalidUsername, "Username is invalid.")
-                        })?;
+            }
+            (AuthScheme::AccessToken, Token::Appservice(info)) => {
+                let user_id = query_params
+                    .user_id
+                    .map_or_else(
+                        || {
+                            UserId::parse_with_server_name(
+                                info.registration.sender_localpart.as_str(),
+                                services().globals.server_name(),
+                            )
+                        },
+                        UserId::parse,
+                    )
+                    .map_err(|_| {
+                        Error::BadRequest(ErrorKind::InvalidUsername, "Username is invalid.")
+                    })?;
 
-                    if !info.is_user_match(&user_id) {
+                if !info.is_user_match(&user_id) {
+                    return Err(Error::BadRequest(
+                        ErrorKind::Exclusive,
+                        "User is not in namespace.",
+                    ));
+                }
+
+                if !services().users.exists(&user_id)? {
+                    return Err(Error::BadRequest(
+                        ErrorKind::forbidden(),
+                        "User does not exist.",
+                    ));
+                }
+
+                (Some(user_id), None, None, Some(*info))
+            }
+            (
+                AuthScheme::None
+                | AuthScheme::AppserviceToken
+                | AuthScheme::AppserviceTokenOptional
+                | AuthScheme::AccessTokenOptional,
+                Token::Appservice(info),
+            ) => (None, None, None, Some(*info)),
+            (AuthScheme::AppserviceToken | AuthScheme::AccessToken, Token::None) => {
+                return Err(Error::BadRequest(
+                    ErrorKind::MissingToken,
+                    "Missing access token.",
+                ));
+            }
+            (
+                AuthScheme::AccessToken | AuthScheme::AccessTokenOptional | AuthScheme::None,
+                Token::User((user_id, device_id)),
+            ) => (Some(user_id), Some(device_id), None, None),
+            (AuthScheme::ServerSignatures, Token::None) => {
+                let TypedHeader(Authorization(x_matrix)) = parts
+                    .extract::<TypedHeader<Authorization<XMatrix>>>()
+                    .await
+                    .map_err(|e| {
+                        warn!("Missing or invalid Authorization header: {}", e);
+
+                        let msg = match e.reason() {
+                            TypedHeaderRejectionReason::Missing => "Missing Authorization header.",
+                            TypedHeaderRejectionReason::Error(_) => "Invalid X-Matrix signatures.",
+                            _ => "Unknown header-related error",
+                        };
+
+                        Error::BadRequest(ErrorKind::forbidden(), msg)
+                    })?;
+
+                if let Some(dest) = x_matrix.destination {
+                    if dest != services().globals.server_name() {
                         return Err(Error::BadRequest(
-                            ErrorKind::Exclusive,
-                            "User is not in namespace.",
+                            ErrorKind::Unauthorized,
+                            "X-Matrix destination field does not match server name.",
                         ));
                     }
+                };
 
-                    if !services().users.exists(&user_id)? {
+                let origin_signatures = BTreeMap::from_iter([(
+                    x_matrix.key.clone(),
+                    CanonicalJsonValue::String(x_matrix.sig.to_string()),
+                )]);
+
+                let signatures = BTreeMap::from_iter([(
+                    x_matrix.origin.as_str().to_owned(),
+                    CanonicalJsonValue::Object(
+                        origin_signatures
+                            .into_iter()
+                            .map(|(k, v)| (k.to_string(), v))
+                            .collect(),
+                    ),
+                )]);
+
+                let mut request_map = BTreeMap::from_iter([
+                    (
+                        "method".to_owned(),
+                        CanonicalJsonValue::String(parts.method.to_string()),
+                    ),
+                    (
+                        "uri".to_owned(),
+                        CanonicalJsonValue::String(parts.uri.to_string()),
+                    ),
+                    (
+                        "origin".to_owned(),
+                        CanonicalJsonValue::String(x_matrix.origin.as_str().to_owned()),
+                    ),
+                    (
+                        "destination".to_owned(),
+                        CanonicalJsonValue::String(
+                            services().globals.server_name().as_str().to_owned(),
+                        ),
+                    ),
+                    (
+                        "signatures".to_owned(),
+                        CanonicalJsonValue::Object(signatures),
+                    ),
+                ]);
+
+                if let Some(json_body) = &json_body {
+                    request_map.insert("content".to_owned(), json_body.clone());
+                };
+
+                let keys_result = services()
+                    .rooms
+                    .event_handler
+                    .fetch_signing_keys(&x_matrix.origin, vec![x_matrix.key.to_string()], false)
+                    .await;
+
+                let keys = match keys_result {
+                    Ok(b) => b,
+                    Err(e) => {
+                        warn!("Failed to fetch signing keys: {}", e);
                         return Err(Error::BadRequest(
                             ErrorKind::forbidden(),
-                            "User does not exist.",
+                            "Failed to fetch signing keys.",
                         ));
                     }
+                };
 
-                    (Some(user_id), None, None, Some(*info))
-                }
-                (
-                    AuthScheme::None
-                    | AuthScheme::AppserviceToken
-                    | AuthScheme::AppserviceTokenOptional
-                    | AuthScheme::AccessTokenOptional,
-                    Token::Appservice(info),
-                ) => (None, None, None, Some(*info)),
-                (AuthScheme::AppserviceToken | AuthScheme::AccessToken, Token::None) => {
-                    return Err(Error::BadRequest(
-                        ErrorKind::MissingToken,
-                        "Missing access token.",
-                    ));
-                }
-                (
-                    AuthScheme::AccessToken | AuthScheme::AccessTokenOptional | AuthScheme::None,
-                    Token::User((user_id, device_id)),
-                ) => (Some(user_id), Some(device_id), None, None),
-                (AuthScheme::ServerSignatures, Token::None) => {
-                    let TypedHeader(Authorization(x_matrix)) = parts
-                        .extract::<TypedHeader<Authorization<XMatrix>>>()
-                        .await
-                        .map_err(|e| {
-                            warn!("Missing or invalid Authorization header: {}", e);
+                // Only verify_keys that are currently valid should be used for validating requests
+                // as per MSC4029
+                let pub_key_map = BTreeMap::from_iter([(
+                    x_matrix.origin.as_str().to_owned(),
+                    if keys.valid_until_ts > MilliSecondsSinceUnixEpoch::now() {
+                        keys.verify_keys
+                            .into_iter()
+                            .map(|(id, key)| (id, key.key))
+                            .collect()
+                    } else {
+                        BTreeMap::new()
+                    },
+                )]);
 
-                            let msg = match e.reason() {
-                                TypedHeaderRejectionReason::Missing => {
-                                    "Missing Authorization header."
-                                }
-                                TypedHeaderRejectionReason::Error(_) => {
-                                    "Invalid X-Matrix signatures."
-                                }
-                                _ => "Unknown header-related error",
-                            };
+                match ruma::signatures::verify_json(&pub_key_map, &request_map) {
+                    Ok(()) => (None, None, Some(x_matrix.origin), None),
+                    Err(e) => {
+                        warn!(
+                            "Failed to verify json request from {}: {}\n{:?}",
+                            x_matrix.origin, e, request_map
+                        );
 
-                            Error::BadRequest(ErrorKind::forbidden(), msg)
-                        })?;
-
-                    if let Some(dest) = x_matrix.destination {
-                        if dest != services().globals.server_name() {
-                            return Err(Error::BadRequest(
-                                ErrorKind::Unauthorized,
-                                "X-Matrix destination field does not match server name.",
-                            ));
-                        }
-                    };
-
-                    let origin_signatures = BTreeMap::from_iter([(
-                        x_matrix.key.clone(),
-                        CanonicalJsonValue::String(x_matrix.sig.to_string()),
-                    )]);
-
-                    let signatures = BTreeMap::from_iter([(
-                        x_matrix.origin.as_str().to_owned(),
-                        CanonicalJsonValue::Object(
-                            origin_signatures
-                                .into_iter()
-                                .map(|(k, v)| (k.to_string(), v))
-                                .collect(),
-                        ),
-                    )]);
-
-                    let mut request_map = BTreeMap::from_iter([
-                        (
-                            "method".to_owned(),
-                            CanonicalJsonValue::String(parts.method.to_string()),
-                        ),
-                        (
-                            "uri".to_owned(),
-                            CanonicalJsonValue::String(parts.uri.to_string()),
-                        ),
-                        (
-                            "origin".to_owned(),
-                            CanonicalJsonValue::String(x_matrix.origin.as_str().to_owned()),
-                        ),
-                        (
-                            "destination".to_owned(),
-                            CanonicalJsonValue::String(
-                                services().globals.server_name().as_str().to_owned(),
-                            ),
-                        ),
-                        (
-                            "signatures".to_owned(),
-                            CanonicalJsonValue::Object(signatures),
-                        ),
-                    ]);
-
-                    if let Some(json_body) = &json_body {
-                        request_map.insert("content".to_owned(), json_body.clone());
-                    };
-
-                    let keys_result = services()
-                        .rooms
-                        .event_handler
-                        .fetch_signing_keys(&x_matrix.origin, vec![x_matrix.key.to_string()], false)
-                        .await;
-
-                    let keys = match keys_result {
-                        Ok(b) => b,
-                        Err(e) => {
-                            warn!("Failed to fetch signing keys: {}", e);
-                            return Err(Error::BadRequest(
-                                ErrorKind::forbidden(),
-                                "Failed to fetch signing keys.",
-                            ));
-                        }
-                    };
-
-                    // Only verify_keys that are currently valid should be used for validating requests
-                    // as per MSC4029
-                    let pub_key_map = BTreeMap::from_iter([(
-                        x_matrix.origin.as_str().to_owned(),
-                        if keys.valid_until_ts > MilliSecondsSinceUnixEpoch::now() {
-                            keys.verify_keys
-                                .into_iter()
-                                .map(|(id, key)| (id, key.key))
-                                .collect()
-                        } else {
-                            BTreeMap::new()
-                        },
-                    )]);
-
-                    match ruma::signatures::verify_json(&pub_key_map, &request_map) {
-                        Ok(()) => (None, None, Some(x_matrix.origin), None),
-                        Err(e) => {
+                        if parts.uri.to_string().contains('@') {
                             warn!(
-                                "Failed to verify json request from {}: {}\n{:?}",
-                                x_matrix.origin, e, request_map
-                            );
-
-                            if parts.uri.to_string().contains('@') {
-                                warn!(
-                                    "Request uri contained '@' character. Make sure your \
+                                "Request uri contained '@' character. Make sure your \
                                          reverse proxy gives Conduit the raw uri (apache: use \
                                          nocanon)"
-                                );
-                            }
-
-                            return Err(Error::BadRequest(
-                                ErrorKind::forbidden(),
-                                "Failed to verify X-Matrix signatures.",
-                            ));
+                            );
                         }
+
+                        return Err(Error::BadRequest(
+                            ErrorKind::forbidden(),
+                            "Failed to verify X-Matrix signatures.",
+                        ));
                     }
                 }
-                (
-                    AuthScheme::None
-                    | AuthScheme::AppserviceTokenOptional
-                    | AuthScheme::AccessTokenOptional,
-                    Token::None,
-                ) => (None, None, None, None),
-                (AuthScheme::ServerSignatures, Token::Appservice(_) | Token::User(_)) => {
-                    return Err(Error::BadRequest(
-                        ErrorKind::Unauthorized,
-                        "Only server signatures should be used on this endpoint.",
-                    ));
-                }
-                (
-                    AuthScheme::AppserviceToken | AuthScheme::AppserviceTokenOptional,
-                    Token::User(_),
-                ) => {
-                    return Err(Error::BadRequest(
-                        ErrorKind::Unauthorized,
-                        "Only appservice access tokens should be used on this endpoint.",
-                    ));
-                }
-            };
+            }
+            (
+                AuthScheme::None
+                | AuthScheme::AppserviceTokenOptional
+                | AuthScheme::AccessTokenOptional,
+                Token::None,
+            ) => (None, None, None, None),
+            (AuthScheme::ServerSignatures, Token::Appservice(_) | Token::User(_)) => {
+                return Err(Error::BadRequest(
+                    ErrorKind::Unauthorized,
+                    "Only server signatures should be used on this endpoint.",
+                ));
+            }
+            (AuthScheme::AppserviceToken | AuthScheme::AppserviceTokenOptional, Token::User(_)) => {
+                return Err(Error::BadRequest(
+                    ErrorKind::Unauthorized,
+                    "Only appservice access tokens should be used on this endpoint.",
+                ));
+            }
+        };
+
+        let sender_ip_address = parts
+            .headers
+            .get("X-Forwarded-For")
+            .and_then(|header| header.to_str().ok())
+            .map(|header| header.split_once(',').map(|(ip, _)| ip).unwrap_or(header))
+            .and_then(|ip| IpAddr::from_str(ip).ok());
+
+        let target = if let Some(server_name) = sender_servername.clone() {
+            Some(Target::Server(server_name))
+        } else if let Some(user) = &sender_user {
+            Some(Target::from_client_request(appservice_info.clone(), user))
+        } else {
+            sender_ip_address.map(Target::Ip)
+        };
+
+        services().rate_limiting.check(target, metadata).await?;
 
         let mut http_request = Request::builder().uri(parts.uri).method(parts.method);
         *http_request.headers_mut().unwrap() = parts.headers;
@@ -397,6 +437,7 @@ where
             sender_servername,
             appservice_info,
             json_body,
+            sender_ip_address,
         })
     }
 }

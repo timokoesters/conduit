@@ -3,7 +3,7 @@ use ruma::{
     CanonicalJsonValue, OwnedDeviceId, OwnedServerName, OwnedUserId,
     api::client::uiaa::UiaaResponse,
 };
-use std::ops::Deref;
+use std::{net::IpAddr, ops::Deref};
 
 #[cfg(feature = "conduit_bin")]
 mod axum;
@@ -14,6 +14,7 @@ pub struct Ruma<T> {
     pub sender_user: Option<OwnedUserId>,
     pub sender_device: Option<OwnedDeviceId>,
     pub sender_servername: Option<OwnedServerName>,
+    pub sender_ip_address: Option<IpAddr>,
     // This is None when body is not a valid string
     pub json_body: Option<CanonicalJsonValue>,
     pub appservice_info: Option<RegistrationInfo>,

@@ -23,7 +23,7 @@ reqwest.workspace = true
 
 # default room version, server name, ignored keys
 [dependencies.ruma]
-features = ["federation-api"]
+features = ["client-api", "federation-api"]
 workspace = true
 
 [features]
