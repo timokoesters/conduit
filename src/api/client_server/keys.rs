@@ -21,7 +21,7 @@ use std::{
     collections::{hash_map, BTreeMap, HashMap, HashSet},
     time::{Duration, Instant},
 };
-use tracing::debug;
+use tracing::{debug, error};
 
 /// # `POST /_matrix/client/r0/keys/upload`
 ///
@@ -128,12 +128,101 @@ pub async fn upload_signing_keys_route(
             return Err(Error::Uiaa(uiaainfo));
         }
     // Success!
-    } else if let Some(json) = body.json_body {
-        uiaainfo.session = Some(utils::random_string(SESSION_ID_LENGTH));
-        services()
-            .uiaa
-            .create(sender_user, sender_device, &uiaainfo, &json)?;
-        return Err(Error::Uiaa(uiaainfo));
+    } else if let Some(json) = &body.json_body {
+        // Checks whether the request contains keys that are not currently stored in the database,
+        // as per [MSC3967](https://github.com/matrix-org/matrix-spec-proposals/pull/3967).
+        let req_has_new_keys = || -> Result<bool> {
+            if let Some(master_key) = &body.master_key {
+                let new_keys = master_key
+                    .deserialize()
+                    .map_err(|_| Error::BadRequest(ErrorKind::InvalidParam, "Invalid master key"))?
+                    .keys;
+                let current_keys = services()
+                    .users
+                    .get_self_signing_key(None, sender_user, &|u| u == sender_user)?
+                    .map(|raw| raw.deserialize())
+                    .transpose()
+                    .map_err(|_| {
+                        error!("Invalid master key in database for user {sender_user}");
+                        Error::BadDatabase("Invalid master key in database")
+                    })?
+                    .map(|keys| keys.keys);
+
+                // Master key in database must match exactly with the one provided in the request
+                if Some(new_keys) != current_keys {
+                    return Ok(true);
+                }
+            }
+
+            if let Some(self_signing_keys) = &body.self_signing_key {
+                let new_keys = self_signing_keys
+                    .deserialize()
+                    .map_err(|_| {
+                        Error::BadRequest(ErrorKind::InvalidParam, "Invalid self-signing keys")
+                    })?
+                    .keys;
+                let current_keys = services()
+                    .users
+                    .get_self_signing_key(None, sender_user, &|u| u == sender_user)?
+                    .map(|raw| raw.deserialize())
+                    .transpose()
+                    .map_err(|_| {
+                        error!("Invalid self-signing keys in database for user {sender_user}");
+                        Error::BadDatabase("Invalid self-signing keys in database")
+                    })?
+                    .map(|keys| keys.keys)
+                    .unwrap_or_default();
+
+                // For the other keys, we only need to ensure that there are no new keys
+                for (key, value) in new_keys {
+                    if current_keys.get(&key).is_none_or(|v| v != &value) {
+                        return Ok(true);
+                    }
+                }
+            }
+
+            if let Some(user_signing_keys) = &body.user_signing_key {
+                let new_keys = user_signing_keys
+                    .deserialize()
+                    .map_err(|_| {
+                        Error::BadRequest(ErrorKind::InvalidParam, "Invalid user-signing keys")
+                    })?
+                    .keys;
+                let current_keys = services()
+                    .users
+                    .get_user_signing_key(sender_user)?
+                    .map(|raw| raw.deserialize())
+                    .transpose()
+                    .map_err(|_| {
+                        error!("Invalid user-signing keys in database for user {sender_user}");
+                        Error::BadDatabase("Invalid user-signing keys in database")
+                    })?
+                    .map(|keys| keys.keys)
+                    .unwrap_or_default();
+
+                // same as self-signing keys above
+                for (key, value) in new_keys {
+                    if current_keys.get(&key).is_none_or(|v| v != &value) {
+                        return Ok(true);
+                    }
+                }
+            }
+
+            Ok(false)
+        };
+
+        if services()
+            .users
+            .get_master_key(None, sender_user, &|u| u == sender_user)?
+            .is_some()
+            && req_has_new_keys()?
+        {
+            uiaainfo.session = Some(utils::random_string(SESSION_ID_LENGTH));
+            services()
+                .uiaa
+                .create(sender_user, sender_device, &uiaainfo, json)?;
+            return Err(Error::Uiaa(uiaainfo));
+        }
     } else {
         return Err(Error::BadRequest(ErrorKind::NotJson, "Not json."));
     }
