@@ -408,6 +408,13 @@ impl state_res::Event for PduEvent {
     fn redacts(&self) -> Option<&Self::Id> {
         self.redacts.as_ref()
     }
+
+    // We currently don't store rejected events (see steps 6-8 of `handle_incoming_pdu`), even
+    // though we should according to the spec:
+    // https://spec.matrix.org/v1.14/rooms/v11/#rejected-events
+    fn rejected(&self) -> bool {
+        false
+    }
 }
 
 // These impl's allow us to dedup state snapshots when resolving state

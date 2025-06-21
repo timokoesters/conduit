@@ -7,7 +7,7 @@ use crate::{
         media::FileMeta,
         pdu::{gen_event_id_canonical_json, PduBuilder},
     },
-    services, utils, Error, PduEvent, Result, Ruma, MATRIX_VERSIONS,
+    services, utils, Error, PduEvent, Result, Ruma, SUPPORTED_VERSIONS,
 };
 use axum::{response::IntoResponse, Json};
 use axum_extra::headers::{CacheControl, Header};
@@ -214,7 +214,7 @@ where
         .try_into_http_request::<Vec<u8>>(
             &actual_destination_str,
             SendAccessToken::IfRequired(""),
-            MATRIX_VERSIONS,
+            &SUPPORTED_VERSIONS,
         )
         .map_err(|e| {
             warn!(

@@ -28,18 +28,17 @@ workspace = true
 
 [dependencies]
 # Web framework
-# Can't bump until https://github.com/ruma/ruma/pull/1846 is merged or superseded
-axum = { version = "0.7", default-features = false, features = [
+axum = { version = "0.8", default-features = false, features = [
   "form",
   "http1",
   "http2",
   "json",
   "matched-path",
 ], optional = true }
-axum-extra = { version = "0.9", features = ["typed-header"] }
-axum-server = { version = "0.6", features = ["tls-rustls"] }
-tower = { version = "0.4", features = ["util"] }
-tower-http = { version = "0.5", features = [
+axum-extra = { version = "0.10", features = ["typed-header"] }
+axum-server = { version = "0.7", features = ["tls-rustls"] }
+tower = { version = "0.5", features = ["util"] }
+tower-http = { version = "0.6", features = [
   "add-extension",
   "cors",
   "sensitive-headers",

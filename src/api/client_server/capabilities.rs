@@ -1,6 +1,7 @@
 use crate::{services, Result, Ruma};
 use ruma::api::client::discovery::get_capabilities::{
-    self, Capabilities, RoomVersionStability, RoomVersionsCapability,
+    self,
+    v3::{Capabilities, RoomVersionStability, RoomVersionsCapability},
 };
 use std::collections::BTreeMap;
 

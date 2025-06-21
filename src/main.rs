@@ -401,23 +401,23 @@ fn routes(config: &Config) -> Router {
         // Ruma doesn't have support for multiple paths for a single endpoint yet, and these routes
         // share one Ruma request / response type pair with {get,send}_state_event_for_key_route
         .route(
-            "/_matrix/client/r0/rooms/:room_id/state/:event_type",
+            "/_matrix/client/r0/rooms/{room_id}/state/{event_type}",
             get(client_server::get_state_events_for_empty_key_route)
                 .put(client_server::send_state_event_for_empty_key_route),
         )
         .route(
-            "/_matrix/client/v3/rooms/:room_id/state/:event_type",
+            "/_matrix/client/v3/rooms/{room_id}/state/{event_type}",
             get(client_server::get_state_events_for_empty_key_route)
                 .put(client_server::send_state_event_for_empty_key_route),
         )
         // These two endpoints allow trailing slashes
         .route(
-            "/_matrix/client/r0/rooms/:room_id/state/:event_type/",
+            "/_matrix/client/r0/rooms/{room_id}/state/{event_type}/",
             get(client_server::get_state_events_for_empty_key_route)
                 .put(client_server::send_state_event_for_empty_key_route),
         )
         .route(
-            "/_matrix/client/v3/rooms/:room_id/state/:event_type/",
+            "/_matrix/client/v3/rooms/{room_id}/state/{event_type}/",
             get(client_server::get_state_events_for_empty_key_route)
                 .put(client_server::send_state_event_for_empty_key_route),
         )
@@ -459,11 +459,11 @@ fn routes(config: &Config) -> Router {
         .ruma_route(client_server::get_hierarchy_route)
         .ruma_route(client_server::well_known_client)
         .route(
-            "/_matrix/client/r0/rooms/:room_id/initialSync",
+            "/_matrix/client/r0/rooms/{room_id}/initialSync",
             get(initial_sync),
         )
         .route(
-            "/_matrix/client/v3/rooms/:room_id/initialSync",
+            "/_matrix/client/v3/rooms/{room_id}/initialSync",
             get(initial_sync),
         )
         .route("/", get(it_works))
@@ -477,7 +477,7 @@ fn routes(config: &Config) -> Router {
                 get(server_server::get_server_keys_route),
             )
             .route(
-                "/_matrix/key/v2/server/:key_id",
+                "/_matrix/key/v2/server/{key_id}",
                 get(server_server::get_server_keys_deprecated_route),
             )
             .ruma_route(server_server::get_public_rooms_route)
@@ -509,8 +509,8 @@ fn routes(config: &Config) -> Router {
             .ruma_route(server_server::well_known_server)
     } else {
         router
-            .route("/_matrix/federation/*path", any(federation_disabled))
-            .route("/_matrix/key/*path", any(federation_disabled))
+            .route("/_matrix/federation/{*path}", any(federation_disabled))
+            .route("/_matrix/key/{*path}", any(federation_disabled))
             .route("/.well-known/matrix/server", any(federation_disabled))
     }
 }
@@ -595,12 +595,11 @@ pub trait RumaHandler<T> {
 
 macro_rules! impl_ruma_handler {
     ( $($ty:ident),* $(,)? ) => {
-        #[axum::async_trait]
         #[allow(non_snake_case)]
         impl<Req, E, F, Fut, $($ty,)*> RumaHandler<($($ty,)* Ruma<Req>,)> for F
         where
             Req: IncomingRequest + Send + 'static,
-            F: FnOnce($($ty,)* Ruma<Req>) -> Fut + Clone + Send + 'static,
+            F: FnOnce($($ty,)* Ruma<Req>) -> Fut + Clone + Send + Sync + 'static,
             Fut: Future<Output = Result<Req::OutgoingResponse, E>>
                 + Send,
             E: IntoResponse,
