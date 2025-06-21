@@ -713,6 +713,10 @@ impl Service {
             &content,
             &room_version_rules.authorization,
         )?;
+        let mut auth_events_by_event_id = HashMap::new();
+        for event in auth_events.values() {
+            auth_events_by_event_id.insert(event.event_id.clone(), event.clone());
+        }
 
         // Our depth is the maximum depth of prev_events + 1
         let depth = prev_events
@@ -769,10 +773,18 @@ impl Service {
             signatures: None,
         };
 
-        if state_res::auth_check(&room_version_rules.authorization, &pdu, |k, s| {
-            auth_events.get(&(k.clone(), s.to_owned()))
-        })
+        if state_res::check_state_independent_auth_rules(
+            &room_version_rules.authorization,
+            &pdu,
+            |event_id| auth_events_by_event_id.get(event_id),
+        )
         .is_err()
+            || state_res::check_state_dependent_auth_rules(
+                &room_version_rules.authorization,
+                &pdu,
+                |k, s| auth_events.get(&(k.clone(), s.to_owned())),
+            )
+            .is_err()
         {
             return Err(Error::BadRequest(
                 ErrorKind::forbidden(),
@@ -812,6 +824,14 @@ impl Service {
                     )),
                 }
             }
+        }
+
+        if let Err(e) = state_res::check_pdu_format(&pdu_json, &room_version_rules.event_format) {
+            warn!("locally constructed event is not a valid PDU: {e}");
+            return Err(Error::BadRequest(
+                ErrorKind::InvalidParam,
+                "Event is invalid",
+            ));
         }
 
         // Generate event id

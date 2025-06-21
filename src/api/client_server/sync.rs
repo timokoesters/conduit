@@ -1779,16 +1779,7 @@ pub async fn sync_events_v5_route(
                 ),
                 num_live: None, // Count events in timeline greater than global sync counter
                 bump_stamp,
-                heroes: if body
-                    .room_subscriptions
-                    .get(room_id)
-                    .map(|sub| sub.include_heroes.unwrap_or_default())
-                    .unwrap_or_default()
-                {
-                    Some(heroes)
-                } else {
-                    None
-                },
+                heroes: Some(heroes),
             },
         );
     }

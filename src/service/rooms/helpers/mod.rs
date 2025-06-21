@@ -169,6 +169,18 @@ impl Service {
                 }
             }
 
+            let rules = room_version_id
+                .rules()
+                .expect("Supported room version has rules");
+
+            debug!("Checking format of join event PDU");
+            if let Err(e) = state_res::check_pdu_format(&join_event, &rules.event_format) {
+                warn!(
+                    "Invalid PDU with event ID {event_id} received from `/send_join` response: {e}"
+                );
+                return Err(Error::BadServerResponse("Received Invalid PDU"));
+            }
+
             services().rooms.short.get_or_create_shortroomid(room_id)?;
 
             info!("Parsing join event");
@@ -240,28 +252,32 @@ impl Service {
             }
 
             info!("Running send_join auth check");
-            if let Err(e) = state_res::event_auth::auth_check(
-                &room_version_id
-                    .rules()
-                    .expect("Supported room version has rules")
-                    .authorization,
+            if let Err(e) = state_res::check_state_independent_auth_rules(
+                &rules.authorization,
                 &parsed_join_pdu,
-                |k, s| {
-                    services()
-                        .rooms
-                        .timeline
-                        .get_pdu(
-                            state.get(
-                                &services()
-                                    .rooms
-                                    .short
-                                    .get_or_create_shortstatekey(&k.to_string().into(), s)
-                                    .ok()?,
-                            )?,
-                        )
-                        .ok()?
-                },
-            ) {
+                |event_id| services().rooms.timeline.get_pdu(event_id).ok().flatten(),
+            )
+            .and_then(|_| {
+                state_res::check_state_dependent_auth_rules(
+                    &rules.authorization,
+                    &parsed_join_pdu,
+                    |k, s| {
+                        services()
+                            .rooms
+                            .timeline
+                            .get_pdu(
+                                state.get(
+                                    &services()
+                                        .rooms
+                                        .short
+                                        .get_or_create_shortstatekey(&k.to_string().into(), s)
+                                        .ok()?,
+                                )?,
+                            )
+                            .ok()?
+                    },
+                )
+            }) {
                 warn!("Auth check failed: {e}");
                 return Err(Error::BadRequest(
                     ErrorKind::InvalidParam,
@@ -674,6 +690,15 @@ async fn validate_and_add_event_id(
         }
     }
 
+    let rules = &room_version
+        .rules()
+        .expect("Supported room version has rules");
+
+    if let Err(e) = state_res::check_pdu_format(&value, &rules.event_format) {
+        warn!("Invalid PDU with event ID {event_id} received from `/send_join` response: {e}");
+        return Err(Error::BadServerResponse("Received Invalid PDU"));
+    }
+
     let origin_server_ts = value.get("origin_server_ts").ok_or_else(|| {
         error!("Invalid PDU, no origin_server_ts field");
         Error::BadRequest(
@@ -702,13 +727,7 @@ async fn validate_and_add_event_id(
             .globals
             .filter_keys_server_map(unfiltered_keys, origin_server_ts, room_version);
 
-    if let Err(e) = ruma::signatures::verify_event(
-        &keys,
-        &value,
-        &room_version
-            .rules()
-            .expect("Supported room version has rules"),
-    ) {
+    if let Err(e) = ruma::signatures::verify_event(&keys, &value, rules) {
         warn!("Event {} failed verification {:?} {}", event_id, pdu, e);
         back_off(event_id).await;
         return Err(Error::BadServerResponse("Event failed verification."));

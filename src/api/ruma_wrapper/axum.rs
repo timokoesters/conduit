@@ -1,7 +1,6 @@
 use std::{collections::BTreeMap, iter::FromIterator, str};
 
 use axum::{
-    async_trait,
     body::Body,
     extract::{FromRequest, Path},
     response::{IntoResponse, Response},
@@ -34,10 +33,10 @@ enum Token {
     None,
 }
 
-#[async_trait]
 impl<T, S> FromRequest<S> for Ruma<T>
 where
     T: IncomingRequest,
+    S: Sync,
 {
     type Rejection = Error;
 
@@ -65,7 +64,13 @@ where
         };
 
         let metadata = T::METADATA;
-        let auth_header: Option<TypedHeader<Authorization<Bearer>>> = parts.extract().await?;
+        let auth_header: Option<TypedHeader<Authorization<Bearer>>> =
+            // If X-Matrix signatures are used, it causes this extraction to fail with an error
+            if metadata.authentication != AuthScheme::ServerSignatures {
+                parts.extract().await?
+            } else {
+                None
+            };
         let path_params: Path<Vec<String>> = parts.extract().await?;
 
         let query = parts.uri.query().unwrap_or_default();

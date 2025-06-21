@@ -51,25 +51,26 @@ impl Service {
     /// 0. Check the server is in the room
     /// 1. Skip the PDU if we already know about it
     /// 1.1. Remove unsigned field
-    /// 2. Check signatures, otherwise drop
-    /// 3. Check content hash, redact if doesn't match
-    /// 4. Fetch any missing auth events doing all checks listed here starting at 1. These are not
+    /// 2. Check event is valid, otherwise drop
+    /// 3. Check signatures, otherwise drop
+    /// 4. Check content hash, redact if doesn't match
+    /// 5. Fetch any missing auth events doing all checks listed here starting at 1. These are not
     ///    timeline events
-    /// 5. Reject "due to auth events" if can't get all the auth events or some of the auth events are
+    /// 6. Reject "due to auth events" if can't get all the auth events or some of the auth events are
     ///    also rejected "due to auth events"
-    /// 6. Reject "due to auth events" if the event doesn't pass auth based on the auth events
-    /// 7. Persist this event as an outlier
-    /// 8. If not timeline event: stop
-    /// 9. Fetch any missing prev events doing all checks listed here starting at 1. These are timeline
+    /// 7. Reject "due to auth events" if the event doesn't pass auth based on the auth events
+    /// 8. Persist this event as an outlier
+    /// 9. If not timeline event: stop
+    /// 10. Fetch any missing prev events doing all checks listed here starting at 1. These are timeline
     ///    events
-    /// 10. Fetch missing state and auth chain events by calling /state_ids at backwards extremities
+    /// 11. Fetch missing state and auth chain events by calling /state_ids at backwards extremities
     ///     doing all the checks in this list starting at 1. These are not timeline events
-    /// 11. Check the auth of the event passes based on the state of the event
-    /// 12. Ensure that the state is derived from the previous current state (i.e. we calculated by
+    /// 12. Check the auth of the event passes based on the state of the event
+    /// 13. Ensure that the state is derived from the previous current state (i.e. we calculated by
     ///     doing state res where one of the inputs was a previously trusted set of state, don't just
     ///     trust a set of state we got from a remote)
-    /// 13. Use state resolution to find new room state
-    /// 14. Check if the event passes auth based on the "current state" of the room, if not soft fail it
+    /// 14. Use state resolution to find new room state
+    /// 15. Check if the event passes auth based on the "current state" of the room, if not soft fail it
     // We use some AsyncRecursiveType hacks here so we can call this async function recursively
     #[tracing::instrument(skip(self, value, is_timeline_event, pub_key_map))]
     pub(crate) async fn handle_incoming_pdu<'a>(
@@ -135,7 +136,7 @@ impl Service {
             .await?;
         self.check_room_id(room_id, &incoming_pdu)?;
 
-        // 8. if not timeline event: stop
+        // 9. if not timeline event: stop
         if !is_timeline_event {
             return Ok(None);
         }
@@ -145,7 +146,7 @@ impl Service {
             return Ok(None);
         }
 
-        // 9. Fetch any missing prev events doing all checks listed here starting at 1. These are timeline events
+        // 10. Fetch any missing prev events doing all checks listed here starting at 1. These are timeline events
         let (sorted_prev_events, mut eventid_info) = self
             .fetch_unknown_prev_events(
                 origin,
@@ -313,8 +314,9 @@ impl Service {
             // 1.1. Remove unsigned field
             value.remove("unsigned");
 
-            // 2. Check signatures, otherwise drop
-            // 3. check content hash, redact if doesn't match
+            // 2. Check event is valid, otherwise drop
+            // 3. Check signatures, otherwise drop
+            // 4. check content hash, redact if doesn't match
             let create_event_content: RoomCreateEventContent =
                 serde_json::from_str(create_event.content.get()).map_err(|e| {
                     error!("Invalid create event: {}", e);
@@ -325,6 +327,15 @@ impl Service {
             let room_version_rules = room_version_id
                 .rules()
                 .expect("Supported room version has rules");
+
+            debug!("Checking format of join event PDU");
+            if let Err(e) = state_res::check_pdu_format(&value, &room_version_rules.event_format) {
+                warn!("Invalid PDU with event ID {event_id} received: {e}");
+                return Err(Error::BadRequest(
+                    ErrorKind::InvalidParam,
+                    "Received Invalid PDU",
+                ));
+            }
 
             // TODO: For RoomVersion6 we must check that Raw<..> is canonical do we anywhere?: https://matrix.org/docs/spec/rooms/v6#canonical-json
 
@@ -421,8 +432,8 @@ impl Service {
             self.check_room_id(room_id, &incoming_pdu)?;
 
             if !auth_events_known {
-                // 4. fetch any missing auth events doing all checks listed here starting at 1. These are not timeline events
-                // 5. Reject "due to auth events" if can't get all the auth events or some of the auth events are also rejected "due to auth events"
+                // 5. fetch any missing auth events doing all checks listed here starting at 1. These are not timeline events
+                // 6. Reject "due to auth events" if can't get all the auth events or some of the auth events are also rejected "due to auth events"
                 // NOTE: Step 5 is not applied anymore because it failed too often
                 debug!(event_id = ?incoming_pdu.event_id, "Fetching auth events");
                 self.fetch_and_handle_outliers(
@@ -440,7 +451,7 @@ impl Service {
                 .await;
             }
 
-            // 6. Reject "due to auth events" if the event doesn't pass auth based on the auth events
+            // 7. Reject "due to auth events" if the event doesn't pass auth based on the auth events
             debug!(
                 "Auth check for {} based on auth events",
                 incoming_pdu.event_id
@@ -448,6 +459,7 @@ impl Service {
 
             // Build map of auth events
             let mut auth_events = HashMap::new();
+            let mut auth_events_by_event_id = HashMap::new();
             for id in &incoming_pdu.auth_events {
                 let auth_event = match services().rooms.timeline.get_pdu(id)? {
                     Some(e) => e,
@@ -457,46 +469,33 @@ impl Service {
                     }
                 };
 
-                self.check_room_id(room_id, &auth_event)?;
-
-                match auth_events.entry((
-                    auth_event.kind.to_string().into(),
-                    auth_event
-                        .state_key
-                        .clone()
-                        .expect("all auth events have state keys"),
-                )) {
-                    hash_map::Entry::Vacant(v) => {
-                        v.insert(auth_event);
-                    }
-                    hash_map::Entry::Occupied(_) => {
-                        return Err(Error::BadRequest(
-                            ErrorKind::InvalidParam,
-                            "Auth event's type and state_key combination exists multiple times.",
-                        ));
-                    }
-                }
+                auth_events_by_event_id.insert(auth_event.event_id.clone(), auth_event.clone());
+                auth_events.insert(
+                    (
+                        StateEventType::from(auth_event.kind.to_string()),
+                        auth_event
+                            .state_key
+                            .clone()
+                            .expect("all auth events have state keys"),
+                    ),
+                    auth_event,
+                );
             }
 
-            // The original create event must be in the auth events
-            if !matches!(
-                auth_events
-                    .get(&(StateEventType::RoomCreate, "".to_owned()))
-                    .map(|a| a.as_ref()),
-                Some(_) | None
-            ) {
-                return Err(Error::BadRequest(
-                    ErrorKind::InvalidParam,
-                    "Incoming event refers to wrong create event.",
-                ));
-            }
-
-            if state_res::event_auth::auth_check(
+            // first time we are doing any sort of auth check, so we check state-independent
+            // auth rules in addition to the state-dependent ones.
+            if state_res::check_state_independent_auth_rules(
                 &room_version_rules.authorization,
                 &incoming_pdu,
-                |k, s| auth_events.get(&(k.to_string().into(), s.to_owned())),
+                |event_id| auth_events_by_event_id.get(event_id),
             )
             .is_err()
+                || state_res::check_state_dependent_auth_rules(
+                    &room_version_rules.authorization,
+                    &incoming_pdu,
+                    |k, s| auth_events.get(&(k.to_string().into(), s.to_owned())),
+                )
+                .is_err()
             {
                 return Err(Error::BadRequest(
                     ErrorKind::InvalidParam,
@@ -506,7 +505,7 @@ impl Service {
 
             debug!("Validation successful.");
 
-            // 7. Persist the event as an outlier.
+            // 8. Persist the event as an outlier.
             services()
                 .rooms
                 .outlier
@@ -557,7 +556,7 @@ impl Service {
             .rules()
             .expect("Supported room version has rules");
 
-        // 10. Fetch missing state and auth chain events by calling /state_ids at backwards extremities
+        // 11. Fetch missing state and auth chain events by calling /state_ids at backwards extremities
         //     doing all the checks in this list starting at 1. These are not timeline events.
 
         // TODO: if we know the prev_events of the incoming event we can avoid the request and build
@@ -807,8 +806,8 @@ impl Service {
             state_at_incoming_event.expect("we always set this to some above");
 
         debug!("Starting auth check");
-        // 11. Check the auth of the event passes based on the state of the event
-        if state_res::event_auth::auth_check(
+        // 12. Check the auth of the event passes based on the state of the event
+        if state_res::check_state_dependent_auth_rules(
             &room_version_rules.authorization,
             &incoming_pdu,
             |k, s| {
@@ -840,7 +839,7 @@ impl Service {
             &room_version_rules.authorization,
         )?;
 
-        let soft_fail = state_res::event_auth::auth_check(
+        let soft_fail = state_res::check_state_dependent_auth_rules(
             &room_version_rules.authorization,
             &incoming_pdu,
             |k, s| auth_events.get(&(k.clone(), s.to_owned())),
@@ -891,7 +890,7 @@ impl Service {
                     }
                 };
 
-        // 13. Use state resolution to find new room state
+        // 14. Use state resolution to find new room state
 
         // We start looking at current room state now, so lets lock the room
         let mutex_state = Arc::clone(
@@ -974,7 +973,7 @@ impl Service {
                 .await?;
         }
 
-        // 14. Check if the event passes auth based on the "current state" of the room, if not soft fail it
+        // 15. Check if the event passes auth based on the "current state" of the room, if not soft fail it
         debug!("Starting soft fail auth check");
 
         if soft_fail {
@@ -1399,7 +1398,7 @@ impl Service {
             }
         }
 
-        let sorted = state_res::lexicographical_topological_sort(&graph, |event_id| {
+        let sorted = state_res::reverse_topological_power_sort(&graph, |event_id| {
             // This return value is the key used for sorting events,
             // events are then sorted by power level, time,
             // and lexically by event_id.

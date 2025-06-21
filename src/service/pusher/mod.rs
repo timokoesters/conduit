@@ -2,7 +2,7 @@ mod data;
 pub use data::Data;
 use ruma::{events::AnySyncTimelineEvent, push::PushConditionPowerLevelsCtx};
 
-use crate::{services, Error, PduEvent, Result, MATRIX_VERSIONS};
+use crate::{services, Error, PduEvent, Result, SUPPORTED_VERSIONS};
 use bytes::BytesMut;
 use ruma::{
     api::{
@@ -58,7 +58,7 @@ impl Service {
             .try_into_http_request::<BytesMut>(
                 &destination,
                 SendAccessToken::IfRequired(""),
-                MATRIX_VERSIONS,
+                &SUPPORTED_VERSIONS,
             )
             .map_err(|e| {
                 warn!("Failed to find destination {}: {}", destination, e);
