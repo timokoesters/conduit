@@ -11,17 +11,12 @@ pub struct Service {
 
 impl Service {
     #[tracing::instrument(skip(self))]
-    pub fn index_pdu<'a>(&self, shortroomid: u64, pdu_id: &[u8], message_body: &str) -> Result<()> {
+    pub fn index_pdu(&self, shortroomid: u64, pdu_id: &[u8], message_body: &str) -> Result<()> {
         self.db.index_pdu(shortroomid, pdu_id, message_body)
     }
 
     #[tracing::instrument(skip(self))]
-    pub fn deindex_pdu<'a>(
-        &self,
-        shortroomid: u64,
-        pdu_id: &[u8],
-        message_body: &str,
-    ) -> Result<()> {
+    pub fn deindex_pdu(&self, shortroomid: u64, pdu_id: &[u8], message_body: &str) -> Result<()> {
         self.db.deindex_pdu(shortroomid, pdu_id, message_body)
     }
 

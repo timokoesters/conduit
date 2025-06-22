@@ -182,11 +182,11 @@ pub async fn login_route(body: Ruma<login::v3::Request>) -> Result<login::v3::Re
     let token = utils::random_string(TOKEN_LENGTH);
 
     // Determine if device_id was provided and exists in the db for this user
-    let device_exists = body.device_id.as_ref().map_or(false, |device_id| {
+    let device_exists = body.device_id.as_ref().is_some_and(|device_id| {
         services()
             .users
             .all_device_ids(&user_id)
-            .any(|x| x.as_ref().map_or(false, |v| v == device_id))
+            .any(|x| x.as_ref().is_ok_and(|v| v == device_id))
     });
 
     if device_exists {

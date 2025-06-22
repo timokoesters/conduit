@@ -818,8 +818,8 @@ async fn load_joined_room(
                         .ok()
                 });
 
-            let joined_since_last_sync = since_sender_member
-                .map_or(true, |member| member.membership != MembershipState::Join);
+            let joined_since_last_sync =
+                since_sender_member.is_none_or(|member| member.membership != MembershipState::Join);
 
             if since_shortstatehash.is_none() || joined_since_last_sync {
                 // Probably since = 0, we will do an initial sync
@@ -1402,7 +1402,7 @@ pub async fn sync_events_v5_route(
                 )?;
 
                 let joined_since_last_sync = since_sender_member
-                    .map_or(true, |member| member.membership != MembershipState::Join);
+                    .is_none_or(|member| member.membership != MembershipState::Join);
 
                 let new_encrypted_room = encrypted_room && since_encryption.is_none();
                 if encrypted_room {

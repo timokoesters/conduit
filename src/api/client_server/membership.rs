@@ -656,7 +656,7 @@ pub async fn joined_members_route(
     Ok(joined_members::v3::Response { joined })
 }
 
-pub(crate) async fn invite_helper<'a>(
+pub(crate) async fn invite_helper(
     sender_user: &UserId,
     user_id: &UserId,
     room_id: &RoomId,

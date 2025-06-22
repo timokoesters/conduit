@@ -221,9 +221,9 @@ impl service::rooms::state_cache::Data for KeyValueDatabase {
             .ok();
 
             let in_room = bridge_user_id
-                .map_or(false, |id| self.is_joined(&id, room_id).unwrap_or(false))
+                .is_some_and(|id| self.is_joined(&id, room_id).unwrap_or(false))
                 || self.room_members(room_id).any(|userid| {
-                    userid.map_or(false, |userid| appservice.users.is_match(userid.as_str()))
+                    userid.is_ok_and(|userid| appservice.users.is_match(userid.as_str()))
                 });
 
             self.appservice_in_room_cache
@@ -273,7 +273,7 @@ impl service::rooms::state_cache::Data for KeyValueDatabase {
     }
 
     #[tracing::instrument(skip(self))]
-    fn server_in_room<'a>(&'a self, server: &ServerName, room_id: &RoomId) -> Result<bool> {
+    fn server_in_room(&self, server: &ServerName, room_id: &RoomId) -> Result<bool> {
         let mut key = server.as_bytes().to_vec();
         key.push(0xff);
         key.extend_from_slice(room_id.as_bytes());

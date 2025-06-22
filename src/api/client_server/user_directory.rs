@@ -61,12 +61,11 @@ pub async fn search_users_route(
                     .rooms
                     .state_accessor
                     .room_state_get(&room, &StateEventType::RoomJoinRules, "")
-                    .map_or(false, |event| {
-                        event.map_or(false, |event| {
-                            serde_json::from_str(event.content.get())
-                                .map_or(false, |r: RoomJoinRulesEventContent| {
-                                    r.join_rule == JoinRule::Public
-                                })
+                    .is_ok_and(|event| {
+                        event.is_some_and(|event| {
+                            serde_json::from_str(event.content.get()).is_ok_and(
+                                |r: RoomJoinRulesEventContent| r.join_rule == JoinRule::Public,
+                            )
                         })
                     })
             });

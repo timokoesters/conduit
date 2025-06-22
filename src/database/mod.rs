@@ -491,7 +491,7 @@ impl KeyValueDatabase {
                 for (userid, password) in db.userid_password.iter() {
                     let password = utils::string_from_bytes(&password);
 
-                    let empty_hashed_password = password.map_or(false, |password| {
+                    let empty_hashed_password = password.is_ok_and(|password| {
                         argon2::verify_encoded(&password, b"").unwrap_or(false)
                     });
 
