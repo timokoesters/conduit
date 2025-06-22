@@ -14,7 +14,7 @@ if [ ! -z ${ATTIC_TOKEN+x} ]; then
     nix run --inputs-from . attic -- \
         login \
         conduit \
-        "${ATTIC_ENDPOINT:-https://attic.conduit.rs/conduit}" \
+        "${ATTIC_ENDPOINT:-https://attic.mnzn.dev/conduit}" \
         "$ATTIC_TOKEN"
 
     readarray -t derivations < <(nix path-info "$@" --derivation)
