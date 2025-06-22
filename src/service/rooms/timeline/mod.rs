@@ -199,7 +199,7 @@ impl Service {
     ///
     /// Returns pdu id
     #[tracing::instrument(skip(self, pdu, pdu_json, leaves))]
-    pub async fn append_pdu<'a>(
+    pub async fn append_pdu(
         &self,
         pdu: &PduEvent,
         mut pdu_json: CanonicalJsonObject,
@@ -612,8 +612,8 @@ impl Service {
                 services().globals.server_name() == pdu.sender.server_name()
                     && appservice.is_user_match(&pdu.sender)
                     || pdu.kind == TimelineEventType::RoomMember
-                        && pdu.state_key.as_ref().map_or(false, |state_key| {
-                            UserId::parse(state_key).map_or(false, |user_id| {
+                        && pdu.state_key.as_ref().is_some_and(|state_key| {
+                            UserId::parse(state_key).is_ok_and(|user_id| {
                                 services().globals.server_name() == user_id.server_name()
                                     && appservice.is_user_match(&user_id)
                             })
@@ -633,8 +633,8 @@ impl Service {
                         "",
                     ) {
                         serde_json::from_str::<RoomCanonicalAliasEventContent>(pdu.content.get())
-                            .map_or(false, |content| {
-                                content.alias.map_or(false, |alias| {
+                            .is_ok_and(|content| {
+                                content.alias.is_some_and(|alias| {
                                     appservice.aliases.is_match(alias.as_str())
                                 }) || content
                                     .alt_aliases
@@ -1044,7 +1044,7 @@ impl Service {
     /// Append the incoming event setting the state snapshot to the state from the
     /// server that sent the event.
     #[tracing::instrument(skip_all)]
-    pub async fn append_incoming_pdu<'a>(
+    pub async fn append_incoming_pdu(
         &self,
         pdu: &PduEvent,
         pdu_json: CanonicalJsonObject,

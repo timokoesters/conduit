@@ -629,7 +629,7 @@ fn next_room_to_traverse(
     stack: &mut Vec<Vec<(OwnedRoomId, Vec<OwnedServerName>)>>,
     parents: &mut VecDeque<OwnedRoomId>,
 ) -> Option<(OwnedRoomId, Vec<OwnedServerName>)> {
-    while stack.last().map_or(false, |s| s.is_empty()) {
+    while stack.last().is_some_and(|s| s.is_empty()) {
         stack.pop();
         parents.pop_back();
     }
@@ -663,7 +663,7 @@ async fn get_stripped_space_child_events(
             if serde_json::from_str::<SpaceChildEventContent>(pdu.content.get())
                 .ok()
                 .map(|c| c.via)
-                .map_or(true, |v| v.is_empty())
+                .is_none_or(|v| v.is_empty())
             {
                 continue;
             }

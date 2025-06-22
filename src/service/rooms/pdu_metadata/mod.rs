@@ -87,13 +87,13 @@ impl Service {
                 let events_after: Vec<_> = relations_until // TODO: should be relations_after
                     .iter()
                     .filter(|(_, pdu)| {
-                        filter_event_type.as_ref().map_or(true, |t| &pdu.kind == t)
+                        filter_event_type.as_ref().is_none_or(|t| &pdu.kind == t)
                             && if let Ok(content) =
                                 serde_json::from_str::<ExtractRelatesToEventId>(pdu.content.get())
                             {
                                 filter_rel_type
                                     .as_ref()
-                                    .map_or(true, |r| &content.relates_to.rel_type == r)
+                                    .is_none_or(|r| &content.relates_to.rel_type == r)
                             } else {
                                 false
                             }
@@ -135,13 +135,13 @@ impl Service {
                 let events_before: Vec<_> = relations_until
                     .iter()
                     .filter(|(_, pdu)| {
-                        filter_event_type.as_ref().map_or(true, |t| &pdu.kind == t)
+                        filter_event_type.as_ref().is_none_or(|t| &pdu.kind == t)
                             && if let Ok(content) =
                                 serde_json::from_str::<ExtractRelatesToEventId>(pdu.content.get())
                             {
                                 filter_rel_type
                                     .as_ref()
-                                    .map_or(true, |r| &content.relates_to.rel_type == r)
+                                    .is_none_or(|r| &content.relates_to.rel_type == r)
                             } else {
                                 false
                             }
