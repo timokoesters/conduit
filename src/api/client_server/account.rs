@@ -25,7 +25,7 @@ const RANDOM_USER_ID_LENGTH: usize = 10;
 /// Checks if a username is valid and available on this server.
 ///
 /// Conditions for returning true:
-/// - The user id is not historical
+/// - The user id must be valid according to the strict grammar
 /// - The server name of the user id matches this server
 /// - No user or appservice on this server already claimed this username
 ///
@@ -40,7 +40,8 @@ pub async fn get_register_available_route(
     )
     .ok()
     .filter(|user_id| {
-        !user_id.is_historical() && user_id.server_name() == services().globals.server_name()
+        user_id.validate_strict().is_ok()
+            && user_id.server_name() == services().globals.server_name()
     })
     .ok_or(Error::BadRequest(
         ErrorKind::InvalidUsername,
@@ -92,7 +93,7 @@ pub async fn register_route(body: Ruma<register::v3::Request>) -> Result<registe
             )
             .ok()
             .filter(|user_id| {
-                !user_id.is_historical()
+                user_id.validate_strict().is_ok()
                     && user_id.server_name() == services().globals.server_name()
             })
             .ok_or(Error::BadRequest(
