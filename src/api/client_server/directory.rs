@@ -11,7 +11,7 @@ use ruma::{
         },
         federation,
     },
-    directory::{Filter, PublicRoomJoinRule, PublicRoomsChunk, RoomNetwork},
+    directory::{Filter, PublicRoomsChunk, RoomNetwork},
     events::{
         room::{
             avatar::RoomAvatarEventContent,
@@ -19,7 +19,7 @@ use ruma::{
             create::RoomCreateEventContent,
             guest_access::{GuestAccess, RoomGuestAccessEventContent},
             history_visibility::{HistoryVisibility, RoomHistoryVisibilityEventContent},
-            join_rules::{JoinRule, RoomJoinRulesEventContent},
+            join_rules::RoomJoinRulesEventContent,
             topic::RoomTopicEventContent,
         },
         StateEventType,
@@ -273,18 +273,13 @@ pub(crate) async fn get_public_rooms_filtered_helper(
                     .room_state_get(&room_id, &StateEventType::RoomJoinRules, "")?
                     .map(|s| {
                         serde_json::from_str(s.content.get())
-                            .map(|c: RoomJoinRulesEventContent| match c.join_rule {
-                                JoinRule::Public => Some(PublicRoomJoinRule::Public),
-                                JoinRule::Knock => Some(PublicRoomJoinRule::Knock),
-                                _ => None,
-                            })
+                            .map(|c: RoomJoinRulesEventContent| c.join_rule.kind())
                             .map_err(|e| {
                                 error!("Invalid room join rule event in database: {}", e);
                                 Error::BadDatabase("Invalid room join rule event in database.")
                             })
                     })
                     .transpose()?
-                    .flatten()
                     .ok_or_else(|| Error::bad_database("Missing room join rule event for room."))?,
                 room_type: services()
                     .rooms

@@ -12,14 +12,14 @@ use ruma::{
             avatar::RoomAvatarEventContent,
             guest_access::{GuestAccess, RoomGuestAccessEventContent},
             history_visibility::{HistoryVisibility, RoomHistoryVisibilityEventContent},
-            join_rules::{AllowRule, JoinRule, RoomJoinRulesEventContent, RoomMembership},
+            join_rules::{AllowRule, JoinRule, RoomJoinRulesEventContent},
             member::{MembershipState, RoomMemberEventContent},
             name::RoomNameEventContent,
             power_levels::{RoomPowerLevels, RoomPowerLevelsEventContent},
         },
         StateEventType,
     },
-    space::SpaceRoomJoinRule,
+    room::{JoinRuleSummary, RoomMembership},
     state_res::Event,
     EventId, JsOption, OwnedRoomId, OwnedServerName, OwnedUserId, RoomId, ServerName, UserId,
 };
@@ -430,7 +430,7 @@ impl Service {
     pub fn get_space_room_join_rule(
         &self,
         current_room: &RoomId,
-    ) -> Result<(SpaceRoomJoinRule, Vec<OwnedRoomId>), Error> {
+    ) -> Result<(JoinRuleSummary, Vec<OwnedRoomId>), Error> {
         Ok(self
             .room_state_get(current_room, &StateEventType::RoomJoinRules, "")?
             .map(|s| {
@@ -447,7 +447,7 @@ impl Service {
                     })
             })
             .transpose()?
-            .unwrap_or((SpaceRoomJoinRule::Invite, vec![])))
+            .unwrap_or((JoinRuleSummary::Invite, vec![])))
     }
 
     /// Returns the join rules event content of a room, if there are any and we are aware of it locally

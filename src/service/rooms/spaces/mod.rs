@@ -8,24 +8,22 @@ use lru_cache::LruCache;
 use ruma::{
     api::{
         client::{self, error::ErrorKind, space::SpaceHierarchyRoomsChunk},
-        federation::{
-            self,
-            space::{SpaceHierarchyChildSummary, SpaceHierarchyParentSummary},
-        },
+        federation::{self, space::SpaceHierarchyParentSummary},
     },
     events::{
         room::{
             avatar::RoomAvatarEventContent,
             canonical_alias::RoomCanonicalAliasEventContent,
             create::RoomCreateEventContent,
+            encryption::RoomEncryptionEventContent,
             join_rules::{JoinRule, RoomJoinRulesEventContent},
             topic::RoomTopicEventContent,
         },
         space::child::{HierarchySpaceChildEvent, SpaceChildEventContent},
         StateEventType,
     },
+    room::{JoinRuleSummary, RestrictedSummary, RoomSummary},
     serde::Raw,
-    space::SpaceRoomJoinRule,
     OwnedRoomId, OwnedServerName, RoomId, ServerName, UInt, UserId,
 };
 use tokio::sync::Mutex;
@@ -130,31 +128,13 @@ pub struct Service {
 impl From<CachedSpaceHierarchySummary> for SpaceHierarchyRoomsChunk {
     fn from(value: CachedSpaceHierarchySummary) -> Self {
         let SpaceHierarchyParentSummary {
-            canonical_alias,
-            name,
-            num_joined_members,
-            room_id,
-            topic,
-            world_readable,
-            guest_can_join,
-            avatar_url,
-            join_rule,
-            room_type,
+            summary,
             children_state,
             ..
         } = value.summary;
 
         SpaceHierarchyRoomsChunk {
-            canonical_alias,
-            name,
-            num_joined_members,
-            room_id,
-            topic,
-            world_readable,
-            guest_can_join,
-            avatar_url,
-            join_rule,
-            room_type,
+            summary,
             children_state,
         }
     }
@@ -187,7 +167,7 @@ impl Service {
                         .await?
                     {
                         Some(SummaryAccessibility::Accessible(summary)) => {
-                            children.push((*summary).into());
+                            children.push(summary.summary);
                         }
                         Some(SummaryAccessibility::Inaccessible) => {
                             inaccessible_children.push(child);
@@ -227,12 +207,8 @@ impl Service {
             .as_ref()
         {
             return Ok(if let Some(cached) = cached {
-                if is_accessible_child(
-                    current_room,
-                    &cached.summary.join_rule,
-                    &identifier,
-                    &cached.summary.allowed_room_ids,
-                ) {
+                if is_accessible_child(current_room, &cached.summary.summary.join_rule, &identifier)
+                {
                     Some(SummaryAccessibility::Accessible(Box::new(
                         cached.summary.clone(),
                     )))
@@ -303,35 +279,14 @@ impl Service {
                             current_room.clone(),
                             Some(CachedSpaceHierarchySummary {
                                 summary: {
-                                    let SpaceHierarchyChildSummary {
-                                        canonical_alias,
-                                        name,
-                                        num_joined_members,
-                                        room_id,
-                                        topic,
-                                        world_readable,
-                                        guest_can_join,
-                                        avatar_url,
-                                        join_rule,
-                                        room_type,
-                                        allowed_room_ids,
-                                    } = child;
-
                                     SpaceHierarchyParentSummary {
-                                        canonical_alias,
-                                        name,
-                                        num_joined_members,
-                                        room_id: room_id.clone(),
-                                        topic,
-                                        world_readable,
-                                        guest_can_join,
-                                        avatar_url,
-                                        join_rule,
-                                        room_type,
-                                        children_state: get_stripped_space_child_events(&room_id)
-                                            .await?
-                                            .unwrap(),
-                                        allowed_room_ids,
+                                        children_state: get_stripped_space_child_events(
+                                            &child.room_id,
+                                        )
+                                        .await?
+                                        .unwrap(),
+
+                                        summary: child,
                                     }
                                 },
                             }),
@@ -340,9 +295,8 @@ impl Service {
                 }
                 if is_accessible_child(
                     current_room,
-                    &response.room.join_rule,
+                    &response.room.summary.join_rule,
                     &Identifier::UserId(user_id),
-                    &response.room.allowed_room_ids,
                 ) {
                     return Ok(Some(SummaryAccessibility::Accessible(Box::new(
                         summary.clone(),
@@ -403,17 +357,7 @@ impl Service {
             .transpose()?
             .unwrap_or(JoinRule::Invite);
 
-        let allowed_room_ids = services()
-            .rooms
-            .state_accessor
-            .allowed_room_ids(join_rule.clone());
-
-        if !is_accessible_child(
-            current_room,
-            &join_rule.clone().into(),
-            &identifier,
-            &allowed_room_ids,
-        ) {
+        if !is_accessible_child(current_room, &join_rule.clone().into(), &identifier) {
             debug!("User is not allowed to see room {room_id}");
             // This error will be caught later
             return Err(Error::BadRequest(
@@ -425,70 +369,82 @@ impl Service {
         let join_rule = join_rule.into();
 
         Ok(SpaceHierarchyParentSummary {
-            canonical_alias: services()
-                .rooms
-                .state_accessor
-                .room_state_get(room_id, &StateEventType::RoomCanonicalAlias, "")?
-                .map_or(Ok(None), |s| {
-                    serde_json::from_str(s.content.get())
-                        .map(|c: RoomCanonicalAliasEventContent| c.alias)
-                        .map_err(|_| {
-                            Error::bad_database("Invalid canonical alias event in database.")
-                        })
-                })?,
-            name: services().rooms.state_accessor.get_name(room_id)?,
-            num_joined_members: services()
-                .rooms
-                .state_cache
-                .room_joined_count(room_id)?
-                .unwrap_or_else(|| {
-                    warn!("Room {} has no member count", room_id);
-                    0
-                })
-                .try_into()
-                .expect("user count should not be that big"),
-            room_id: room_id.to_owned(),
-            topic: services()
-                .rooms
-                .state_accessor
-                .room_state_get(room_id, &StateEventType::RoomTopic, "")?
-                .map_or(Ok(None), |s| {
-                    serde_json::from_str(s.content.get())
-                        .map(|c: RoomTopicEventContent| Some(c.topic))
-                        .map_err(|_| {
-                            error!("Invalid room topic event in database for room {}", room_id);
-                            Error::bad_database("Invalid room topic event in database.")
-                        })
-                })?,
-            world_readable: services().rooms.state_accessor.world_readable(room_id)?,
-            guest_can_join: services().rooms.state_accessor.guest_can_join(room_id)?,
-            avatar_url: services()
-                .rooms
-                .state_accessor
-                .room_state_get(room_id, &StateEventType::RoomAvatar, "")?
-                .map(|s| {
-                    serde_json::from_str(s.content.get())
-                        .map(|c: RoomAvatarEventContent| c.url)
-                        .map_err(|_| Error::bad_database("Invalid room avatar event in database."))
-                })
-                .transpose()?
-                // url is now an Option<String> so we must flatten
-                .flatten(),
-            join_rule,
-            room_type: services()
-                .rooms
-                .state_accessor
-                .room_state_get(room_id, &StateEventType::RoomCreate, "")?
-                .map(|s| {
-                    serde_json::from_str::<RoomCreateEventContent>(s.content.get()).map_err(|e| {
-                        error!("Invalid room create event in database: {}", e);
-                        Error::BadDatabase("Invalid room create event in database.")
+            summary: RoomSummary {
+                canonical_alias: services()
+                    .rooms
+                    .state_accessor
+                    .room_state_get(room_id, &StateEventType::RoomCanonicalAlias, "")?
+                    .map_or(Ok(None), |s| {
+                        serde_json::from_str(s.content.get())
+                            .map(|c: RoomCanonicalAliasEventContent| c.alias)
+                            .map_err(|_| {
+                                Error::bad_database("Invalid canonical alias event in database.")
+                            })
+                    })?,
+                name: services().rooms.state_accessor.get_name(room_id)?,
+                num_joined_members: services()
+                    .rooms
+                    .state_cache
+                    .room_joined_count(room_id)?
+                    .unwrap_or_else(|| {
+                        warn!("Room {} has no member count", room_id);
+                        0
                     })
-                })
-                .transpose()?
-                .and_then(|e| e.room_type),
+                    .try_into()
+                    .expect("user count should not be that big"),
+                room_id: room_id.to_owned(),
+                topic: services()
+                    .rooms
+                    .state_accessor
+                    .room_state_get(room_id, &StateEventType::RoomTopic, "")?
+                    .map_or(Ok(None), |s| {
+                        serde_json::from_str(s.content.get())
+                            .map(|c: RoomTopicEventContent| Some(c.topic))
+                            .map_err(|_| {
+                                error!("Invalid room topic event in database for room {}", room_id);
+                                Error::bad_database("Invalid room topic event in database.")
+                            })
+                    })?,
+                world_readable: services().rooms.state_accessor.world_readable(room_id)?,
+                guest_can_join: services().rooms.state_accessor.guest_can_join(room_id)?,
+                avatar_url: services()
+                    .rooms
+                    .state_accessor
+                    .room_state_get(room_id, &StateEventType::RoomAvatar, "")?
+                    .map(|s| {
+                        serde_json::from_str(s.content.get())
+                            .map(|c: RoomAvatarEventContent| c.url)
+                            .map_err(|_| {
+                                Error::bad_database("Invalid room avatar event in database.")
+                            })
+                    })
+                    .transpose()?
+                    // url is now an Option<String> so we must flatten
+                    .flatten(),
+                join_rule,
+                room_type: services()
+                    .rooms
+                    .state_accessor
+                    .room_state_get(room_id, &StateEventType::RoomCreate, "")?
+                    .map(|s| {
+                        serde_json::from_str::<RoomCreateEventContent>(s.content.get()).map_err(
+                            |e| {
+                                error!("Invalid room create event in database: {}", e);
+                                Error::BadDatabase("Invalid room create event in database.")
+                            },
+                        )
+                    })
+                    .transpose()?
+                    .and_then(|e| e.room_type),
+                encryption: services()
+                    .rooms
+                    .state_accessor
+                    .room_state_get(room_id, &StateEventType::RoomEncryption, "")?
+                    .and_then(|pdu| serde_json::from_str(pdu.content.get()).ok())
+                    .map(|content: RoomEncryptionEventContent| content.algorithm),
+                room_version: services().rooms.state.get_room_version(room_id).ok(),
+            },
             children_state,
-            allowed_room_ids,
         })
     }
 
@@ -681,9 +637,8 @@ async fn get_stripped_space_child_events(
 /// With the given identifier, checks if a room is accessible
 fn is_accessible_child(
     current_room: &OwnedRoomId,
-    join_rule: &SpaceRoomJoinRule,
+    join_rule: &JoinRuleSummary,
     identifier: &Identifier<'_>,
-    allowed_room_ids: &Vec<OwnedRoomId>,
 ) -> bool {
     // Note: unwrap_or_default for bool means false
     match identifier {
@@ -717,7 +672,7 @@ fn is_accessible_child(
         }
     } // Takes care of joinrules
     match join_rule {
-        SpaceRoomJoinRule::Restricted => {
+        JoinRuleSummary::Restricted(RestrictedSummary { allowed_room_ids }) => {
             for room in allowed_room_ids {
                 match identifier {
                     Identifier::UserId(user) => {
@@ -744,10 +699,10 @@ fn is_accessible_child(
             }
             false
         }
-        SpaceRoomJoinRule::Public
-        | SpaceRoomJoinRule::Knock
-        | SpaceRoomJoinRule::KnockRestricted => true,
-        SpaceRoomJoinRule::Invite | SpaceRoomJoinRule::Private => false,
+        JoinRuleSummary::Public | JoinRuleSummary::Knock | JoinRuleSummary::KnockRestricted(_) => {
+            true
+        }
+        JoinRuleSummary::Invite | JoinRuleSummary::Private => false,
         // Custom join rule
         _ => false,
     }
@@ -756,31 +711,13 @@ fn is_accessible_child(
 // Here because cannot implement `From` across ruma-federation-api and ruma-client-api types
 fn summary_to_chunk(summary: SpaceHierarchyParentSummary) -> SpaceHierarchyRoomsChunk {
     let SpaceHierarchyParentSummary {
-        canonical_alias,
-        name,
-        num_joined_members,
-        room_id,
-        topic,
-        world_readable,
-        guest_can_join,
-        avatar_url,
-        join_rule,
-        room_type,
+        summary,
         children_state,
         ..
     } = summary;
 
     SpaceHierarchyRoomsChunk {
-        canonical_alias,
-        name,
-        num_joined_members,
-        room_id,
-        topic,
-        world_readable,
-        guest_can_join,
-        avatar_url,
-        join_rule,
-        room_type,
+        summary,
         children_state,
     }
 }
@@ -807,20 +744,20 @@ fn get_parent_children_via(
 
 #[cfg(test)]
 mod tests {
-    use ruma::{
-        api::federation::space::SpaceHierarchyParentSummaryInit, owned_room_id, owned_server_name,
-    };
+    use ruma::{owned_room_id, owned_server_name};
 
     use super::*;
 
     #[test]
     fn get_summary_children() {
-        let summary: SpaceHierarchyParentSummary = SpaceHierarchyParentSummaryInit {
-            num_joined_members: UInt::from(1_u32),
-            room_id: owned_room_id!("!root:example.org"),
-            world_readable: true,
-            guest_can_join: true,
-            join_rule: SpaceRoomJoinRule::Public,
+        let summary: SpaceHierarchyParentSummary = SpaceHierarchyParentSummary {
+            summary: RoomSummary::new(
+                owned_room_id!("!root:example.org"),
+                JoinRuleSummary::Public,
+                true,
+                UInt::from(1_u32),
+                true,
+            ),
             children_state: vec![
                 serde_json::from_str(
                     r#"{
@@ -867,9 +804,7 @@ mod tests {
                 )
                 .unwrap(),
             ],
-            allowed_room_ids: vec![],
-        }
-        .into();
+        };
 
         assert_eq!(
             get_parent_children_via(summary.clone(), false),

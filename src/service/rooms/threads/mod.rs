@@ -68,7 +68,7 @@ impl Service {
             {
                 // Thread already existed
                 relations.count += uint!(1);
-                relations.latest_event = pdu.to_message_like_event();
+                relations.latest_event = pdu.to_sync_message_like_event();
 
                 let content = serde_json::to_value(relations).expect("to_value always works");
 
@@ -81,7 +81,7 @@ impl Service {
             } else {
                 // New thread
                 let relations = BundledThread {
-                    latest_event: pdu.to_message_like_event(),
+                    latest_event: pdu.to_sync_message_like_event(),
                     count: uint!(1),
                     current_user_participated: true,
                 };
