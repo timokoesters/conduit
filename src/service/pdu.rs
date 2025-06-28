@@ -6,7 +6,8 @@ use ruma::{
         room::{member::RoomMemberEventContent, redaction::RoomRedactionEventContent},
         space::child::HierarchySpaceChildEvent,
         AnyEphemeralRoomEvent, AnyMessageLikeEvent, AnyStateEvent, AnyStrippedStateEvent,
-        AnySyncStateEvent, AnySyncTimelineEvent, AnyTimelineEvent, StateEvent, TimelineEventType,
+        AnySyncMessageLikeEvent, AnySyncStateEvent, AnySyncTimelineEvent, AnyTimelineEvent,
+        StateEvent, TimelineEventType,
     },
     room_version_rules::{RedactionRules, RoomVersionRules},
     serde::Raw,
@@ -150,6 +151,30 @@ impl PduEvent {
 
     #[tracing::instrument(skip(self))]
     pub fn to_sync_room_event(&self) -> Raw<AnySyncTimelineEvent> {
+        let (redacts, content) = self.copy_redacts();
+        let mut json = json!({
+            "content": content,
+            "type": self.kind,
+            "event_id": self.event_id,
+            "sender": self.sender,
+            "origin_server_ts": self.origin_server_ts,
+        });
+
+        if let Some(unsigned) = &self.unsigned {
+            json["unsigned"] = json!(unsigned);
+        }
+        if let Some(state_key) = &self.state_key {
+            json["state_key"] = json!(state_key);
+        }
+        if let Some(redacts) = &redacts {
+            json["redacts"] = json!(redacts);
+        }
+
+        serde_json::from_value(json).expect("Raw::from_value always works")
+    }
+
+    #[tracing::instrument(skip(self))]
+    pub fn to_sync_message_like_event(&self) -> Raw<AnySyncMessageLikeEvent> {
         let (redacts, content) = self.copy_redacts();
         let mut json = json!({
             "content": content,

@@ -463,17 +463,15 @@ pub async fn create_room_route(
             .await?;
     }
 
-    if let Some(topic) = &body.topic {
+    if let Some(topic) = body.topic.clone() {
         services()
             .rooms
             .timeline
             .build_and_append_pdu(
                 PduBuilder {
                     event_type: TimelineEventType::RoomTopic,
-                    content: to_raw_value(&RoomTopicEventContent {
-                        topic: topic.clone(),
-                    })
-                    .expect("event is valid, we just created it"),
+                    content: to_raw_value(&RoomTopicEventContent::new(topic))
+                        .expect("event is valid, we just created it"),
                     unsigned: None,
                     state_key: Some("".to_owned()),
                     redacts: None,

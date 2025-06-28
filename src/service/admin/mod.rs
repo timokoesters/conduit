@@ -1873,9 +1873,10 @@ impl Service {
             .build_and_append_pdu(
                 PduBuilder {
                     event_type: TimelineEventType::RoomTopic,
-                    content: to_raw_value(&RoomTopicEventContent {
-                        topic: format!("Manage {}", services().globals.server_name()),
-                    })
+                    content: to_raw_value(&RoomTopicEventContent::new(format!(
+                        "Manage {}",
+                        services().globals.server_name()
+                    )))
                     .expect("event is valid, we just created it"),
                     unsigned: None,
                     state_key: Some("".to_owned()),
