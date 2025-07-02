@@ -722,10 +722,9 @@ async fn validate_and_add_event_id(
 
     let unfiltered_keys = (*pub_key_map.read().await).clone();
 
-    let keys =
-        services()
-            .globals
-            .filter_keys_server_map(unfiltered_keys, origin_server_ts, room_version);
+    let keys = services()
+        .globals
+        .filter_keys_server_map(unfiltered_keys, origin_server_ts, rules);
 
     if let Err(e) = ruma::signatures::verify_event(&keys, &value, rules) {
         warn!("Event {} failed verification {:?} {}", event_id, pdu, e);

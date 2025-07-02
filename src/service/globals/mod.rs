@@ -1,8 +1,8 @@
 mod data;
 pub use data::{Data, SigningKeys};
 use ruma::{
-    serde::Base64, MilliSecondsSinceUnixEpoch, OwnedDeviceId, OwnedEventId, OwnedRoomAliasId,
-    OwnedRoomId, OwnedServerName, OwnedUserId, RoomAliasId,
+    room_version_rules::RoomVersionRules, serde::Base64, MilliSecondsSinceUnixEpoch, OwnedDeviceId,
+    OwnedEventId, OwnedRoomAliasId, OwnedRoomId, OwnedServerName, OwnedUserId, RoomAliasId,
 };
 
 use crate::api::server_server::DestinationResponse;
@@ -427,11 +427,11 @@ impl Service {
         &self,
         keys: BTreeMap<String, SigningKeys>,
         timestamp: MilliSecondsSinceUnixEpoch,
-        room_version_id: &RoomVersionId,
+        rules: &RoomVersionRules,
     ) -> BTreeMap<String, BTreeMap<String, Base64>> {
         keys.into_iter()
             .filter_map(|(server, keys)| {
-                self.filter_keys_single_server(keys, timestamp, room_version_id)
+                self.filter_keys_single_server(keys, timestamp, rules)
                     .map(|keys| (server, keys))
             })
             .collect()
@@ -443,15 +443,12 @@ impl Service {
         &self,
         keys: SigningKeys,
         timestamp: MilliSecondsSinceUnixEpoch,
-        room_version_id: &RoomVersionId,
+        rules: &RoomVersionRules,
     ) -> Option<BTreeMap<String, Base64>> {
         if keys.valid_until_ts > timestamp
             // valid_until_ts MUST be ignored in room versions 1, 2, 3, and 4.
             // https://spec.matrix.org/v1.10/server-server-api/#get_matrixkeyv2server
-                || matches!(room_version_id, RoomVersionId::V1
-                    | RoomVersionId::V2
-                    | RoomVersionId::V4
-                    | RoomVersionId::V3)
+                || !rules.enforce_key_validity
         {
             // Given that either the room version allows stale keys, or the valid_until_ts is
             // in the future, all verify_keys are valid

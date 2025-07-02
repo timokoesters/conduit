@@ -2021,16 +2021,11 @@ fn user_can_perform_restricted_join(
         return Ok(false);
     };
 
-    if matches!(
-        room_version_id,
-        RoomVersionId::V1
-            | RoomVersionId::V2
-            | RoomVersionId::V3
-            | RoomVersionId::V4
-            | RoomVersionId::V5
-            | RoomVersionId::V6
-            | RoomVersionId::V7
-    ) {
+    let rules = room_version_id
+        .rules()
+        .expect("Supported room version must have rules.")
+        .authorization;
+    if !rules.restricted_join_rule {
         return Ok(false);
     }
 

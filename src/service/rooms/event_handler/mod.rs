@@ -34,7 +34,7 @@ use ruma::{
     room_version_rules::{AuthorizationRules, RoomVersionRules},
     state_res::{self, StateMap},
     uint, CanonicalJsonObject, CanonicalJsonValue, EventId, MilliSecondsSinceUnixEpoch,
-    OwnedServerName, OwnedServerSigningKeyId, RoomId, RoomVersionId, ServerName,
+    OwnedServerName, OwnedServerSigningKeyId, RoomId, ServerName,
 };
 use serde_json::value::RawValue as RawJsonValue;
 use tokio::sync::{RwLock, RwLockWriteGuard, Semaphore};
@@ -373,7 +373,7 @@ impl Service {
             let filtered_keys = services().globals.filter_keys_server_map(
                 pkey_map,
                 origin_server_ts,
-                room_version_id,
+                &room_version_rules,
             );
 
             let mut val =
@@ -846,48 +846,31 @@ impl Service {
         )
         .is_err()
             || incoming_pdu.kind == TimelineEventType::RoomRedaction
-                && match room_version_id {
-                    RoomVersionId::V1
-                    | RoomVersionId::V2
-                    | RoomVersionId::V3
-                    | RoomVersionId::V4
-                    | RoomVersionId::V5
-                    | RoomVersionId::V6
-                    | RoomVersionId::V7
-                    | RoomVersionId::V8
-                    | RoomVersionId::V9
-                    | RoomVersionId::V10 => {
-                        if let Some(redact_id) = &incoming_pdu.redacts {
-                            !services().rooms.state_accessor.user_can_redact(
-                                redact_id,
-                                &incoming_pdu.sender,
-                                &incoming_pdu.room_id,
-                                true,
-                            )?
-                        } else {
-                            false
-                        }
-                    }
-                    RoomVersionId::V11 => {
-                        let content = serde_json::from_str::<RoomRedactionEventContent>(
-                            incoming_pdu.content.get(),
-                        )
-                        .map_err(|_| Error::bad_database("Invalid content in redaction pdu."))?;
+                && if room_version_rules.redaction.content_field_redacts {
+                    let content = serde_json::from_str::<RoomRedactionEventContent>(
+                        incoming_pdu.content.get(),
+                    )
+                    .map_err(|_| Error::bad_database("Invalid content in redaction pdu."))?;
 
-                        if let Some(redact_id) = &content.redacts {
-                            !services().rooms.state_accessor.user_can_redact(
-                                redact_id,
-                                &incoming_pdu.sender,
-                                &incoming_pdu.room_id,
-                                true,
-                            )?
-                        } else {
-                            false
-                        }
+                    if let Some(redact_id) = &content.redacts {
+                        !services().rooms.state_accessor.user_can_redact(
+                            redact_id,
+                            &incoming_pdu.sender,
+                            &incoming_pdu.room_id,
+                            true,
+                        )?
+                    } else {
+                        false
                     }
-                    _ => {
-                        unreachable!("Validity of room version already checked")
-                    }
+                } else if let Some(redact_id) = &incoming_pdu.redacts {
+                    !services().rooms.state_accessor.user_can_redact(
+                        redact_id,
+                        &incoming_pdu.sender,
+                        &incoming_pdu.room_id,
+                        true,
+                    )?
+                } else {
+                    false
                 };
 
         // 14. Use state resolution to find new room state
