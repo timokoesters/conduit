@@ -1690,19 +1690,14 @@ impl Service {
         services().users.create(conduit_user, None)?;
 
         let room_version = services().globals.default_room_version();
-        let mut content = match room_version {
-            RoomVersionId::V1
-            | RoomVersionId::V2
-            | RoomVersionId::V3
-            | RoomVersionId::V4
-            | RoomVersionId::V5
-            | RoomVersionId::V6
-            | RoomVersionId::V7
-            | RoomVersionId::V8
-            | RoomVersionId::V9
-            | RoomVersionId::V10 => RoomCreateEventContent::new_v1(conduit_user.to_owned()),
-            RoomVersionId::V11 => RoomCreateEventContent::new_v11(),
-            _ => unreachable!("Validity of room version already checked"),
+        let rules = room_version
+            .rules()
+            .expect("Supported room version must have rules.")
+            .authorization;
+        let mut content = if rules.use_room_create_sender {
+            RoomCreateEventContent::new_v11()
+        } else {
+            RoomCreateEventContent::new_v1(conduit_user.to_owned())
         };
         content.federate = true;
         content.predecessor = None;

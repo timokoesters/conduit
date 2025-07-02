@@ -23,7 +23,7 @@ use ruma::{
     push::{Action, Ruleset, Tweak},
     state_res::{self, Event},
     uint, user_id, CanonicalJsonObject, CanonicalJsonValue, EventId, MilliSecondsSinceUnixEpoch,
-    OwnedEventId, OwnedRoomId, OwnedServerName, RoomId, RoomVersionId, ServerName, UserId,
+    OwnedEventId, OwnedRoomId, OwnedServerName, RoomId, ServerName, UserId,
 };
 use serde::Deserialize;
 use serde_json::value::{to_raw_value, RawValue as RawJsonValue};
@@ -383,46 +383,36 @@ impl Service {
         match pdu.kind {
             TimelineEventType::RoomRedaction => {
                 let room_version_id = services().rooms.state.get_room_version(&pdu.room_id)?;
-                match room_version_id {
-                    RoomVersionId::V1
-                    | RoomVersionId::V2
-                    | RoomVersionId::V3
-                    | RoomVersionId::V4
-                    | RoomVersionId::V5
-                    | RoomVersionId::V6
-                    | RoomVersionId::V7
-                    | RoomVersionId::V8
-                    | RoomVersionId::V9
-                    | RoomVersionId::V10 => {
-                        if let Some(redact_id) = &pdu.redacts {
-                            if services().rooms.state_accessor.user_can_redact(
-                                redact_id,
-                                &pdu.sender,
-                                &pdu.room_id,
-                                false,
-                            )? {
-                                self.redact_pdu(redact_id, pdu, shortroomid)?;
-                            }
+                let rules = room_version_id
+                    .rules()
+                    .expect("Supported room version must have rules.")
+                    .redaction;
+
+                if rules.content_field_redacts {
+                    let content =
+                        serde_json::from_str::<RoomRedactionEventContent>(pdu.content.get())
+                            .map_err(|_| {
+                                Error::bad_database("Invalid content in redaction pdu.")
+                            })?;
+                    if let Some(redact_id) = &content.redacts {
+                        if services().rooms.state_accessor.user_can_redact(
+                            redact_id,
+                            &pdu.sender,
+                            &pdu.room_id,
+                            false,
+                        )? {
+                            self.redact_pdu(redact_id, pdu, shortroomid)?;
                         }
                     }
-                    RoomVersionId::V11 => {
-                        let content =
-                            serde_json::from_str::<RoomRedactionEventContent>(pdu.content.get())
-                                .map_err(|_| {
-                                    Error::bad_database("Invalid content in redaction pdu.")
-                                })?;
-                        if let Some(redact_id) = &content.redacts {
-                            if services().rooms.state_accessor.user_can_redact(
-                                redact_id,
-                                &pdu.sender,
-                                &pdu.room_id,
-                                false,
-                            )? {
-                                self.redact_pdu(redact_id, pdu, shortroomid)?;
-                            }
-                        }
+                } else if let Some(redact_id) = &pdu.redacts {
+                    if services().rooms.state_accessor.user_can_redact(
+                        redact_id,
+                        &pdu.sender,
+                        &pdu.room_id,
+                        false,
+                    )? {
+                        self.redact_pdu(redact_id, pdu, shortroomid)?;
                     }
-                    _ => unreachable!("Validity of room version already checked"),
                 };
             }
             TimelineEventType::SpaceChild => {
@@ -958,56 +948,39 @@ impl Service {
 
         // If redaction event is not authorized, do not append it to the timeline
         if pdu.kind == TimelineEventType::RoomRedaction {
-            match services().rooms.state.get_room_version(&pdu.room_id)? {
-                RoomVersionId::V1
-                | RoomVersionId::V2
-                | RoomVersionId::V3
-                | RoomVersionId::V4
-                | RoomVersionId::V5
-                | RoomVersionId::V6
-                | RoomVersionId::V7
-                | RoomVersionId::V8
-                | RoomVersionId::V9
-                | RoomVersionId::V10 => {
-                    if let Some(redact_id) = &pdu.redacts {
-                        if !services().rooms.state_accessor.user_can_redact(
-                            redact_id,
-                            &pdu.sender,
-                            &pdu.room_id,
-                            false,
-                        )? {
-                            return Err(Error::BadRequest(
-                                ErrorKind::forbidden(),
-                                "User cannot redact this event.",
-                            ));
-                        }
-                    };
-                }
-                RoomVersionId::V11 => {
-                    let content =
-                        serde_json::from_str::<RoomRedactionEventContent>(pdu.content.get())
-                            .map_err(|_| {
-                                Error::bad_database("Invalid content in redaction pdu.")
-                            })?;
+            let room_version_id = services().rooms.state.get_room_version(&pdu.room_id)?;
+            let rules = room_version_id
+                .rules()
+                .expect("Supported room version must have rules.")
+                .redaction;
 
-                    if let Some(redact_id) = &content.redacts {
-                        if !services().rooms.state_accessor.user_can_redact(
-                            redact_id,
-                            &pdu.sender,
-                            &pdu.room_id,
-                            false,
-                        )? {
-                            return Err(Error::BadRequest(
-                                ErrorKind::forbidden(),
-                                "User cannot redact this event.",
-                            ));
-                        }
+            if rules.content_field_redacts {
+                let content = serde_json::from_str::<RoomRedactionEventContent>(pdu.content.get())
+                    .map_err(|_| Error::bad_database("Invalid content in redaction pdu."))?;
+
+                if let Some(redact_id) = &content.redacts {
+                    if !services().rooms.state_accessor.user_can_redact(
+                        redact_id,
+                        &pdu.sender,
+                        &pdu.room_id,
+                        false,
+                    )? {
+                        return Err(Error::BadRequest(
+                            ErrorKind::forbidden(),
+                            "User cannot redact this event.",
+                        ));
                     }
                 }
-                _ => {
+            } else if let Some(redact_id) = &pdu.redacts {
+                if !services().rooms.state_accessor.user_can_redact(
+                    redact_id,
+                    &pdu.sender,
+                    &pdu.room_id,
+                    false,
+                )? {
                     return Err(Error::BadRequest(
-                        ErrorKind::UnsupportedRoomVersion,
-                        "Unsupported room version",
+                        ErrorKind::forbidden(),
+                        "User cannot redact this event.",
                     ));
                 }
             }

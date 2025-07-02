@@ -23,7 +23,7 @@ use ruma::{
     },
     int,
     serde::JsonObject,
-    CanonicalJsonObject, OwnedRoomAliasId, RoomAliasId, RoomId, RoomVersionId,
+    CanonicalJsonObject, OwnedRoomAliasId, RoomAliasId, RoomId,
 };
 use serde_json::{json, value::to_raw_value};
 use std::{cmp::max, collections::BTreeMap, sync::Arc};
@@ -137,6 +137,10 @@ pub async fn create_room_route(
         }
         None => services().globals.default_room_version(),
     };
+    let rules = room_version
+        .rules()
+        .expect("Supported room version must have rules.")
+        .authorization;
 
     let content = match &body.creation_content {
         Some(content) => {
@@ -144,26 +148,13 @@ pub async fn create_room_route(
                 .deserialize_as::<CanonicalJsonObject>()
                 .expect("Invalid creation content");
 
-            match room_version {
-                RoomVersionId::V1
-                | RoomVersionId::V2
-                | RoomVersionId::V3
-                | RoomVersionId::V4
-                | RoomVersionId::V5
-                | RoomVersionId::V6
-                | RoomVersionId::V7
-                | RoomVersionId::V8
-                | RoomVersionId::V9
-                | RoomVersionId::V10 => {
-                    content.insert(
-                        "creator".into(),
-                        json!(&sender_user).try_into().map_err(|_| {
-                            Error::BadRequest(ErrorKind::BadJson, "Invalid creation content")
-                        })?,
-                    );
-                }
-                RoomVersionId::V11 => {} // V11 removed the "creator" key
-                _ => unreachable!("Validity of room version already checked"),
+            if !rules.use_room_create_sender {
+                content.insert(
+                    "creator".into(),
+                    json!(&sender_user).try_into().map_err(|_| {
+                        Error::BadRequest(ErrorKind::BadJson, "Invalid creation content")
+                    })?,
+                );
             }
 
             content.insert(
@@ -175,19 +166,10 @@ pub async fn create_room_route(
             content
         }
         None => {
-            let content = match room_version {
-                RoomVersionId::V1
-                | RoomVersionId::V2
-                | RoomVersionId::V3
-                | RoomVersionId::V4
-                | RoomVersionId::V5
-                | RoomVersionId::V6
-                | RoomVersionId::V7
-                | RoomVersionId::V8
-                | RoomVersionId::V9
-                | RoomVersionId::V10 => RoomCreateEventContent::new_v1(sender_user.clone()),
-                RoomVersionId::V11 => RoomCreateEventContent::new_v11(),
-                _ => unreachable!("Validity of room version already checked"),
+            let content = if rules.use_room_create_sender {
+                RoomCreateEventContent::new_v11()
+            } else {
+                RoomCreateEventContent::new_v1(sender_user.clone())
             };
             let mut content = serde_json::from_str::<CanonicalJsonObject>(
                 to_raw_value(&content)
@@ -602,6 +584,11 @@ pub async fn upgrade_room_route(
         ));
     }
 
+    let rules = body
+        .new_version
+        .rules()
+        .expect("Supported room version must have rules.");
+
     // Create a replacement room
     let replacement_room = RoomId::new(services().globals.server_name());
     services()
@@ -676,30 +663,17 @@ pub async fn upgrade_room_route(
     ));
 
     // Send a m.room.create event containing a predecessor field and the applicable room_version
-    match body.new_version {
-        RoomVersionId::V1
-        | RoomVersionId::V2
-        | RoomVersionId::V3
-        | RoomVersionId::V4
-        | RoomVersionId::V5
-        | RoomVersionId::V6
-        | RoomVersionId::V7
-        | RoomVersionId::V8
-        | RoomVersionId::V9
-        | RoomVersionId::V10 => {
-            create_event_content.insert(
-                "creator".into(),
-                json!(&sender_user).try_into().map_err(|_| {
-                    Error::BadRequest(ErrorKind::BadJson, "Error forming creation event")
-                })?,
-            );
-        }
-        RoomVersionId::V11 => {
-            // "creator" key no longer exists in V11 rooms
-            create_event_content.remove("creator");
-        }
-        _ => unreachable!("Validity of room version already checked"),
+    if rules.authorization.use_room_create_sender {
+        create_event_content.remove("creator");
+    } else {
+        create_event_content.insert(
+            "creator".into(),
+            json!(&sender_user).try_into().map_err(|_| {
+                Error::BadRequest(ErrorKind::BadJson, "Error forming creation event")
+            })?,
+        );
     }
+
     create_event_content.insert(
         "room_version".into(),
         json!(&body.new_version)
