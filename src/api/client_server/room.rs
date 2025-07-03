@@ -23,11 +23,16 @@ use ruma::{
     },
     int,
     serde::JsonObject,
-    CanonicalJsonObject, OwnedRoomAliasId, RoomAliasId, RoomId,
+    CanonicalJsonObject, CanonicalJsonValue, OwnedRoomAliasId, OwnedUserId, RoomAliasId, RoomId,
 };
+use serde::Deserialize;
 use serde_json::{json, value::to_raw_value};
-use std::{cmp::max, collections::BTreeMap, sync::Arc};
-use tracing::{info, warn};
+use std::{
+    cmp::max,
+    collections::{BTreeMap, HashSet},
+    sync::Arc,
+};
+use tracing::{error, info, warn};
 
 /// # `POST /_matrix/client/r0/createRoom`
 ///
@@ -142,9 +147,33 @@ pub async fn create_room_route(
         .expect("Supported room version must have rules.")
         .authorization;
 
+    let mut users = BTreeMap::new();
+    if !rules.explicitly_privilege_room_creators {
+        users.insert(sender_user.clone(), int!(100));
+    }
+
+    // Figure out preset. We need it for preset specific events
+    let preset = body.preset.clone().unwrap_or(match &body.visibility {
+        room::Visibility::Private => RoomPreset::PrivateChat,
+        room::Visibility::Public => RoomPreset::PublicChat,
+        _ => RoomPreset::PrivateChat, // Room visibility should not be custom
+    });
+
+    let mut additional_creators: HashSet<OwnedUserId, _> = HashSet::new();
+
+    if preset == RoomPreset::TrustedPrivateChat {
+        if rules.additional_room_creators {
+            additional_creators.extend(body.invite.clone())
+        } else {
+            for invited_user in &body.invite {
+                users.insert(invited_user.clone(), int!(100));
+            }
+        }
+    }
+
     let content = match &body.creation_content {
-        Some(content) => {
-            let mut content = content
+        Some(raw_content) => {
+            let mut content = raw_content
                 .deserialize_as_unchecked::<CanonicalJsonObject>()
                 .expect("Invalid creation content");
 
@@ -153,6 +182,27 @@ pub async fn create_room_route(
                     "creator".into(),
                     json!(&sender_user).try_into().map_err(|_| {
                         Error::BadRequest(ErrorKind::BadJson, "Invalid creation content")
+                    })?,
+                );
+            }
+
+            if rules.additional_room_creators && !additional_creators.is_empty() {
+                #[derive(Deserialize)]
+                struct AdditionalCreators {
+                    additional_creators: Vec<OwnedUserId>,
+                }
+
+                if let Ok(AdditionalCreators {
+                    additional_creators: ac,
+                }) = raw_content.deserialize_as_unchecked()
+                {
+                    additional_creators.extend(ac);
+                }
+
+                content.insert(
+                    "additional_creators".into(),
+                    json!(&additional_creators).try_into().map_err(|_| {
+                        Error::BadRequest(ErrorKind::BadJson, "Invalid additional creators")
                     })?,
                 );
             }
@@ -166,24 +216,22 @@ pub async fn create_room_route(
             content
         }
         None => {
-            let content = if rules.use_room_create_sender {
-                RoomCreateEventContent::new_v11()
-            } else {
-                RoomCreateEventContent::new_v1(sender_user.clone())
+            let content = RoomCreateEventContent {
+                additional_creators: additional_creators.into_iter().collect(),
+                room_version,
+                ..if rules.use_room_create_sender {
+                    RoomCreateEventContent::new_v11()
+                } else {
+                    RoomCreateEventContent::new_v1(sender_user.clone())
+                }
             };
-            let mut content = serde_json::from_str::<CanonicalJsonObject>(
+
+            serde_json::from_str::<CanonicalJsonObject>(
                 to_raw_value(&content)
                     .map_err(|_| Error::BadRequest(ErrorKind::BadJson, "Invalid creation content"))?
                     .get(),
             )
-            .unwrap();
-            content.insert(
-                "room_version".into(),
-                json!(room_version.as_str()).try_into().map_err(|_| {
-                    Error::BadRequest(ErrorKind::BadJson, "Invalid creation content")
-                })?,
-            );
-            content
+            .expect("room create event content created by us is valid")
         }
     };
 
@@ -250,26 +298,9 @@ pub async fn create_room_route(
         .await?;
 
     // 3. Power levels
-
-    // Figure out preset. We need it for preset specific events
-    let preset = body.preset.clone().unwrap_or(match &body.visibility {
-        room::Visibility::Private => RoomPreset::PrivateChat,
-        room::Visibility::Public => RoomPreset::PublicChat,
-        _ => RoomPreset::PrivateChat, // Room visibility should not be custom
-    });
-
-    let mut users = BTreeMap::new();
-    users.insert(sender_user.clone(), int!(100));
-
-    if preset == RoomPreset::TrustedPrivateChat {
-        for invite_ in &body.invite {
-            users.insert(invite_.clone(), int!(100));
-        }
-    }
-
     let mut power_levels_content = serde_json::to_value(RoomPowerLevelsEventContent {
         users,
-        ..Default::default()
+        ..RoomPowerLevelsEventContent::new(&rules)
     })
     .expect("event is valid, we just created it");
 
@@ -587,7 +618,8 @@ pub async fn upgrade_room_route(
     let rules = body
         .new_version
         .rules()
-        .expect("Supported room version must have rules.");
+        .expect("Supported room version must have rules.")
+        .authorization;
 
     // Create a replacement room
     let replacement_room = RoomId::new(services().globals.server_name());
@@ -663,13 +695,25 @@ pub async fn upgrade_room_route(
     ));
 
     // Send a m.room.create event containing a predecessor field and the applicable room_version
-    if rules.authorization.use_room_create_sender {
+    if rules.use_room_create_sender {
         create_event_content.remove("creator");
     } else {
         create_event_content.insert(
             "creator".into(),
             json!(&sender_user).try_into().map_err(|_| {
                 Error::BadRequest(ErrorKind::BadJson, "Error forming creation event")
+            })?,
+        );
+    }
+
+    if rules.additional_room_creators && !body.additional_creators.is_empty() {
+        create_event_content.insert(
+            "additional_creators".into(),
+            json!(&body.additional_creators).try_into().map_err(|_| {
+                Error::BadRequest(
+                    ErrorKind::BadJson,
+                    "Failed to convert provided additional additional creators to JSON",
+                )
             })?,
         );
     }
@@ -764,7 +808,7 @@ pub async fn upgrade_room_route(
 
     // Replicate transferable state events to the new room
     for event_type in transferable_state_events {
-        let event_content =
+        let mut event_content =
             match services()
                 .rooms
                 .state_accessor
@@ -773,6 +817,31 @@ pub async fn upgrade_room_route(
                 Some(v) => v.content.clone(),
                 None => continue, // Skipping missing events.
             };
+
+        if event_type == StateEventType::RoomPowerLevels && rules.explicitly_privilege_room_creators
+        {
+            let mut pl_event_content: CanonicalJsonObject =
+                serde_json::from_str(event_content.get()).map_err(|e| {
+                    error!(
+                        "Invalid m.room.power_levels event content in room {}: {e}",
+                        body.room_id
+                    );
+                    Error::BadDatabase("Invalid m.room.power_levels event content in room")
+                })?;
+
+            if let Some(CanonicalJsonValue::Object(users)) = pl_event_content.get_mut("users") {
+                users.remove(sender_user.as_str());
+
+                if rules.additional_room_creators {
+                    for user in &body.additional_creators {
+                        users.remove(user.as_str());
+                    }
+                }
+            }
+
+            event_content = to_raw_value(&pl_event_content)
+                .expect("Must serialize, only changes made was removing keys")
+        }
 
         services()
             .rooms

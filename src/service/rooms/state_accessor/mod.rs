@@ -20,7 +20,7 @@ use ruma::{
         StateEventType,
     },
     room::{JoinRuleSummary, RoomMembership},
-    state_res::Event,
+    state_res::{events::RoomCreateEvent, Event},
     EventId, JsOption, OwnedRoomId, OwnedServerName, OwnedUserId, RoomId, ServerName, UserId,
 };
 use serde_json::value::to_raw_value;
@@ -361,43 +361,19 @@ impl Service {
         room_id: &RoomId,
         federation: bool,
     ) -> Result<bool> {
-        self.room_state_get(room_id, &StateEventType::RoomPowerLevels, "")?
-            .map(|e| {
-                serde_json::from_str(e.content.get())
-                    .map(|c: RoomPowerLevelsEventContent| c.into())
-                    .map(|e: RoomPowerLevels| {
-                        e.user_can_redact_event_of_other(sender)
-                            || e.user_can_redact_own_event(sender)
-                                && if let Ok(Some(pdu)) = services().rooms.timeline.get_pdu(redacts)
-                                {
-                                    if federation {
-                                        pdu.sender().server_name() == sender.server_name()
-                                    } else {
-                                        pdu.sender == sender
-                                    }
-                                } else {
-                                    false
-                                }
-                    })
-                    .map_err(|_| {
-                        Error::bad_database("Invalid m.room.power_levels event in database")
-                    })
-            })
-            // Falling back on m.room.create to judge power levels
-            .unwrap_or_else(|| {
-                if let Some(pdu) = self.room_state_get(room_id, &StateEventType::RoomCreate, "")? {
-                    Ok(pdu.sender == sender
-                        || if let Ok(Some(pdu)) = services().rooms.timeline.get_pdu(redacts) {
-                            pdu.sender == sender
+        self.power_levels(room_id).map(|power_levels| {
+            power_levels.user_can_redact_event_of_other(sender)
+                || power_levels.user_can_redact_own_event(sender)
+                    && if let Ok(Some(pdu)) = services().rooms.timeline.get_pdu(redacts) {
+                        if federation {
+                            pdu.sender().server_name() == sender.server_name()
                         } else {
-                            false
-                        })
-                } else {
-                    Err(Error::bad_database(
-                        "No m.room.power_levels or m.room.create events in database for room",
-                    ))
-                }
-            })
+                            pdu.sender == sender
+                        }
+                    } else {
+                        false
+                    }
+        })
     }
 
     /// Checks if guests are able to join a given room
@@ -484,5 +460,43 @@ impl Service {
             }
         }
         room_ids
+    }
+
+    /// Gets the effective power levels of a room, regardless of if there is an
+    /// `m.rooms.power_levels` state.
+    pub fn power_levels(&self, room_id: &RoomId) -> Result<RoomPowerLevels> {
+        let power_levels: Option<RoomPowerLevelsEventContent> = self
+            .room_state_get(room_id, &StateEventType::RoomPowerLevels, "")?
+            .map(|ev| {
+                serde_json::from_str(ev.content.get())
+                    .map_err(|_| Error::bad_database("invalid m.room.power_levels event."))
+            })
+            .transpose()?;
+
+        let room_create = self
+            .room_state_get(room_id, &StateEventType::RoomCreate, "")?
+            .map(RoomCreateEvent::new)
+            .ok_or_else(|| Error::bad_database("Found room without m.room.create event."))?;
+
+        let room_version = room_create.room_version().map_err(|e| {
+            error!("Invalid room version in room create content for room {room_id}: {e}");
+            Error::BadDatabase("Room Create content had invalid room version")
+        })?;
+        let rules = room_version
+            .rules()
+            .expect("Supported room version must have rules.")
+            .authorization;
+
+        room_create
+            // NOTE: This is because project hydra's client-side was made public before the server
+            // side. This will be fixed by using `creators` instead in part 2/2.
+            .creator(&rules)
+            .map_err(|e| {
+                error!("Failed to get creators of room id {}: {e}", room_id);
+                Error::BadDatabase("RoomCreateEvent has invalid creators")
+            })
+            .map(|creator| {
+                RoomPowerLevels::new(power_levels.into(), &rules, [creator.into_owned()])
+            })
     }
 }

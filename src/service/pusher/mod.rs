@@ -13,7 +13,7 @@ use ruma::{
         },
         IncomingResponse, OutgoingRequest, SendAccessToken,
     },
-    events::{room::power_levels::RoomPowerLevelsEventContent, StateEventType, TimelineEventType},
+    events::TimelineEventType,
     push::{Action, PushConditionRoomCtx, PushFormat, Ruleset, Tweak},
     serde::Raw,
     uint, RoomId, UInt, UserId,
@@ -139,21 +139,12 @@ impl Service {
         let mut notify = None;
         let mut tweaks = Vec::new();
 
-        let power_levels: RoomPowerLevelsEventContent = services()
-            .rooms
-            .state_accessor
-            .room_state_get(&pdu.room_id, &StateEventType::RoomPowerLevels, "")?
-            .map(|ev| {
-                serde_json::from_str(ev.content.get())
-                    .map_err(|_| Error::bad_database("invalid m.room.power_levels event"))
-            })
-            .transpose()?
-            .unwrap_or_default();
+        let power_levels = services().rooms.state_accessor.power_levels(&pdu.room_id)?;
 
         for action in self.get_actions(
             user,
             &ruleset,
-            &power_levels,
+            power_levels.into(),
             &pdu.to_sync_room_event(),
             &pdu.room_id,
         )? {
@@ -188,16 +179,10 @@ impl Service {
         &self,
         user: &UserId,
         ruleset: &'a Ruleset,
-        power_levels: &RoomPowerLevelsEventContent,
+        power_levels: PushConditionPowerLevelsCtx,
         pdu: &Raw<AnySyncTimelineEvent>,
         room_id: &RoomId,
     ) -> Result<&'a [Action]> {
-        let power_levels = PushConditionPowerLevelsCtx {
-            users: power_levels.users.clone(),
-            users_default: power_levels.users_default,
-            notifications: power_levels.notifications.clone(),
-        };
-
         let ctx = PushConditionRoomCtx {
             room_id: room_id.to_owned(),
             member_count: 10_u32.into(), // TODO: get member count efficiently
