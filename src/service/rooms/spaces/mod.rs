@@ -1,5 +1,4 @@
 use std::{
-    collections::VecDeque,
     fmt::{Display, Formatter},
     str::FromStr,
 };
@@ -457,7 +456,7 @@ impl Service {
         max_depth: usize,
         suggested_only: bool,
     ) -> Result<client::space::get_hierarchy::v1::Response> {
-        let mut parents = VecDeque::new();
+        let mut parents = Vec::new();
 
         // Don't start populating the results if we have to start at a specific room.
         let mut populate_results = short_room_ids.is_empty();
@@ -489,27 +488,25 @@ impl Service {
                             get_parent_children_via(*summary.clone(), suggested_only)
                                 .into_iter()
                                 .filter(|(room, _)| parents.iter().all(|parent| parent != room))
-                                .rev()
                                 .collect();
 
                         if populate_results {
-                            results.push(summary_to_chunk(*summary.clone()))
+                            results.push(summary_to_chunk(*summary.clone()));
                         } else {
+                            let mut prev_child_in_short_ids = false;
                             children = children
                                 .into_iter()
-                                .rev()
-                                .skip_while(|(room, _)| {
+                                .take_while(|(room, _)| {
                                     if let Ok(short) = services().rooms.short.get_shortroomid(room)
                                     {
-                                        short.as_ref() != short_room_ids.get(parents.len())
+                                        let tmp = prev_child_in_short_ids;
+                                        prev_child_in_short_ids =
+                                            short.as_ref() == short_room_ids.get(parents.len());
+                                        !tmp
                                     } else {
                                         false
                                     }
                                 })
-                                .collect::<Vec<_>>()
-                                // skip_while doesn't implement DoubleEndedIterator, which is needed for rev
-                                .into_iter()
-                                .rev()
                                 .collect();
 
                             if children.is_empty() {
@@ -526,7 +523,7 @@ impl Service {
                         }
 
                         if !children.is_empty() && parents.len() < max_depth {
-                            parents.push_back(current_room.clone());
+                            parents.push(current_room.clone());
                             stack.push(children);
                         }
                         // Root room in the space hierarchy, we return an error if this one fails.
@@ -553,19 +550,18 @@ impl Service {
 
         Ok(client::space::get_hierarchy::v1::Response {
             next_batch: if let Some((room, _)) = next_room_to_traverse(&mut stack, &mut parents) {
-                parents.pop_front();
-                parents.push_back(room);
+                parents.push(room);
 
                 let mut short_room_ids = vec![];
 
-                for room in parents {
+                for room in parents.into_iter().skip(1) {
                     short_room_ids.push(services().rooms.short.get_or_create_shortroomid(&room)?);
                 }
 
                 Some(
                     PagnationToken {
                         short_room_ids,
-                        limit: UInt::new(max_depth as u64)
+                        limit: UInt::new(limit as u64)
                             .expect("When sent in request it must have been valid UInt"),
                         max_depth: UInt::new(max_depth as u64)
                             .expect("When sent in request it must have been valid UInt"),
@@ -583,11 +579,11 @@ impl Service {
 
 fn next_room_to_traverse(
     stack: &mut Vec<Vec<(OwnedRoomId, Vec<OwnedServerName>)>>,
-    parents: &mut VecDeque<OwnedRoomId>,
+    parents: &mut Vec<OwnedRoomId>,
 ) -> Option<(OwnedRoomId, Vec<OwnedServerName>)> {
     while stack.last().is_some_and(|s| s.is_empty()) {
         stack.pop();
-        parents.pop_back();
+        parents.pop();
     }
 
     stack.last_mut().and_then(|s| s.pop())
@@ -727,18 +723,20 @@ fn get_parent_children_via(
     parent: SpaceHierarchyParentSummary,
     suggested_only: bool,
 ) -> Vec<(OwnedRoomId, Vec<OwnedServerName>)> {
-    parent
+    let mut children = parent
         .children_state
         .iter()
-        .filter_map(|raw_ce| {
-            raw_ce.deserialize().map_or(None, |ce| {
-                if suggested_only && !ce.content.suggested {
-                    None
-                } else {
-                    Some((ce.state_key, ce.content.via))
-                }
-            })
-        })
+        .filter_map(|raw| raw.deserialize().ok())
+        .filter(|child| !suggested_only || child.content.suggested)
+        .collect::<Vec<_>>();
+
+    children.sort();
+
+    children
+        .into_iter()
+        // We reverse, as we want to traverse the ones that come first in the list first (via `Vec::pop`)
+        .rev()
+        .map(|child| (child.state_key, child.content.via))
         .collect()
 }
 
@@ -767,7 +765,7 @@ mod tests {
                         ],
                         "suggested": false
                       },
-                      "origin_server_ts": 1629413349153,
+                      "origin_server_ts": 111,
                       "sender": "@alice:example.org",
                       "state_key": "!foo:example.org",
                       "type": "m.space.child"
@@ -782,7 +780,7 @@ mod tests {
                         ],
                         "suggested": true
                       },
-                      "origin_server_ts": 1629413349157,
+                      "origin_server_ts": 333,
                       "sender": "@alice:example.org",
                       "state_key": "!bar:example.org",
                       "type": "m.space.child"
@@ -794,9 +792,10 @@ mod tests {
                       "content": {
                         "via": [
                           "example.org"
-                        ]
+                        ],
+                        "order": ""
                       },
-                      "origin_server_ts": 1629413349160,
+                      "origin_server_ts": 222,
                       "sender": "@alice:example.org",
                       "state_key": "!baz:example.org",
                       "type": "m.space.child"
@@ -806,21 +805,22 @@ mod tests {
             ],
         };
 
+        // it's in reverse order, so `pop` gives the first room to be fetched
         assert_eq!(
             get_parent_children_via(summary.clone(), false),
             vec![
-                (
-                    owned_room_id!("!foo:example.org"),
-                    vec![owned_server_name!("example.org")]
-                ),
                 (
                     owned_room_id!("!bar:example.org"),
                     vec![owned_server_name!("example.org")]
                 ),
                 (
+                    owned_room_id!("!foo:example.org"),
+                    vec![owned_server_name!("example.org")]
+                ),
+                (
                     owned_room_id!("!baz:example.org"),
                     vec![owned_server_name!("example.org")]
-                )
+                ),
             ]
         );
         assert_eq!(
