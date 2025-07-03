@@ -15,12 +15,11 @@ use ruma::{
         push_rules::PushRulesEvent,
         room::{
             canonical_alias::RoomCanonicalAliasEventContent, create::RoomCreateEventContent,
-            encrypted::Relation, member::MembershipState,
-            power_levels::RoomPowerLevelsEventContent, redaction::RoomRedactionEventContent,
+            encrypted::Relation, member::MembershipState, redaction::RoomRedactionEventContent,
         },
         GlobalAccountDataEventType, StateEventType, TimelineEventType,
     },
-    push::{Action, Ruleset, Tweak},
+    push::{Action, PushConditionPowerLevelsCtx, Ruleset, Tweak},
     state_res::{self, Event},
     uint, user_id, CanonicalJsonObject, CanonicalJsonValue, EventId, MilliSecondsSinceUnixEpoch,
     OwnedEventId, OwnedRoomId, OwnedServerName, RoomId, ServerName, UserId,
@@ -290,95 +289,98 @@ impl Service {
         drop(insert_lock);
 
         // See if the event matches any known pushers
-        let power_levels: RoomPowerLevelsEventContent = services()
-            .rooms
-            .state_accessor
-            .room_state_get(&pdu.room_id, &StateEventType::RoomPowerLevels, "")?
-            .map(|ev| {
-                serde_json::from_str(ev.content.get())
-                    .map_err(|_| Error::bad_database("invalid m.room.power_levels event"))
-            })
-            .transpose()?
-            .unwrap_or_default();
+        //
+        // Will fail if this is the first event (the create event), which is fine, since it cannot
+        // notify anyone else anyways
+        if pdu.kind != TimelineEventType::RoomCreate
+            || pdu.state_key.as_deref().is_none_or(|key| !key.is_empty())
+        {
+            if let Ok(power_levels) = services()
+                .rooms
+                .state_accessor
+                .power_levels(&pdu.room_id)
+                .map(PushConditionPowerLevelsCtx::from)
+            {
+                let sync_pdu = pdu.to_sync_room_event();
 
-        let sync_pdu = pdu.to_sync_room_event();
+                let mut notifies = Vec::new();
+                let mut highlights = Vec::new();
 
-        let mut notifies = Vec::new();
-        let mut highlights = Vec::new();
+                let mut push_target = services()
+                    .rooms
+                    .state_cache
+                    .get_our_real_users(&pdu.room_id)?;
 
-        let mut push_target = services()
-            .rooms
-            .state_cache
-            .get_our_real_users(&pdu.room_id)?;
+                if pdu.kind == TimelineEventType::RoomMember {
+                    if let Some(state_key) = &pdu.state_key {
+                        let target_user_id = UserId::parse(state_key.clone())
+                            .expect("This state_key was previously validated");
 
-        if pdu.kind == TimelineEventType::RoomMember {
-            if let Some(state_key) = &pdu.state_key {
-                let target_user_id = UserId::parse(state_key.clone())
-                    .expect("This state_key was previously validated");
-
-                if !push_target.contains(&target_user_id) {
-                    let mut target = push_target.as_ref().clone();
-                    target.insert(target_user_id);
-                    push_target = Arc::new(target);
-                }
-            }
-        }
-
-        for user in push_target.iter() {
-            // Don't notify the user of their own events
-            if user == &pdu.sender {
-                continue;
-            }
-
-            let rules_for_user = services()
-                .account_data
-                .get(
-                    None,
-                    user,
-                    GlobalAccountDataEventType::PushRules.to_string().into(),
-                )?
-                .map(|event| {
-                    serde_json::from_str::<PushRulesEvent>(event.get())
-                        .map_err(|_| Error::bad_database("Invalid push rules event in db."))
-                })
-                .transpose()?
-                .map(|ev: PushRulesEvent| ev.content.global)
-                .unwrap_or_else(|| Ruleset::server_default(user));
-
-            let mut highlight = false;
-            let mut notify = false;
-
-            for action in services().pusher.get_actions(
-                user,
-                &rules_for_user,
-                &power_levels,
-                &sync_pdu,
-                &pdu.room_id,
-            )? {
-                match action {
-                    Action::Notify => notify = true,
-                    Action::SetTweak(Tweak::Highlight(true)) => {
-                        highlight = true;
+                        if !push_target.contains(&target_user_id) {
+                            let mut target = push_target.as_ref().clone();
+                            target.insert(target_user_id);
+                            push_target = Arc::new(target);
+                        }
                     }
-                    _ => {}
-                };
-            }
+                }
 
-            if notify {
-                notifies.push(user.clone());
-            }
+                for user in push_target.iter() {
+                    // Don't notify the user of their own events
+                    if user == &pdu.sender {
+                        continue;
+                    }
 
-            if highlight {
-                highlights.push(user.clone());
-            }
+                    let rules_for_user = services()
+                        .account_data
+                        .get(
+                            None,
+                            user,
+                            GlobalAccountDataEventType::PushRules.to_string().into(),
+                        )?
+                        .map(|event| {
+                            serde_json::from_str::<PushRulesEvent>(event.get())
+                                .map_err(|_| Error::bad_database("Invalid push rules event in db."))
+                        })
+                        .transpose()?
+                        .map(|ev: PushRulesEvent| ev.content.global)
+                        .unwrap_or_else(|| Ruleset::server_default(user));
 
-            for push_key in services().pusher.get_pushkeys(user) {
-                services().sending.send_push_pdu(&pdu_id, user, push_key?)?;
+                    let mut highlight = false;
+                    let mut notify = false;
+
+                    for action in services().pusher.get_actions(
+                        user,
+                        &rules_for_user,
+                        power_levels.clone(),
+                        &sync_pdu,
+                        &pdu.room_id,
+                    )? {
+                        match action {
+                            Action::Notify => notify = true,
+                            Action::SetTweak(Tweak::Highlight(true)) => {
+                                highlight = true;
+                            }
+                            _ => {}
+                        };
+                    }
+
+                    if notify {
+                        notifies.push(user.clone());
+                    }
+
+                    if highlight {
+                        highlights.push(user.clone());
+                    }
+
+                    for push_key in services().pusher.get_pushkeys(user) {
+                        services().sending.send_push_pdu(&pdu_id, user, push_key?)?;
+                    }
+                }
+
+                self.db
+                    .increment_notification_counts(&pdu.room_id, notifies, highlights)?;
             }
         }
-
-        self.db
-            .increment_notification_counts(&pdu.room_id, notifies, highlights)?;
 
         match pdu.kind {
             TimelineEventType::RoomRedaction => {
@@ -1167,16 +1169,8 @@ impl Service {
             return Ok(());
         }
 
-        let power_levels: RoomPowerLevelsEventContent = services()
-            .rooms
-            .state_accessor
-            .room_state_get(room_id, &StateEventType::RoomPowerLevels, "")?
-            .map(|ev| {
-                serde_json::from_str(ev.content.get())
-                    .map_err(|_| Error::bad_database("invalid m.room.power_levels event"))
-            })
-            .transpose()?
-            .unwrap_or_default();
+        let power_levels = services().rooms.state_accessor.power_levels(room_id)?;
+
         let mut admin_servers = power_levels
             .users
             .iter()

@@ -1756,7 +1756,9 @@ impl Service {
 
         // 3. Power levels
         let mut users = BTreeMap::new();
-        users.insert(conduit_user.to_owned(), 100.into());
+        if !rules.explicitly_privilege_room_creators {
+            users.insert(conduit_user.to_owned(), 100.into());
+        }
 
         services()
             .rooms
@@ -1766,7 +1768,7 @@ impl Service {
                     event_type: TimelineEventType::RoomPowerLevels,
                     content: to_raw_value(&RoomPowerLevelsEventContent {
                         users,
-                        ..Default::default()
+                        ..RoomPowerLevelsEventContent::new(&rules)
                     })
                     .expect("event is valid, we just created it"),
                     unsigned: None,
@@ -2010,8 +2012,16 @@ impl Service {
                 .await?;
 
             // Set power level
+            let room_version = services().rooms.state.get_room_version(&room_id)?;
+            let rules = room_version
+                .rules()
+                .expect("Supported room version must have rules.")
+                .authorization;
+
             let mut users = BTreeMap::new();
-            users.insert(conduit_user.to_owned(), 100.into());
+            if !rules.explicitly_privilege_room_creators {
+                users.insert(conduit_user.to_owned(), 100.into());
+            }
             users.insert(user_id.to_owned(), 100.into());
 
             services()
@@ -2022,7 +2032,7 @@ impl Service {
                         event_type: TimelineEventType::RoomPowerLevels,
                         content: to_raw_value(&RoomPowerLevelsEventContent {
                             users,
-                            ..Default::default()
+                            ..RoomPowerLevelsEventContent::new(&rules)
                         })
                         .expect("event is valid, we just created it"),
                         unsigned: None,

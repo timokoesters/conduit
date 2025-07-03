@@ -2,7 +2,6 @@ mod data;
 
 pub use data::Data;
 use rand::seq::SliceRandom;
-use tracing::error;
 
 use crate::{services, Error, Result};
 use ruma::{
@@ -11,10 +10,7 @@ use ruma::{
         client::{alias::get_alias, error::ErrorKind},
         federation,
     },
-    events::{
-        room::power_levels::{RoomPowerLevels, RoomPowerLevelsEventContent},
-        StateEventType,
-    },
+    events::StateEventType,
     OwnedRoomAliasId, OwnedRoomId, RoomAliasId, RoomId, UserId,
 };
 
@@ -55,27 +51,14 @@ impl Service {
         {
             Ok(true)
             // Checking whether the user is able to change canonical aliases of the room
-        } else if let Some(event) = services().rooms.state_accessor.room_state_get(
-            &room_id,
-            &StateEventType::RoomPowerLevels,
-            "",
-        )? {
-            serde_json::from_str(event.content.get())
-                .map_err(|_| Error::bad_database("Invalid event content for m.room.power_levels"))
-                .map(|content: RoomPowerLevelsEventContent| {
-                    RoomPowerLevels::from(content)
-                        .user_can_send_state(user_id, StateEventType::RoomCanonicalAlias)
-                })
-        // If there is no power levels event, only the room creator can change canonical aliases
-        } else if let Some(event) = services().rooms.state_accessor.room_state_get(
-            &room_id,
-            &StateEventType::RoomCreate,
-            "",
-        )? {
-            Ok(event.sender == user_id)
         } else {
-            error!("Room {} has no m.room.create event (VERY BAD)!", room_id);
-            Err(Error::bad_database("Room has no m.room.create event"))
+            services()
+                .rooms
+                .state_accessor
+                .power_levels(&room_id)
+                .map(|power_levels| {
+                    power_levels.user_can_send_state(user_id, StateEventType::RoomCanonicalAlias)
+                })
         }
     }
 
