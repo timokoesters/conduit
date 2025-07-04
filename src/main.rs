@@ -2,7 +2,7 @@ use std::{future::Future, io, net::SocketAddr, sync::atomic, time::Duration};
 
 use axum::{
     body::Body,
-    extract::{DefaultBodyLimit, FromRequestParts, MatchedPath},
+    extract::{FromRequestParts, MatchedPath},
     middleware::map_response,
     response::{IntoResponse, Response},
     routing::{any, get, on, MethodFilter},
@@ -240,13 +240,7 @@ async fn run_server() -> io::Result<()> {
                 ])
                 .max_age(Duration::from_secs(86400)),
         )
-        .layer(map_response(set_csp_header))
-        .layer(DefaultBodyLimit::max(
-            config
-                .max_request_size
-                .try_into()
-                .expect("failed to convert max request size"),
-        ));
+        .layer(map_response(set_csp_header));
 
     let app = routes(config).layer(middlewares).into_make_service();
     let handle = ServerHandle::new();

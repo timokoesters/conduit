@@ -1,10 +1,10 @@
-use std::{collections::BTreeMap, iter::FromIterator, str};
+use std::{collections::BTreeMap, error::Error as _, iter::FromIterator, str};
 
 use axum::{
     body::Body,
     extract::{FromRequest, Path},
     response::{IntoResponse, Response},
-    RequestExt, RequestPartsExt,
+    RequestPartsExt,
 };
 use axum_extra::{
     headers::{authorization::Bearer, Authorization},
@@ -48,8 +48,7 @@ where
         }
 
         let (mut parts, mut body) = {
-            let limited_req = req.with_limited_body();
-            let (parts, body) = limited_req.into_parts();
+            let (parts, body) = req.into_parts();
             let body = axum::body::to_bytes(
                 body,
                 services()
@@ -59,7 +58,17 @@ where
                     .unwrap_or(usize::MAX),
             )
             .await
-            .map_err(|_| Error::BadRequest(ErrorKind::MissingToken, "Missing token."))?;
+            .map_err(|err| {
+                if err
+                    .source()
+                    .is_some_and(|err| err.is::<http_body_util::LengthLimitError>())
+                {
+                    Error::BadRequest(ErrorKind::TooLarge, "Reached maximum request size")
+                } else {
+                    error!("An unknown error has occurred: {err}");
+                    Error::BadRequest(ErrorKind::Unknown, "An unknown error has occurred")
+                }
+            })?;
             (parts, body)
         };
 

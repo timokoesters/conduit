@@ -510,6 +510,7 @@ dependencies = [
  "hickory-resolver",
  "hmac",
  "http",
+ "http-body-util",
  "humantime",
  "humantime-serde",
  "hyper",
