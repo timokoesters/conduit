@@ -42,7 +42,7 @@ The `global` section contains the following fields:
 | `allow_registration` | `boolean` | Opens your homeserver to public registration | `false` |
 | `registration_token` | `string` | The token users need to have when registering to your homeserver | N/A |
 | `allow_encryption` | `boolean` | Allow users to enable encryption in their rooms | `true` |
-| `allow_federation` | `boolean` | Allow federation with other servers | `true` |
+| `allow_federation` | `boolean` | Allow federation with other servers | `false` |
 | `allow_room_creation` | `boolean` | Allow users to create rooms | `true` |
 | `allow_unstable_room_versions` | `boolean` | Allow users to create and join rooms with unstable versions | `true` |
 | `default_room_version` | `string` | The default room version (`"6"`-`"10"`)| `"10"` |
