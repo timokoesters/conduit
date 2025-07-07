@@ -215,7 +215,7 @@ pub async fn get_content(
             content_type,
             content_disposition: Some(content_disposition),
         })
-    } else if server_name != services().globals.server_name() && allow_remote {
+    } else if server_name != services().globals.server_name() && allow_remote && authenticated {
         let remote_content_response = get_remote_content(server_name, media_id.clone()).await?;
 
         Ok(get_content::v1::Response {
@@ -297,7 +297,7 @@ async fn get_content_as_filename(
                     .with_filename(Some(filename.clone())),
             ),
         })
-    } else if server_name != services().globals.server_name() && allow_remote {
+    } else if server_name != services().globals.server_name() && allow_remote && authenticated {
         let remote_content_response = get_remote_content(server_name, media_id.clone()).await?;
 
         Ok(get_content_as_filename::v1::Response {
