@@ -593,7 +593,7 @@ async fn sync_helper(
         account_data: GlobalAccountData {
             events: services()
                 .account_data
-                .changes_since(None, &sender_user, since)?
+                .global_changes_since(&sender_user, since)?
                 .into_iter()
                 .filter_map(|(_, v)| {
                     serde_json::from_str(v.json().get())
@@ -1165,7 +1165,7 @@ async fn load_joined_room(
         account_data: RoomAccountData {
             events: services()
                 .account_data
-                .changes_since(Some(room_id), sender_user, since)?
+                .room_changes_since(room_id, sender_user, since)?
                 .into_iter()
                 .filter_map(|(_, v)| {
                     serde_json::from_str(v.json().get())
@@ -1806,7 +1806,7 @@ pub async fn sync_events_v5_route(
                 global: if body.extensions.account_data.enabled.unwrap_or(false) {
                     services()
                         .account_data
-                        .changes_since(None, &sender_user, globalsince)?
+                        .global_changes_since(&sender_user, globalsince)?
                         .into_iter()
                         .filter_map(|(_, v)| {
                             serde_json::from_str(v.json().get())

@@ -156,6 +156,7 @@ sd-notify = { version = "0.4", optional = true }
 [dependencies.ruma]
 features = [
   "appservice-api-c",
+  "canonical-json",
   "client-api",
   "compat-empty-string-null",
   "compat-get-3pids",

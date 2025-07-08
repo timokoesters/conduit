@@ -145,7 +145,7 @@ pub async fn create_room_route(
     let content = match &body.creation_content {
         Some(content) => {
             let mut content = content
-                .deserialize_as::<CanonicalJsonObject>()
+                .deserialize_as_unchecked::<CanonicalJsonObject>()
                 .expect("Invalid creation content");
 
             if !rules.use_room_create_sender {
