@@ -548,7 +548,8 @@ fn add_unsigned_device_display_name(
     metadata: ruma::api::client::device::Device,
 ) -> serde_json::Result<()> {
     if let Some(display_name) = metadata.display_name {
-        let mut object = keys.deserialize_as::<serde_json::Map<String, serde_json::Value>>()?;
+        let mut object =
+            keys.deserialize_as_unchecked::<serde_json::Map<String, serde_json::Value>>()?;
 
         let unsigned = object.entry("unsigned").or_insert_with(|| json!({}));
         if let serde_json::Value::Object(unsigned_object) = unsigned {

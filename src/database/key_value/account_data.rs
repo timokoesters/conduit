@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use ruma::{
     api::client::error::ErrorKind,
-    events::{AnyEphemeralRoomEvent, RoomAccountDataEventType},
+    events::{AnyGlobalAccountDataEvent, AnyRoomAccountDataEvent, RoomAccountDataEventType},
     serde::Raw,
     RoomId, UserId,
 };
@@ -94,24 +94,47 @@ impl service::account_data::Data for KeyValueDatabase {
             .transpose()
     }
 
-    /// Returns all changes to the account data that happened after `since`.
-    #[tracing::instrument(skip(self, room_id, user_id, since))]
-    fn changes_since(
+    /// Returns all changes to the global account data that happened after `since`.
+    #[tracing::instrument(skip_all)]
+    fn global_changes_since(
         &self,
-        room_id: Option<&RoomId>,
         user_id: &UserId,
         since: u64,
-    ) -> Result<HashMap<RoomAccountDataEventType, Raw<AnyEphemeralRoomEvent>>> {
-        let mut userdata = HashMap::new();
-
-        let mut prefix = room_id
-            .map(|r| r.to_string())
-            .unwrap_or_default()
-            .as_bytes()
-            .to_vec();
+    ) -> Result<HashMap<RoomAccountDataEventType, Raw<AnyGlobalAccountDataEvent>>> {
+        let mut prefix = Vec::new();
         prefix.push(0xff);
         prefix.extend_from_slice(user_id.as_bytes());
         prefix.push(0xff);
+
+        self.changes_since::<AnyGlobalAccountDataEvent>(prefix, since)
+    }
+
+    /// Returns all changes to the room account data that happened after `since`.
+    #[tracing::instrument(skip_all)]
+    fn room_changes_since(
+        &self,
+        room_id: &RoomId,
+        user_id: &UserId,
+        since: u64,
+    ) -> Result<HashMap<RoomAccountDataEventType, Raw<AnyRoomAccountDataEvent>>> {
+        let mut prefix = room_id.to_string().as_bytes().to_vec();
+        prefix.push(0xff);
+        prefix.extend_from_slice(user_id.as_bytes());
+        prefix.push(0xff);
+
+        self.changes_since::<AnyRoomAccountDataEvent>(prefix, since)
+    }
+}
+
+impl KeyValueDatabase {
+    /// Returns all changes to the account data that happened after `since`.
+    #[tracing::instrument(skip_all)]
+    fn changes_since<T>(
+        &self,
+        prefix: Vec<u8>,
+        since: u64,
+    ) -> Result<HashMap<RoomAccountDataEventType, Raw<T>>> {
+        let mut userdata = HashMap::new();
 
         // Skip the data that's exactly at since, because we sent that last time
         let mut first_possible = prefix.clone();
@@ -129,7 +152,7 @@ impl service::account_data::Data for KeyValueDatabase {
                         )?)
                         .map_err(|_| Error::bad_database("RoomUserData ID in db is invalid."))?,
                     ),
-                    serde_json::from_slice::<Raw<AnyEphemeralRoomEvent>>(&v).map_err(|_| {
+                    serde_json::from_slice::<Raw<T>>(&v).map_err(|_| {
                         Error::bad_database("Database contains invalid account data.")
                     })?,
                 ))

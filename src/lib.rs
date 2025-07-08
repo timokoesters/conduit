@@ -23,7 +23,7 @@ pub use utils::error::{Error, Result};
 pub static SERVICES: RwLock<Option<&'static Services>> = RwLock::new(None);
 pub static SUPPORTED_VERSIONS: LazyLock<SupportedVersions> = LazyLock::new(|| SupportedVersions {
     versions: BTreeSet::from_iter([MatrixVersion::V1_13]),
-    features: Vec::new(),
+    features: BTreeSet::new(),
 });
 
 pub fn services() -> &'static Services {

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::Result;
 use ruma::{
-    events::{AnyEphemeralRoomEvent, RoomAccountDataEventType},
+    events::{AnyGlobalAccountDataEvent, AnyRoomAccountDataEvent, RoomAccountDataEventType},
     serde::Raw,
     RoomId, UserId,
 };
@@ -25,11 +25,18 @@ pub trait Data: Send + Sync {
         kind: RoomAccountDataEventType,
     ) -> Result<Option<Box<serde_json::value::RawValue>>>;
 
-    /// Returns all changes to the account data that happened after `since`.
-    fn changes_since(
+    /// Returns all changes to the global account data that happened after `since`.
+    fn global_changes_since(
         &self,
-        room_id: Option<&RoomId>,
         user_id: &UserId,
         since: u64,
-    ) -> Result<HashMap<RoomAccountDataEventType, Raw<AnyEphemeralRoomEvent>>>;
+    ) -> Result<HashMap<RoomAccountDataEventType, Raw<AnyGlobalAccountDataEvent>>>;
+
+    /// Returns all changes to the room account data that happened after `since`.
+    fn room_changes_since(
+        &self,
+        room_id: &RoomId,
+        user_id: &UserId,
+        since: u64,
+    ) -> Result<HashMap<RoomAccountDataEventType, Raw<AnyRoomAccountDataEvent>>>;
 }

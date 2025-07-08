@@ -3,7 +3,7 @@ mod data;
 pub use data::Data;
 
 use ruma::{
-    events::{AnyEphemeralRoomEvent, RoomAccountDataEventType},
+    events::{AnyGlobalAccountDataEvent, AnyRoomAccountDataEvent, RoomAccountDataEventType},
     serde::Raw,
     RoomId, UserId,
 };
@@ -40,14 +40,24 @@ impl Service {
         self.db.get(room_id, user_id, event_type)
     }
 
-    /// Returns all changes to the account data that happened after `since`.
-    #[tracing::instrument(skip(self, room_id, user_id, since))]
-    pub fn changes_since(
+    /// Returns all changes to the global account data that happened after `since`.
+    #[tracing::instrument(skip_all)]
+    pub fn global_changes_since(
         &self,
-        room_id: Option<&RoomId>,
         user_id: &UserId,
         since: u64,
-    ) -> Result<HashMap<RoomAccountDataEventType, Raw<AnyEphemeralRoomEvent>>> {
-        self.db.changes_since(room_id, user_id, since)
+    ) -> Result<HashMap<RoomAccountDataEventType, Raw<AnyGlobalAccountDataEvent>>> {
+        self.db.global_changes_since(user_id, since)
+    }
+
+    /// Returns all changes to the room account data that happened after `since`.
+    #[tracing::instrument(skip_all)]
+    pub fn room_changes_since(
+        &self,
+        room_id: &RoomId,
+        user_id: &UserId,
+        since: u64,
+    ) -> Result<HashMap<RoomAccountDataEventType, Raw<AnyRoomAccountDataEvent>>> {
+        self.db.room_changes_since(room_id, user_id, since)
     }
 }

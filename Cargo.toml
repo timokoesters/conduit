@@ -159,6 +159,7 @@ http-body-util = "0.1.3"
 [dependencies.ruma]
 features = [
   "appservice-api-c",
+  "canonical-json",
   "client-api",
   "compat-empty-string-null",
   "compat-get-3pids",
