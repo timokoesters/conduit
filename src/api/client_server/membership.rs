@@ -702,7 +702,14 @@ pub(crate) async fn invite_helper(
                 &state_lock,
             )?;
 
-            let invite_room_state = services().rooms.state.stripped_state(&pdu.room_id)?;
+            let mut invite_room_state = services().rooms.state.stripped_state(&pdu.room_id)?;
+            if let Some(sender) = services().rooms.state_accessor.room_state_get(
+                &pdu.room_id,
+                &StateEventType::RoomMember,
+                sender_user.as_str(),
+            )? {
+                invite_room_state.push(sender.to_stripped_state_event());
+            }
 
             drop(state_lock);
 
