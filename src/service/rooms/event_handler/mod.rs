@@ -31,7 +31,7 @@ use ruma::{
         StateEventType, TimelineEventType,
     },
     int,
-    room_version_rules::{AuthorizationRules, RoomVersionRules},
+    room_version_rules::{AuthorizationRules, RoomVersionRules, StateResolutionV2Rules},
     state_res::{self, StateMap},
     uint, CanonicalJsonObject, CanonicalJsonValue, EventId, MilliSecondsSinceUnixEpoch,
     OwnedServerName, OwnedServerSigningKeyId, RoomId, ServerName,
@@ -709,10 +709,11 @@ impl Service {
                 let lock = services().globals.stateres_mutex.lock();
 
                 let result = state_res::resolve(
-                    &room_version_id
-                        .rules()
-                        .expect("Supported room version has rules")
-                        .authorization,
+                    &room_version_rules.authorization,
+                    room_version_rules
+                        .state_res
+                        .v2_rules()
+                        .expect("We only support room versions using state resolution v2"),
                     &fork_states,
                     auth_chain_sets,
                     |id| {
@@ -721,6 +722,13 @@ impl Service {
                             error!("LOOK AT ME Failed to fetch event: {}", e);
                         }
                         res.ok().flatten()
+                    },
+                    |css| {
+                        services()
+                            .rooms
+                            .auth_chain
+                            .get_conflicted_state_subgraph(room_id, css)
+                            .ok()
                     },
                 );
                 drop(lock);
@@ -961,7 +969,15 @@ impl Service {
             }
 
             let new_room_state = self
-                .resolve_state(room_id, &room_version_rules.authorization, state_after)
+                .resolve_state(
+                    room_id,
+                    &room_version_rules.authorization,
+                    room_version_rules
+                        .state_res
+                        .v2_rules()
+                        .expect("We only support room versions using state resolution v2"),
+                    state_after,
+                )
                 .await?;
 
             // Set the new room state to the resolved state
@@ -1039,6 +1055,7 @@ impl Service {
         &self,
         room_id: &RoomId,
         auth_rules: &AuthorizationRules,
+        state_res_rules: &StateResolutionV2Rules,
         incoming_state: HashMap<u64, Arc<EventId>>,
     ) -> Result<Arc<HashSet<CompressedStateEvent>>> {
         debug!("Loading current room state ids");
@@ -1097,8 +1114,20 @@ impl Service {
         };
 
         let lock = services().globals.stateres_mutex.lock();
-        let state = match state_res::resolve(auth_rules, &fork_states, auth_chain_sets, fetch_event)
-        {
+        let state = match state_res::resolve(
+            auth_rules,
+            state_res_rules,
+            &fork_states,
+            auth_chain_sets,
+            fetch_event,
+            |css| {
+                services()
+                    .rooms
+                    .auth_chain
+                    .get_conflicted_state_subgraph(room_id, css)
+                    .ok()
+            },
+        ) {
             Ok(new_state) => new_state,
             Err(_) => {
                 return Err(Error::bad_database("State resolution failed, either an event could not be found or deserialization"));
