@@ -5,7 +5,7 @@ use std::{
 };
 
 pub use data::Data;
-use ruma::{api::client::error::ErrorKind, EventId, RoomId};
+use ruma::{api::client::error::ErrorKind, state_res::StateMap, EventId, RoomId};
 use tracing::{debug, error, warn};
 
 use crate::{services, Error, Result};
@@ -160,5 +160,88 @@ impl Service {
         }
 
         Ok(found)
+    }
+
+    #[tracing::instrument(skip(self, conflicted_state_set))]
+    /// Fetches the conflicted state subgraph of the given events
+    pub fn get_conflicted_state_subgraph(
+        &self,
+        room_id: &RoomId,
+        conflicted_state_set: &StateMap<Vec<Arc<EventId>>>,
+    ) -> Result<HashSet<Arc<EventId>>> {
+        let conflicted_event_ids: HashSet<_> =
+            conflicted_state_set.values().flatten().cloned().collect();
+        let mut conflicted_state_subgraph = HashSet::new();
+
+        let mut stack = vec![conflicted_event_ids.iter().cloned().collect::<Vec<_>>()];
+        let mut path = Vec::new();
+
+        let mut seen_events = HashSet::new();
+
+        let next_event = |stack: &mut Vec<Vec<_>>, path: &mut Vec<_>| {
+            while stack.last().is_some_and(|s| s.is_empty()) {
+                stack.pop();
+                path.pop();
+            }
+
+            stack.last_mut().and_then(|s| s.pop())
+        };
+
+        while let Some(event_id) = next_event(&mut stack, &mut path) {
+            path.push(event_id.clone());
+
+            if conflicted_state_subgraph.contains(&event_id) {
+                // If we reach a conflicted state subgraph path, this path must also be part of
+                // the conflicted state subgraph, as we will eventually reach a conflicted event
+                // if we follow this path.
+                //
+                // We check if path > 1 here and below, as we don't consider a single conflicted
+                // event to be a path from one conflicted to another.
+                if path.len() > 1 {
+                    conflicted_state_subgraph.extend(path.iter().cloned());
+                }
+
+                // All possible paths from this event must have been traversed in the iteration
+                // that caused this event to be added to the conflicted state subgraph in the first
+                // place.
+                //
+                // We pop the path here and below as it won't be removed by `next_event`, due to us
+                // never pushing it's auth events to the stack.
+                path.pop();
+                continue;
+            }
+
+            if conflicted_event_ids.contains(&event_id) && path.len() > 1 {
+                conflicted_state_subgraph.extend(path.iter().cloned());
+            }
+
+            if seen_events.contains(&event_id) {
+                // All possible paths from this event must have been traversed in the iteration
+                // that caused this event to be added to the conflicted state subgraph in the first
+                // place.
+                path.pop();
+                continue;
+            }
+
+            if let Some(pdu) = services().rooms.timeline.get_pdu(&event_id)? {
+                if pdu.room_id().as_ref() != room_id {
+                    return Err(Error::BadRequest(
+                        ErrorKind::forbidden(),
+                        "Evil event in db",
+                    ));
+                }
+
+                stack.push(pdu.auth_events.clone());
+            } else {
+                warn!(?event_id, "Could not find pdu mentioned in auth events");
+                return Err(Error::BadDatabase(
+                    "Missing auth event for PDU stored in database",
+                ));
+            }
+
+            seen_events.insert(event_id);
+        }
+
+        Ok(conflicted_state_subgraph)
     }
 }
