@@ -1494,6 +1494,27 @@ impl Service {
             }
         }
 
+        let origin_server_ts = value.get("origin_server_ts").ok_or_else(|| {
+            error!("Invalid PDU, no origin_server_ts field");
+            Error::BadRequest(
+                ErrorKind::MissingParam,
+                "Invalid PDU, no origin_server_ts field",
+            )
+        })?;
+
+        let origin_server_ts: MilliSecondsSinceUnixEpoch = {
+            let ts = origin_server_ts.as_integer().ok_or_else(|| {
+                Error::BadRequest(
+                    ErrorKind::InvalidParam,
+                    "origin_server_ts must be an integer",
+                )
+            })?;
+
+            MilliSecondsSinceUnixEpoch(i64::from(ts).try_into().map_err(|_| {
+                Error::BadRequest(ErrorKind::InvalidParam, "Time must be after the unix epoch")
+            })?)
+        };
+
         let signatures = value
             .get("signatures")
             .ok_or(Error::BadServerResponse(
@@ -1513,15 +1534,16 @@ impl Service {
 
             let contains_all_ids = |keys: &SigningKeys| {
                 signature_ids.iter().all(|id| {
-                    keys.verify_keys
-                        .keys()
-                        .map(ToString::to_string)
-                        .any(|key_id| id == &key_id)
-                        || keys
-                            .old_verify_keys
+                    (keys.valid_until_ts > origin_server_ts
+                        && keys
+                            .verify_keys
                             .keys()
                             .map(ToString::to_string)
-                            .any(|key_id| id == &key_id)
+                            .any(|key_id| id == &key_id))
+                        || keys
+                            .old_verify_keys
+                            .iter()
+                            .any(|(key_id, key)| key_id == id && key.expired_ts > origin_server_ts)
                 })
             };
 
@@ -1542,6 +1564,8 @@ impl Service {
                 }
 
                 pub_key_map.insert(origin.to_string(), result);
+            } else {
+                servers.insert(origin.to_owned(), BTreeMap::new());
             }
         }
 
