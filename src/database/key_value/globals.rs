@@ -255,12 +255,16 @@ lasttimelinecount_cache: {lasttimelinecount_cache}\n"
                 let ServerSigningKeys {
                     verify_keys,
                     old_verify_keys,
+                    valid_until_ts,
                     ..
                 } = new_keys;
 
                 prev_keys.verify_keys.extend(verify_keys);
                 prev_keys.old_verify_keys.extend(old_verify_keys);
-                prev_keys.valid_until_ts = new_keys.valid_until_ts;
+
+                if valid_until_ts > prev_keys.valid_until_ts {
+                    prev_keys.valid_until_ts = valid_until_ts;
+                }
 
                 self.server_signingkeys.insert(
                     origin.as_bytes(),
