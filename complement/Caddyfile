@@ -1,0 +1,30 @@
+{
+	log default {
+		level WARN
+	}
+	https_port 8448
+	default_sni your.server.name
+	local_certs
+	pki {
+		ca local {
+			name "Complement CA"
+			root {
+				cert /complement/ca/ca.crt
+				key /complement/ca/ca.key
+			}
+			intermediate {
+				cert /complement/ca/ca.crt
+				key /complement/ca/ca.key
+			}
+		}
+	}
+}
+
+your.server.name
+
+reverse_proxy 127.0.0.1:8008
+tls {
+	issuer internal {
+		ca local
+	}
+}

@@ -1,4 +1,4 @@
-FROM rust:1.81.0
+FROM rust:1.85.0
 
 WORKDIR /workdir
 
@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY Cargo.toml Cargo.toml
 COPY Cargo.lock Cargo.lock
 COPY src src
+COPY .cargo .cargo
 RUN cargo build --release \
     && mv target/release/conduit conduit \
     && rm -rf target
@@ -27,7 +28,7 @@ RUN apt-get update \
     && apt-get install -y caddy
 
 COPY conduit-example.toml conduit.toml
-COPY complement/caddy.json caddy.json
+COPY complement/Caddyfile Caddyfile
 
 ENV SERVER_NAME=localhost
 ENV CONDUIT_CONFIG=/workdir/conduit.toml
@@ -35,11 +36,13 @@ ENV CONDUIT_CONFIG=/workdir/conduit.toml
 RUN sed -i "s/port = 6167/port = 8008/g" conduit.toml
 RUN echo "log = \"warn,_=off,sled=off\"" >> conduit.toml
 RUN sed -i "s/address = \"127.0.0.1\"/address = \"0.0.0.0\"/g" conduit.toml
+RUN sed -i "s/registration_token = \"\"//g" conduit.toml
+RUN sed -i "s/allow_check_for_updates = true/allow_check_for_updates = false/g" conduit.toml
 
 EXPOSE 8008 8448
 
 CMD uname -a && \
     sed -i "s/#server_name = \"your.server.name\"/server_name = \"${SERVER_NAME}\"/g" conduit.toml && \
-    sed -i "s/your.server.name/${SERVER_NAME}/g" caddy.json && \
-    caddy start --config caddy.json > /dev/null && \
+    sed -i "s/your.server.name/${SERVER_NAME}/g" Caddyfile && \
+    caddy start > /dev/null && \
     /workdir/conduit
