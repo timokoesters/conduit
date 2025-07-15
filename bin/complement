@@ -33,5 +33,5 @@ cat "$LOG_FILE" | jq -c '
     select(
         (.Action == "pass" or .Action == "fail" or .Action == "skip")
         and .Test != null
-    ) | {Action: .Action, Test: .Test}
+    ) | {Test: .Test, Action: .Action}
     ' | sort > "$RESULTS_FILE"
