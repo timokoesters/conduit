@@ -1,4 +1,6 @@
 stages:
+  # Temporary, just so we fail fast
+  - complement
   - ci
   - artifacts
   - publish
@@ -124,6 +126,29 @@ artifacts:
       - oci-image-amd64.tar.gz
       - oci-image-arm64v8.tar.gz
       - public
+  rules:
+    # CI required for all MRs
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    # Optional CI on forks
+    - if: $IS_UPSTREAM_CI != "true"
+      when: manual
+      allow_failure: true
+    - if: $CI
+  interruptible: true
+
+complement:
+  stage: complement
+  image: docker:28.3.2
+  services:
+    - docker:28.3.2-dind
+  script:
+    - apk add coreutils bash jq go
+    - git clone https://github.com/matrix-org/complement complement-clone
+    # TODO: Better way of pinning commit, ideally to make it easily accessible in a local dev env
+    - env -C complement-clone git checkout bdeba288ae43955f7e707121ef004b90482a8f37
+    - bin/complement complement-clone complement-log.jsonl complement-results.jsonl
+    # TODO: Nicer output of some sort, i.e. moving this entire stage to a script (also could solve the problem above?)
+    - diff tests/complement/results.jsonl complement-results.jsonl
   rules:
     # CI required for all MRs
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
