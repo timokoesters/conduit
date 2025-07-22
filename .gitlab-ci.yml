@@ -141,6 +141,9 @@ complement:
   image: docker:28.3.2
   services:
     - docker:28.3.2-dind
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
   script:
     - apk add coreutils bash jq go
     - git clone https://github.com/matrix-org/complement complement-clone
