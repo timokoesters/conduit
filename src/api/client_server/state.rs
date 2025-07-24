@@ -4,7 +4,10 @@ use crate::{service::pdu::PduBuilder, services, Error, Result, Ruma, RumaRespons
 use ruma::{
     api::client::{
         error::ErrorKind,
-        state::{get_state_event_for_key, get_state_events, send_state_event},
+        state::{
+            get_state_event_for_key::{self, v3::StateEventFormat},
+            get_state_events, send_state_event,
+        },
     },
     events::{
         room::canonical_alias::RoomCanonicalAliasEventContent, AnyStateEventContent, StateEventType,
@@ -148,10 +151,14 @@ pub async fn get_state_event_for_key_route(
             Error::BadRequest(ErrorKind::NotFound, "State event not found.")
         })?;
 
-    Ok(get_state_event_for_key::v3::Response {
-        event_or_content: serde_json::from_str(event.content.get())
-            .map_err(|_| Error::bad_database("Invalid event content in database"))?,
-    })
+    let response: get_state_event_for_key::v3::Response = match body.format {
+        StateEventFormat::Content => {
+            Raw::<AnyStateEventContent>::from_json(event.content.clone()).into()
+        }
+        StateEventFormat::Event => event.to_state_event().into(),
+    };
+
+    Ok(response)
 }
 
 /// # `GET /_matrix/client/r0/rooms/{roomid}/state/{eventType}`
@@ -187,11 +194,14 @@ pub async fn get_state_event_for_empty_key_route(
             Error::BadRequest(ErrorKind::NotFound, "State event not found.")
         })?;
 
-    Ok(get_state_event_for_key::v3::Response {
-        event_or_content: serde_json::from_str(event.content.get())
-            .map_err(|_| Error::bad_database("Invalid event content in database"))?,
-    }
-    .into())
+    let response: get_state_event_for_key::v3::Response = match body.format {
+        StateEventFormat::Content => {
+            Raw::<AnyStateEventContent>::from_json(event.content.clone()).into()
+        }
+        StateEventFormat::Event => event.to_state_event().into(),
+    };
+
+    Ok(response.into())
 }
 
 async fn send_state_event_for_key_helper(
