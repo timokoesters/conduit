@@ -783,8 +783,9 @@ impl Service {
         }
 
         // Hash and sign
-        let mut pdu_json =
-            utils::to_canonical_object(&pdu).expect("event is valid, we just created it");
+        let mut pdu_json = utils::to_canonical_object(&pdu).map_err(|_| {
+            Error::BadRequest(ErrorKind::InvalidParam, "Event content provided is invalid")
+        })?;
 
         pdu_json.remove("event_id");
 

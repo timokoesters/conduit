@@ -141,17 +141,17 @@ impl Service {
                     ));
                 }
 
-                match signed_value["signatures"]
-                    .as_object()
-                    .ok_or(Error::BadRequest(
-                        ErrorKind::InvalidParam,
-                        "Server sent invalid signatures type",
-                    ))
+                match signed_value
+                    .get("signatures")
+                    .ok_or("server did not return any signatures")
+                    .and_then(|signatures| {
+                        signatures
+                            .as_object()
+                            .ok_or("Server sent invalid signatures type")
+                    })
                     .and_then(|e| {
-                        e.get(remote_server.as_str()).ok_or(Error::BadRequest(
-                            ErrorKind::InvalidParam,
-                            "Server did not send its signature",
-                        ))
+                        e.get(remote_server.as_str())
+                            .ok_or("Server did not send its signature")
                     }) {
                     Ok(signature) => {
                         join_event
