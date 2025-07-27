@@ -725,5 +725,5 @@ fn default_openid_token_ttl() -> u64 {
 
 // I know, it's a great name
 pub fn default_default_room_version() -> RoomVersionId {
-    RoomVersionId::V10
+    RoomVersionId::V12
 }
