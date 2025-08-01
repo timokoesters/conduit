@@ -4,12 +4,19 @@ use argon2::{Config, Variant};
 use cmp::Ordering;
 use rand::prelude::*;
 use ring::digest;
-use ruma::{canonical_json::try_from_json_map, CanonicalJsonError, CanonicalJsonObject};
+use ruma::{
+    api::{client::sync::sync_events::StrippedState, federation::membership::RawStrippedState},
+    canonical_json::try_from_json_map,
+    serde::Raw,
+    CanonicalJsonError, CanonicalJsonObject, RoomId,
+};
 use std::{
     cmp, fmt,
     str::FromStr,
     time::{SystemTime, UNIX_EPOCH},
 };
+
+use crate::Result;
 
 pub fn millis_since_unix_epoch() -> u64 {
     SystemTime::now()
@@ -184,4 +191,17 @@ impl fmt::Display for HtmlEscape<'_> {
         }
         Ok(())
     }
+}
+
+/// Converts `RawStrippedState` (federation format) into `Raw<StrippedState>` (client format)
+pub fn convert_stripped_state(
+    stripped_state: Vec<RawStrippedState>,
+    _room_id: &RoomId,
+) -> Result<Vec<Raw<StrippedState>>> {
+    stripped_state
+        .into_iter()
+        .map(|stripped_state| match stripped_state {
+            RawStrippedState::Stripped(state) => Ok(state.cast()),
+        })
+        .collect()
 }

@@ -4,7 +4,7 @@ use crate::{service::pdu::PduBuilder, services, Error, Result, Ruma, RumaRespons
 use ruma::{
     api::client::{
         error::ErrorKind,
-        state::{get_state_events, get_state_events_for_key, send_state_event},
+        state::{get_state_event_for_key, get_state_events, send_state_event},
     },
     events::{
         room::canonical_alias::RoomCanonicalAliasEventContent, AnyStateEventContent, StateEventType,
@@ -120,9 +120,9 @@ pub async fn get_state_events_route(
 /// Get single state event of a room.
 ///
 /// - If not joined: Only works if current room history visibility is world readable
-pub async fn get_state_events_for_key_route(
-    body: Ruma<get_state_events_for_key::v3::Request>,
-) -> Result<get_state_events_for_key::v3::Response> {
+pub async fn get_state_event_for_key_route(
+    body: Ruma<get_state_event_for_key::v3::Request>,
+) -> Result<get_state_event_for_key::v3::Response> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
     if !services()
@@ -148,8 +148,8 @@ pub async fn get_state_events_for_key_route(
             Error::BadRequest(ErrorKind::NotFound, "State event not found.")
         })?;
 
-    Ok(get_state_events_for_key::v3::Response {
-        content: serde_json::from_str(event.content.get())
+    Ok(get_state_event_for_key::v3::Response {
+        event_or_content: serde_json::from_str(event.content.get())
             .map_err(|_| Error::bad_database("Invalid event content in database"))?,
     })
 }
@@ -159,9 +159,9 @@ pub async fn get_state_events_for_key_route(
 /// Get single state event of a room.
 ///
 /// - If not joined: Only works if current room history visibility is world readable
-pub async fn get_state_events_for_empty_key_route(
-    body: Ruma<get_state_events_for_key::v3::Request>,
-) -> Result<RumaResponse<get_state_events_for_key::v3::Response>> {
+pub async fn get_state_event_for_empty_key_route(
+    body: Ruma<get_state_event_for_key::v3::Request>,
+) -> Result<RumaResponse<get_state_event_for_key::v3::Response>> {
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
     if !services()
@@ -187,8 +187,8 @@ pub async fn get_state_events_for_empty_key_route(
             Error::BadRequest(ErrorKind::NotFound, "State event not found.")
         })?;
 
-    Ok(get_state_events_for_key::v3::Response {
-        content: serde_json::from_str(event.content.get())
+    Ok(get_state_event_for_key::v3::Response {
+        event_or_content: serde_json::from_str(event.content.get())
             .map_err(|_| Error::bad_database("Invalid event content in database"))?,
     }
     .into())

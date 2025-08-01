@@ -11,7 +11,7 @@ use ruma::{
             v3::{
                 Ephemeral, Filter, GlobalAccountData, InviteState, InvitedRoom, JoinedRoom,
                 KnockState, KnockedRoom, LeftRoom, Presence, RoomAccountData, RoomSummary, Rooms,
-                State, Timeline, ToDevice,
+                State, StateEvents, Timeline, ToDevice,
             },
             DeviceLists, UnreadNotificationsCount,
         },
@@ -366,9 +366,9 @@ async fn sync_helper(
                         prev_batch: Some(next_batch_string.clone()),
                         events: Vec::new(),
                     },
-                    state: State {
+                    state: State::Before(StateEvents {
                         events: vec![event.to_sync_state_event()],
-                    },
+                    }),
                 },
             );
 
@@ -463,9 +463,9 @@ async fn sync_helper(
                     prev_batch: Some(next_batch_string.clone()),
                     events: Vec::new(),
                 },
-                state: State {
+                state: State::Before(StateEvents {
                     events: left_state_events,
-                },
+                }),
             },
         );
     }
@@ -1199,12 +1199,12 @@ async fn load_joined_room(
             prev_batch,
             events: room_events,
         },
-        state: State {
+        state: State::Before(StateEvents {
             events: state_events
                 .iter()
                 .map(|pdu| pdu.to_sync_state_event())
                 .collect(),
-        },
+        }),
         ephemeral: Ephemeral { events: edus },
         unread_thread_notifications: BTreeMap::new(),
     })

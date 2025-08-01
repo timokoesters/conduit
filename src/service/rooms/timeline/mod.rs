@@ -348,13 +348,17 @@ impl Service {
                     let mut highlight = false;
                     let mut notify = false;
 
-                    for action in services().pusher.get_actions(
-                        user,
-                        &rules_for_user,
-                        power_levels.clone(),
-                        &sync_pdu,
-                        &pdu.room_id,
-                    )? {
+                    for action in services()
+                        .pusher
+                        .get_actions(
+                            user,
+                            &rules_for_user,
+                            power_levels.clone(),
+                            &sync_pdu,
+                            &pdu.room_id,
+                        )
+                        .await?
+                    {
                         match action {
                             Action::Notify => notify = true,
                             Action::SetTweak(Tweak::Highlight(true)) => {
@@ -444,9 +448,10 @@ impl Service {
 
                     let stripped_state = match content.membership {
                         MembershipState::Invite | MembershipState::Knock => {
-                            let mut state = services().rooms.state.stripped_state(&pdu.room_id)?;
+                            let mut state =
+                                services().rooms.state.stripped_state_client(&pdu.room_id)?;
                             // So that clients can get info about who invitied them (not relevant for knocking), the reason, when, etc.
-                            state.push(pdu.to_stripped_state_event());
+                            state.push(pdu.to_stripped_state_event().cast());
                             Some(state)
                         }
                         _ => None,

@@ -391,28 +391,28 @@ fn routes(config: &Config) -> Router {
         .ruma_route(client_server::send_message_event_route)
         .ruma_route(client_server::send_state_event_for_key_route)
         .ruma_route(client_server::get_state_events_route)
-        .ruma_route(client_server::get_state_events_for_key_route)
+        .ruma_route(client_server::get_state_event_for_key_route)
         // Ruma doesn't have support for multiple paths for a single endpoint yet, and these routes
         // share one Ruma request / response type pair with {get,send}_state_event_for_key_route
         .route(
             "/_matrix/client/r0/rooms/{room_id}/state/{event_type}",
-            get(client_server::get_state_events_for_empty_key_route)
+            get(client_server::get_state_event_for_empty_key_route)
                 .put(client_server::send_state_event_for_empty_key_route),
         )
         .route(
             "/_matrix/client/v3/rooms/{room_id}/state/{event_type}",
-            get(client_server::get_state_events_for_empty_key_route)
+            get(client_server::get_state_event_for_empty_key_route)
                 .put(client_server::send_state_event_for_empty_key_route),
         )
         // These two endpoints allow trailing slashes
         .route(
             "/_matrix/client/r0/rooms/{room_id}/state/{event_type}/",
-            get(client_server::get_state_events_for_empty_key_route)
+            get(client_server::get_state_event_for_empty_key_route)
                 .put(client_server::send_state_event_for_empty_key_route),
         )
         .route(
             "/_matrix/client/v3/rooms/{room_id}/state/{event_type}/",
-            get(client_server::get_state_events_for_empty_key_route)
+            get(client_server::get_state_event_for_empty_key_route)
                 .put(client_server::send_state_event_for_empty_key_route),
         )
         .ruma_route(client_server::sync_events_route)
