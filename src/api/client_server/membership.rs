@@ -18,7 +18,6 @@ use ruma::{
         },
         StateEventType, TimelineEventType,
     },
-    serde::Raw,
     CanonicalJsonObject, CanonicalJsonValue, EventId, OwnedServerName, RoomId, UserId,
 };
 use serde_json::value::to_raw_value;
@@ -159,7 +158,7 @@ pub async fn knock_room_route(
                 .sending
                 .send_federation_request(
                     &remote_server,
-                    federation::knock::create_knock_event_template::v1::Request {
+                    federation::membership::prepare_knock_event::v1::Request {
                         room_id: room_id.to_owned(),
                         user_id: sender_user.to_owned(),
                         ver: services().globals.supported_room_versions(),
@@ -205,7 +204,7 @@ pub async fn knock_room_route(
             .sending
             .send_federation_request(
                 &remote_server,
-                federation::knock::send_knock::v1::Request {
+                federation::membership::create_knock_event::v1::Request {
                     room_id: room_id.to_owned(),
                     event_id: event_id.to_owned(),
                     pdu: PduEvent::convert_to_outgoing_federation_event(knock_event.clone()),
@@ -217,9 +216,17 @@ pub async fn knock_room_route(
 
         let mut stripped_state = send_kock_response.knock_room_state;
         // Not sure how useful this is in reality, but spec examples show `/sync` returning the actual knock membership event
-        stripped_state.push(Raw::from_json(to_raw_value(&knock_event).expect(
-            "All keys are Strings, and CanonicalJsonValue Serialization never fails",
-        )));
+        stripped_state.push(
+            PduEvent::from_id_val(&event_id, knock_event)
+                .map_err(|_| {
+                    Error::BadServerResponse(
+                        "Invalid JSON in membership event, likely due to bad template from remote server",
+                    )
+                })?
+                .to_stripped_state_event()
+                .into(),
+        );
+        let stripped_state = utils::convert_stripped_state(stripped_state, &room_id)?;
 
         services().rooms.state_cache.update_membership(
             &room_id,
@@ -702,7 +709,10 @@ pub(crate) async fn invite_helper(
                 &state_lock,
             )?;
 
-            let invite_room_state = services().rooms.state.stripped_state(&pdu.room_id)?;
+            let invite_room_state = services()
+                .rooms
+                .state
+                .stripped_state_federation(&pdu.room_id)?;
 
             drop(state_lock);
 

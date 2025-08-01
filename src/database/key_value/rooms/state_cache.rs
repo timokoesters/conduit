@@ -1,8 +1,7 @@
 use std::{collections::HashSet, sync::Arc};
 
 use ruma::{
-    events::{AnyStrippedStateEvent, AnySyncStateEvent},
-    serde::Raw,
+    api::client::sync::sync_events::StrippedState, events::AnySyncStateEvent, serde::Raw,
     OwnedRoomId, OwnedServerName, OwnedUserId, RoomId, ServerName, UserId,
 };
 
@@ -39,7 +38,7 @@ impl service::rooms::state_cache::Data for KeyValueDatabase {
         &self,
         user_id: &UserId,
         room_id: &RoomId,
-        last_state: Option<Vec<Raw<AnyStrippedStateEvent>>>,
+        last_state: Option<Vec<Raw<StrippedState>>>,
     ) -> Result<()> {
         let (roomuser_id, userroom_id) = get_room_and_user_byte_ids(room_id, user_id);
 
@@ -66,7 +65,7 @@ impl service::rooms::state_cache::Data for KeyValueDatabase {
         &self,
         user_id: &UserId,
         room_id: &RoomId,
-        last_state: Option<Vec<Raw<AnyStrippedStateEvent>>>,
+        last_state: Option<Vec<Raw<StrippedState>>>,
     ) -> Result<()> {
         let (roomuser_id, userroom_id) = get_room_and_user_byte_ids(room_id, user_id);
 
@@ -483,7 +482,7 @@ impl service::rooms::state_cache::Data for KeyValueDatabase {
     fn rooms_invited<'a>(
         &'a self,
         user_id: &UserId,
-    ) -> Box<dyn Iterator<Item = Result<(OwnedRoomId, Vec<Raw<AnyStrippedStateEvent>>)>> + 'a> {
+    ) -> Box<dyn Iterator<Item = Result<(OwnedRoomId, Vec<Raw<StrippedState>>)>> + 'a> {
         scan_userroom_id_memberstate_tree(user_id, &self.userroomid_invitestate)
     }
 
@@ -493,7 +492,7 @@ impl service::rooms::state_cache::Data for KeyValueDatabase {
     fn rooms_knocked<'a>(
         &'a self,
         user_id: &UserId,
-    ) -> Box<dyn Iterator<Item = Result<(OwnedRoomId, Vec<Raw<AnyStrippedStateEvent>>)>> + 'a> {
+    ) -> Box<dyn Iterator<Item = Result<(OwnedRoomId, Vec<Raw<StrippedState>>)>> + 'a> {
         scan_userroom_id_memberstate_tree(user_id, &self.userroomid_knockstate)
     }
 
@@ -502,7 +501,7 @@ impl service::rooms::state_cache::Data for KeyValueDatabase {
         &self,
         user_id: &UserId,
         room_id: &RoomId,
-    ) -> Result<Option<Vec<Raw<AnyStrippedStateEvent>>>> {
+    ) -> Result<Option<Vec<Raw<StrippedState>>>> {
         let mut key = user_id.as_bytes().to_vec();
         key.push(0xff);
         key.extend_from_slice(room_id.as_bytes());
@@ -523,7 +522,7 @@ impl service::rooms::state_cache::Data for KeyValueDatabase {
         &self,
         user_id: &UserId,
         room_id: &RoomId,
-    ) -> Result<Option<Vec<Raw<AnyStrippedStateEvent>>>> {
+    ) -> Result<Option<Vec<Raw<StrippedState>>>> {
         let mut key = user_id.as_bytes().to_vec();
         key.push(0xff);
         key.extend_from_slice(room_id.as_bytes());
@@ -544,7 +543,7 @@ impl service::rooms::state_cache::Data for KeyValueDatabase {
         &self,
         user_id: &UserId,
         room_id: &RoomId,
-    ) -> Result<Option<Vec<Raw<AnyStrippedStateEvent>>>> {
+    ) -> Result<Option<Vec<Raw<StrippedState>>>> {
         let mut key = user_id.as_bytes().to_vec();
         key.push(0xff);
         key.extend_from_slice(room_id.as_bytes());

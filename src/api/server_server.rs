@@ -31,10 +31,9 @@ use ruma::{
             },
             event::{get_event, get_missing_events, get_room_state, get_room_state_ids},
             keys::{claim_keys, get_keys},
-            knock::{create_knock_event_template, send_knock},
             membership::{
-                create_invite, create_join_event, create_leave_event, prepare_join_event,
-                prepare_leave_event,
+                create_invite, create_join_event, create_knock_event, create_leave_event,
+                prepare_join_event, prepare_knock_event, prepare_leave_event,
             },
             openid::get_openid_userinfo,
             query::{get_profile_information, get_room_information},
@@ -1506,13 +1505,13 @@ pub async fn get_room_state_ids_route(
 ///
 /// Creates a knock template.
 pub async fn create_knock_event_template_route(
-    body: Ruma<create_knock_event_template::v1::Request>,
-) -> Result<create_knock_event_template::v1::Response> {
+    body: Ruma<prepare_knock_event::v1::Request>,
+) -> Result<prepare_knock_event::v1::Response> {
     let (mutex_state, room_version_id) =
         member_shake_preamble(&body.sender_servername, &body.room_id).await?;
     let state_lock = mutex_state.lock().await;
 
-    Ok(create_knock_event_template::v1::Response {
+    Ok(prepare_knock_event::v1::Response {
         room_version: room_version_id,
         event: create_membership_template(
             &body.user_id,
@@ -1972,8 +1971,8 @@ pub async fn create_leave_event_route(
 ///
 /// Submits a signed knock event.
 pub async fn create_knock_event_route(
-    body: Ruma<send_knock::v1::Request>,
-) -> Result<send_knock::v1::Response> {
+    body: Ruma<create_knock_event::v1::Request>,
+) -> Result<create_knock_event::v1::Response> {
     let sender_servername = body
         .sender_servername
         .as_ref()
@@ -1988,8 +1987,11 @@ pub async fn create_knock_event_route(
     )
     .await?;
 
-    Ok(send_knock::v1::Response {
-        knock_room_state: services().rooms.state.stripped_state(&body.room_id)?,
+    Ok(create_knock_event::v1::Response {
+        knock_room_state: services()
+            .rooms
+            .state
+            .stripped_state_federation(&body.room_id)?,
     })
 }
 
@@ -2169,7 +2171,8 @@ pub async fn create_invite_route(
         Error::BadRequest(ErrorKind::InvalidParam, "Invalid invite event.")
     })?;
 
-    invite_state.push(pdu.to_stripped_state_event());
+    invite_state.push(pdu.to_stripped_state_event().into());
+    let invite_state = utils::convert_stripped_state(invite_state, &room_id)?;
 
     // If we are active in the room, the remote server will notify us about the join via /send
     if !services()

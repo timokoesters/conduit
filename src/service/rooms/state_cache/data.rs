@@ -2,8 +2,7 @@ use std::{collections::HashSet, sync::Arc};
 
 use crate::{service::appservice::RegistrationInfo, Result};
 use ruma::{
-    events::{AnyStrippedStateEvent, AnySyncStateEvent},
-    serde::Raw,
+    api::client::sync::sync_events::StrippedState, events::AnySyncStateEvent, serde::Raw,
     OwnedRoomId, OwnedServerName, OwnedUserId, RoomId, ServerName, UserId,
 };
 
@@ -14,13 +13,13 @@ pub trait Data: Send + Sync {
         &self,
         user_id: &UserId,
         room_id: &RoomId,
-        last_state: Option<Vec<Raw<AnyStrippedStateEvent>>>,
+        last_state: Option<Vec<Raw<StrippedState>>>,
     ) -> Result<()>;
     fn mark_as_knocked(
         &self,
         user_id: &UserId,
         room_id: &RoomId,
-        last_state: Option<Vec<Raw<AnyStrippedStateEvent>>>,
+        last_state: Option<Vec<Raw<StrippedState>>>,
     ) -> Result<()>;
     fn mark_as_left(&self, user_id: &UserId, room_id: &RoomId) -> Result<()>;
 
@@ -86,32 +85,32 @@ pub trait Data: Send + Sync {
     fn rooms_invited<'a>(
         &'a self,
         user_id: &UserId,
-    ) -> Box<dyn Iterator<Item = Result<(OwnedRoomId, Vec<Raw<AnyStrippedStateEvent>>)>> + 'a>;
+    ) -> Box<dyn Iterator<Item = Result<(OwnedRoomId, Vec<Raw<StrippedState>>)>> + 'a>;
 
     /// Returns an iterator over all rooms a user has knocked on.
     #[allow(clippy::type_complexity)]
     fn rooms_knocked<'a>(
         &'a self,
         user_id: &UserId,
-    ) -> Box<dyn Iterator<Item = Result<(OwnedRoomId, Vec<Raw<AnyStrippedStateEvent>>)>> + 'a>;
+    ) -> Box<dyn Iterator<Item = Result<(OwnedRoomId, Vec<Raw<StrippedState>>)>> + 'a>;
 
     fn invite_state(
         &self,
         user_id: &UserId,
         room_id: &RoomId,
-    ) -> Result<Option<Vec<Raw<AnyStrippedStateEvent>>>>;
+    ) -> Result<Option<Vec<Raw<StrippedState>>>>;
 
     fn knock_state(
         &self,
         user_id: &UserId,
         room_id: &RoomId,
-    ) -> Result<Option<Vec<Raw<AnyStrippedStateEvent>>>>;
+    ) -> Result<Option<Vec<Raw<StrippedState>>>>;
 
     fn left_state(
         &self,
         user_id: &UserId,
         room_id: &RoomId,
-    ) -> Result<Option<Vec<Raw<AnyStrippedStateEvent>>>>;
+    ) -> Result<Option<Vec<Raw<StrippedState>>>>;
 
     /// Returns an iterator over all rooms a user left.
     #[allow(clippy::type_complexity)]

@@ -141,13 +141,16 @@ impl Service {
 
         let power_levels = services().rooms.state_accessor.power_levels(&pdu.room_id)?;
 
-        for action in self.get_actions(
-            user,
-            &ruleset,
-            power_levels.into(),
-            &pdu.to_sync_room_event(),
-            &pdu.room_id,
-        )? {
+        for action in self
+            .get_actions(
+                user,
+                &ruleset,
+                power_levels.into(),
+                &pdu.to_sync_room_event(),
+                &pdu.room_id,
+            )
+            .await?
+        {
             let n = match action {
                 Action::Notify => true,
                 Action::SetTweak(tweak) => {
@@ -175,7 +178,7 @@ impl Service {
     }
 
     #[tracing::instrument(skip(self, user, ruleset, pdu))]
-    pub fn get_actions<'a>(
+    pub async fn get_actions<'a>(
         &self,
         user: &UserId,
         ruleset: &'a Ruleset,
@@ -194,7 +197,7 @@ impl Service {
             power_levels: Some(power_levels),
         };
 
-        Ok(ruleset.get_actions(pdu, &ctx))
+        Ok(ruleset.get_actions(pdu, &ctx).await)
     }
 
     #[tracing::instrument(skip(self, unread, pusher, tweaks, event))]

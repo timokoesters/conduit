@@ -6,11 +6,13 @@ use std::{
 
 pub use data::Data;
 use ruma::{
-    api::client::error::ErrorKind,
+    api::{
+        client::{error::ErrorKind, sync::sync_events::StrippedState},
+        federation::membership::RawStrippedState,
+    },
     events::{
         room::{create::RoomCreateEventContent, member::MembershipState},
-        AnyStrippedStateEvent, StateEventType, TimelineEventType,
-        RECOMMENDED_STRIPPED_STATE_EVENT_TYPES,
+        StateEventType, TimelineEventType, RECOMMENDED_STRIPPED_STATE_EVENT_TYPES,
     },
     room_version_rules::AuthorizationRules,
     serde::Raw,
@@ -264,7 +266,7 @@ impl Service {
     /// Gets all the [recommended stripped state events] from the given room
     ///
     /// [recommended stripped state events]: https://spec.matrix.org/v1.13/client-server-api/#stripped-state
-    pub fn stripped_state(&self, room_id: &RoomId) -> Result<Vec<Raw<AnyStrippedStateEvent>>> {
+    pub fn stripped_state_federation(&self, room_id: &RoomId) -> Result<Vec<RawStrippedState>> {
         RECOMMENDED_STRIPPED_STATE_EVENT_TYPES
             .iter()
             .filter_map(|state_event_type| {
@@ -274,7 +276,21 @@ impl Service {
                     .room_state_get(room_id, state_event_type, "")
                     .transpose()
             })
-            .map(|e| e.map(|e| e.to_stripped_state_event()))
+            .map(|e| e.map(|e| RawStrippedState::Stripped(e.to_stripped_state_event())))
+            .collect()
+    }
+
+    pub fn stripped_state_client(&self, room_id: &RoomId) -> Result<Vec<Raw<StrippedState>>> {
+        RECOMMENDED_STRIPPED_STATE_EVENT_TYPES
+            .iter()
+            .filter_map(|state_event_type| {
+                services()
+                    .rooms
+                    .state_accessor
+                    .room_state_get(room_id, state_event_type, "")
+                    .transpose()
+            })
+            .map(|e| e.map(|e| e.to_stripped_state_event().cast()))
             .collect::<Result<Vec<_>>>()
     }
 
