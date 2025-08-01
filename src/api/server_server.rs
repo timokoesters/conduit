@@ -2101,6 +2101,12 @@ pub async fn create_invite_route(
         ));
     }
 
+    let rules = room_version
+        .rules()
+        .expect("Supported room version has rules");
+
+    utils::check_stripped_state(&invite_room_state, &room_id, &rules)?;
+
     let mut signed_event = utils::to_canonical_object(&event)
         .map_err(|_| Error::BadRequest(ErrorKind::InvalidParam, "Invite event is invalid."))?;
 
@@ -2108,23 +2114,15 @@ pub async fn create_invite_route(
         services().globals.server_name().as_str(),
         services().globals.keypair(),
         &mut signed_event,
-        &room_version
-            .rules()
-            .expect("Supported room version has rules")
-            .redaction,
+        &rules.redaction,
     )
     .map_err(|_| Error::BadRequest(ErrorKind::InvalidParam, "Failed to sign event."))?;
 
     // Generate event id
     let event_id = EventId::parse(format!(
         "${}",
-        ruma::signatures::reference_hash(
-            &signed_event,
-            &room_version
-                .rules()
-                .expect("Supported room version has rules")
-        )
-        .expect("Event format validated when event was hashed")
+        ruma::signatures::reference_hash(&signed_event, &rules)
+            .expect("Event format validated when event was hashed")
     ))
     .expect("ruma's reference hashes are valid event ids");
 
