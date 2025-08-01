@@ -173,6 +173,7 @@ features = [
   "state-res",
   "unstable-msc2448",
   "unstable-msc4186",
+  "unstable-msc4311",
 ]
 git = "https://github.com/ruma/ruma.git"
 
@@ -193,6 +194,8 @@ default = ["backend_rocksdb", "backend_sqlite", "conduit_bin", "systemd"]
 jemalloc = ["tikv-jemallocator"]
 sqlite = ["parking_lot", "rusqlite", "tokio/signal"]
 systemd = ["sd-notify"]
+
+enforce_msc4311 = []
 
 [[bin]]
 name = "conduit"

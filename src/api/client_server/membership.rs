@@ -188,6 +188,9 @@ pub async fn knock_room_route(
             }
             _ => return Err(Error::BadServerResponse("Room version is not supported")),
         };
+        let rules = room_version_id
+            .rules()
+            .expect("Supported room version has rules");
 
         let (event_id, knock_event, _) = services().rooms.helpers.populate_membership_template(
             &knock_template.event,
@@ -211,6 +214,8 @@ pub async fn knock_room_route(
                 },
             )
             .await?;
+
+        utils::check_stripped_state(&send_kock_response.knock_room_state, &room_id, &rules)?;
 
         info!("send_knock finished");
 
