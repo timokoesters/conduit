@@ -132,7 +132,7 @@ impl Service {
         while let Some(event_id) = todo.pop() {
             match services().rooms.timeline.get_pdu(&event_id) {
                 Ok(Some(pdu)) => {
-                    if pdu.room_id != room_id {
+                    if pdu.room_id().as_ref() != room_id {
                         return Err(Error::BadRequest(
                             ErrorKind::forbidden(),
                             "Evil event in db",

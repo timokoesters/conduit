@@ -420,12 +420,9 @@ impl Service {
                         .map(|event| event.sender().server_name().to_owned()),
                 );
 
-                servers.push(
-                    room_id
-                        .server_name()
-                        .expect("Room IDs should always have a server name")
-                        .into(),
-                );
+                if let Some(server_name) = room_id.server_name() {
+                    servers.push(server_name.to_owned())
+                };
 
                 (servers, room_id)
             }

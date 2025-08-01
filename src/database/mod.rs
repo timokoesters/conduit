@@ -690,8 +690,8 @@ impl KeyValueDatabase {
                             .unwrap()
                             .unwrap();
 
-                        if Some(&pdu.room_id) != current_room.as_ref() {
-                            current_room = Some(pdu.room_id.clone());
+                        if Some(pdu.room_id().as_ref()) != current_room.as_deref() {
+                            current_room = Some(pdu.room_id().into_owned());
                         }
                     }
 

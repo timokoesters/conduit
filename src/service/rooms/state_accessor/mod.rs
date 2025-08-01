@@ -330,7 +330,7 @@ impl Service {
         Ok(services()
             .rooms
             .timeline
-            .create_hash_and_sign_event(new_event, sender, room_id, state_lock)
+            .create_hash_and_sign_event(new_event, sender, Some((room_id, state_lock)))
             .is_ok())
     }
 

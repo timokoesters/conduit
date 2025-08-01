@@ -19,7 +19,7 @@ use serde_json::{
     json,
     value::{to_raw_value, RawValue as RawJsonValue},
 };
-use std::{cmp::Ordering, collections::BTreeMap, sync::Arc};
+use std::{borrow::Cow, cmp::Ordering, collections::BTreeMap, sync::Arc};
 use tracing::warn;
 
 /// Content hashes of a PDU.
@@ -32,7 +32,8 @@ pub struct EventHash {
 #[derive(Clone, Deserialize, Debug, Serialize)]
 pub struct PduEvent {
     pub event_id: Arc<EventId>,
-    pub room_id: OwnedRoomId,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub room_id: Option<OwnedRoomId>,
     pub sender: OwnedUserId,
     pub origin_server_ts: UInt,
     #[serde(rename = "type")]
@@ -149,6 +150,22 @@ impl PduEvent {
         (self.redacts.clone(), self.content.clone())
     }
 
+    /// Gets the room id of the PDU.
+    ///
+    /// From `org.matrix.hydra.11`, this constructs the room ID from the event ID if it is an
+    /// `m.room.create` event.
+    pub fn room_id(&self) -> Cow<RoomId> {
+        if let Some(room_id) = &self.room_id {
+            Cow::Borrowed(room_id)
+        } else {
+            Cow::Owned(RoomId::new_v2(self.event_id.localpart()).expect(
+                "Only create events from `org.matrix.hydra.11` onwards\
+                    don't have a room id, and those events use the\
+                    event id as reference hash format",
+            ))
+        }
+    }
+
     #[tracing::instrument(skip(self))]
     pub fn to_sync_room_event(&self) -> Raw<AnySyncTimelineEvent> {
         let (redacts, content) = self.copy_redacts();
@@ -206,7 +223,7 @@ impl PduEvent {
             "event_id": self.event_id,
             "sender": self.sender,
             "origin_server_ts": self.origin_server_ts,
-            "room_id": self.room_id,
+            "room_id": self.room_id(),
         });
 
         if let Some(unsigned) = &self.unsigned {
@@ -231,7 +248,7 @@ impl PduEvent {
             "event_id": self.event_id,
             "sender": self.sender,
             "origin_server_ts": self.origin_server_ts,
-            "room_id": self.room_id,
+            "room_id": self.room_id(),
         });
 
         if let Some(unsigned) = &self.unsigned {
@@ -255,7 +272,7 @@ impl PduEvent {
             "event_id": self.event_id,
             "sender": self.sender,
             "origin_server_ts": self.origin_server_ts,
-            "room_id": self.room_id,
+            "room_id": self.room_id(),
             "state_key": self.state_key,
         });
 
@@ -318,7 +335,7 @@ impl PduEvent {
             "sender": self.sender,
             "origin_server_ts": self.origin_server_ts,
             "redacts": self.redacts,
-            "room_id": self.room_id,
+            "room_id": self.room_id(),
             "state_key": self.state_key,
         });
 
@@ -373,8 +390,8 @@ impl state_res::Event for PduEvent {
         &self.event_id
     }
 
-    fn room_id(&self) -> &RoomId {
-        &self.room_id
+    fn room_id(&self) -> Option<&RoomId> {
+        self.room_id.as_deref()
     }
 
     fn sender(&self) -> &UserId {

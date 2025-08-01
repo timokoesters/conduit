@@ -335,7 +335,7 @@ async fn sync_helper(
                 state_key: Some(sender_user.to_string()),
                 unsigned: None,
                 // The following keys are dropped on conversion
-                room_id: room_id.clone(),
+                room_id: Some(room_id.clone()),
                 prev_events: vec![],
                 depth: uint!(1),
                 auth_events: vec![],

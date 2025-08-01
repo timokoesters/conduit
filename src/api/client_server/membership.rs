@@ -705,14 +705,13 @@ pub(crate) async fn invite_helper(
                     timestamp: None,
                 },
                 sender_user,
-                room_id,
-                &state_lock,
+                Some((room_id, &state_lock)),
             )?;
 
             let invite_room_state = services()
                 .rooms
                 .state
-                .stripped_state_federation(&pdu.room_id)?;
+                .stripped_state_federation(&pdu.room_id())?;
 
             drop(state_lock);
 

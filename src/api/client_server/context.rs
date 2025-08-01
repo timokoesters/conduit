@@ -46,7 +46,7 @@ pub async fn get_context_route(
                 "Base event not found.",
             ))?;
 
-    let room_id = base_event.room_id.clone();
+    let room_id = base_event.room_id();
 
     if !services()
         .rooms

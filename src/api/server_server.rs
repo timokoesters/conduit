@@ -1207,7 +1207,7 @@ pub async fn get_backfill_route(
             matches!(
                 services().rooms.state_accessor.server_can_see_event(
                     sender_servername,
-                    &e.room_id,
+                    &e.room_id(),
                     &e.event_id,
                 ),
                 Ok(true),
@@ -1647,8 +1647,7 @@ fn create_membership_template(
             timestamp: None,
         },
         user_id,
-        room_id,
-        &state_lock,
+        Some((room_id, &state_lock)),
     )?;
 
     drop(state_lock);
