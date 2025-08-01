@@ -1672,7 +1672,7 @@ impl Service {
     /// Users in this room are considered admins by conduit, and the room can be
     /// used to issue admin commands by talking to the server user inside it.
     pub(crate) async fn create_admin_room(&self) -> Result<()> {
-        let room_id = RoomId::new(services().globals.server_name());
+        let room_id = RoomId::new_v1(services().globals.server_name());
 
         services().rooms.short.get_or_create_shortroomid(&room_id)?;
 

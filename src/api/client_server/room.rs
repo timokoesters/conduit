@@ -57,7 +57,7 @@ pub async fn create_room_route(
 
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 
-    let room_id = RoomId::new(services().globals.server_name());
+    let room_id = RoomId::new_v1(services().globals.server_name());
 
     services().rooms.short.get_or_create_shortroomid(&room_id)?;
 
@@ -622,7 +622,7 @@ pub async fn upgrade_room_route(
         .authorization;
 
     // Create a replacement room
-    let replacement_room = RoomId::new(services().globals.server_name());
+    let replacement_room = RoomId::new_v1(services().globals.server_name());
     services()
         .rooms
         .short
@@ -689,10 +689,11 @@ pub async fn upgrade_room_route(
     .map_err(|_| Error::bad_database("Invalid room event in database."))?;
 
     // Use the m.room.tombstone event as the predecessor
-    let predecessor = Some(ruma::events::room::create::PreviousRoom::new(
-        body.room_id.clone(),
-        (*tombstone_event_id).to_owned(),
-    ));
+    #[allow(deprecated)]
+    let predecessor = Some(ruma::events::room::create::PreviousRoom {
+        room_id: body.room_id.clone(),
+        event_id: Some((*tombstone_event_id).to_owned()),
+    });
 
     // Send a m.room.create event containing a predecessor field and the applicable room_version
     if rules.use_room_create_sender {
