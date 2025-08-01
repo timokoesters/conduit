@@ -171,7 +171,7 @@ impl service::rooms::timeline::Data for KeyValueDatabase {
         self.lasttimelinecount_cache
             .lock()
             .unwrap()
-            .insert(pdu.room_id.clone(), PduCount::Normal(count));
+            .insert(pdu.room_id().into_owned(), PduCount::Normal(count));
 
         self.eventid_pduid.insert(pdu.event_id.as_bytes(), pdu_id)?;
         self.eventid_outlierpdu.remove(pdu.event_id.as_bytes())?;

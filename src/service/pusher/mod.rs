@@ -139,7 +139,10 @@ impl Service {
         let mut notify = None;
         let mut tweaks = Vec::new();
 
-        let power_levels = services().rooms.state_accessor.power_levels(&pdu.room_id)?;
+        let power_levels = services()
+            .rooms
+            .state_accessor
+            .power_levels(&pdu.room_id())?;
 
         for action in self
             .get_actions(
@@ -147,7 +150,7 @@ impl Service {
                 &ruleset,
                 power_levels.into(),
                 &pdu.to_sync_room_event(),
-                &pdu.room_id,
+                &pdu.room_id(),
             )
             .await?
         {
@@ -231,7 +234,7 @@ impl Service {
 
                 notifi.prio = NotificationPriority::Low;
                 notifi.event_id = Some((*event.event_id).to_owned());
-                notifi.room_id = Some((*event.room_id).to_owned());
+                notifi.room_id = Some((*event.room_id()).to_owned());
                 // TODO: missed calls
                 notifi.counts = NotificationCounts::new(unread, uint!(0));
 
@@ -258,7 +261,8 @@ impl Service {
 
                     notifi.sender_display_name = services().users.displayname(&event.sender)?;
 
-                    notifi.room_name = services().rooms.state_accessor.get_name(&event.room_id)?;
+                    notifi.room_name =
+                        services().rooms.state_accessor.get_name(&event.room_id())?;
 
                     self.send_request(&http.url, send_event_notification::v1::Request::new(notifi))
                         .await?;

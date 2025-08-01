@@ -460,12 +460,16 @@ impl Service {
             // Build map of auth events
             let mut auth_events = HashMap::new();
             let mut auth_events_by_event_id = HashMap::new();
-            for id in &incoming_pdu.auth_events {
+
+            let insert_auth_event = |auth_events: &mut HashMap<_, _>,
+                                     auth_events_by_event_id: &mut HashMap<_, _>,
+                                     id|
+             -> Result<()> {
                 let auth_event = match services().rooms.timeline.get_pdu(id)? {
                     Some(e) => e,
                     None => {
                         warn!("Could not find auth event {}", id);
-                        continue;
+                        return Ok(());
                     }
                 };
 
@@ -480,6 +484,25 @@ impl Service {
                     ),
                     auth_event,
                 );
+
+                Ok(())
+            };
+
+            for id in &incoming_pdu.auth_events {
+                insert_auth_event(&mut auth_events, &mut auth_events_by_event_id, id)?;
+            }
+
+            // Create event is always needed to authorize any event (besides the create events itself)
+            if room_version_rules
+                .authorization
+                .room_create_event_id_as_room_id
+            {
+                if let Some(room_id) = &incoming_pdu.room_id {
+                    let event_id = EventId::parse(format!("${}",room_id.strip_sigil())).map_err(|_| {
+                    Error::BadRequest(ErrorKind::InvalidParam, "Room ID cannot be converted to event ID, despite room version rules requiring so.")
+                })?;
+                    insert_auth_event(&mut auth_events, &mut auth_events_by_event_id, &event_id)?;
+                }
             }
 
             // first time we are doing any sort of auth check, so we check state-independent
@@ -856,7 +879,7 @@ impl Service {
                         !services().rooms.state_accessor.user_can_redact(
                             redact_id,
                             &incoming_pdu.sender,
-                            &incoming_pdu.room_id,
+                            &incoming_pdu.room_id(),
                             true,
                         )?
                     } else {
@@ -866,7 +889,7 @@ impl Service {
                     !services().rooms.state_accessor.user_can_redact(
                         redact_id,
                         &incoming_pdu.sender,
-                        &incoming_pdu.room_id,
+                        &incoming_pdu.room_id(),
                         true,
                     )?
                 } else {
@@ -1979,8 +2002,12 @@ impl Service {
     }
 
     fn check_room_id(&self, room_id: &RoomId, pdu: &PduEvent) -> Result<()> {
-        if pdu.room_id != room_id {
-            warn!("Found event from room {} in room {}", pdu.room_id, room_id);
+        if pdu.room_id().as_ref() != room_id {
+            warn!(
+                "Found event from room {} in room {}",
+                pdu.room_id(),
+                room_id
+            );
             return Err(Error::BadRequest(
                 ErrorKind::InvalidParam,
                 "Event has wrong room id",

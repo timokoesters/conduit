@@ -204,6 +204,89 @@ pub async fn get_state_event_for_empty_key_route(
     Ok(response.into())
 }
 
+/// # `GET /_matrix/client/r0/rooms/{roomid}/state/{eventType}/{stateKey}`
+///
+/// Get single state event of a room.
+///
+/// - If not joined: Only works if current room history visibility is world readable
+pub async fn get_state_events_for_key_route(
+    body: Ruma<get_state_event_for_key::v3::Request>,
+) -> Result<get_state_event_for_key::v3::Response> {
+    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
+
+    if !services()
+        .rooms
+        .state_accessor
+        .user_can_see_state_events(sender_user, &body.room_id)?
+    {
+        return Err(Error::BadRequest(
+            ErrorKind::forbidden(),
+            "You don't have permission to view the room state.",
+        ));
+    }
+
+    let event = services()
+        .rooms
+        .state_accessor
+        .room_state_get(&body.room_id, &body.event_type, &body.state_key)?
+        .ok_or_else(|| {
+            warn!(
+                "State event {:?} not found in room {:?}",
+                &body.event_type, &body.room_id
+            );
+            Error::BadRequest(ErrorKind::NotFound, "State event not found.")
+        })?;
+
+    Ok(get_state_event_for_key::v3::Response {
+        // NOTE: In the sprit of implementing each change atomically, this will be properly
+        // handled in the next commit.
+        event_or_content: serde_json::from_str(event.content.get())
+            .map_err(|_| Error::bad_database("Invalid event content in database"))?,
+    })
+}
+
+/// # `GET /_matrix/client/r0/rooms/{roomid}/state/{eventType}`
+///
+/// Get single state event of a room.
+///
+/// - If not joined: Only works if current room history visibility is world readable
+pub async fn get_state_events_for_empty_key_route(
+    body: Ruma<get_state_event_for_key::v3::Request>,
+) -> Result<RumaResponse<get_state_event_for_key::v3::Response>> {
+    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
+
+    if !services()
+        .rooms
+        .state_accessor
+        .user_can_see_state_events(sender_user, &body.room_id)?
+    {
+        return Err(Error::BadRequest(
+            ErrorKind::forbidden(),
+            "You don't have permission to view the room state.",
+        ));
+    }
+
+    let event = services()
+        .rooms
+        .state_accessor
+        .room_state_get(&body.room_id, &body.event_type, "")?
+        .ok_or_else(|| {
+            warn!(
+                "State event {:?} not found in room {:?}",
+                &body.event_type, &body.room_id
+            );
+            Error::BadRequest(ErrorKind::NotFound, "State event not found.")
+        })?;
+
+    Ok(get_state_event_for_key::v3::Response {
+        // NOTE: In the sprit of implementing each change atomically, this will be properly
+        // handled in the next commit.
+        event_or_content: serde_json::from_str(event.content.get())
+            .map_err(|_| Error::bad_database("Invalid event content in database"))?,
+    }
+    .into())
+}
+
 async fn send_state_event_for_key_helper(
     sender: &UserId,
     room_id: &RoomId,

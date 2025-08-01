@@ -705,16 +705,15 @@ pub(crate) async fn invite_helper(
                     timestamp: None,
                 },
                 sender_user,
-                room_id,
-                &state_lock,
+                Some((room_id, &state_lock)),
             )?;
 
             let mut invite_room_state = services()
                 .rooms
                 .state
-                .stripped_state_federation(&pdu.room_id)?;
+                .stripped_state_federation(&pdu.room_id())?;
             if let Some(sender) = services().rooms.state_accessor.room_state_get(
-                &pdu.room_id,
+                &pdu.room_id(),
                 &StateEventType::RoomMember,
                 sender_user.as_str(),
             )? {

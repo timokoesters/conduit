@@ -23,7 +23,7 @@ use ruma::{
     },
     int,
     serde::JsonObject,
-    CanonicalJsonObject, CanonicalJsonValue, OwnedRoomAliasId, OwnedUserId, RoomAliasId, RoomId,
+    CanonicalJsonObject, CanonicalJsonValue, OwnedRoomAliasId, OwnedUserId, RoomAliasId,
 };
 use serde::Deserialize;
 use serde_json::{json, value::to_raw_value};
@@ -56,21 +56,6 @@ pub async fn create_room_route(
     use create_room::v3::RoomPreset;
 
     let sender_user = body.sender_user.as_ref().expect("user is authenticated");
-
-    let room_id = RoomId::new_v1(services().globals.server_name());
-
-    services().rooms.short.get_or_create_shortroomid(&room_id)?;
-
-    let mutex_state = Arc::clone(
-        services()
-            .globals
-            .roomid_mutex_state
-            .write()
-            .await
-            .entry(room_id.clone())
-            .or_default(),
-    );
-    let state_lock = mutex_state.lock().await;
 
     if !services().globals.allow_room_creation()
         && body.appservice_info.is_none()
@@ -250,23 +235,16 @@ pub async fn create_room_route(
     }
 
     // 1. The room create event
-    services()
+    let (room_id, mutex_state) = services()
         .rooms
         .timeline
-        .build_and_append_pdu(
-            PduBuilder {
-                event_type: TimelineEventType::RoomCreate,
-                content: to_raw_value(&content).expect("event is valid, we just created it"),
-                unsigned: None,
-                state_key: Some("".to_owned()),
-                redacts: None,
-                timestamp: None,
-            },
+        .send_create_room(
+            to_raw_value(&content).expect("event is valid, we just created it"),
             sender_user,
-            &room_id,
-            &state_lock,
+            &rules,
         )
         .await?;
+    let state_lock = mutex_state.lock().await;
 
     // 2. Let the room creator join
     services()
@@ -541,7 +519,7 @@ pub async fn get_room_event_route(
 
     if !services().rooms.state_accessor.user_can_see_event(
         sender_user,
-        &event.room_id,
+        &event.room_id(),
         &body.event_id,
     )? {
         return Err(Error::BadRequest(
@@ -621,61 +599,6 @@ pub async fn upgrade_room_route(
         .expect("Supported room version must have rules.")
         .authorization;
 
-    // Create a replacement room
-    let replacement_room = RoomId::new_v1(services().globals.server_name());
-    services()
-        .rooms
-        .short
-        .get_or_create_shortroomid(&replacement_room)?;
-
-    let mutex_state = Arc::clone(
-        services()
-            .globals
-            .roomid_mutex_state
-            .write()
-            .await
-            .entry(body.room_id.clone())
-            .or_default(),
-    );
-    let state_lock = mutex_state.lock().await;
-
-    // Send a m.room.tombstone event to the old room to indicate that it is not intended to be used any further
-    // Fail if the sender does not have the required permissions
-    let tombstone_event_id = services()
-        .rooms
-        .timeline
-        .build_and_append_pdu(
-            PduBuilder {
-                event_type: TimelineEventType::RoomTombstone,
-                content: to_raw_value(&RoomTombstoneEventContent {
-                    body: "This room has been replaced".to_owned(),
-                    replacement_room: replacement_room.clone(),
-                })
-                .expect("event is valid, we just created it"),
-                unsigned: None,
-                state_key: Some("".to_owned()),
-                redacts: None,
-                timestamp: None,
-            },
-            sender_user,
-            &body.room_id,
-            &state_lock,
-        )
-        .await?;
-
-    // Change lock to replacement room
-    drop(state_lock);
-    let mutex_state = Arc::clone(
-        services()
-            .globals
-            .roomid_mutex_state
-            .write()
-            .await
-            .entry(replacement_room.clone())
-            .or_default(),
-    );
-    let state_lock = mutex_state.lock().await;
-
     // Get the old room creation event
     let mut create_event_content = serde_json::from_str::<CanonicalJsonObject>(
         services()
@@ -689,11 +612,9 @@ pub async fn upgrade_room_route(
     .map_err(|_| Error::bad_database("Invalid room event in database."))?;
 
     // Use the m.room.tombstone event as the predecessor
-    #[allow(deprecated)]
-    let predecessor = Some(ruma::events::room::create::PreviousRoom {
-        room_id: body.room_id.clone(),
-        event_id: Some((*tombstone_event_id).to_owned()),
-    });
+    let predecessor = Some(ruma::events::room::create::PreviousRoom::new(
+        body.room_id.clone(),
+    ));
 
     // Send a m.room.create event containing a predecessor field and the applicable room_version
     if rules.use_room_create_sender {
@@ -746,24 +667,56 @@ pub async fn upgrade_room_route(
         ));
     }
 
+    // Lock the room being replaced
+    let mutex_state = Arc::clone(
+        services()
+            .globals
+            .roomid_mutex_state
+            .write()
+            .await
+            .entry(body.room_id.clone())
+            .or_default(),
+    );
+    let state_lock = mutex_state.lock().await;
+
+    // Create a replacement room
+    let (replacement_room, mutex_state) = services()
+        .rooms
+        .timeline
+        .send_create_room(
+            to_raw_value(&create_event_content).expect("event is valid, we just created it"),
+            sender_user,
+            &rules,
+        )
+        .await?;
+
+    // Send a m.room.tombstone event to the old room to indicate that it is not intended to be used any further
+    // Fail if the sender does not have the required permissions
     services()
         .rooms
         .timeline
         .build_and_append_pdu(
             PduBuilder {
-                event_type: TimelineEventType::RoomCreate,
-                content: to_raw_value(&create_event_content)
-                    .expect("event is valid, we just created it"),
+                event_type: TimelineEventType::RoomTombstone,
+                content: to_raw_value(&RoomTombstoneEventContent {
+                    body: "This room has been replaced".to_owned(),
+                    replacement_room: replacement_room.clone(),
+                })
+                .expect("event is valid, we just created it"),
                 unsigned: None,
                 state_key: Some("".to_owned()),
                 redacts: None,
                 timestamp: None,
             },
             sender_user,
-            &replacement_room,
+            &body.room_id,
             &state_lock,
         )
         .await?;
+
+    // Change lock to replacement room
+    drop(state_lock);
+    let state_lock = mutex_state.lock().await;
 
     // Join the new room
     services()

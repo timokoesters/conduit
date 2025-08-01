@@ -585,7 +585,7 @@ impl Service {
                     let unread: UInt = services()
                         .rooms
                         .user
-                        .notification_count(userid, &pdu.room_id)
+                        .notification_count(userid, &pdu.room_id())
                         .map_err(|e| (kind.clone(), e))?
                         .try_into()
                         .expect("notification count can't go that high");

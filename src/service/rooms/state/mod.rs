@@ -100,7 +100,7 @@ impl Service {
                         .roomid_spacehierarchy_cache
                         .lock()
                         .await
-                        .remove(&pdu.room_id);
+                        .remove(pdu.room_id().as_ref());
                 }
                 _ => continue,
             }
@@ -197,7 +197,7 @@ impl Service {
             .short
             .get_or_create_shorteventid(&new_pdu.event_id)?;
 
-        let previous_shortstatehash = self.get_room_shortstatehash(&new_pdu.room_id)?;
+        let previous_shortstatehash = self.get_room_shortstatehash(&new_pdu.room_id())?;
 
         if let Some(p) = previous_shortstatehash {
             self.db.set_event_state(shorteventid, p)?;
@@ -365,9 +365,15 @@ impl Service {
             return Ok(HashMap::new());
         };
 
-        let auth_events =
+        let mut auth_events =
             state_res::auth_types_for_event(kind, sender, state_key, content, auth_rules)
                 .expect("content is a valid JSON object");
+
+        // We always need the room create to check the state anyways, we just need to make sure
+        // to remove it when creating events if required to do so by the auth rules.
+        if auth_rules.room_create_event_id_as_room_id {
+            auth_events.push((StateEventType::RoomCreate, "".into()));
+        }
 
         let mut sauthevents = auth_events
             .into_iter()

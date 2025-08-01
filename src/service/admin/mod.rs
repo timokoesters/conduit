@@ -1672,21 +1672,6 @@ impl Service {
     /// Users in this room are considered admins by conduit, and the room can be
     /// used to issue admin commands by talking to the server user inside it.
     pub(crate) async fn create_admin_room(&self) -> Result<()> {
-        let room_id = RoomId::new_v1(services().globals.server_name());
-
-        services().rooms.short.get_or_create_shortroomid(&room_id)?;
-
-        let mutex_state = Arc::clone(
-            services()
-                .globals
-                .roomid_mutex_state
-                .write()
-                .await
-                .entry(room_id.clone())
-                .or_default(),
-        );
-        let state_lock = mutex_state.lock().await;
-
         // Create a user for the server
         let conduit_user = services().globals.server_user();
 
@@ -1707,23 +1692,16 @@ impl Service {
         content.room_version = room_version;
 
         // 1. The room create event
-        services()
+        let (room_id, mutex_state) = services()
             .rooms
             .timeline
-            .build_and_append_pdu(
-                PduBuilder {
-                    event_type: TimelineEventType::RoomCreate,
-                    content: to_raw_value(&content).expect("event is valid, we just created it"),
-                    unsigned: None,
-                    state_key: Some("".to_owned()),
-                    redacts: None,
-                    timestamp: None,
-                },
+            .send_create_room(
+                to_raw_value(&content).expect("event is valid, we just created it"),
                 conduit_user,
-                &room_id,
-                &state_lock,
+                &rules,
             )
             .await?;
+        let state_lock = mutex_state.lock().await;
 
         // 2. Make conduit bot join
         services()

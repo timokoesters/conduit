@@ -93,7 +93,7 @@ pub async fn search_events_route(
                         && services()
                             .rooms
                             .state_accessor
-                            .user_can_see_event(sender_user, &pdu.room_id, &pdu.event_id)
+                            .user_can_see_event(sender_user, &pdu.room_id(), &pdu.event_id)
                             .unwrap_or(false)
                 })
                 .map(|pdu| pdu.to_room_event())
