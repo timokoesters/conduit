@@ -488,15 +488,11 @@ impl Service {
             .authorization;
 
         room_create
-            // NOTE: This is because project hydra's client-side was made public before the server
-            // side. This will be fixed by using `creators` instead in part 2/2.
-            .creator(&rules)
+            .creators(&rules)
             .map_err(|e| {
                 error!("Failed to get creators of room id {}: {e}", room_id);
                 Error::BadDatabase("RoomCreateEvent has invalid creators")
             })
-            .map(|creator| {
-                RoomPowerLevels::new(power_levels.into(), &rules, [creator.into_owned()])
-            })
+            .map(|creators| RoomPowerLevels::new(power_levels.into(), &rules, creators))
     }
 }

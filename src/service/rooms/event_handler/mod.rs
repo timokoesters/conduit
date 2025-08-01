@@ -1386,7 +1386,7 @@ impl Service {
             // events are then sorted by power level, time,
             // and lexically by event_id.
             Ok((
-                int!(0),
+                int!(0).into(),
                 MilliSecondsSinceUnixEpoch(
                     eventid_info
                         .get(event_id)
