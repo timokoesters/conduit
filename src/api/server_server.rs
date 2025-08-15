@@ -2169,7 +2169,7 @@ pub async fn create_invite_route(
     })?;
 
     invite_state.push(pdu.to_stripped_state_event().into());
-    let invite_state = utils::convert_stripped_state(invite_state, &room_id)?;
+    let invite_state = utils::convert_stripped_state(invite_state, &rules)?;
 
     // If we are active in the room, the remote server will notify us about the join via /send
     if !services()
