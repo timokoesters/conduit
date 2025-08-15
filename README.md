@@ -44,14 +44,14 @@ There are still a few important features missing:
 
 1. Look for an issue you would like to work on and make sure no one else is currently working on it.
 2. Tell us that you are working on the issue (comment on the issue or chat in
-   [#conduit:fachschaften.org](https://matrix.to/#/#conduit:fachschaften.org)). If it is more complicated, please explain your approach and ask questions.
+   [#conduit:ahimsa.chat](https://matrix.to/#/#conduit:ahimsa.chat)). If it is more complicated, please explain your approach and ask questions.
 3. Fork the repo, create a new branch and push commits.
 4. Submit a MR
 
 #### Contact
 
 If you have any questions, feel free to
-- Ask in `#conduit:fachschaften.org` on Matrix
+- Ask in `#conduit:ahimsa.chat` on Matrix
 - Write an E-Mail to `conduit@koesters.xyz`
 - Send an direct message to `@timokoesters:fachschaften.org` on Matrix
 - [Open an issue on GitLab](https://gitlab.com/famedly/conduit/-/issues/new)
