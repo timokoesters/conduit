@@ -22,7 +22,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use crate::{service::pdu::gen_event_id_canonical_json, services, Result};
+use crate::{service::pdu::gen_event_id_canonical_json, Result};
 
 pub fn millis_since_unix_epoch() -> u64 {
     SystemTime::now()
@@ -202,20 +202,14 @@ impl fmt::Display for HtmlEscape<'_> {
 /// Converts `RawStrippedState` (federation format) into `Raw<StrippedState>` (client format)
 pub fn convert_stripped_state(
     stripped_state: Vec<RawStrippedState>,
-    room_id: &RoomId,
+    rules: &RoomVersionRules,
 ) -> Result<Vec<Raw<StrippedState>>> {
     stripped_state
         .into_iter()
         .map(|stripped_state| match stripped_state {
             RawStrippedState::Stripped(state) => Ok(state.cast()),
             RawStrippedState::Pdu(state) => {
-                let rules = services()
-                    .rooms
-                    .state
-                    .get_room_version(room_id)?
-                    .rules()
-                    .expect("Supported room version must have rules.");
-                let (event_id, mut event) = gen_event_id_canonical_json(&state, &rules)?;
+                let (event_id, mut event) = gen_event_id_canonical_json(&state, rules)?;
 
                 event.retain(|k, _| {
                     matches!(
