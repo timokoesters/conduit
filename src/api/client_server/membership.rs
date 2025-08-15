@@ -231,7 +231,7 @@ pub async fn knock_room_route(
                 .to_stripped_state_event()
                 .into(),
         );
-        let stripped_state = utils::convert_stripped_state(stripped_state, &room_id)?;
+        let stripped_state = utils::convert_stripped_state(stripped_state, &rules)?;
 
         services().rooms.state_cache.update_membership(
             &room_id,
