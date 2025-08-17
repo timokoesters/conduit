@@ -23,13 +23,15 @@ use ruma::{
     },
     int,
     serde::JsonObject,
-    CanonicalJsonObject, CanonicalJsonValue, OwnedRoomAliasId, OwnedUserId, RoomAliasId,
+    CanonicalJsonObject, CanonicalJsonValue, Int, OwnedRoomAliasId, OwnedUserId, RoomAliasId,
+    RoomVersionId,
 };
 use serde::Deserialize;
 use serde_json::{json, value::to_raw_value};
 use std::{
     cmp::max,
     collections::{BTreeMap, HashSet},
+    str::FromStr,
     sync::Arc,
 };
 use tracing::{error, info, warn};
@@ -600,16 +602,29 @@ pub async fn upgrade_room_route(
         .authorization;
 
     // Get the old room creation event
-    let mut create_event_content = serde_json::from_str::<CanonicalJsonObject>(
-        services()
-            .rooms
-            .state_accessor
-            .room_state_get(&body.room_id, &StateEventType::RoomCreate, "")?
-            .ok_or_else(|| Error::bad_database("Found room without m.room.create event."))?
-            .content
-            .get(),
-    )
-    .map_err(|_| Error::bad_database("Invalid room event in database."))?;
+    let create_event = services()
+        .rooms
+        .state_accessor
+        .room_state_get(&body.room_id, &StateEventType::RoomCreate, "")?
+        .ok_or_else(|| Error::bad_database("Found room without m.room.create event."))?;
+
+    let mut create_event_content =
+        serde_json::from_str::<CanonicalJsonObject>(create_event.content.get())
+            .map_err(|_| Error::bad_database("Invalid room event in database."))?;
+
+    let old_rules = if let Some(CanonicalJsonValue::String(old_version)) =
+        create_event_content.get("room_version")
+    {
+        RoomVersionId::from_str(old_version)
+            .map_err(|_| Error::BadDatabase("Create event must be a valid room version ID"))?
+            .rules()
+            .expect("Supported room version must have rules")
+            .authorization
+    } else {
+        return Err(Error::BadDatabase(
+            "Room create event does not have content",
+        ));
+    };
 
     // Use the m.room.tombstone event as the predecessor
     let predecessor = Some(ruma::events::room::create::PreviousRoom::new(
@@ -772,8 +787,7 @@ pub async fn upgrade_room_route(
                 None => continue, // Skipping missing events.
             };
 
-        if event_type == StateEventType::RoomPowerLevels && rules.explicitly_privilege_room_creators
-        {
+        if event_type == StateEventType::RoomPowerLevels {
             let mut pl_event_content: CanonicalJsonObject =
                 serde_json::from_str(event_content.get()).map_err(|e| {
                     error!(
@@ -783,13 +797,41 @@ pub async fn upgrade_room_route(
                     Error::BadDatabase("Invalid m.room.power_levels event content in room")
                 })?;
 
-            if let Some(CanonicalJsonValue::Object(users)) = pl_event_content.get_mut("users") {
-                users.remove(sender_user.as_str());
+            let mut users_was_empty = false;
 
-                if rules.additional_room_creators {
-                    for user in &body.additional_creators {
-                        users.remove(user.as_str());
+            if let CanonicalJsonValue::Object(users) = pl_event_content
+                .entry("users".to_owned())
+                .or_insert_with(|| {
+                    users_was_empty = true;
+                    CanonicalJsonValue::Object(BTreeMap::new())
+                })
+            {
+                if rules.explicitly_privilege_room_creators {
+                    users.remove(sender_user.as_str());
+
+                    if rules.additional_room_creators {
+                        for user in &body.additional_creators {
+                            users.remove(user.as_str());
+                        }
                     }
+                } else if old_rules.explicitly_privilege_room_creators {
+                    users.insert(create_event.sender.to_string(), Int::MAX.into());
+
+                    if old_rules.additional_room_creators {
+                        if let Some(CanonicalJsonValue::Array(creators)) =
+                            create_event_content.get("additional_creators")
+                        {
+                            for creator in creators {
+                                if let CanonicalJsonValue::String(creator) = creator {
+                                    users.insert(creator.to_owned(), Int::MAX.into());
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if users.is_empty() && users_was_empty {
+                    pl_event_content.remove("users");
                 }
             }
 
