@@ -5,24 +5,26 @@ use cmp::Ordering;
 use rand::prelude::*;
 use ring::digest;
 use ruma::{
-    api::{
-        client::{error::ErrorKind, sync::sync_events::StrippedState},
-        federation::membership::RawStrippedState,
-    },
+    api::{client::error::ErrorKind, federation::membership::RawStrippedState},
     canonical_json::try_from_json_map,
-    events::{AnyStateEvent, StateEventType},
+    events::AnyStrippedStateEvent,
     room_version_rules::RoomVersionRules,
     serde::Raw,
+    signatures::Verified,
     CanonicalJsonError, CanonicalJsonObject, CanonicalJsonValue, RoomId,
 };
 use serde_json::value::to_raw_value;
 use std::{
-    cmp, fmt,
+    cmp,
+    collections::BTreeMap,
+    fmt,
     str::FromStr,
     time::{SystemTime, UNIX_EPOCH},
 };
+use tokio::sync::RwLock;
+use tracing::warn;
 
-use crate::{service::pdu::gen_event_id_canonical_json, Result};
+use crate::{service::pdu::gen_event_id_canonical_json, services, Error, Result};
 
 pub fn millis_since_unix_epoch() -> u64 {
     SystemTime::now()
@@ -199,45 +201,39 @@ impl fmt::Display for HtmlEscape<'_> {
     }
 }
 
-/// Converts `RawStrippedState` (federation format) into `Raw<StrippedState>` (client format)
+/// Converts `RawStrippedState` (federation format) into `Raw<AnyStrippedState>` (client format)
 pub fn convert_stripped_state(
     stripped_state: Vec<RawStrippedState>,
-    rules: &RoomVersionRules,
-) -> Result<Vec<Raw<StrippedState>>> {
+) -> Result<Vec<Raw<AnyStrippedStateEvent>>> {
     stripped_state
         .into_iter()
         .map(|stripped_state| match stripped_state {
-            RawStrippedState::Stripped(state) => Ok(state.cast()),
+            RawStrippedState::Stripped(state) => Ok(state),
             RawStrippedState::Pdu(state) => {
-                let (event_id, mut event) = gen_event_id_canonical_json(&state, rules)?;
+                let mut event: CanonicalJsonObject =
+                    serde_json::from_str(state.get()).map_err(|e| {
+                        warn!("Error parsing incoming event {:?}: {:?}", state, e);
+                        Error::BadServerResponse("Invalid PDU in server response")
+                    })?;
 
                 event.retain(|k, _| {
-                    matches!(
-                        k.as_str(),
-                        "content"
-                            | "event_id"
-                            | "origin_server_ts"
-                            | "room_id"
-                            | "sender"
-                            | "state_key"
-                            | "type"
-                            | "unsigned"
-                    )
+                    matches!(k.as_str(), "content" | "sender" | "state_key" | "type")
                 });
-
-                event.insert("event_id".to_owned(), event_id.as_str().into());
 
                 let raw_value = to_raw_value(&CanonicalJsonValue::Object(event))
                     .expect("To raw json should not fail since only change was adding signature");
 
-                Ok(Raw::<AnyStateEvent>::from_json(raw_value).cast())
+                Ok(Raw::<AnyStrippedStateEvent>::from_json(raw_value))
             }
         })
         .collect()
 }
 
-pub fn check_stripped_state(
-    stripped_state: &Vec<RawStrippedState>,
+/// Performs checks on incoming stripped state, as per [MSC4311]
+///
+/// [MSC4311]: https://github.com/matrix-org/matrix-spec-proposals/pull/4311
+pub async fn check_stripped_state(
+    stripped_state: &[RawStrippedState],
     room_id: &RoomId,
     rules: &RoomVersionRules,
 ) -> Result<()> {
@@ -246,65 +242,106 @@ pub fn check_stripped_state(
         return Ok(());
     }
 
+    #[cfg(feature = "enforce_msc4311")]
     let mut seen_create_event = false;
     #[cfg(feature = "enforce_msc4311")]
-    let mut seen_valid_create_event = false;
+    if !stripped_state.iter().all(|state| match state {
+        RawStrippedState::Pdu(_) => true,
+        RawStrippedState::Stripped(_) => false,
+    }) {
+        return Err(Error::BadRequest(
+            ErrorKind::InvalidParam,
+            "Non-pdu found in stripped state",
+        ));
+    }
 
-    for state in stripped_state {
-        match state {
-            RawStrippedState::Pdu(pdu) => {
-                let Ok((event_id, value)) = gen_event_id_canonical_json(pdu, rules) else {
-                    continue;
-                };
-                let Some(event_type) = value.get("type").and_then(|t| t.as_str()) else {
-                    continue;
-                };
-                if event_type != "m.room.create" {
-                    continue;
-                }
-                if seen_create_event {
-                    return Err(error::Error::BadRequest(
-                        ErrorKind::InvalidParam,
-                        "Stripped state has multiple create events",
-                    ));
-                }
-                if event_id.localpart() != room_id.strip_sigil() {
-                    return Err(error::Error::BadRequest(
-                        ErrorKind::InvalidParam,
-                        "Room ID generated from create event does not match that from the request",
-                    ));
-                }
-
-                seen_create_event = true;
-                #[cfg(feature = "enforce_msc4311")]
-                {
-                    seen_valid_create_event = true;
-                }
+    let stripped_state = stripped_state
+        .iter()
+        .filter_map(|event| {
+            if let RawStrippedState::Pdu(pdu) = event {
+                Some(pdu)
+            } else {
+                None
             }
-            RawStrippedState::Stripped(event) => {
-                let Ok(event) = event.deserialize() else {
-                    continue;
-                };
+        })
+        .map(|pdu| gen_event_id_canonical_json(pdu, rules))
+        .collect::<Result<Vec<_>>>()?;
 
-                if event.event_type() != StateEventType::RoomCreate {
-                    continue;
-                }
+    let pub_key_map = RwLock::new(BTreeMap::new());
 
-                if seen_create_event {
-                    return Err(error::Error::BadRequest(
-                        ErrorKind::InvalidParam,
-                        "Stripped state has multiple create events",
-                    ));
-                }
+    for (_, pdu) in &stripped_state {
+        services()
+            .rooms
+            .event_handler
+            .fetch_required_signing_keys(pdu, &pub_key_map)
+            .await?;
+    }
 
+    for (event_id, pdu) in stripped_state {
+        let filtered_keys = services()
+            .rooms
+            .event_handler
+            .filter_required_signing_keys(&pdu, &pub_key_map, rules)
+            .await?;
+
+        if !ruma::signatures::verify_event(&filtered_keys, &pdu, rules)
+            .is_ok_and(|verified| verified == Verified::All)
+        {
+            return Err(Error::BadRequest(
+                ErrorKind::InvalidParam,
+                "Signature check on stripped state failed",
+            ));
+        }
+
+        let Some(event_type) = pdu.get("type").and_then(|t| t.as_str()) else {
+            return Err(Error::BadRequest(
+                ErrorKind::InvalidParam,
+                "Event with no type returned",
+            ));
+        };
+
+        if !(event_type == "m.room.create" && rules.authorization.room_create_event_id_as_room_id) {
+            let pdu_room_id = pdu
+                .get("room_id")
+                .ok_or_else(|| Error::BadRequest(ErrorKind::InvalidParam, "Event missing room ID"))
+                .map(|v| v.as_str())?
+                .ok_or_else(|| {
+                    Error::BadRequest(ErrorKind::InvalidParam, "Event has non-string room id")
+                })
+                .map(RoomId::parse)?
+                .map_err(|_| {
+                    Error::BadRequest(ErrorKind::InvalidParam, "Event has invalid room ID")
+                })?;
+
+            if pdu_room_id != room_id {
+                return Err(Error::BadRequest(
+                    ErrorKind::InvalidParam,
+                    "Stripped state room ID does not match the one of the request",
+                ));
+            }
+        }
+
+        if event_type == "m.room.create" {
+            #[allow(clippy::collapsible_if)]
+            if event_id.localpart() != room_id.strip_sigil()
+                && rules.authorization.room_create_event_id_as_room_id
+            {
+                return Err(Error::BadRequest(
+                    ErrorKind::InvalidParam,
+                    "Room ID generated from create event does not match that from the request",
+                ));
+            }
+
+            #[cfg(feature = "enforce_msc4311")]
+            {
                 seen_create_event = true;
             }
         }
     }
 
     #[cfg(feature = "enforce_msc4311")]
-    if !seen_valid_create_event {
-        return Err(error::Error::BadRequest(
+    if !seen_create_event {
+        return Err(Error::BadRequest(
             ErrorKind::InvalidParam,
             "Stripped state contained no valid create PDUs",
         ));

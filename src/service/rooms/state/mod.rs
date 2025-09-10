@@ -6,13 +6,11 @@ use std::{
 
 pub use data::Data;
 use ruma::{
-    api::{
-        client::{error::ErrorKind, sync::sync_events::StrippedState},
-        federation::membership::RawStrippedState,
-    },
+    api::{client::error::ErrorKind, federation::membership::RawStrippedState},
     events::{
         room::{create::RoomCreateEventContent, member::MembershipState},
-        StateEventType, TimelineEventType, RECOMMENDED_STRIPPED_STATE_EVENT_TYPES,
+        AnyStrippedStateEvent, StateEventType, TimelineEventType,
+        RECOMMENDED_STRIPPED_STATE_EVENT_TYPES,
     },
     room_version_rules::AuthorizationRules,
     serde::Raw,
@@ -273,31 +271,28 @@ impl Service {
                 services()
                     .rooms
                     .state_accessor
-                    .room_state_get(room_id, state_event_type, "")
+                    .room_state_get_id(room_id, state_event_type, "")
                     .transpose()
             })
             .map(|e| {
-                if e.as_ref()
-                    .is_ok_and(|e| e.kind == TimelineEventType::RoomCreate)
-                {
-                    e.and_then(|e| {
-                        services()
-                            .rooms
-                            .timeline
-                            .get_pdu_json(&e.event_id)
-                            .transpose()
-                            .expect("Event must be present for it to make up the current state")
-                            .map(PduEvent::convert_to_outgoing_federation_event)
-                            .map(RawStrippedState::Pdu)
-                    })
-                } else {
-                    e.map(|e| RawStrippedState::Stripped(e.to_stripped_state_event()))
-                }
+                e.and_then(|e| {
+                    services()
+                        .rooms
+                        .timeline
+                        .get_pdu_json(&e)
+                        .transpose()
+                        .expect("Event must be present for it to make up the current state")
+                        .map(PduEvent::convert_to_outgoing_federation_event)
+                        .map(RawStrippedState::Pdu)
+                })
             })
             .collect::<Result<Vec<_>>>()
     }
 
-    pub fn stripped_state_client(&self, room_id: &RoomId) -> Result<Vec<Raw<StrippedState>>> {
+    pub fn stripped_state_client(
+        &self,
+        room_id: &RoomId,
+    ) -> Result<Vec<Raw<AnyStrippedStateEvent>>> {
         RECOMMENDED_STRIPPED_STATE_EVENT_TYPES
             .iter()
             .filter_map(|state_event_type| {
@@ -307,7 +302,7 @@ impl Service {
                     .room_state_get(room_id, state_event_type, "")
                     .transpose()
             })
-            .map(|e| e.map(|e| e.to_stripped_state_event().cast()))
+            .map(|e| e.map(|e| e.to_stripped_state_event()))
             .collect::<Result<Vec<_>>>()
     }
 

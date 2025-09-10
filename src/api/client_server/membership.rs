@@ -9,7 +9,10 @@ use ruma::{
                 unban_user,
             },
         },
-        federation::{self, membership::create_invite},
+        federation::{
+            self,
+            membership::{create_invite, RawStrippedState},
+        },
     },
     events::{
         room::{
@@ -188,9 +191,6 @@ pub async fn knock_room_route(
             }
             _ => return Err(Error::BadServerResponse("Room version is not supported")),
         };
-        let rules = room_version_id
-            .rules()
-            .expect("Supported room version has rules");
 
         let (event_id, knock_event, _) = services().rooms.helpers.populate_membership_template(
             &knock_template.event,
@@ -215,8 +215,6 @@ pub async fn knock_room_route(
             )
             .await?;
 
-        utils::check_stripped_state(&send_kock_response.knock_room_state, &room_id, &rules)?;
-
         info!("send_knock finished");
 
         let mut stripped_state = send_kock_response.knock_room_state;
@@ -231,7 +229,7 @@ pub async fn knock_room_route(
                 .to_stripped_state_event()
                 .into(),
         );
-        let stripped_state = utils::convert_stripped_state(stripped_state, &rules)?;
+        let stripped_state = utils::convert_stripped_state(stripped_state)?;
 
         services().rooms.state_cache.update_membership(
             &room_id,
@@ -717,12 +715,22 @@ pub(crate) async fn invite_helper(
                 .rooms
                 .state
                 .stripped_state_federation(&pdu.room_id())?;
-            if let Some(sender) = services().rooms.state_accessor.room_state_get(
-                &pdu.room_id(),
-                &StateEventType::RoomMember,
-                sender_user.as_str(),
-            )? {
-                invite_room_state.push(sender.to_stripped_state_event().into());
+            if let Some(sender_member_event_id) =
+                services().rooms.state_accessor.room_state_get_id(
+                    &pdu.room_id(),
+                    &StateEventType::RoomMember,
+                    sender_user.as_str(),
+                )?
+            {
+                let pdu = services()
+                    .rooms
+                    .timeline
+                    .get_pdu_json(&sender_member_event_id)
+                    .transpose()
+                    .expect("Event must be present for it to make up the current state")
+                    .map(PduEvent::convert_to_outgoing_federation_event)
+                    .map(RawStrippedState::Pdu)?;
+                invite_room_state.push(pdu);
             }
 
             drop(state_lock);
