@@ -455,7 +455,7 @@ impl Service {
                                 .state
                                 .stripped_state_client(&pdu.room_id())?;
                             // So that clients can get info about who invitied them (not relevant for knocking), the reason, when, etc.
-                            state.push(pdu.to_stripped_state_event().cast());
+                            state.push(pdu.to_stripped_state_event());
                             Some(state)
                         }
                         _ => None,

@@ -2105,7 +2105,7 @@ pub async fn create_invite_route(
         .rules()
         .expect("Supported room version has rules");
 
-    utils::check_stripped_state(&invite_room_state, &room_id, &rules)?;
+    utils::check_stripped_state(&invite_room_state, &room_id, &rules).await?;
 
     let mut signed_event = utils::to_canonical_object(&event)
         .map_err(|_| Error::BadRequest(ErrorKind::InvalidParam, "Invite event is invalid."))?;
@@ -2169,7 +2169,7 @@ pub async fn create_invite_route(
     })?;
 
     invite_state.push(pdu.to_stripped_state_event().into());
-    let invite_state = utils::convert_stripped_state(invite_state, &rules)?;
+    let invite_state = utils::convert_stripped_state(invite_state)?;
 
     // If we are active in the room, the remote server will notify us about the join via /send
     if !services()

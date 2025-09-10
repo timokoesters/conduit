@@ -4,12 +4,12 @@ use std::{collections::HashSet, sync::Arc};
 pub use data::Data;
 
 use ruma::{
-    api::client::sync::sync_events::StrippedState,
     events::{
         direct::DirectEvent,
         ignored_user_list::IgnoredUserListEvent,
         room::{create::RoomCreateEventContent, member::MembershipState},
-        AnySyncStateEvent, GlobalAccountDataEventType, RoomAccountDataEventType, StateEventType,
+        AnyStrippedStateEvent, AnySyncStateEvent, GlobalAccountDataEventType,
+        RoomAccountDataEventType, StateEventType,
     },
     serde::Raw,
     OwnedRoomId, OwnedRoomOrAliasId, OwnedServerName, OwnedUserId, RoomId, ServerName, UserId,
@@ -31,7 +31,7 @@ impl Service {
         user_id: &UserId,
         membership: MembershipState,
         sender: &UserId,
-        last_state: Option<Vec<Raw<StrippedState>>>,
+        last_state: Option<Vec<Raw<AnyStrippedStateEvent>>>,
         update_joined_count: bool,
     ) -> Result<()> {
         // Keep track what remote users exist by adding them as "deactivated" users
@@ -317,7 +317,7 @@ impl Service {
     pub fn rooms_invited<'a>(
         &'a self,
         user_id: &UserId,
-    ) -> impl Iterator<Item = Result<(OwnedRoomId, Vec<Raw<StrippedState>>)>> + 'a {
+    ) -> impl Iterator<Item = Result<(OwnedRoomId, Vec<Raw<AnyStrippedStateEvent>>)>> + 'a {
         self.db.rooms_invited(user_id)
     }
 
@@ -326,7 +326,7 @@ impl Service {
     pub fn rooms_knocked<'a>(
         &'a self,
         user_id: &UserId,
-    ) -> impl Iterator<Item = Result<(OwnedRoomId, Vec<Raw<StrippedState>>)>> + 'a {
+    ) -> impl Iterator<Item = Result<(OwnedRoomId, Vec<Raw<AnyStrippedStateEvent>>)>> + 'a {
         self.db.rooms_knocked(user_id)
     }
 
@@ -335,7 +335,7 @@ impl Service {
         &self,
         user_id: &UserId,
         room_id: &RoomId,
-    ) -> Result<Option<Vec<Raw<StrippedState>>>> {
+    ) -> Result<Option<Vec<Raw<AnyStrippedStateEvent>>>> {
         self.db.invite_state(user_id, room_id)
     }
 
@@ -344,7 +344,7 @@ impl Service {
         &self,
         user_id: &UserId,
         room_id: &RoomId,
-    ) -> Result<Option<Vec<Raw<StrippedState>>>> {
+    ) -> Result<Option<Vec<Raw<AnyStrippedStateEvent>>>> {
         self.db.knock_state(user_id, room_id)
     }
 
@@ -353,7 +353,7 @@ impl Service {
         &self,
         user_id: &UserId,
         room_id: &RoomId,
-    ) -> Result<Option<Vec<Raw<StrippedState>>>> {
+    ) -> Result<Option<Vec<Raw<AnyStrippedStateEvent>>>> {
         self.db.left_state(user_id, room_id)
     }
 

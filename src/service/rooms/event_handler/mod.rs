@@ -32,6 +32,7 @@ use ruma::{
     },
     int,
     room_version_rules::{AuthorizationRules, RoomVersionRules, StateResolutionV2Rules},
+    serde::Base64,
     state_res::{self, StateMap},
     uint, CanonicalJsonObject, CanonicalJsonValue, EventId, MilliSecondsSinceUnixEpoch,
     OwnedServerName, OwnedServerSigningKeyId, RoomId, ServerName,
@@ -338,43 +339,14 @@ impl Service {
             }
 
             // TODO: For RoomVersion6 we must check that Raw<..> is canonical do we anywhere?: https://matrix.org/docs/spec/rooms/v6#canonical-json
-
             // We go through all the signatures we see on the value and fetch the corresponding signing
             // keys
             self.fetch_required_signing_keys(&value, pub_key_map)
                 .await?;
 
-            let origin_server_ts = value.get("origin_server_ts").ok_or_else(|| {
-                error!("Invalid PDU, no origin_server_ts field");
-                Error::BadRequest(
-                    ErrorKind::MissingParam,
-                    "Invalid PDU, no origin_server_ts field",
-                )
-            })?;
-
-            let origin_server_ts: MilliSecondsSinceUnixEpoch = {
-                let ts = origin_server_ts.as_integer().ok_or_else(|| {
-                    Error::BadRequest(
-                        ErrorKind::InvalidParam,
-                        "origin_server_ts must be an integer",
-                    )
-                })?;
-
-                MilliSecondsSinceUnixEpoch(i64::from(ts).try_into().map_err(|_| {
-                    Error::BadRequest(ErrorKind::InvalidParam, "Time must be after the unix epoch")
-                })?)
-            };
-
-            let guard = pub_key_map.read().await;
-
-            let pkey_map = (*guard).clone();
-
-            // Removing all the expired keys, unless the room version allows stale keys
-            let filtered_keys = services().globals.filter_keys_server_map(
-                pkey_map,
-                origin_server_ts,
-                &room_version_rules,
-            );
+            let filtered_keys = self
+                .filter_required_signing_keys(&value, pub_key_map, &room_version_rules)
+                .await?;
 
             let mut val =
                 match ruma::signatures::verify_event(&filtered_keys, &value, &room_version_rules) {
@@ -415,8 +387,6 @@ impl Service {
                     }
                     Ok(ruma::signatures::Verified::All) => value,
                 };
-
-            drop(guard);
 
             // Now that we have checked the signature and hashes we can add the eventID and convert
             // to our PduEvent type
@@ -1449,6 +1419,47 @@ impl Service {
         .map_err(|_| Error::bad_database("Error sorting prev events"))?;
 
         Ok((sorted, eventid_info))
+    }
+
+    /// Filters down the given signing keys, only keeping those which could be valid for this event.
+    #[tracing::instrument(skip_all)]
+    pub async fn filter_required_signing_keys(
+        &self,
+        event: &BTreeMap<String, CanonicalJsonValue>,
+        pub_key_map: &RwLock<BTreeMap<String, SigningKeys>>,
+        room_version_rules: &RoomVersionRules,
+    ) -> Result<BTreeMap<String, BTreeMap<String, Base64>>> {
+        let origin_server_ts = event.get("origin_server_ts").ok_or_else(|| {
+            error!("Invalid PDU, no origin_server_ts field");
+            Error::BadRequest(
+                ErrorKind::MissingParam,
+                "Invalid PDU, no origin_server_ts field",
+            )
+        })?;
+
+        let origin_server_ts: MilliSecondsSinceUnixEpoch = {
+            let ts = origin_server_ts.as_integer().ok_or_else(|| {
+                Error::BadRequest(
+                    ErrorKind::InvalidParam,
+                    "origin_server_ts must be an integer",
+                )
+            })?;
+
+            MilliSecondsSinceUnixEpoch(i64::from(ts).try_into().map_err(|_| {
+                Error::BadRequest(ErrorKind::InvalidParam, "Time must be after the unix epoch")
+            })?)
+        };
+
+        let guard = pub_key_map.write().await;
+
+        let pkey_map = (*guard).clone();
+
+        // Removing all the expired keys, unless the room version allows stale keys
+        Ok(services().globals.filter_keys_server_map(
+            pkey_map,
+            origin_server_ts,
+            room_version_rules,
+        ))
     }
 
     #[tracing::instrument(skip_all)]
