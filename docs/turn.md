@@ -7,7 +7,7 @@
 ## Edit/Add a few settings to your existing conduit.toml
 
 ```
-[turn]
+[global.turn]
 # Refer to your Coturn settings. 
 # `your.turn.url` has to match the REALM setting of your Coturn as well as `transport`.
 uris = ["turn:your.turn.url?transport=udp", "turn:your.turn.url?transport=tcp"]
