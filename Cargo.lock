@@ -137,7 +137,7 @@ version = "0.29.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "61b1d86e7705efe1be1b569bab41d4fa1e14e220b60a160f78de2db687add079"
 dependencies = [
- "bindgen",
+ "bindgen 0.69.5",
  "cc",
  "cmake",
  "dunce",
@@ -292,10 +292,28 @@ dependencies = [
  "proc-macro2",
  "quote",
  "regex",
- "rustc-hash",
+ "rustc-hash 1.1.0",
  "shlex",
  "syn",
  "which",
+]
+
+[[package]]
+name = "bindgen"
+version = "0.72.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "993776b509cfb49c750f11b8f07a46fa23e0a1386ffc01fb1e7d343efc387895"
+dependencies = [
+ "bitflags 2.9.1",
+ "cexpr",
+ "clang-sys",
+ "itertools 0.12.1",
+ "proc-macro2",
+ "quote",
+ "regex",
+ "rustc-hash 2.1.1",
+ "shlex",
+ "syn",
 ]
 
 [[package]]
@@ -2798,11 +2816,11 @@ dependencies = [
 
 [[package]]
 name = "rust-librocksdb-sys"
-version = "0.37.0+10.2.1"
+version = "0.39.0+10.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4951352c7a5abbf230a7563d6dae95ea2ea834b70f06de90b8f083debc977f8f"
+checksum = "29bd25c12159c153158008a67cb95a879b09e317c7be19362c7c1a833611844c"
 dependencies = [
- "bindgen",
+ "bindgen 0.72.1",
  "bzip2-sys",
  "cc",
  "glob",
@@ -2814,11 +2832,12 @@ dependencies = [
 
 [[package]]
 name = "rust-rocksdb"
-version = "0.41.0"
+version = "0.43.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e04453858c1d03683f6e142026dbf30c387f71c7bb0f017b408d96364c0acdbd"
+checksum = "32acf115610698835348708c8e0fd18d44ea6bb597bfd92eb1736d6cb8e691c8"
 dependencies = [
  "libc",
+ "parking_lot",
  "rust-librocksdb-sys",
 ]
 
@@ -2833,6 +2852,12 @@ name = "rustc-hash"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "08d43f7aa6b08d49f382cde6a7982047c3426db949b1424bc4b7ec9ae12c6ce2"
+
+[[package]]
+name = "rustc-hash"
+version = "2.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "357703d41365b4b27c590e3ed91eabb1b663f07c4c084095e60cbed4362dff0d"
 
 [[package]]
 name = "rustc_version"

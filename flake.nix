@@ -36,7 +36,7 @@
 
         rocksdb =
         let
-          version = "10.2.1";
+          version = "10.5.1";
         in
         pkgs.rocksdb.overrideAttrs (old: {
           inherit version;
@@ -44,7 +44,7 @@
             owner = "facebook";
             repo = "rocksdb";
             rev = "v${version}";
-            hash = "sha256-v8kZShgz0O3nHZwWjTvhcM56qAs/le1XgMVYyvVd4tg=";
+            hash = "sha256-TDYXzYbOLhcIRi+qi0FW1OLVtfKOF+gUbj62Tgpp3/E=";
           };
         });
 

@@ -186,7 +186,7 @@ git = "https://github.com/ruma/ruma.git"
 features = ["lz4", "multi-threaded-cf", "zstd"]
 optional = true
 package = "rust-rocksdb"
-version = "0.41"
+version = "0.43"
 
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.30", features = ["resource"] }
