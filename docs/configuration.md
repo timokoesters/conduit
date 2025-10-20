@@ -52,6 +52,7 @@ The `global` section contains the following fields:
 | `jwt_secret` | `string` | The secret used in the JWT to enable JWT login without it a 400 error will be returned | N/A |
 | `trusted_servers` | `array` | The list of trusted servers to gather public keys of offline servers | `["matrix.org"]` |
 | `log` | `string` | The log verbosity to use | `"warn"` |
+| `ip_address_detection` | See the [IP address detection configuration](#ip-address-detection) | See the [IP address detection configuration](#ip-address-detection) |
 | `turn_username` | `string` | The TURN username | `""` |
 | `turn_password` | `string` | The TURN password | `""` |
 | `turn_uris` | `array` | The TURN URIs | `[]` |
@@ -180,6 +181,26 @@ accessed = "1y"
 scope = "thumbnail"
 space = "1GB"
 
+```
+
+### IP Address detection
+The method used to detect the IP address of the origin of the connection, which is currently used
+for rate limiting, but may be used for other features in the future.
+Currently available methods are:
+- `header` (default): Reads the value from the specified header, assuming it has the same format as the [`X-Forwarded-For` header](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/X-Forwarded-For), which is the header read by default. 
+> **WARNING**: This assumes that the header will always be set by your reverse proxy and cannot be overridden by connecting clients, so make sure your reverse proxy is configured to do this (Caddy does this for `X-Forwarded-For` by default).
+- `socket_address`: Uses the IP address of the client connecting to Conduit directly. This does not work with reverse proxies, as it would just use the IP address of the reverse proxy, so this is only recommended for testing.
+
+To use a header other than `X-Forwarded-For`, set the following in your configuration:
+```toml
+[global]
+ip_address_detection.header = "A-Different-Header"
+```
+
+If you instead want to use `socket_address`:
+```toml
+[global]
+ip_address_detection = "socket_address"
 ```
 
 ### TLS

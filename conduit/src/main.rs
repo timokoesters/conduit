@@ -248,7 +248,9 @@ async fn run_server() -> io::Result<()> {
         )
         .layer(map_response(set_csp_header));
 
-    let app = routes(config).layer(middlewares).into_make_service();
+    let app = routes(config)
+        .layer(middlewares)
+        .into_make_service_with_connect_info::<SocketAddr>();
     let handle = ServerHandle::new();
 
     tokio::spawn(shutdown_signal(handle.clone()));
