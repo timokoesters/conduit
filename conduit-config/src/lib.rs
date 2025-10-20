@@ -81,6 +81,8 @@ pub struct IncompleteConfig {
     pub trusted_servers: Vec<OwnedServerName>,
     #[serde(default = "default_log")]
     pub log: String,
+    #[serde(default)]
+    pub ip_address_detection: IpAddrDetection,
     pub turn_username: Option<String>,
     pub turn_password: Option<String>,
     pub turn_uris: Option<Vec<String>>,
@@ -137,6 +139,7 @@ pub struct Config {
     pub jwt_secret: Option<String>,
     pub trusted_servers: Vec<OwnedServerName>,
     pub log: String,
+    pub ip_address_detection: IpAddrDetection,
 
     pub turn: Option<TurnConfig>,
 
@@ -183,6 +186,7 @@ impl From<IncompleteConfig> for Config {
             jwt_secret,
             trusted_servers,
             log,
+            ip_address_detection,
             turn_username,
             turn_password,
             turn_uris,
@@ -288,6 +292,7 @@ impl From<IncompleteConfig> for Config {
             jwt_secret,
             trusted_servers,
             log,
+            ip_address_detection,
             turn,
             media,
             emergency_password,
@@ -653,6 +658,19 @@ pub struct S3MediaBackend {
     pub duration: Duration,
     pub path: Option<String>,
     pub directory_structure: DirectoryStructure,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+#[serde(rename_all = "snake_case")]
+pub enum IpAddrDetection {
+    SocketAddress,
+    Header(String),
+}
+
+impl Default for IpAddrDetection {
+    fn default() -> Self {
+        Self::Header("X-Forwarded-For".to_owned())
+    }
 }
 
 #[cfg(any(feature = "sqlite", feature = "rocksdb"))]
