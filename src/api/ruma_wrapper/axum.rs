@@ -2,13 +2,13 @@ use std::{
     collections::BTreeMap,
     error::Error as _,
     iter::FromIterator,
-    net::IpAddr,
+    net::{IpAddr, SocketAddr},
     str::{self, FromStr},
 };
 
 use axum::{
     body::Body,
-    extract::{FromRequest, Path},
+    extract::{ConnectInfo, FromRequest, Path},
     response::{IntoResponse, Response},
     RequestPartsExt,
 };
@@ -31,6 +31,7 @@ use tracing::{debug, error, warn};
 
 use super::{Ruma, RumaResponse};
 use crate::{
+    config::IpAddrDetection,
     service::{appservice::RegistrationInfo, rate_limiting::Target},
     services, Error, Result,
 };
@@ -108,6 +109,21 @@ where
             Some(TypedHeader(Authorization(bearer))) => Some(bearer.token()),
             None => query_params.access_token.as_deref(),
         };
+
+        let sender_ip_address: Option<IpAddr> =
+            match &services().globals.config.ip_address_detection {
+                IpAddrDetection::None => None,
+                IpAddrDetection::Socket => {
+                    let addr: ConnectInfo<SocketAddr> = parts.extract().await?;
+                    Some(addr.ip())
+                }
+                IpAddrDetection::Header(name) => parts
+                    .headers
+                    .get(name)
+                    .and_then(|header| header.to_str().ok())
+                    .map(|header| header.split_once(',').map(|(ip, _)| ip).unwrap_or(header))
+                    .and_then(|ip| IpAddr::from_str(ip).ok()),
+            };
 
         let token = if let Some(token) = token {
             let mut rate_limited = None;
@@ -364,13 +380,6 @@ where
                     ));
                 }
             };
-
-        let sender_ip_address = parts
-            .headers
-            .get("X-Forwarded-For")
-            .and_then(|header| header.to_str().ok())
-            .map(|header| header.split_once(',').map(|(ip, _)| ip).unwrap_or(header))
-            .and_then(|ip| IpAddr::from_str(ip).ok());
 
         let target = if let Some(server_name) = sender_servername.clone() {
             Some(Target::Server(server_name))
