@@ -54,6 +54,7 @@ use ruma::{
         },
         StateEventType, TimelineEventType,
     },
+    room_version_rules::{AuthorizationRules, RoomVersionRules},
     serde::{Base64, JsonObject, Raw},
     to_device::DeviceIdOrAllDevices,
     uint, user_id, CanonicalJsonObject, CanonicalJsonValue, EventId, MilliSecondsSinceUnixEpoch,
@@ -1568,7 +1569,7 @@ pub async fn create_join_event_template_route(
             .is_invited(&body.user_id, &body.room_id)
             .unwrap_or(false)
         // This function also checks whether the room is restricted in the first place, meaning a restricted join will not happen if the room is public for example
-        && user_can_perform_restricted_join(&body.user_id, &body.room_id, &room_version_id)?
+        && user_can_perform_restricted_join(&body.user_id, &body.room_id, &room_version_id.rules().expect("Supported room version has rules").authorization)?
     {
         let auth_user = services()
             .rooms
@@ -1717,7 +1718,8 @@ async fn create_join_event(
             "Pdu state not found.",
         ))?;
 
-    let pdu = append_member_pdu(MembershipState::Join, sender_servername, room_id, pdu).await?;
+    let pdu =
+        handle_member_pdu(MembershipState::Join, sender_servername, room_id, pdu, None).await?;
 
     let state_ids = services()
         .rooms
@@ -1747,24 +1749,29 @@ async fn create_join_event(
     })
 }
 
-/// Takes the given membership PDU and attempts to append it to the timeline
-async fn append_member_pdu(
+/// Takes the given membership PDU and attempts to append it to the timeline.
+///
+/// If the membership state is invite, then no appending is done, as this should be done over `/send`, if at all.
+async fn handle_member_pdu(
     membership: MembershipState,
     sender_servername: &OwnedServerName,
     room_id: &RoomId,
     pdu: &RawJsonValue,
+    rules: Option<&RoomVersionRules>,
 ) -> Result<Option<BTreeMap<String, CanonicalJsonValue>>, Error> {
     let pub_key_map = RwLock::new(BTreeMap::new());
 
     // We do not add the event_id field to the pdu here because of signature and hashes checks
-    let room_version_id = services().rooms.state.get_room_version(room_id)?;
-
-    let (event_id, mut value) = match gen_event_id_canonical_json(
-        pdu,
+    let rules = if let Some(rules) = rules {
+        rules
+    } else {
+        let room_version_id = services().rooms.state.get_room_version(room_id)?;
         &room_version_id
             .rules()
-            .expect("Supported room version has rules"),
-    ) {
+            .expect("Supported room version has rules")
+    };
+
+    let (event_id, mut value) = match gen_event_id_canonical_json(pdu, rules) {
         Ok(t) => t,
         Err(_) => {
             // Event could not be converted to canonical json
@@ -1793,7 +1800,7 @@ async fn append_member_pdu(
     )
     .map_err(|_| Error::BadRequest(ErrorKind::BadJson, "Sender is not a valid user ID"))?;
 
-    if state_key != sender {
+    if state_key != sender && membership != MembershipState::Invite {
         return Err(Error::BadRequest(
             ErrorKind::BadJson,
             "Sender and state key don't match",
@@ -1802,7 +1809,7 @@ async fn append_member_pdu(
 
     // Security-wise, we only really need to check the event is not from us, cause otherwise it must be signed by that server,
     // but we might as well check this since this event shouldn't really be sent on behalf of another server
-    if state_key.server_name() != sender_servername {
+    if sender.server_name() != sender_servername {
         return Err(Error::BadRequest(
             ErrorKind::forbidden(),
             "User's server and origin don't match",
@@ -1841,71 +1848,72 @@ async fn append_member_pdu(
         ));
     }
 
-    let sign_join_event = membership == MembershipState::Join
+    let sign_join_event = (membership == MembershipState::Join
         && event_content
             .join_authorized_via_users_server
             .map(|user| user.server_name() == services().globals.server_name())
             .unwrap_or_default()
-        && user_can_perform_restricted_join(&sender, room_id, &room_version_id).unwrap_or_default();
+        && user_can_perform_restricted_join(&sender, room_id, &rules.authorization)
+            .unwrap_or_default())
+        || membership == MembershipState::Invite;
 
     if sign_join_event {
         ruma::signatures::hash_and_sign_event(
             services().globals.server_name().as_str(),
             services().globals.keypair(),
             &mut value,
-            &room_version_id
-                .rules()
-                .expect("Supported room version has rules")
-                .redaction,
+            &rules.redaction,
         )
         .map_err(|_| Error::BadRequest(ErrorKind::InvalidParam, "Failed to sign event."))?;
     }
 
-    let origin: OwnedServerName = serde_json::from_value(
-        serde_json::to_value(value.get("origin").ok_or(Error::BadRequest(
-            ErrorKind::InvalidParam,
-            "Event needs an origin field.",
-        ))?)
-        .expect("CanonicalJson is valid json value"),
-    )
-    .map_err(|_| Error::BadRequest(ErrorKind::InvalidParam, "Origin field is invalid."))?;
-
-    let mutex = Arc::clone(
-        services()
-            .globals
-            .roomid_mutex_federation
-            .write()
-            .await
-            .entry(room_id.to_owned())
-            .or_default(),
-    );
-    let mutex_lock = mutex.lock().await;
-    let pdu_id: Vec<u8> = services()
-        .rooms
-        .event_handler
-        .handle_incoming_pdu(
-            &origin,
-            &event_id,
-            room_id,
-            value.clone(),
-            true,
-            &pub_key_map,
+    if membership != MembershipState::Invite {
+        let origin: OwnedServerName = serde_json::from_value(
+            serde_json::to_value(value.get("origin").ok_or(Error::BadRequest(
+                ErrorKind::InvalidParam,
+                "Event needs an origin field.",
+            ))?)
+            .expect("CanonicalJson is valid json value"),
         )
-        .await?
-        .ok_or(Error::BadRequest(
-            ErrorKind::InvalidParam,
-            "Could not accept incoming PDU as timeline event.",
-        ))?;
-    drop(mutex_lock);
+        .map_err(|_| Error::BadRequest(ErrorKind::InvalidParam, "Origin field is invalid."))?;
 
-    let servers = services()
-        .rooms
-        .state_cache
-        .room_servers(room_id)
-        .filter_map(|r| r.ok())
-        .filter(|server| &**server != services().globals.server_name());
+        let mutex = Arc::clone(
+            services()
+                .globals
+                .roomid_mutex_federation
+                .write()
+                .await
+                .entry(room_id.to_owned())
+                .or_default(),
+        );
+        let mutex_lock = mutex.lock().await;
+        let pdu_id: Vec<u8> = services()
+            .rooms
+            .event_handler
+            .handle_incoming_pdu(
+                &origin,
+                &event_id,
+                room_id,
+                value.clone(),
+                true,
+                &pub_key_map,
+            )
+            .await?
+            .ok_or(Error::BadRequest(
+                ErrorKind::InvalidParam,
+                "Could not accept incoming PDU as timeline event.",
+            ))?;
+        drop(mutex_lock);
 
-    services().sending.send_pdu(servers, &pdu_id)?;
+        let servers = services()
+            .rooms
+            .state_cache
+            .room_servers(room_id)
+            .filter_map(|r| r.ok())
+            .filter(|server| &**server != services().globals.server_name());
+
+        services().sending.send_pdu(servers, &pdu_id)?;
+    }
 
     Ok(if sign_join_event { Some(value) } else { None })
 }
@@ -1955,11 +1963,12 @@ pub async fn create_leave_event_route(
         .expect("server is authenticated");
     room_and_acl_check(&body.room_id, sender_servername)?;
 
-    append_member_pdu(
+    handle_member_pdu(
         MembershipState::Leave,
         sender_servername,
         &body.room_id,
         &body.pdu,
+        None,
     )
     .await?;
 
@@ -1978,11 +1987,12 @@ pub async fn create_knock_event_route(
         .expect("server is authenticated");
     room_and_acl_check(&body.room_id, sender_servername)?;
 
-    append_member_pdu(
+    handle_member_pdu(
         MembershipState::Knock,
         sender_servername,
         &body.room_id,
         &body.pdu,
+        None,
     )
     .await?;
 
@@ -2000,7 +2010,7 @@ pub async fn create_knock_event_route(
 fn user_can_perform_restricted_join(
     user_id: &UserId,
     room_id: &RoomId,
-    room_version_id: &RoomVersionId,
+    auth_rules: &AuthorizationRules,
 ) -> Result<bool> {
     let join_rules_event = services().rooms.state_accessor.room_state_get(
         room_id,
@@ -2022,11 +2032,7 @@ fn user_can_perform_restricted_join(
         return Ok(false);
     };
 
-    let rules = room_version_id
-        .rules()
-        .expect("Supported room version must have rules.")
-        .authorization;
-    if !rules.restricted_join_rule {
+    if !auth_rules.restricted_join_rule {
         return Ok(false);
     }
 
@@ -2107,16 +2113,15 @@ pub async fn create_invite_route(
 
     utils::check_stripped_state(&invite_room_state, &room_id, &rules).await?;
 
-    let mut signed_event = utils::to_canonical_object(&event)
-        .map_err(|_| Error::BadRequest(ErrorKind::InvalidParam, "Invite event is invalid."))?;
-
-    ruma::signatures::hash_and_sign_event(
-        services().globals.server_name().as_str(),
-        services().globals.keypair(),
-        &mut signed_event,
-        &rules.redaction,
+    let mut signed_event = handle_member_pdu(
+        MembershipState::Invite,
+        &sender_servername,
+        &room_id,
+        &event,
+        Some(&rules),
     )
-    .map_err(|_| Error::BadRequest(ErrorKind::InvalidParam, "Failed to sign event."))?;
+    .await?
+    .expect("Invites should always be signed");
 
     // Generate event id
     let event_id = EventId::parse(format!(
