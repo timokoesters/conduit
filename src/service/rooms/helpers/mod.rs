@@ -554,6 +554,8 @@ impl Service {
             ),
         );
 
+        member_event_stub.insert("type".to_owned(), "m.room.member".into());
+
         member_event_stub.insert(
             "content".to_owned(),
             to_canonical_value(RoomMemberEventContent {
@@ -568,6 +570,9 @@ impl Service {
             })
             .expect("event is valid, we just created it"),
         );
+
+        member_event_stub.insert("sender".to_owned(), sender_user.to_string().into());
+        member_event_stub.insert("state_key".to_owned(), sender_user.to_string().into());
 
         member_event_stub.remove("event_id");
 

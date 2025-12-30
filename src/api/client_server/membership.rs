@@ -18,7 +18,7 @@ use ruma::{
         },
         StateEventType, TimelineEventType,
     },
-    CanonicalJsonObject, CanonicalJsonValue, EventId, OwnedServerName, RoomId, UserId,
+    OwnedServerName, RoomId, UserId,
 };
 use serde_json::value::to_raw_value;
 use std::{
@@ -877,7 +877,7 @@ pub async fn leave_room(user_id: &UserId, room_id: &RoomId, reason: Option<Strin
         .state_cache
         .server_in_room(services().globals.server_name(), room_id)?
     {
-        if let Err(e) = remote_leave_room(user_id, room_id).await {
+        if let Err(e) = remote_leave_room(user_id, room_id, reason).await {
             warn!("Failed to leave room {} remotely: {}", user_id, e);
             // Don't tell the client about this error
         }
@@ -968,7 +968,11 @@ pub async fn leave_room(user_id: &UserId, room_id: &RoomId, reason: Option<Strin
     Ok(())
 }
 
-async fn remote_leave_room(user_id: &UserId, room_id: &RoomId) -> Result<()> {
+async fn remote_leave_room(
+    user_id: &UserId,
+    room_id: &RoomId,
+    reason: Option<String>,
+) -> Result<()> {
     let mut make_leave_response_and_server = Err(Error::BadServerResponse(
         "No server available to assist in leaving.",
     ));
@@ -1024,60 +1028,15 @@ async fn remote_leave_room(user_id: &UserId, room_id: &RoomId) -> Result<()> {
         _ => return Err(Error::BadServerResponse("Room version is not supported")),
     };
 
-    let mut leave_event_stub = serde_json::from_str::<CanonicalJsonObject>(
-        make_leave_response.event.get(),
-    )
-    .map_err(|_| Error::BadServerResponse("Invalid make_leave event json received from server."))?;
-
-    // TODO: Is origin needed?
-    leave_event_stub.insert(
-        "origin".to_owned(),
-        CanonicalJsonValue::String(services().globals.server_name().as_str().to_owned()),
-    );
-    leave_event_stub.insert(
-        "origin_server_ts".to_owned(),
-        CanonicalJsonValue::Integer(
-            utils::millis_since_unix_epoch()
-                .try_into()
-                .expect("Timestamp is valid js_int value"),
-        ),
-    );
-    // We don't leave the event id in the pdu because that's only allowed in v1 or v2 rooms
-    leave_event_stub.remove("event_id");
-
-    // In order to create a compatible ref hash (EventID) the `hashes` field needs to be present
-    ruma::signatures::hash_and_sign_event(
-        services().globals.server_name().as_str(),
-        services().globals.keypair(),
-        &mut leave_event_stub,
+    let (event_id, leave_event, _) = services().rooms.helpers.populate_membership_template(
+        &make_leave_response.event,
+        user_id,
+        reason,
         &room_version_id
             .rules()
-            .expect("Supported room version has rules")
-            .redaction,
-    )
-    .expect("event is valid, we just created it");
-
-    // Generate event id
-    let event_id = EventId::parse(format!(
-        "${}",
-        ruma::signatures::reference_hash(
-            &leave_event_stub,
-            &room_version_id
-                .rules()
-                .expect("Supported room version has rules")
-        )
-        .expect("Event format validated when event was hashed")
-    ))
-    .expect("ruma's reference hashes are valid event ids");
-
-    // Add event_id back
-    leave_event_stub.insert(
-        "event_id".to_owned(),
-        CanonicalJsonValue::String(event_id.as_str().to_owned()),
-    );
-
-    // It has enough fields to be called a proper event now
-    let leave_event = leave_event_stub;
+            .expect("Supported room version has rules"),
+        MembershipState::Leave,
+    )?;
 
     services()
         .sending
