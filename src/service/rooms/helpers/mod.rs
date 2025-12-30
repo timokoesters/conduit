@@ -12,7 +12,6 @@ use ruma::{
         },
         federation,
     },
-    canonical_json::to_canonical_value,
     events::{
         room::{
             join_rules::{AllowRule, JoinRule, RoomJoinRulesEventContent},
@@ -22,7 +21,7 @@ use ruma::{
     },
     room_version_rules::RoomVersionRules,
     state_res, CanonicalJsonObject, CanonicalJsonValue, EventId, MilliSecondsSinceUnixEpoch,
-    OwnedEventId, OwnedServerName, OwnedUserId, RoomId, RoomVersionId, UserId,
+    OwnedEventId, OwnedServerName, RoomId, RoomVersionId, UserId,
 };
 use serde_json::value::{to_raw_value, RawValue as RawJsonValue};
 use tokio::sync::RwLock;
@@ -529,16 +528,15 @@ impl Service {
                 Error::BadServerResponse("Invalid make_knock event json received from server.")
             })?;
 
-        let join_authorized_via_users_server = member_event_stub
-            .get("content")
-            .map(|s| {
-                s.as_object()?
-                    .get("join_authorised_via_users_server")?
-                    .as_str()
+        let mut content: CanonicalJsonObject = member_event_stub
+            .remove("content")
+            .map(|s| match s {
+                CanonicalJsonValue::Object(obj) => obj,
+                _ => BTreeMap::new(),
             })
-            .and_then(|s| OwnedUserId::try_from(s.unwrap_or_default()).ok());
+            .unwrap_or_default();
 
-        let restricted_join = join_authorized_via_users_server.is_some();
+        let restricted_join = content.contains_key("join_authorized_via_users_server");
 
         member_event_stub.insert(
             "origin".to_owned(),
@@ -556,20 +554,23 @@ impl Service {
 
         member_event_stub.insert("type".to_owned(), "m.room.member".into());
 
-        member_event_stub.insert(
-            "content".to_owned(),
-            to_canonical_value(RoomMemberEventContent {
-                membership,
-                displayname: services().users.displayname(sender_user)?,
-                avatar_url: services().users.avatar_url(sender_user)?,
-                is_direct: None,
-                third_party_invite: None,
-                blurhash: services().users.blurhash(sender_user)?,
-                reason: reason.clone(),
-                join_authorized_via_users_server,
-            })
-            .expect("event is valid, we just created it"),
-        );
+        content.insert("membership".to_owned(), membership.to_string().into());
+        if let Some(displayname) = services().users.displayname(sender_user)? {
+            content.insert("displayname".to_owned(), displayname.into());
+        }
+        if let Some(avatar_url) = services().users.avatar_url(sender_user)? {
+            content.insert(
+                "avatar_url".to_owned(),
+                avatar_url.as_str().to_owned().into(),
+            );
+        }
+        if let Some(blurhash) = services().users.blurhash(sender_user)? {
+            content.insert("blurhash".to_owned(), blurhash.into());
+        }
+        if let Some(reason) = reason {
+            content.insert("reason".to_owned(), reason.into());
+        }
+        member_event_stub.insert("content".to_owned(), content.into());
 
         member_event_stub.insert("sender".to_owned(), sender_user.to_string().into());
         member_event_stub.insert("state_key".to_owned(), sender_user.to_string().into());
