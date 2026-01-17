@@ -3,6 +3,7 @@
 , dockerTools
 , lib
 , pkgs
+, timestamp
 }:
 let
   # See https://github.com/krallin/tini/pull/223
@@ -17,6 +18,7 @@ in
 dockerTools.buildImage {
   name = default.pname;
   tag = "next";
+  created = timestamp;
   copyToRoot = [
     dockerTools.caCertificates
   ];

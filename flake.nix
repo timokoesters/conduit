@@ -61,6 +61,13 @@
             # See also `rust-toolchain.toml`
             sha256 = "sha256-AJ6LX/Q/Er9kS15bn9iflkUwcgYqRQxiOIL2ToVAXaU=";
           };
+        
+        # The timestamp of the last commit in ISO 8601 format
+        timestamp = pkgs.lib.strings.trim (builtins.readFile (
+          pkgs.runCommand "iso-timestamp" {} ''
+            date -u -d "@${toString inputs.self.lastModified}" +%Y-%m-%dT%H:%M:%SZ > $out
+          ''
+        ));
       });
     in
     inputs.flake-utils.lib.eachDefaultSystem (system:
