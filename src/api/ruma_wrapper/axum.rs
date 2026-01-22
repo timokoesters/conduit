@@ -126,10 +126,7 @@ where
                         ));
                     }
                 }
-                (
-                    AuthScheme::AccessToken | AuthScheme::AppserviceToken,
-                    Token::Appservice(info),
-                ) => {
+                (AuthScheme::AccessToken, Token::Appservice(info)) => {
                     let user_id = query_params
                         .user_id
                         .map_or_else(
@@ -163,6 +160,7 @@ where
                 }
                 (
                     AuthScheme::None
+                    | AuthScheme::AppserviceToken
                     | AuthScheme::AppserviceTokenOptional
                     | AuthScheme::AccessTokenOptional,
                     Token::Appservice(info),
