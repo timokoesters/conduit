@@ -483,6 +483,7 @@ impl Service {
             .rate_limiting
             .target
             .client
+            .additional_fields
             .authentication_failures;
 
         let mut map = self.authentication_failures.write().await;
