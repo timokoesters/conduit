@@ -34,6 +34,9 @@ mkShell {
     # rust itself
     toolchain
 
+    # rust analyzer
+    inputs.fenix.packages.${system}.latest.rust-analyzer
+
     # CI tests
     engage
 
