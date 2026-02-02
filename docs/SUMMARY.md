@@ -3,6 +3,7 @@
 - [Introduction](introduction.md)
 
 - [Configuration](configuration.md)
+    - [Rate Limiting](configuration/rate-limiting.md)
 - [Delegation](delegation.md)
 - [Deploying](deploying.md)
     - [Generic](deploying/generic.md)
