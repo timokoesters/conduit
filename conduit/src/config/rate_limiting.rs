@@ -101,6 +101,12 @@ pub struct Config {
     pub global: ConfigFragment<Nothing>,
 }
 
+impl Default for Config {
+    fn default() -> Self {
+        Self::get_preset(ConfigPreset::default())
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct ConfigFragment<T>
 where
@@ -143,7 +149,7 @@ where
         };
 
         let ConfigFragmentFragment {
-            map: mut map,
+            mut map,
             media,
             additional_fields,
         } = self;
@@ -332,6 +338,36 @@ macro_rules! default_restriction_map {
     }
 }
 
+impl ClientMediaConfig {
+    fn todo() -> Self {
+        Self {
+            download: MediaLimitation::new(
+                MediaTimeframe::PerHour(ByteSize::mb(200)),
+                ByteSize::mb(500),
+            ),
+            upload: MediaLimitation::new(
+                MediaTimeframe::PerHour(ByteSize::mb(20)),
+                ByteSize::mb(100),
+            ),
+            fetch: MediaLimitation::new(
+                MediaTimeframe::PerHour(ByteSize::mb(200)),
+                ByteSize::mb(500),
+            ),
+        }
+    }
+}
+
+impl FederationMediaConfig {
+    fn todo() -> Self {
+        Self {
+            download: MediaLimitation::new(
+                MediaTimeframe::PerHour(ByteSize::mb(200)),
+                ByteSize::mb(500),
+            ),
+        }
+    }
+}
+
 impl Config {
     fn apply_overrides(self, shadow: ShadowConfig) -> Self {
         let ShadowConfig {
@@ -371,11 +407,7 @@ impl Config {
                             // Login, PerHour, 10, 10;
                             // RegistrationTokenValidity, PerDay, 10, 20
                         ),
-                        media: ClientMediaConfig {
-                            download: todo!(),
-                            upload: todo!(),
-                            fetch: todo!(),
-                        },
+                        media: ClientMediaConfig::todo(),
                         additional_fields: AuthenticationFailures::new(
                             Timeframe::PerDay(nz(10)),
                             nz(40),
@@ -388,7 +420,7 @@ impl Config {
                             Knock, PerDay, 10, 20;
                             Invite, PerDay, 10, 20
                         ),
-                        media: todo!(),
+                        media: FederationMediaConfig::todo(),
                         additional_fields: Nothing,
                     },
                 },
@@ -400,7 +432,7 @@ impl Config {
                             Login, PerHour, 10, 10;
                             RegistrationTokenValidity, PerDay, 10, 20
                         ),
-                        media: todo!(),
+                        media: ClientMediaConfig::todo(),
                         additional_fields: Nothing,
                     },
                     federation: ConfigFragmentFragment {
@@ -410,7 +442,7 @@ impl Config {
                             // Knock, PerDay, 10, 20;
                             // Invite, PerDay, 10, 20
                         ),
-                        media: todo!(),
+                        media: FederationMediaConfig::todo(),
                         additional_fields: Nothing,
                     },
                 },

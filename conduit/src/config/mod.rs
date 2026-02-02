@@ -96,6 +96,7 @@ pub struct IncompleteConfig {
     #[serde(default)]
     pub media: IncompleteMediaConfig,
 
+    #[serde(default)]
     pub rate_limiting: RateLimitingConfig,
 
     pub emergency_password: Option<String>,
