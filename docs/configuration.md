@@ -11,6 +11,8 @@
 Conduit's configuration file is divided into the following sections:
 
 - [Global](#global)
+    - [Media](#media)
+    - [Rate Limiting](configuration/rate-limiting.md)
     - [TLS](#tls)
     - [Proxy](#proxy)
 
