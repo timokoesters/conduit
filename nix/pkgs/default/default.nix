@@ -43,7 +43,7 @@ let
   commonAttrs = {
     inherit
       (craneLib.crateNameFromCargoToml {
-        cargoToml = "${inputs.self}/Cargo.toml";
+        cargoToml = "${inputs.self}/conduit/Cargo.toml";
       })
       pname
       version;
@@ -56,7 +56,7 @@ let
         ".cargo"
         "Cargo.lock"
         "Cargo.toml"
-        "src"
+        "conduit"
       ];
     };
 

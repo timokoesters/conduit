@@ -15,10 +15,10 @@ reorder_arrays = false
 
 # Prevent breaking license file order
 [[rule]]
-include = ["Cargo.toml"]
+include = ["conduit/Cargo.toml"]
 # https://github.com/tamasfe/taplo/issues/608
 # keys = ["package.metadata.deb.license-file", "package.metadata.deb.assets"]
-keys = ["package.metadata.deb", "package.metadata.deb.assets"]
+keys = ["package.metadata.deb"]
 
 [rule.formatting]
 reorder_arrays = false
