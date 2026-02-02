@@ -29,6 +29,7 @@
         workspaceMembers = (pkgs.lib.importTOML ./Cargo.toml).workspace.members;
 
         default = self.callPackage ./nix/pkgs/default {};
+        xtask = self.callPackage ./nix/pkgs/default { pname = "xtask"; };
 
         inherit inputs;
 

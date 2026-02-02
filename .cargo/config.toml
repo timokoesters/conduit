@@ -1,2 +1,5 @@
 [env]
 RUMA_UNSTABLE_EXHAUSTIVE_TYPES = "1"
+
+[alias]
+xtask = "run --package xtask --"

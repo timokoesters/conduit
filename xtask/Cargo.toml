@@ -1,0 +1,20 @@
+[package]
+edition.workspace = true
+homepage.workspace = true
+name = "xtask"
+repository.workspace = true
+rust-version.workspace = true
+version = "0.11.0-alpha"
+
+[dependencies]
+# Processing commands
+clap = { workspace = true, features = ["color"] }
+# Documentation generation for the configuration
+conduit-config = { workspace = true, features = ["doc-generators"] }
+serde.workspace = true
+serde_json.workspace = true
+# Error handling
+anyhow = "1"
+
+[lints]
+workspace = true

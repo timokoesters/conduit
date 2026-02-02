@@ -8,6 +8,8 @@ title = "Conduit"
 [build]
 build-dir = "public"
 create-missing = true
+# https://github.com/rust-lang/mdBook/issues/2536#issuecomment-2769252638
+#extra-watch-dirs = ["target/docs"]
 
 [output.html]
 edit-url-template = "https://gitlab.com/famedly/conduit/-/edit/next/{path}"

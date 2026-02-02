@@ -47,7 +47,7 @@ tokio = { version = "1", features = ["fs", "macros", "signal", "sync"] }
 bytes = "1"
 http = "1"
 # Used for ruma wrapper
-serde_json = { version = "1", features = ["raw_value"] }
+serde_json = { workspace = true, features = ["raw_value"] }
 # Used for appservice registration files
 serde_yaml = "0.9"
 # Used for pdu definition
@@ -116,14 +116,7 @@ hmac = "0.12"
 sha-1 = "0.10"
 # used for conduit's CLI and admin room command parsing
 chrono = "0.4"
-clap = { version = "4", default-features = false, features = [
-  "derive",
-  "error-context",
-  "help",
-  "std",
-  "string",
-  "usage",
-] }
+clap.workspace = true
 humantime = "2"
 shell-words = "1.1.0"
 

@@ -12,6 +12,7 @@
 , default-features ? true
 , features ? []
 , profile ? "release"
+, pname ? "conduit"
 }:
 
 let
@@ -44,7 +45,7 @@ let
   commonAttrs = {
     inherit
       (craneLib.crateNameFromCargoToml {
-        cargoToml = "${inputs.self}/conduit/Cargo.toml";
+        cargoToml = "${inputs.self}/${pname}/Cargo.toml";
       })
       pname
       version;
@@ -77,7 +78,7 @@ craneLib.buildPackage ( commonAttrs // {
     env = buildDepsOnlyEnv;
   });
 
-  cargoExtraArgs = "--locked "
+  cargoExtraArgs = "-p ${pname} --locked "
     + lib.optionalString
       (!default-features)
       "--no-default-features "
@@ -94,5 +95,5 @@ craneLib.buildPackage ( commonAttrs // {
     env = buildPackageEnv;
   };
 
-  meta.mainProgram = commonAttrs.pname;
+  meta.mainProgram = pname;
 })

@@ -18,15 +18,22 @@ impl From<WrappedShadowConfig> for Config {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Default)]
+#[derive(Debug, Clone, Deserialize, Default, Copy)]
+#[cfg_attr(
+    feature = "doc-generators",
+    derive(conduit_macros::DocumentEnum, serde::Serialize)
+)]
 #[serde(rename_all = "snake_case")]
 pub enum ConfigPreset {
-    /// Default rate-limiting configuration, recommended for small private servers (i.e. single-user
-    /// or for family and/or friends)
+    /// The default preset, designed for small private servers (i.e. single-user or for family and
+    /// friends).
     #[default]
     PrivateSmall,
+    /// Designed for medium-sized private servers (e.g. for an entire school class or year-group).
     PrivateMedium,
+    /// For medium-sized public servers (i.e. you intend 20-100 users to actively use it).
     PublicMedium,
+    /// For larger public server (i.e. you intend 200-1000 users to actively use it).
     PublicLarge,
 }
 
@@ -168,7 +175,22 @@ where
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(
+    feature = "doc-generators",
+    derive(conduit_macros::DocumentStruct, conduit_macros::GetStructFieldValue)
+)]
 pub struct AuthenticationFailures {
+    /// This request restriction is a bit different from the previous ones.
+    /// This one only starts to have it's capacity used if authenticated requests are made with an
+    /// invalid authentictation token.
+    ///
+    /// This may happen non-maliciously, e.g. when a device is
+    /// logged out. But a bad actor can keep making requests with random values as the
+    /// authentication tokens until one of them are found to be valid. This restriction prevents
+    /// that by preventing all authenticated (client) requests while this limit is exceeded.
+    ///
+    /// Because of this, this restriction cannot be applied globally, only per-target, because an
+    /// exceeded global limit would prevent all global requests, which can be exploited.
     pub authentication_failures: RequestLimitation,
 }
 
@@ -189,36 +211,102 @@ pub enum Restriction {
     Federation(FederationRestriction),
 }
 
+impl From<ClientRestriction> for Restriction {
+    fn from(value: ClientRestriction) -> Self {
+        Self::Client(value)
+    }
+}
+
+impl From<FederationRestriction> for Restriction {
+    fn from(value: FederationRestriction) -> Self {
+        Self::Federation(value)
+    }
+}
+
+#[cfg(feature = "doc-generators")]
+pub trait DocumentEnum: Sized {
+    fn variant_doc_comments() -> Vec<(Self, String)>;
+    fn container_doc_comment() -> String;
+}
+
+#[cfg(feature = "doc-generators")]
+pub trait DocumentStruct: Sized {
+    fn field_doc_comments() -> Vec<(String, String)>;
+    fn container_doc_comment() -> String;
+}
+
+/// Applies for endpoints on the client-server API, which are used by clients, appservices, and
+/// bots. Appservices can bypass rate-limiting though if `rate_limited` is set to `false` in their
+/// registration file.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[cfg_attr(
+    feature = "doc-generators",
+    derive(conduit_macros::DocumentEnum, serde::Serialize)
+)]
 #[serde(rename_all = "snake_case")]
 pub enum ClientRestriction {
+    /// For registering a new user account. May be called multiples times for a single
+    /// registration if there are extra steps, e.g. providing a registration token.
     Registration,
+    /// For logging into an existing account.
     Login,
+    /// For checking whether a given registration token would allow the user to register an
+    /// account.
     RegistrationTokenValidity,
 
+    /// For sending an event to a room.
+    ///
+    /// Note that this is not used for state events, but for users who are unprivliged in a room,
+    /// the only state event they'll be able to send are ones to update their room profile.
     SendEvent,
 
+    /// For joining a room.
     Join,
+    /// For inviting a user to a room.
     Invite,
+    /// For knocking on a room.
     Knock,
 
+    /// For reporting a user, event, or room.
     SendReport,
+
+    /// For adding an alias to a room.
     CreateAlias,
 
+    /// For downloading a media file.
+    ///
+    /// For rate-limiting based on the size of files downloaded, see the media rate-limiting
+    /// configuration.
     MediaDownload,
+    /// For uploading a media file.
+    ///
+    /// For rate-limiting based on the size of files uploaded, see the media rate-limiting
+    /// configuration.
     MediaCreate,
 }
 
+/// Applies for endpoints on the federation API of this server, hence restricting how
+/// many times other servers can use these endpoints on this server in a given timeframe.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[cfg_attr(
+    feature = "doc-generators",
+    derive(conduit_macros::DocumentEnum, serde::Serialize)
+)]
 #[serde(rename_all = "snake_case")]
 pub enum FederationRestriction {
+    /// For joining a room.
     Join,
+    /// For knocking on a room.
     Knock,
+    /// For inviting a local user to a room.
     Invite,
 
     // Transactions should be handled by a completely dedicated rate-limiter
-    Transaction,
-
+    /* /// For sending transactions of PDU/EDUs.
+    ///
+    ///
+    Transaction, */
+    /// For downloading media.
     MediaDownload,
 }
 
@@ -351,6 +439,33 @@ pub enum Timeframe {
     PerDay(NonZeroU64),
 }
 
+#[cfg(feature = "doc-generators")]
+impl std::fmt::Display for Timeframe {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let value;
+
+        let string = match self {
+            Self::PerSecond(v) => {
+                value = v;
+                "second"
+            }
+            Self::PerMinute(v) => {
+                value = v;
+                "minute"
+            }
+            Self::PerHour(v) => {
+                value = v;
+                "hour"
+            }
+            Self::PerDay(v) => {
+                value = v;
+                "day"
+            }
+        };
+        write!(f, "{value} requests per {string}")
+    }
+}
+
 impl Timeframe {
     pub fn nano_gap(&self) -> u64 {
         match self {
@@ -368,10 +483,25 @@ pub trait MediaConfig {
     fn apply_overrides(self, shadow: Self::Shadow) -> Self;
 }
 
+#[cfg(feature = "doc-generators")]
+pub trait GetStructFieldValue: Sized {
+    type Limitation;
+    fn get(&self, field: &str) -> Option<Self::Limitation>;
+}
+
 #[derive(Clone, Copy, Debug, Deserialize)]
+#[cfg_attr(
+    feature = "doc-generators",
+    derive(conduit_macros::DocumentStruct, conduit_macros::GetStructFieldValue)
+)]
 pub struct ClientMediaConfig {
+    /// This restriction is applied whenever a client downloads media from the server.
     pub download: MediaLimitation,
+    /// This restriction is applied whenever a client uploads media to the server.
     pub upload: MediaLimitation,
+    /// In addition to the `download`, the `fetch` restriction is also applied when the media that
+    /// a client has downloaded was had to be fetched from a remote server, due to it not already
+    /// being stored.
     pub fetch: MediaLimitation,
 }
 
@@ -394,7 +524,12 @@ impl MediaConfig for ClientMediaConfig {
 }
 
 #[derive(Clone, Copy, Debug, Deserialize)]
+#[cfg_attr(
+    feature = "doc-generators",
+    derive(conduit_macros::DocumentStruct, conduit_macros::GetStructFieldValue)
+)]
 pub struct FederationMediaConfig {
+    /// This restriction is applied whenever a remote server downloads media from this server.
     pub download: MediaLimitation,
 }
 
@@ -435,6 +570,32 @@ pub enum MediaTimeframe {
     PerDay(ByteSize),
 }
 
+#[cfg(feature = "doc-generators")]
+impl std::fmt::Display for MediaTimeframe {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let value;
+
+        let string = match self {
+            Self::PerSecond(v) => {
+                value = v;
+                "second"
+            }
+            Self::PerMinute(v) => {
+                value = v;
+                "minute"
+            }
+            Self::PerHour(v) => {
+                value = v;
+                "hour"
+            }
+            Self::PerDay(v) => {
+                value = v;
+                "day"
+            }
+        };
+        write!(f, "{} per {string}", value.display().si())
+    }
+}
 impl MediaTimeframe {
     pub fn bytes_per_sec(&self) -> u64 {
         match self {
@@ -496,7 +657,7 @@ impl Config {
         }
     }
 
-    fn get_preset(preset: ConfigPreset) -> Self {
+    pub fn get_preset(preset: ConfigPreset) -> Self {
         // The client target map shouldn't really differ between presets, as individual user's
         // behaviours shouldn't differ depending on the size of the server or whether it's private
         // or public, but maybe I'm wrong.

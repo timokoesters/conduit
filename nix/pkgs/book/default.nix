@@ -1,8 +1,10 @@
 # Keep sorted
 { default
 , inputs
+, lib
 , mdbook
 , stdenv
+, xtask
 }:
 
 stdenv.mkDerivation {
@@ -20,6 +22,7 @@ stdenv.mkDerivation {
       "debian/README.md"
       "docs"
       "README.md"
+      "target/docs"
     ];
   };
 
@@ -28,6 +31,7 @@ stdenv.mkDerivation {
   ];
 
   buildPhase = ''
+    ${lib.getExe xtask} generate-docs
     mdbook build
     mv public $out
   '';

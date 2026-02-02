@@ -20,6 +20,8 @@ thiserror.workspace = true
 rusty-s3.workspace = true
 # Proxy config
 reqwest.workspace = true
+# Generating documentation
+conduit-macros.workspace = true
 
 # default room version, server name, ignored keys
 [dependencies.ruma]
@@ -29,6 +31,9 @@ workspace = true
 [features]
 rocksdb = []
 sqlite = []
+
+# Used to generate docs, shouldn't be used outside of xtask
+doc-generators = ["conduit-macros/doc-generators"]
 
 [lints]
 workspace = true
