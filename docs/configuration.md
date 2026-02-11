@@ -57,6 +57,7 @@ The `global` section contains the following fields:
 | `turn_uris` | `array` | The TURN URIs | `[]` |
 | `turn_secret` | `string` | The TURN secret | `""` |
 | `turn_ttl` | `integer` | The TURN TTL in seconds | `86400` |
+| `ignored_keys` | `[string]` | Server keys that should be ignored | `["l/O9hxMVKB6Lg+3Hqf0FQQZhVESQcMzbPN1Cz2nM3og"]` ([ESS compromised key](https://github.com/element-hq/ess-helm/security/advisories/GHSA-qwcj-h6m8-vp6q)) |
 | `media` | `table` | See the [media configuration](#media) | See the [media configuration](#media) |
 | `emergency_password` | `string` | Set a password to login as the `conduit` user in case of emergency | N/A |
 | `well_known` | `table` | Used for [delegation](delegation.md) | See [delegation](delegation.md) |
