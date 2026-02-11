@@ -34,11 +34,7 @@ should be part of the preset, you can contribute and change them!
 The overrides are split into `client` and `federation` sections, for limits that apply to the
 [client](https://spec.matrix.org/v1.17/client-server-api/) and
 [federation](https://spec.matrix.org/v1.17/server-server-api/) APIs respectively, which are both
-then split into `target` and `global` sections, which apply to specific [targets](#targets) and globally respectively.
-
-### Restrictions
-
-{{#include ../../target/docs/rate-limiting.md:restrictions}}
+then split into `target` and `global` sections, which apply to singular [targets](#targets) or to all of them respectively.
 
 ### Targets
 
@@ -53,3 +49,16 @@ resources/requests each unique client can access within the configured timeframe
 For example, while on a small server you might allow for all logged-in users to send out 100 invites
 per day between them, you can set a cap of 5 for each individual user, not only so that they can't
 use up the entire global cap, but also prevent potential spam from being spread by that user alone.
+
+### Restrictions
+
+Restrictions are one-to-many mappings to endpoints that have potential for abuse. Like the overrides mentioned above,
+they are split into `client` and `federation` restrictions.
+
+#### Client
+
+{{#include ../../target/docs/rate-limiting.md:client-restrictions}}
+
+#### Federation
+
+{{#include ../../target/docs/rate-limiting.md:federation-restrictions}}

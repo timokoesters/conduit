@@ -1,0 +1,21 @@
+[package]
+edition.workspace = true
+homepage.workspace = true
+name = "conduit-macros"
+repository.workspace = true
+rust-version.workspace = true
+version = "0.1.0"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+quote = "1.0.44"
+syn = "2.0.115"
+
+[features]
+default = ["doc-generators"]
+doc-generators = []
+
+[lints]
+workspace = true

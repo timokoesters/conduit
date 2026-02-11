@@ -1,6 +1,6 @@
 [workspace]
 default-members = ["conduit"]
-members = ["conduit", "xtask"]
+members = ["conduit", "conduit-macros", "xtask"]
 resolver = "2"
 
 [workspace.lints.rust]

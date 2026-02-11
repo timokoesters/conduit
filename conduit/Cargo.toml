@@ -147,6 +147,10 @@ http-body-util = "0.1.3"
 # Used for S3 media backend
 rusty-s3 = "0.8.1"
 
+# Only used for generating rate-limiting documentation for now, reword this comment once used for
+# other things.
+conduit-macros = { path = "../conduit-macros", optional = true }
+
 # Used for matrix spec type definitions and helpers
 [dependencies.ruma]
 features = [
@@ -191,6 +195,12 @@ sqlite = ["parking_lot", "rusqlite", "tokio/signal"]
 systemd = ["sd-notify"]
 
 enforce_msc4311 = []
+
+# Used to generate docs, shouldn't be used outside of xtask
+#
+# TODO: Maybe consider splitting up Conduit into more crates so that this feature
+# isn't exposed in the main crate?
+doc-generators = ["conduit-macros/doc-generators"]
 
 [[bin]]
 name = "conduit"

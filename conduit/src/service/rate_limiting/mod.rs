@@ -247,8 +247,6 @@ impl Service {
         })
     }
 
-    //TODO: use checked and saturating arithmetic
-
     /// Takes the target and request, and either accepts the request while adding to the
     /// bucket, or rejects the request, returning the duration that should be waited until
     /// the request should be retried.

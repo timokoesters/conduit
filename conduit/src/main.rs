@@ -1,3 +1,6 @@
+#[cfg(all(feature = "doc-generators", feature = "conduit_bin"))]
+compile_error!("feature \"doc-generators\" should not be enabled when building the conduit binary");
+
 use std::{future::Future, io, net::SocketAddr, sync::atomic, time::Duration};
 
 use axum::{
