@@ -421,7 +421,7 @@ impl Service {
     }
 
     /// Filters the key map of multiple servers down to keys that should be accepted given the expiry time,
-    /// room version, and timestamp of the parameters
+    /// room version, and timestamp of the parameters, as well as ignoring keys that are listed in `ignored_keys`.
     pub fn filter_keys_server_map(
         &self,
         keys: BTreeMap<String, SigningKeys>,
@@ -437,7 +437,7 @@ impl Service {
     }
 
     /// Filters the keys of a single server down to keys that should be accepted given the expiry time,
-    /// room version, and timestamp of the parameters
+    /// room version, and timestamp of the parameters, as well as removing any keys in `ignored_keys`.
     pub fn filter_keys_single_server(
         &self,
         keys: SigningKeys,
@@ -449,22 +449,32 @@ impl Service {
             // https://spec.matrix.org/v1.10/server-server-api/#get_matrixkeyv2server
                 || !rules.enforce_key_validity
         {
+            let filter_ignored_keys = |(_, base64): &(_, Base64)| {
+                !services().globals.config.ignored_keys.contains(base64)
+            };
+
             // Given that either the room version allows stale keys, or the valid_until_ts is
             // in the future, all verify_keys are valid
             let mut map: BTreeMap<_, _> = keys
                 .verify_keys
                 .into_iter()
                 .map(|(id, key)| (id, key.key))
+                .filter(filter_ignored_keys)
                 .collect();
 
-            map.extend(keys.old_verify_keys.into_iter().filter_map(|(id, key)| {
-                // Even on old room versions, we don't allow old keys if they are expired
-                if key.expired_ts > timestamp {
-                    Some((id, key.key))
-                } else {
-                    None
-                }
-            }));
+            map.extend(
+                keys.old_verify_keys
+                    .into_iter()
+                    .filter_map(|(id, key)| {
+                        // Even on old room versions, we don't allow old keys if they are expired
+                        if key.expired_ts > timestamp {
+                            Some((id, key.key))
+                        } else {
+                            None
+                        }
+                    })
+                    .filter(filter_ignored_keys),
+            );
 
             Some(map)
         } else {

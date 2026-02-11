@@ -8,7 +8,7 @@ use std::{
 };
 
 use bytesize::ByteSize;
-use ruma::{OwnedServerName, RoomVersionId};
+use ruma::{api::federation::discovery::VerifyKey, serde::Base64, OwnedServerName, RoomVersionId};
 use serde::{de::IgnoredAny, Deserialize};
 use tokio::time::{interval, Interval};
 use tracing::warn;
@@ -89,6 +89,9 @@ pub struct IncompleteConfig {
 
     pub turn: Option<TurnConfig>,
 
+    #[serde(default = "default_ignored_keys")]
+    pub ignored_keys: Vec<VerifyKey>,
+
     #[serde(default)]
     pub media: IncompleteMediaConfig,
 
@@ -135,6 +138,8 @@ pub struct Config {
     pub log: String,
 
     pub turn: Option<TurnConfig>,
+
+    pub ignored_keys: Vec<Base64>,
 
     pub media: MediaConfig,
 
@@ -186,6 +191,7 @@ impl From<IncompleteConfig> for Config {
             media,
             emergency_password,
             catchall,
+            ignored_keys,
         } = val;
 
         let turn = turn.or_else(|| {
@@ -203,6 +209,8 @@ impl From<IncompleteConfig> for Config {
                 None
             }
         });
+
+        let ignored_keys = ignored_keys.into_iter().map(|key| key.key).collect();
 
         let well_known_client = well_known
             .client
@@ -283,6 +291,7 @@ impl From<IncompleteConfig> for Config {
             media,
             emergency_password,
             catchall,
+            ignored_keys,
         }
     }
 }
@@ -785,4 +794,13 @@ pub fn default_default_room_version() -> RoomVersionId {
 
 fn default_s3_duration() -> u64 {
     30
+}
+
+fn default_ignored_keys() -> Vec<VerifyKey> {
+    vec![VerifyKey::new(Base64::new(
+        // Compromised Element Server Suite (ESS) signing key:
+        //
+        // https://github.com/element-hq/ess-helm/security/advisories/GHSA-qwcj-h6m8-vp6q
+        b"l/O9hxMVKB6Lg+3Hqf0FQQZhVESQcMzbPN1Cz2nM3og".to_vec(),
+    ))]
 }

@@ -1421,7 +1421,8 @@ impl Service {
         Ok((sorted, eventid_info))
     }
 
-    /// Filters down the given signing keys, only keeping those which could be valid for this event.
+    /// Filters down the given signing keys, only keeping those which could be valid for this event,
+    /// as well as ignoring those listed in `ignored_keys`.
     #[tracing::instrument(skip_all)]
     pub async fn filter_required_signing_keys(
         &self,
