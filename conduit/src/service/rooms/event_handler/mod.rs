@@ -1055,7 +1055,7 @@ impl Service {
                 services()
                     .rooms
                     .auth_chain
-                    .get_auth_chain(room_id, state.iter().map(|(_, id)| id.clone()).collect())
+                    .get_auth_chain(room_id, state.values().cloned().collect())
                     .await?
                     .collect(),
             );

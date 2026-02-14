@@ -135,16 +135,14 @@ pub async fn sync_events_route(
         }
     }
 
-    let result = match rx
+    match rx
         .borrow()
         .as_ref()
         .expect("When sync channel changes it's always set to some")
     {
         Ok(response) => Ok(response.clone()),
         Err(error) => Err(error.to_response()),
-    };
-
-    result
+    }
 }
 
 async fn sync_helper_wrapper(

@@ -330,7 +330,7 @@ impl std::fmt::Display for DatabaseBackend {
             #[cfg(feature = "sqlite")]
             DatabaseBackend::SQLite => "SQLite",
         };
-        write!(f, "{}", string)
+        write!(f, "{string}")
     }
 }
 

@@ -11,7 +11,7 @@ fn version() -> String {
     let cargo_pkg_version = env!("CARGO_PKG_VERSION");
 
     match option_env!("CONDUIT_VERSION_EXTRA") {
-        Some(x) => format!("{} ({})", cargo_pkg_version, x),
+        Some(x) => format!("{cargo_pkg_version} ({x})"),
         None => cargo_pkg_version.to_owned(),
     }
 }
