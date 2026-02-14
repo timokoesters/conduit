@@ -1,6 +1,6 @@
 use ruma::{OwnedRoomId, OwnedUserId, RoomId, UserId};
 
-use crate::{database::KeyValueDatabase, service, services, utils, Error, Result};
+use crate::{Error, Result, database::KeyValueDatabase, service, services, utils};
 
 use super::{get_room_and_user_byte_ids, get_userroom_id_bytes};
 
@@ -115,7 +115,7 @@ impl service::rooms::user::Data for KeyValueDatabase {
                     let roomid_index = key
                         .iter()
                         .enumerate()
-                        .find(|(_, &b)| b == 0xff)
+                        .find(|&(_, &b)| b == 0xff)
                         .ok_or_else(|| Error::bad_database("Invalid userroomid_joined in db."))?
                         .0
                         + 1; // +1 because the room id starts AFTER the separator

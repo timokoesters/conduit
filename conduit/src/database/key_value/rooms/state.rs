@@ -4,7 +4,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use tokio::sync::MutexGuard;
 
-use crate::{database::KeyValueDatabase, service, utils, Error, Result};
+use crate::{Error, Result, database::KeyValueDatabase, service, utils};
 
 impl service::rooms::state::Data for KeyValueDatabase {
     fn get_room_shortstatehash(&self, room_id: &RoomId) -> Result<Option<u64>> {

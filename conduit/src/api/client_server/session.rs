@@ -1,12 +1,12 @@
 use super::{DEVICE_ID_LENGTH, TOKEN_LENGTH};
-use crate::{services, utils, Error, Result, Ruma};
+use crate::{Error, Result, Ruma, services, utils};
 use ruma::{
+    UserId,
     api::client::{
         error::ErrorKind,
         session::{get_login_types, login, logout, logout_all},
         uiaa::UserIdentifier,
     },
-    UserId,
 };
 use serde::Deserialize;
 use tracing::{info, warn};

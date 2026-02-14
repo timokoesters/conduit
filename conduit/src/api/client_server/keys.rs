@@ -1,7 +1,8 @@
 use super::SESSION_ID_LENGTH;
-use crate::{services, utils, Error, Result, Ruma};
-use futures_util::{stream::FuturesUnordered, StreamExt};
+use crate::{Error, Result, Ruma, services, utils};
+use futures_util::{StreamExt, stream::FuturesUnordered};
 use ruma::{
+    OneTimeKeyAlgorithm, OwnedDeviceId, OwnedUserId, UserId,
     api::{
         client::{
             error::ErrorKind,
@@ -14,11 +15,10 @@ use ruma::{
         federation,
     },
     serde::Raw,
-    OneTimeKeyAlgorithm, OwnedDeviceId, OwnedUserId, UserId,
 };
 use serde_json::json;
 use std::{
-    collections::{hash_map, BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet, hash_map},
     time::{Duration, Instant},
 };
 use tracing::{debug, error};

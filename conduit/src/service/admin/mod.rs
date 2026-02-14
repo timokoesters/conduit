@@ -12,9 +12,13 @@ use clap::{Args, Parser};
 use image::GenericImageView;
 use regex::Regex;
 use ruma::{
+    EventId, MilliSecondsSinceUnixEpoch, MxcUri, OwnedMxcUri, OwnedRoomAliasId, OwnedRoomId,
+    OwnedServerName, RoomAliasId, RoomId, RoomVersionId, ServerName, UserId,
     api::appservice::Registration,
     events::{
+        TimelineEventType,
         room::{
+            MediaSource,
             canonical_alias::RoomCanonicalAliasEventContent,
             create::RoomCreateEventContent,
             guest_access::{GuestAccess, RoomGuestAccessEventContent},
@@ -28,28 +32,24 @@ use ruma::{
             name::RoomNameEventContent,
             power_levels::RoomPowerLevelsEventContent,
             topic::RoomTopicEventContent,
-            MediaSource,
         },
-        TimelineEventType,
     },
     room_version_rules::RoomVersionRules,
-    EventId, MilliSecondsSinceUnixEpoch, MxcUri, OwnedMxcUri, OwnedRoomAliasId, OwnedRoomId,
-    OwnedServerName, RoomAliasId, RoomId, RoomVersionId, ServerName, UserId,
 };
 use serde_json::value::to_raw_value;
-use tokio::sync::{mpsc, Mutex, RwLock};
+use tokio::sync::{Mutex, RwLock, mpsc};
 
 use crate::{
-    api::client_server::{self, leave_all_rooms, AUTO_GEN_PASSWORD_LENGTH},
+    Error, PduEvent, Result,
+    api::client_server::{self, AUTO_GEN_PASSWORD_LENGTH, leave_all_rooms},
     services,
     utils::{self, HtmlEscape},
-    Error, PduEvent, Result,
 };
 
 use super::{
     media::{
-        size, BlockedMediaInfo, FileInfo, MediaListItem, MediaQuery, MediaQueryFileInfo,
-        MediaQueryThumbInfo, ServerNameOrUserId,
+        BlockedMediaInfo, FileInfo, MediaListItem, MediaQuery, MediaQueryFileInfo,
+        MediaQueryThumbInfo, ServerNameOrUserId, size,
     },
     pdu::PduBuilder,
 };
@@ -794,7 +794,7 @@ impl Service {
                         return Ok(RoomMessageEventContent::text_plain(format!(
                             "The supplied username is not a valid username: {e}"
                         ))
-                        .into())
+                        .into());
                     }
                 };
 
@@ -849,7 +849,7 @@ impl Service {
                         return Ok(RoomMessageEventContent::text_plain(format!(
                             "The supplied username is not a valid username: {e}"
                         ))
-                        .into())
+                        .into());
                     }
                 };
 

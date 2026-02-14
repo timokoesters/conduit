@@ -1,6 +1,6 @@
-use crate::{services, utils, Error, Result, SUPPORTED_VERSIONS};
+use crate::{Error, Result, SUPPORTED_VERSIONS, services, utils};
 use bytes::BytesMut;
-use ruma::api::{appservice::Registration, IncomingResponse, OutgoingRequest, SendAccessToken};
+use ruma::api::{IncomingResponse, OutgoingRequest, SendAccessToken, appservice::Registration};
 use std::{fmt::Debug, mem, time::Duration};
 use tracing::warn;
 

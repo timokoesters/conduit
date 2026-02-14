@@ -1,5 +1,6 @@
-use crate::{services, Error, Result, Ruma};
+use crate::{Error, Result, Ruma, services};
 use ruma::{
+    ServerName, UInt,
     api::{
         client::{
             directory::{
@@ -13,6 +14,7 @@ use ruma::{
     },
     directory::{Filter, PublicRoomsChunk, RoomNetwork},
     events::{
+        StateEventType,
         room::{
             avatar::RoomAvatarEventContent,
             canonical_alias::RoomCanonicalAliasEventContent,
@@ -22,9 +24,7 @@ use ruma::{
             join_rules::RoomJoinRulesEventContent,
             topic::RoomTopicEventContent,
         },
-        StateEventType,
     },
-    ServerName, UInt,
 };
 use tracing::{error, info, warn};
 
@@ -169,7 +169,7 @@ pub(crate) async fn get_public_rooms_filtered_helper(
                 return Err(Error::BadRequest(
                     ErrorKind::InvalidParam,
                     "Invalid `since` token",
-                ))
+                ));
             }
         };
 

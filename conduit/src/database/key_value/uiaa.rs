@@ -1,9 +1,9 @@
 use ruma::{
-    api::client::{error::ErrorKind, uiaa::UiaaInfo},
     CanonicalJsonValue, DeviceId, UserId,
+    api::client::{error::ErrorKind, uiaa::UiaaInfo},
 };
 
-use crate::{database::KeyValueDatabase, service, Error, Result};
+use crate::{Error, Result, database::KeyValueDatabase, service};
 
 impl service::uiaa::Data for KeyValueDatabase {
     fn set_uiaa_request(

@@ -3,9 +3,9 @@ mod data;
 pub use data::Data;
 
 use ruma::{
+    RoomId, UserId,
     events::{AnyGlobalAccountDataEvent, AnyRoomAccountDataEvent, RoomAccountDataEventType},
     serde::Raw,
-    RoomId, UserId,
 };
 
 use std::collections::HashMap;

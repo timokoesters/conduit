@@ -2,9 +2,9 @@ use std::collections::HashMap;
 
 use crate::Result;
 use ruma::{
+    RoomId, UserId,
     events::{AnyGlobalAccountDataEvent, AnyRoomAccountDataEvent, RoomAccountDataEventType},
     serde::Raw,
-    RoomId, UserId,
 };
 
 pub trait Data: Send + Sync {

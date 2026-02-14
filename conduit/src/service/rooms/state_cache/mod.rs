@@ -4,19 +4,19 @@ use std::{collections::HashSet, sync::Arc};
 pub use data::Data;
 
 use ruma::{
+    OwnedRoomId, OwnedRoomOrAliasId, OwnedServerName, OwnedUserId, RoomId, ServerName, UserId,
     events::{
+        AnyStrippedStateEvent, AnySyncStateEvent, GlobalAccountDataEventType,
+        RoomAccountDataEventType, StateEventType,
         direct::DirectEvent,
         ignored_user_list::IgnoredUserListEvent,
         room::{create::RoomCreateEventContent, member::MembershipState},
-        AnyStrippedStateEvent, AnySyncStateEvent, GlobalAccountDataEventType,
-        RoomAccountDataEventType, StateEventType,
     },
     serde::Raw,
-    OwnedRoomId, OwnedRoomOrAliasId, OwnedServerName, OwnedUserId, RoomId, ServerName, UserId,
 };
 use tracing::warn;
 
-use crate::{service::appservice::RegistrationInfo, services, Error, Result};
+use crate::{Error, Result, service::appservice::RegistrationInfo, services};
 
 pub struct Service {
     pub db: &'static dyn Data,
@@ -231,7 +231,7 @@ impl Service {
     pub fn room_servers<'a>(
         &'a self,
         room_id: &RoomId,
-    ) -> impl Iterator<Item = Result<OwnedServerName>> + 'a {
+    ) -> impl Iterator<Item = Result<OwnedServerName>> + 'a + use<'a> {
         self.db.room_servers(room_id)
     }
 
@@ -245,7 +245,7 @@ impl Service {
     pub fn server_rooms<'a>(
         &'a self,
         server: &ServerName,
-    ) -> impl Iterator<Item = Result<OwnedRoomId>> + 'a {
+    ) -> impl Iterator<Item = Result<OwnedRoomId>> + 'a + use<'a> {
         self.db.server_rooms(server)
     }
 
@@ -254,7 +254,7 @@ impl Service {
     pub fn room_members<'a>(
         &'a self,
         room_id: &RoomId,
-    ) -> impl Iterator<Item = Result<OwnedUserId>> + 'a {
+    ) -> impl Iterator<Item = Result<OwnedUserId>> + 'a + use<'a> {
         self.db.room_members(room_id)
     }
 
@@ -275,7 +275,7 @@ impl Service {
     pub fn room_useroncejoined<'a>(
         &'a self,
         room_id: &RoomId,
-    ) -> impl Iterator<Item = Result<OwnedUserId>> + 'a {
+    ) -> impl Iterator<Item = Result<OwnedUserId>> + 'a + use<'a> {
         self.db.room_useroncejoined(room_id)
     }
 
@@ -284,7 +284,7 @@ impl Service {
     pub fn room_members_invited<'a>(
         &'a self,
         room_id: &RoomId,
-    ) -> impl Iterator<Item = Result<OwnedUserId>> + 'a {
+    ) -> impl Iterator<Item = Result<OwnedUserId>> + 'a + use<'a> {
         self.db.room_members_invited(room_id)
     }
 
@@ -308,7 +308,7 @@ impl Service {
     pub fn rooms_joined<'a>(
         &'a self,
         user_id: &UserId,
-    ) -> impl Iterator<Item = Result<OwnedRoomId>> + 'a {
+    ) -> impl Iterator<Item = Result<OwnedRoomId>> + 'a + use<'a> {
         self.db.rooms_joined(user_id)
     }
 
@@ -317,7 +317,8 @@ impl Service {
     pub fn rooms_invited<'a>(
         &'a self,
         user_id: &UserId,
-    ) -> impl Iterator<Item = Result<(OwnedRoomId, Vec<Raw<AnyStrippedStateEvent>>)>> + 'a {
+    ) -> impl Iterator<Item = Result<(OwnedRoomId, Vec<Raw<AnyStrippedStateEvent>>)>> + 'a + use<'a>
+    {
         self.db.rooms_invited(user_id)
     }
 
@@ -326,7 +327,8 @@ impl Service {
     pub fn rooms_knocked<'a>(
         &'a self,
         user_id: &UserId,
-    ) -> impl Iterator<Item = Result<(OwnedRoomId, Vec<Raw<AnyStrippedStateEvent>>)>> + 'a {
+    ) -> impl Iterator<Item = Result<(OwnedRoomId, Vec<Raw<AnyStrippedStateEvent>>)>> + 'a + use<'a>
+    {
         self.db.rooms_knocked(user_id)
     }
 
@@ -362,7 +364,8 @@ impl Service {
     pub fn rooms_left<'a>(
         &'a self,
         user_id: &UserId,
-    ) -> impl Iterator<Item = Result<(OwnedRoomId, Vec<Raw<AnySyncStateEvent>>)>> + 'a {
+    ) -> impl Iterator<Item = Result<(OwnedRoomId, Vec<Raw<AnySyncStateEvent>>)>> + 'a + use<'a>
+    {
         self.db.rooms_left(user_id)
     }
 

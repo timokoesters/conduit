@@ -5,10 +5,10 @@ use std::{
 };
 
 pub use data::Data;
-use ruma::{api::client::error::ErrorKind, state_res::StateMap, EventId, RoomId};
+use ruma::{EventId, RoomId, api::client::error::ErrorKind, state_res::StateMap};
 use tracing::{debug, error, warn};
 
-use crate::{services, Error, Result};
+use crate::{Error, Result, services};
 
 pub struct Service {
     pub db: &'static dyn Data,
@@ -29,7 +29,7 @@ impl Service {
         &self,
         room_id: &RoomId,
         starting_events: Vec<Arc<EventId>>,
-    ) -> Result<impl Iterator<Item = Arc<EventId>> + 'a> {
+    ) -> Result<impl Iterator<Item = Arc<EventId>> + 'a + use<'a>> {
         const NUM_BUCKETS: usize = 50;
 
         let mut buckets = vec![BTreeSet::new(); NUM_BUCKETS];

@@ -1,20 +1,21 @@
 use std::{collections::BTreeMap, mem::size_of};
 
 use ruma::{
+    DeviceId, MilliSecondsSinceUnixEpoch, OneTimeKeyAlgorithm, OwnedDeviceId, OwnedMxcUri,
+    OwnedOneTimeKeyId, OwnedUserId, UInt, UserId,
     api::client::{device::Device, error::ErrorKind, filter::FilterDefinition},
     encryption::{CrossSigningKey, DeviceKeys, OneTimeKey},
     events::{AnyToDeviceEvent, StateEventType},
     serde::Raw,
-    DeviceId, MilliSecondsSinceUnixEpoch, OneTimeKeyAlgorithm, OwnedDeviceId, OwnedMxcUri,
-    OwnedOneTimeKeyId, OwnedUserId, UInt, UserId,
 };
 use tracing::warn;
 
 use crate::{
+    Error, Result,
     api::client_server::TOKEN_LENGTH,
     database::KeyValueDatabase,
     service::{self, users::clean_signatures},
-    services, utils, Error, Result,
+    services, utils,
 };
 
 impl service::users::Data for KeyValueDatabase {

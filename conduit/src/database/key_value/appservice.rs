@@ -1,6 +1,6 @@
 use ruma::api::appservice::Registration;
 
-use crate::{database::KeyValueDatabase, service, utils, Error, Result};
+use crate::{Error, Result, database::KeyValueDatabase, service, utils};
 
 impl service::appservice::Data for KeyValueDatabase {
     /// Registers an appservice and returns the ID to the caller

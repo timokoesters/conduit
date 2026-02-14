@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::Result;
-use ruma::{events::presence::PresenceEvent, OwnedUserId, RoomId, UserId};
+use ruma::{OwnedUserId, RoomId, UserId, events::presence::PresenceEvent};
 
 pub trait Data: Send + Sync {
     /// Adds a presence event which will be saved until a new event replaces it.

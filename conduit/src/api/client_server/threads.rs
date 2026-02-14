@@ -1,6 +1,6 @@
 use ruma::api::client::{error::ErrorKind, threads::get_threads};
 
-use crate::{services, Error, Result, Ruma};
+use crate::{Error, Result, Ruma, services};
 
 /// # `GET /_matrix/client/r0/rooms/{roomId}/threads`
 pub async fn get_threads_route(

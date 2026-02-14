@@ -1,4 +1,4 @@
-use crate::{services, utils, Error, Result, Ruma};
+use crate::{Error, Result, Ruma, services, utils};
 use ruma::api::client::{error::ErrorKind, typing::create_typing_event};
 
 /// # `PUT /_matrix/client/r0/rooms/{roomId}/typing/{userId}`

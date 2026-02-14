@@ -3,15 +3,15 @@ mod data;
 pub use data::Data;
 
 use ruma::{
+    CanonicalJsonValue, DeviceId, UserId,
     api::client::{
         error::ErrorKind,
         uiaa::{AuthData, AuthType, Password, UiaaInfo, UserIdentifier},
     },
-    CanonicalJsonValue, DeviceId, UserId,
 };
 use tracing::error;
 
-use crate::{api::client_server::SESSION_ID_LENGTH, services, utils, Error, Result};
+use crate::{Error, Result, api::client_server::SESSION_ID_LENGTH, services, utils};
 
 pub struct Service {
     pub db: &'static dyn Data,
@@ -69,7 +69,7 @@ impl Service {
                         return Err(Error::BadRequest(
                             ErrorKind::Unrecognized,
                             "Identifier type not recognized.",
-                        ))
+                        ));
                     }
                 };
 

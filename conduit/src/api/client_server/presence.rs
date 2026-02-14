@@ -1,4 +1,4 @@
-use crate::{services, utils, Error, Result, Ruma};
+use crate::{Error, Result, Ruma, services, utils};
 use ruma::api::client::{
     error::ErrorKind,
     presence::{get_presence, set_presence},

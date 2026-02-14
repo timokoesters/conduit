@@ -1,5 +1,5 @@
-use super::{watchers::Watchers, KeyValueDatabaseEngine, KvTree};
-use crate::{database::Config, Result};
+use super::{KeyValueDatabaseEngine, KvTree, watchers::Watchers};
+use crate::{Result, database::Config};
 use parking_lot::{Mutex, MutexGuard};
 use rusqlite::{Connection, DatabaseName::Main, OptionalExtension};
 use std::{

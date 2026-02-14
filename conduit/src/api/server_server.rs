@@ -1,33 +1,38 @@
 #![allow(deprecated)]
 
 use crate::{
+    Error, PduEvent, Result, Ruma, SUPPORTED_VERSIONS,
     api::client_server::{self, claim_keys_helper, get_keys_helper},
     service::{
         globals::SigningKeys,
         media::FileMeta,
-        pdu::{gen_event_id_canonical_json, PduBuilder},
+        pdu::{PduBuilder, gen_event_id_canonical_json},
     },
-    services, utils, Error, PduEvent, Result, Ruma, SUPPORTED_VERSIONS,
+    services, utils,
 };
-use axum::{response::IntoResponse, Json};
+use axum::{Json, response::IntoResponse};
 use axum_extra::headers::{CacheControl, Header};
 use get_profile_information::v1::ProfileField;
 use http::header::AUTHORIZATION;
 
 use ruma::{
+    CanonicalJsonObject, CanonicalJsonValue, EventId, MilliSecondsSinceUnixEpoch, OwnedEventId,
+    OwnedRoomId, OwnedServerName, OwnedServerSigningKeyId, OwnedUserId, RoomId, RoomVersionId,
+    ServerName, Signatures, UserId,
     api::{
+        EndpointError, IncomingResponse, OutgoingRequest, OutgoingResponse, SendAccessToken,
         client::error::{Error as RumaError, ErrorKind},
         federation::{
             authenticated_media::{
-                get_content, get_content_thumbnail, Content, ContentMetadata, FileOrLocation,
+                Content, ContentMetadata, FileOrLocation, get_content, get_content_thumbnail,
             },
             authorization::get_event_authorization,
             backfill::get_backfill,
             device::get_devices::{self, v1::UserDevice},
             directory::{get_public_rooms, get_public_rooms_filtered},
             discovery::{
-                discover_homeserver, get_server_keys, get_server_version, ServerSigningKeys,
-                VerifyKey,
+                ServerSigningKeys, VerifyKey, discover_homeserver, get_server_keys,
+                get_server_version,
             },
             event::{get_event, get_missing_events, get_room_state, get_room_state_ids},
             keys::{claim_keys, get_keys},
@@ -43,25 +48,22 @@ use ruma::{
                 send_transaction_message,
             },
         },
-        EndpointError, IncomingResponse, OutgoingRequest, OutgoingResponse, SendAccessToken,
     },
     directory::{Filter, RoomNetwork},
     events::{
+        StateEventType, TimelineEventType,
         receipt::{ReceiptEvent, ReceiptEventContent, ReceiptType},
         room::{
             join_rules::{AllowRule, JoinRule, RoomJoinRulesEventContent},
             member::{MembershipState, RoomMemberEventContent},
         },
-        StateEventType, TimelineEventType,
     },
     room_version_rules::{AuthorizationRules, RoomVersionRules},
     serde::{Base64, JsonObject, Raw},
     to_device::DeviceIdOrAllDevices,
-    uint, user_id, CanonicalJsonObject, CanonicalJsonValue, EventId, MilliSecondsSinceUnixEpoch,
-    OwnedEventId, OwnedRoomId, OwnedServerName, OwnedServerSigningKeyId, OwnedUserId, RoomId,
-    RoomVersionId, ServerName, Signatures, UserId,
+    uint, user_id,
 };
-use serde_json::value::{to_raw_value, RawValue as RawJsonValue};
+use serde_json::value::{RawValue as RawJsonValue, to_raw_value};
 use std::{
     collections::BTreeMap,
     fmt::Debug,
@@ -2545,7 +2547,7 @@ pub async fn well_known_server(
 
 #[cfg(test)]
 mod tests {
-    use super::{add_port_to_hostname, get_ip_with_port, FedDest};
+    use super::{FedDest, add_port_to_hostname, get_ip_with_port};
 
     #[test]
     fn ips_get_default_ports() {

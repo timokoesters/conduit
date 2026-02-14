@@ -1,30 +1,30 @@
 use std::{collections::BTreeMap, error::Error as _, iter::FromIterator, str};
 
 use axum::{
+    RequestPartsExt,
     body::Body,
     extract::{FromRequest, Path},
     response::{IntoResponse, Response},
-    RequestPartsExt,
 };
 use axum_extra::{
-    headers::{authorization::Bearer, Authorization},
-    typed_header::TypedHeaderRejectionReason,
     TypedHeader,
+    headers::{Authorization, authorization::Bearer},
+    typed_header::TypedHeaderRejectionReason,
 };
 use bytes::{BufMut, BytesMut};
 use http::{Request, StatusCode};
 use ruma::{
-    api::{
-        client::error::ErrorKind, federation::authentication::XMatrix, AuthScheme, IncomingRequest,
-        OutgoingResponse,
-    },
     CanonicalJsonValue, MilliSecondsSinceUnixEpoch, OwnedDeviceId, OwnedUserId, UserId,
+    api::{
+        AuthScheme, IncomingRequest, OutgoingResponse, client::error::ErrorKind,
+        federation::authentication::XMatrix,
+    },
 };
 use serde::Deserialize;
 use tracing::{debug, error, warn};
 
 use super::{Ruma, RumaResponse};
-use crate::{service::appservice::RegistrationInfo, services, Error, Result};
+use crate::{Error, Result, service::appservice::RegistrationInfo, services};
 
 enum Token {
     Appservice(Box<RegistrationInfo>),

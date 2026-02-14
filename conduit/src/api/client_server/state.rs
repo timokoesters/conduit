@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
-use crate::{service::pdu::PduBuilder, services, Error, Result, Ruma, RumaResponse};
+use crate::{Error, Result, Ruma, RumaResponse, service::pdu::PduBuilder, services};
 use ruma::{
+    EventId, MilliSecondsSinceUnixEpoch, RoomId, UserId,
     api::client::{
         error::ErrorKind,
         state::{
@@ -10,10 +11,9 @@ use ruma::{
         },
     },
     events::{
-        room::canonical_alias::RoomCanonicalAliasEventContent, AnyStateEventContent, StateEventType,
+        AnyStateEventContent, StateEventType, room::canonical_alias::RoomCanonicalAliasEventContent,
     },
     serde::Raw,
-    EventId, MilliSecondsSinceUnixEpoch, RoomId, UserId,
 };
 use tracing::warn;
 

@@ -1,6 +1,7 @@
 use crate::{
+    Error, Result, Ruma,
     service::{pdu::PduBuilder, rooms::timeline::PduCount},
-    services, utils, Error, Result, Ruma,
+    services, utils,
 };
 use ruma::{
     api::client::{

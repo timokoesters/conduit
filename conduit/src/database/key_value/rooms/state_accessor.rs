@@ -1,8 +1,8 @@
 use std::{collections::HashMap, sync::Arc};
 
-use crate::{database::KeyValueDatabase, service, services, utils, Error, PduEvent, Result};
+use crate::{Error, PduEvent, Result, database::KeyValueDatabase, service, services, utils};
 use async_trait::async_trait;
-use ruma::{events::StateEventType, EventId, RoomId};
+use ruma::{EventId, RoomId, events::StateEventType};
 
 #[async_trait]
 impl service::rooms::state_accessor::Data for KeyValueDatabase {

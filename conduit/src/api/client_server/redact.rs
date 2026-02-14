@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
-use crate::{service::pdu::PduBuilder, services, Result, Ruma};
+use crate::{Result, Ruma, service::pdu::PduBuilder, services};
 use ruma::{
     api::client::redact::redact_event,
-    events::{room::redaction::RoomRedactionEventContent, TimelineEventType},
+    events::{TimelineEventType, room::redaction::RoomRedactionEventContent},
 };
 
 use serde_json::value::to_raw_value;

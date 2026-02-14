@@ -1,4 +1,5 @@
 use ruma::{
+    OwnedServerName, RoomId, UserId,
     api::{
         client::{
             error::ErrorKind,
@@ -11,17 +12,16 @@ use ruma::{
         },
         federation::{
             self,
-            membership::{create_invite, RawStrippedState},
+            membership::{RawStrippedState, create_invite},
         },
     },
     events::{
+        StateEventType, TimelineEventType,
         room::{
             join_rules::JoinRule,
             member::{MembershipState, RoomMemberEventContent},
         },
-        StateEventType, TimelineEventType,
     },
-    OwnedServerName, RoomId, UserId,
 };
 use serde_json::value::to_raw_value;
 use std::{
@@ -32,8 +32,9 @@ use tokio::sync::RwLock;
 use tracing::{error, info, warn};
 
 use crate::{
-    service::pdu::{gen_event_id_canonical_json, PduBuilder},
-    services, utils, Error, PduEvent, Result, Ruma,
+    Error, PduEvent, Result, Ruma,
+    service::pdu::{PduBuilder, gen_event_id_canonical_json},
+    services, utils,
 };
 
 /// # `POST /_matrix/client/r0/rooms/{roomId}/join`
@@ -253,7 +254,7 @@ pub async fn knock_room_route(
                 return Err(Error::BadRequest(
                     ErrorKind::forbidden(),
                     "You are not allowed to knock on this room.",
-                ))
+                ));
             }
         };
 
@@ -774,7 +775,12 @@ pub(crate) async fn invite_helper(
         };
 
         if *pdu.event_id != *event_id {
-            warn!("Server {} changed invite event, that's not allowed in the spec: ours: {:?}, theirs: {:?}", user_id.server_name(), pdu_json, value);
+            warn!(
+                "Server {} changed invite event, that's not allowed in the spec: ours: {:?}, theirs: {:?}",
+                user_id.server_name(),
+                pdu_json,
+                value
+            );
         }
 
         let origin: OwnedServerName = serde_json::from_value(

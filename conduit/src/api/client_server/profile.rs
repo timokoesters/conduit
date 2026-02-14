@@ -1,4 +1,4 @@
-use crate::{service::pdu::PduBuilder, services, utils, Error, Result, Ruma};
+use crate::{Error, Result, Ruma, service::pdu::PduBuilder, services, utils};
 use ruma::{
     api::{
         client::{
@@ -9,7 +9,7 @@ use ruma::{
         },
         federation::{self, query::get_profile_information::v1::ProfileField},
     },
-    events::{room::member::RoomMemberEventContent, StateEventType, TimelineEventType},
+    events::{StateEventType, TimelineEventType, room::member::RoomMemberEventContent},
 };
 use serde_json::value::to_raw_value;
 use std::sync::Arc;

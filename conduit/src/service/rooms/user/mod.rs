@@ -43,7 +43,7 @@ impl Service {
     pub fn get_shared_rooms(
         &self,
         users: Vec<OwnedUserId>,
-    ) -> Result<impl Iterator<Item = Result<OwnedRoomId>>> {
+    ) -> Result<impl Iterator<Item = Result<OwnedRoomId>> + use<>> {
         self.db.get_shared_rooms(users)
     }
 }

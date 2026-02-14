@@ -17,7 +17,7 @@ pub use api::ruma_wrapper::{Ruma, RumaResponse};
 pub use config::Config;
 pub use database::KeyValueDatabase;
 use ruma::api::{MatrixVersion, SupportedVersions};
-pub use service::{pdu::PduEvent, Services};
+pub use service::{Services, pdu::PduEvent};
 pub use utils::error::{Error, Result};
 
 pub static SERVICES: RwLock<Option<&'static Services>> = RwLock::new(None);

@@ -14,7 +14,7 @@ str_to_string = "warn"
 
 [workspace.package]
 # See also `rust-toolchain.toml`
-edition = "2021"
+edition = "2024"
 homepage = "https://conduit.rs"
 repository = "https://gitlab.com/famedly/conduit"
 rust-version = "1.85.0"

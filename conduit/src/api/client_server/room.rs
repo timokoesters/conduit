@@ -1,12 +1,15 @@
 use crate::{
-    api::client_server::invite_helper, service::pdu::PduBuilder, services, Error, Result, Ruma,
+    Error, Result, Ruma, api::client_server::invite_helper, service::pdu::PduBuilder, services,
 };
 use ruma::{
+    CanonicalJsonObject, CanonicalJsonValue, Int, OwnedRoomAliasId, OwnedUserId, RoomAliasId,
+    RoomVersionId,
     api::client::{
         error::ErrorKind,
         room::{self, aliases, create_room, get_room_event, upgrade_room},
     },
     events::{
+        StateEventType, TimelineEventType,
         room::{
             canonical_alias::RoomCanonicalAliasEventContent,
             create::RoomCreateEventContent,
@@ -19,12 +22,9 @@ use ruma::{
             tombstone::RoomTombstoneEventContent,
             topic::RoomTopicEventContent,
         },
-        StateEventType, TimelineEventType,
     },
     int,
     serde::JsonObject,
-    CanonicalJsonObject, CanonicalJsonValue, Int, OwnedRoomAliasId, OwnedUserId, RoomAliasId,
-    RoomVersionId,
 };
 use serde::Deserialize;
 use serde_json::{json, value::to_raw_value};

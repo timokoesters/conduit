@@ -8,9 +8,9 @@ use std::{
 };
 
 use bytesize::ByteSize;
-use ruma::{api::federation::discovery::VerifyKey, serde::Base64, OwnedServerName, RoomVersionId};
-use serde::{de::IgnoredAny, Deserialize};
-use tokio::time::{interval, Interval};
+use ruma::{OwnedServerName, RoomVersionId, api::federation::discovery::VerifyKey, serde::Base64};
+use serde::{Deserialize, de::IgnoredAny};
+use tokio::time::{Interval, interval};
 use tracing::warn;
 use url::Url;
 
@@ -559,7 +559,9 @@ impl TryFrom<ShadowDirectoryStructure> for DirectoryStructure {
                 {
                     Ok(Self::Deep { length, depth })
                 } else {
-                    Err(Error::bad_config("The media directory structure depth multiplied by the depth is equal to or greater than a sha256 hex hash, please reduce at least one of the two so that their product is less than 64"))
+                    Err(Error::bad_config(
+                        "The media directory structure depth multiplied by the depth is equal to or greater than a sha256 hex hash, please reduce at least one of the two so that their product is less than 64",
+                    ))
                 }
             }
         }
@@ -640,7 +642,9 @@ impl Config {
         }
 
         if was_deprecated {
-            warn!("Read conduit documentation and check your configuration if any new configuration parameters should be adjusted");
+            warn!(
+                "Read conduit documentation and check your configuration if any new configuration parameters should be adjusted"
+            );
         }
     }
 }
@@ -716,7 +720,7 @@ impl fmt::Display for Config {
         let mut msg: String = "Active config values:\n\n".to_owned();
 
         for line in lines.into_iter().enumerate() {
-            msg += &format!("{}: {}\n", line.1 .0, line.1 .1);
+            msg += &format!("{}: {}\n", line.1.0, line.1.1);
         }
 
         write!(f, "{msg}")

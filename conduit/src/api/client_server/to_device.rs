@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use crate::{services, Error, Result, Ruma};
+use crate::{Error, Result, Ruma, services};
 use ruma::{
     api::{
         client::{error::ErrorKind, to_device::send_event_to_device},

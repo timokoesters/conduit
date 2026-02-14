@@ -1,5 +1,5 @@
 use std::{
-    collections::{hash_map, HashMap},
+    collections::{HashMap, hash_map},
     future::Future,
     pin::Pin,
     sync::RwLock,

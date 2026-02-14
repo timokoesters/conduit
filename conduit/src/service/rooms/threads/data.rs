@@ -1,5 +1,5 @@
 use crate::{PduEvent, Result};
-use ruma::{api::client::threads::get_threads::v1::IncludeThreads, OwnedUserId, RoomId, UserId};
+use ruma::{OwnedUserId, RoomId, UserId, api::client::threads::get_threads::v1::IncludeThreads};
 
 pub trait Data: Send + Sync {
     #[allow(clippy::type_complexity)]

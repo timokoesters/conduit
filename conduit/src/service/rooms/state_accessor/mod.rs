@@ -7,7 +7,9 @@ use std::{
 pub use data::Data;
 use lru_cache::LruCache;
 use ruma::{
+    EventId, JsOption, OwnedRoomId, OwnedServerName, OwnedUserId, RoomId, ServerName, UserId,
     events::{
+        StateEventType,
         room::{
             avatar::RoomAvatarEventContent,
             guest_access::{GuestAccess, RoomGuestAccessEventContent},
@@ -17,17 +19,15 @@ use ruma::{
             name::RoomNameEventContent,
             power_levels::{RoomPowerLevels, RoomPowerLevelsEventContent},
         },
-        StateEventType,
     },
     room::{JoinRuleSummary, RoomMembership},
-    state_res::{events::RoomCreateEvent, Event},
-    EventId, JsOption, OwnedRoomId, OwnedServerName, OwnedUserId, RoomId, ServerName, UserId,
+    state_res::{Event, events::RoomCreateEvent},
 };
 use serde_json::value::to_raw_value;
 use tokio::sync::MutexGuard;
 use tracing::{error, warn};
 
-use crate::{service::pdu::PduBuilder, services, Error, PduEvent, Result};
+use crate::{Error, PduEvent, Result, service::pdu::PduBuilder, services};
 
 pub struct Service {
     pub db: &'static dyn Data,

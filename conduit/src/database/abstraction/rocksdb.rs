@@ -1,5 +1,5 @@
-use super::{super::Config, watchers::Watchers, KeyValueDatabaseEngine, KvTree};
-use crate::{utils, Result};
+use super::{super::Config, KeyValueDatabaseEngine, KvTree, watchers::Watchers};
+use crate::{Result, utils};
 use std::{
     future::Future,
     pin::Pin,

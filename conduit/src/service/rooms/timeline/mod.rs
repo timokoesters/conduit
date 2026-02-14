@@ -10,34 +10,36 @@ use std::{
 pub use data::Data;
 
 use ruma::{
+    CanonicalJsonObject, CanonicalJsonValue, EventId, MilliSecondsSinceUnixEpoch, OwnedEventId,
+    OwnedRoomId, OwnedServerName, RoomId, ServerName, UserId,
     api::{client::error::ErrorKind, federation},
     canonical_json::to_canonical_value,
     events::{
+        GlobalAccountDataEventType, StateEventType, TimelineEventType,
         push_rules::PushRulesEvent,
         room::{
             canonical_alias::RoomCanonicalAliasEventContent, create::RoomCreateEventContent,
             encrypted::Relation, member::MembershipState, redaction::RoomRedactionEventContent,
         },
-        GlobalAccountDataEventType, StateEventType, TimelineEventType,
     },
     push::{Action, PushConditionPowerLevelsCtx, Ruleset, Tweak},
     room_version_rules::AuthorizationRules,
     state_res::{self, Event},
-    uint, user_id, CanonicalJsonObject, CanonicalJsonValue, EventId, MilliSecondsSinceUnixEpoch,
-    OwnedEventId, OwnedRoomId, OwnedServerName, RoomId, ServerName, UserId,
+    uint, user_id,
 };
 use serde::Deserialize;
-use serde_json::value::{to_raw_value, RawValue as RawJsonValue};
+use serde_json::value::{RawValue as RawJsonValue, to_raw_value};
 use tokio::sync::{Mutex, MutexGuard, RwLock};
 use tracing::{error, info, warn};
 
 use crate::{
+    Error, PduEvent, Result,
     api::server_server,
     service::{
         globals::SigningKeys,
         pdu::{EventHash, PduBuilder},
     },
-    services, utils, Error, PduEvent, Result,
+    services, utils,
 };
 
 use super::state_compressor::CompressedStateEvent;
@@ -858,7 +860,7 @@ impl Service {
                         ErrorKind::Unknown,
                         "Signing event failed",
                     )),
-                }
+                };
             }
         }
 
@@ -1207,7 +1209,7 @@ impl Service {
         &'a self,
         user_id: &UserId,
         room_id: &RoomId,
-    ) -> Result<impl Iterator<Item = Result<(PduCount, PduEvent)>> + 'a> {
+    ) -> Result<impl Iterator<Item = Result<(PduCount, PduEvent)>> + 'a + use<'a>> {
         self.pdus_after(user_id, room_id, PduCount::min())
     }
 
@@ -1219,7 +1221,7 @@ impl Service {
         user_id: &UserId,
         room_id: &RoomId,
         until: PduCount,
-    ) -> Result<impl Iterator<Item = Result<(PduCount, PduEvent)>> + 'a> {
+    ) -> Result<impl Iterator<Item = Result<(PduCount, PduEvent)>> + 'a + use<'a>> {
         self.db.pdus_until(user_id, room_id, until)
     }
 
@@ -1231,7 +1233,7 @@ impl Service {
         user_id: &UserId,
         room_id: &RoomId,
         from: PduCount,
-    ) -> Result<impl Iterator<Item = Result<(PduCount, PduEvent)>> + 'a> {
+    ) -> Result<impl Iterator<Item = Result<(PduCount, PduEvent)>> + 'a + use<'a>> {
         self.db.pdus_after(user_id, room_id, from)
     }
 

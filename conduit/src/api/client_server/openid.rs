@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use ruma::{api::client::account, authentication::TokenType};
 
-use crate::{services, Result, Ruma};
+use crate::{Result, Ruma, services};
 
 /// # `POST /_matrix/client/r0/user/{userId}/openid/request_token`
 ///

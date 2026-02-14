@@ -5,11 +5,13 @@ use std::{
 
 use lru_cache::LruCache;
 use ruma::{
+    OwnedRoomId, OwnedServerName, RoomId, ServerName, UInt, UserId,
     api::{
         client::{self, error::ErrorKind, space::SpaceHierarchyRoomsChunk},
         federation::{self, space::SpaceHierarchyParentSummary},
     },
     events::{
+        StateEventType,
         room::{
             avatar::RoomAvatarEventContent,
             canonical_alias::RoomCanonicalAliasEventContent,
@@ -19,16 +21,14 @@ use ruma::{
             topic::RoomTopicEventContent,
         },
         space::child::{HierarchySpaceChildEvent, SpaceChildEventContent},
-        StateEventType,
     },
     room::{JoinRuleSummary, RestrictedSummary, RoomSummary},
     serde::Raw,
-    OwnedRoomId, OwnedServerName, RoomId, ServerName, UInt, UserId,
 };
 use tokio::sync::Mutex;
 use tracing::{debug, error, info, warn};
 
-use crate::{services, Error, Result};
+use crate::{Error, Result, services};
 
 pub struct CachedSpaceHierarchySummary {
     summary: SpaceHierarchyParentSummary,

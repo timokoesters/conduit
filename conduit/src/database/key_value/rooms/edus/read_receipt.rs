@@ -1,8 +1,8 @@
 use ruma::{
-    events::receipt::ReceiptEvent, serde::Raw, CanonicalJsonObject, OwnedUserId, RoomId, UserId,
+    CanonicalJsonObject, OwnedUserId, RoomId, UserId, events::receipt::ReceiptEvent, serde::Raw,
 };
 
-use crate::{database::KeyValueDatabase, service, services, utils, Error, Result};
+use crate::{Error, Result, database::KeyValueDatabase, service, services, utils};
 
 impl service::rooms::edus::read_receipt::Data for KeyValueDatabase {
     fn readreceipt_update(

@@ -9,7 +9,7 @@ pub use data::Data;
 use lru_cache::LruCache;
 use ruma::{EventId, RoomId};
 
-use crate::{services, utils, Result};
+use crate::{Result, services, utils};
 
 use self::data::StateDiff;
 

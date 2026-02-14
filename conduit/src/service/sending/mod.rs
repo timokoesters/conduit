@@ -10,18 +10,20 @@ use std::{
 };
 
 use crate::{
+    Config, Error, PduEvent, Result,
     api::{appservice_server, server_server},
     services,
     utils::calculate_hash,
-    Config, Error, PduEvent, Result,
 };
 use federation::transactions::send_transaction_message;
-use futures_util::{stream::FuturesUnordered, StreamExt};
+use futures_util::{StreamExt, stream::FuturesUnordered};
 
-use base64::{engine::general_purpose, Engine as _};
+use base64::{Engine as _, engine::general_purpose};
 
 use ruma::{
+    MilliSecondsSinceUnixEpoch, OwnedServerName, OwnedUserId, ServerName, UInt, UserId,
     api::{
+        OutgoingRequest,
         appservice::{self, Registration},
         federation::{
             self,
@@ -29,18 +31,17 @@ use ruma::{
                 DeviceListUpdateContent, Edu, ReceiptContent, ReceiptData, ReceiptMap,
             },
         },
-        OutgoingRequest,
     },
     device_id,
     events::{
-        push_rules::PushRulesEvent, receipt::ReceiptType, AnySyncEphemeralRoomEvent,
-        GlobalAccountDataEventType,
+        AnySyncEphemeralRoomEvent, GlobalAccountDataEventType, push_rules::PushRulesEvent,
+        receipt::ReceiptType,
     },
-    push, uint, MilliSecondsSinceUnixEpoch, OwnedServerName, OwnedUserId, ServerName, UInt, UserId,
+    push, uint,
 };
 use tokio::{
     select,
-    sync::{mpsc, Mutex, Semaphore},
+    sync::{Mutex, Semaphore, mpsc},
 };
 use tracing::{debug, error, warn};
 

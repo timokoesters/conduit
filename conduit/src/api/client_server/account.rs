@@ -1,18 +1,20 @@
 use super::{DEVICE_ID_LENGTH, SESSION_ID_LENGTH, TOKEN_LENGTH};
-use crate::{api::client_server, services, utils, Error, Result, Ruma};
+use crate::{Error, Result, Ruma, api::client_server, services, utils};
 use ruma::{
+    UserId,
     api::client::{
         account::{
-            change_password, deactivate, get_3pids, get_username_availability,
+            ThirdPartyIdRemovalStatus, change_password, deactivate, get_3pids,
+            get_username_availability,
             register::{self, LoginType},
             request_3pid_management_token_via_email, request_3pid_management_token_via_msisdn,
-            whoami, ThirdPartyIdRemovalStatus,
+            whoami,
         },
         error::ErrorKind,
         uiaa::{AuthFlow, AuthType, UiaaInfo},
     },
-    events::{room::message::RoomMessageEventContent, GlobalAccountDataEventType},
-    push, UserId,
+    events::{GlobalAccountDataEventType, room::message::RoomMessageEventContent},
+    push,
 };
 use tracing::{info, warn};
 

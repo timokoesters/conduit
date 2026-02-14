@@ -6,22 +6,22 @@ use std::{
 
 pub use data::Data;
 use ruma::{
+    EventId, OwnedEventId, RoomId, RoomVersionId, UserId,
     api::{client::error::ErrorKind, federation::membership::RawStrippedState},
     events::{
+        AnyStrippedStateEvent, RECOMMENDED_STRIPPED_STATE_EVENT_TYPES, StateEventType,
+        TimelineEventType,
         room::{create::RoomCreateEventContent, member::MembershipState},
-        AnyStrippedStateEvent, StateEventType, TimelineEventType,
-        RECOMMENDED_STRIPPED_STATE_EVENT_TYPES,
     },
     room_version_rules::AuthorizationRules,
     serde::Raw,
     state_res::{self, StateMap},
-    EventId, OwnedEventId, RoomId, RoomVersionId, UserId,
 };
 use serde::Deserialize;
 use tokio::sync::MutexGuard;
 use tracing::warn;
 
-use crate::{services, utils::calculate_hash, Error, PduEvent, Result};
+use crate::{Error, PduEvent, Result, services, utils::calculate_hash};
 
 use super::state_compressor::CompressedStateEvent;
 

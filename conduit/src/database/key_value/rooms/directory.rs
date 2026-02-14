@@ -1,6 +1,6 @@
 use ruma::{OwnedRoomId, RoomId};
 
-use crate::{database::KeyValueDatabase, service, utils, Error, Result};
+use crate::{Error, Result, database::KeyValueDatabase, service, utils};
 
 impl service::rooms::directory::Data for KeyValueDatabase {
     fn set_public(&self, room_id: &RoomId) -> Result<()> {

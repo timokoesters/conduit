@@ -1,9 +1,10 @@
 use std::{collections::HashSet, mem::size_of, sync::Arc};
 
 use crate::{
+    Error, Result,
     database::KeyValueDatabase,
     service::{self, rooms::state_compressor::data::StateDiff},
-    utils, Error, Result,
+    utils,
 };
 
 impl service::rooms::state_compressor::Data for KeyValueDatabase {

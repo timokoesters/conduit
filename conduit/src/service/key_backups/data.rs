@@ -2,9 +2,9 @@ use std::collections::BTreeMap;
 
 use crate::Result;
 use ruma::{
+    OwnedRoomId, RoomId, UserId,
     api::client::backup::{BackupAlgorithm, KeyBackupData, RoomKeyBackup},
     serde::Raw,
-    OwnedRoomId, RoomId, UserId,
 };
 
 pub trait Data: Send + Sync {
@@ -26,7 +26,7 @@ pub trait Data: Send + Sync {
     fn get_latest_backup_version(&self, user_id: &UserId) -> Result<Option<String>>;
 
     fn get_latest_backup(&self, user_id: &UserId)
-        -> Result<Option<(String, Raw<BackupAlgorithm>)>>;
+    -> Result<Option<(String, Raw<BackupAlgorithm>)>>;
 
     fn get_backup(&self, user_id: &UserId, version: &str) -> Result<Option<Raw<BackupAlgorithm>>>;
 

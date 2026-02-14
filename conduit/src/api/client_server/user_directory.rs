@@ -1,9 +1,9 @@
-use crate::{services, Result, Ruma};
+use crate::{Result, Ruma, services};
 use ruma::{
     api::client::user_directory::search_users,
     events::{
-        room::join_rules::{JoinRule, RoomJoinRulesEventContent},
         StateEventType,
+        room::join_rules::{JoinRule, RoomJoinRulesEventContent},
     },
 };
 

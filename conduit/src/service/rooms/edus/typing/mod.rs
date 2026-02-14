@@ -1,8 +1,8 @@
-use ruma::{events::SyncEphemeralRoomEvent, OwnedRoomId, OwnedUserId, RoomId, UserId};
+use ruma::{OwnedRoomId, OwnedUserId, RoomId, UserId, events::SyncEphemeralRoomEvent};
 use std::collections::BTreeMap;
-use tokio::sync::{broadcast, RwLock};
+use tokio::sync::{RwLock, broadcast};
 
-use crate::{services, utils, Result};
+use crate::{Result, services, utils};
 
 pub struct Service {
     pub typing: RwLock<BTreeMap<OwnedRoomId, BTreeMap<OwnedUserId, u64>>>, // u64 is unix timestamp of timeout

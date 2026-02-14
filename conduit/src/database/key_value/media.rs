@@ -1,11 +1,12 @@
 use std::{collections::BTreeMap, ops::Range, slice::Split};
 
 use bytesize::ByteSize;
-use ruma::{api::client::error::ErrorKind, OwnedServerName, ServerName, UserId};
-use sha2::{digest::Output, Sha256};
+use ruma::{OwnedServerName, ServerName, UserId, api::client::error::ErrorKind};
+use sha2::{Sha256, digest::Output};
 use tracing::error;
 
 use crate::{
+    Error, Result,
     config::{MediaRetentionConfig, MediaRetentionScope},
     database::KeyValueDatabase,
     service::{
@@ -15,7 +16,7 @@ use crate::{
             MediaQueryFileInfo, MediaQueryThumbInfo, MediaType, ServerNameOrUserId,
         },
     },
-    services, utils, Error, Result,
+    services, utils,
 };
 
 impl service::media::Data for KeyValueDatabase {
@@ -664,9 +665,9 @@ impl service::media::Data for KeyValueDatabase {
                     }
                 } else {
                     error!(
-                    "Invalid format of key in filehash_servername_mediaid for media with sha256 content hash of {}",
-                    hex::encode(&metadata.sha256_digest)
-                );
+                        "Invalid format of key in filehash_servername_mediaid for media with sha256 content hash of {}",
+                        hex::encode(&metadata.sha256_digest)
+                    );
                     errors.push(Error::BadDatabase(
                         "Invalid format of key in filehash_servername_mediaid",
                     ));
@@ -675,9 +676,9 @@ impl service::media::Data for KeyValueDatabase {
 
             let thumbnail_id_error = || {
                 error!(
-                "Invalid format of key in filehash_thumbnail_id for media with sha256 content hash of {}",
-                hex::encode(&metadata.sha256_digest)
-            );
+                    "Invalid format of key in filehash_thumbnail_id for media with sha256 content hash of {}",
+                    hex::encode(&metadata.sha256_digest)
+                );
                 Error::BadDatabase("Invalid format of value in filehash_thumbnailid")
             };
 
@@ -732,7 +733,9 @@ impl service::media::Data for KeyValueDatabase {
                 }
                 Ok(None) => (),
                 Ok(Some(Err(e))) => {
-                    error!("Error parsing metadata for \"mxc://{server_name}/{media_id}\" from servernamemediaid_metadata: {e}");
+                    error!(
+                        "Error parsing metadata for \"mxc://{server_name}/{media_id}\" from servernamemediaid_metadata: {e}"
+                    );
                     errors.push(e);
                     continue;
                 }
@@ -748,7 +751,9 @@ impl service::media::Data for KeyValueDatabase {
                         maybe_remove_remaining_metadata(&metadata, &mut errors);
                     }
                     Err(e) => {
-                        error!("Error parsing metadata for thumbnail of \"mxc://{server_name}/{media_id}\" from thumbnailid_metadata: {e}");
+                        error!(
+                            "Error parsing metadata for thumbnail of \"mxc://{server_name}/{media_id}\" from thumbnailid_metadata: {e}"
+                        );
                         errors.push(e);
                     }
                 }

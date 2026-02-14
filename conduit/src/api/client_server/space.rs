@@ -1,9 +1,9 @@
 use std::str::FromStr;
 
-use crate::{service::rooms::spaces::PagnationToken, services, Error, Result, Ruma};
+use crate::{Error, Result, Ruma, service::rooms::spaces::PagnationToken, services};
 use ruma::{
-    api::client::{error::ErrorKind, space::get_hierarchy},
     UInt,
+    api::client::{error::ErrorKind, space::get_hierarchy},
 };
 
 /// # `GET /_matrix/client/v1/rooms/{room_id}/hierarchy``

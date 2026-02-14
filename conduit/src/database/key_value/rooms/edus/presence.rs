@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 
 use ruma::{
-    events::presence::PresenceEvent, presence::PresenceState, OwnedUserId, RoomId, UInt, UserId,
+    OwnedUserId, RoomId, UInt, UserId, events::presence::PresenceEvent, presence::PresenceState,
 };
 
-use crate::{database::KeyValueDatabase, service, services, utils, Error, Result};
+use crate::{Error, Result, database::KeyValueDatabase, service, services, utils};
 
 impl service::rooms::edus::presence::Data for KeyValueDatabase {
     fn update_presence(

@@ -1,10 +1,10 @@
 use std::{collections::HashSet, sync::Arc};
 
-use crate::{service::appservice::RegistrationInfo, Result};
+use crate::{Result, service::appservice::RegistrationInfo};
 use ruma::{
+    OwnedRoomId, OwnedServerName, OwnedUserId, RoomId, ServerName, UserId,
     events::{AnyStrippedStateEvent, AnySyncStateEvent},
     serde::Raw,
-    OwnedRoomId, OwnedServerName, OwnedUserId, RoomId, ServerName, UserId,
 };
 
 pub trait Data: Send + Sync {

@@ -2,24 +2,25 @@ pub mod abstraction;
 pub mod key_value;
 
 use crate::{
+    Config, Error, PduEvent, Result, SERVICES, Services,
     service::{globals, rooms::timeline::PduCount},
-    services, utils, Config, Error, PduEvent, Result, Services, SERVICES,
+    services, utils,
 };
 use abstraction::{KeyValueDatabaseEngine, KvTree};
-use base64::{engine::general_purpose, Engine};
+use base64::{Engine, engine::general_purpose};
 use directories::ProjectDirs;
 use key_value::media::FilehashMetadata;
 use lru_cache::LruCache;
 
 use ruma::{
-    events::{
-        push_rules::{PushRulesEvent, PushRulesEventContent},
-        room::message::RoomMessageEventContent,
-        GlobalAccountDataEvent, GlobalAccountDataEventType, StateEventType,
-    },
-    push::Ruleset,
     CanonicalJsonValue, EventId, OwnedDeviceId, OwnedEventId, OwnedMxcUri, OwnedRoomId,
     OwnedUserId, RoomId, UserId,
+    events::{
+        GlobalAccountDataEvent, GlobalAccountDataEventType, StateEventType,
+        push_rules::{PushRulesEvent, PushRulesEventContent},
+        room::message::RoomMessageEventContent,
+    },
+    push::Ruleset,
 };
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -453,7 +454,7 @@ impl KeyValueDatabase {
                     conduit_user
                 );
                 return Err(Error::bad_database(
-                    "Cannot reuse an existing database after changing the server name, please delete the old one first."
+                    "Cannot reuse an existing database after changing the server name, please delete the old one first.",
                 ));
             }
         }
@@ -1007,7 +1008,9 @@ impl KeyValueDatabase {
             }
 
             if services().globals.database_version()? < 17 {
-                warn!("Migrating media repository to new format. If you have a lot of media stored, this may take a while, so please be patiant!");
+                warn!(
+                    "Migrating media repository to new format. If you have a lot of media stored, this may take a while, so please be patiant!"
+                );
 
                 let tree = db._db.open_tree("mediaid_file")?;
                 tree.clear().unwrap();
@@ -1124,7 +1127,9 @@ impl KeyValueDatabase {
         match set_emergency_access() {
             Ok(pwd_set) => {
                 if pwd_set {
-                    warn!("The Conduit account emergency password is set! Please unset it as soon as you finish admin account recovery!");
+                    warn!(
+                        "The Conduit account emergency password is set! Please unset it as soon as you finish admin account recovery!"
+                    );
                     services().admin.send_message(RoomMessageEventContent::text_plain("The Conduit account emergency password is set! Please unset it as soon as you finish admin account recovery!"));
                 }
             }
@@ -1217,7 +1222,7 @@ impl KeyValueDatabase {
     #[tracing::instrument]
     pub async fn start_cleanup_task() {
         #[cfg(unix)]
-        use tokio::signal::unix::{signal, SignalKind};
+        use tokio::signal::unix::{SignalKind, signal};
 
         use std::time::{Duration, Instant};
 

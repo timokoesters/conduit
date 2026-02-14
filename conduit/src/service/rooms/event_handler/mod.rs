@@ -2,15 +2,17 @@
 type AsyncRecursiveType<'a, T> = Pin<Box<dyn Future<Output = T> + 'a + Send>>;
 
 use std::{
-    collections::{hash_map, BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet, hash_map},
     pin::Pin,
     sync::Arc,
     time::{Duration, Instant, SystemTime},
 };
 
-use futures_util::{stream::FuturesUnordered, Future, StreamExt};
+use futures_util::{Future, StreamExt, stream::FuturesUnordered};
 use globals::SigningKeys;
 use ruma::{
+    CanonicalJsonObject, CanonicalJsonValue, EventId, MilliSecondsSinceUnixEpoch, OwnedServerName,
+    OwnedServerSigningKeyId, RoomId, ServerName,
     api::{
         client::error::ErrorKind,
         federation::{
@@ -24,24 +26,23 @@ use ruma::{
         },
     },
     events::{
+        StateEventType, TimelineEventType,
         room::{
             create::RoomCreateEventContent, redaction::RoomRedactionEventContent,
             server_acl::RoomServerAclEventContent,
         },
-        StateEventType, TimelineEventType,
     },
     int,
     room_version_rules::{AuthorizationRules, RoomVersionRules, StateResolutionV2Rules},
     serde::Base64,
     state_res::{self, StateMap},
-    uint, CanonicalJsonObject, CanonicalJsonValue, EventId, MilliSecondsSinceUnixEpoch,
-    OwnedServerName, OwnedServerSigningKeyId, RoomId, ServerName,
+    uint,
 };
 use serde_json::value::RawValue as RawJsonValue;
 use tokio::sync::{RwLock, RwLockWriteGuard, Semaphore};
 use tracing::{debug, error, info, trace, warn};
 
-use crate::{service::*, services, Error, PduEvent, Result};
+use crate::{Error, PduEvent, Result, service::*, services};
 
 use super::state_compressor::CompressedStateEvent;
 
@@ -371,7 +372,7 @@ impl Service {
                                 return Err(Error::BadRequest(
                                     ErrorKind::InvalidParam,
                                     "Redaction failed",
-                                ))
+                                ));
                             }
                         };
 
@@ -718,7 +719,10 @@ impl Service {
                             .collect::<Result<_>>()?,
                     ),
                     Err(e) => {
-                        warn!("State resolution on prev events failed, either an event could not be found or deserialization: {}", e);
+                        warn!(
+                            "State resolution on prev events failed, either an event could not be found or deserialization: {}",
+                            e
+                        );
                         None
                     }
                 }
@@ -773,9 +777,11 @@ impl Service {
                             hash_map::Entry::Vacant(v) => {
                                 v.insert(Arc::from(&*pdu.event_id));
                             }
-                            hash_map::Entry::Occupied(_) => return Err(
-                                Error::bad_database("State event's type and state_key combination exists multiple times."),
-                            ),
+                            hash_map::Entry::Occupied(_) => {
+                                return Err(Error::bad_database(
+                                    "State event's type and state_key combination exists multiple times.",
+                                ));
+                            }
                         }
                     }
 
@@ -1100,7 +1106,9 @@ impl Service {
         ) {
             Ok(new_state) => new_state,
             Err(_) => {
-                return Err(Error::bad_database("State resolution failed, either an event could not be found or deserialization"));
+                return Err(Error::bad_database(
+                    "State resolution failed, either an event could not be found or deserialization",
+                ));
             }
         };
 
@@ -1241,8 +1249,10 @@ impl Service {
                                 };
 
                             if calculated_event_id != *next_id {
-                                warn!("Server didn't return event id we requested: requested: {}, we got {}. Event: {:?}",
-                                    next_id, calculated_event_id, &res.pdu);
+                                warn!(
+                                    "Server didn't return event id we requested: requested: {}, we got {}. Event: {:?}",
+                                    next_id, calculated_event_id, &res.pdu
+                                );
                             }
 
                             if let Some(auth_events) =

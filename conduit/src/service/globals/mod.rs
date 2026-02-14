@@ -1,23 +1,24 @@
 mod data;
 pub use data::{Data, SigningKeys};
 use ruma::{
-    room_version_rules::RoomVersionRules, serde::Base64, MilliSecondsSinceUnixEpoch, OwnedDeviceId,
-    OwnedEventId, OwnedRoomAliasId, OwnedRoomId, OwnedServerName, OwnedUserId, RoomAliasId,
+    MilliSecondsSinceUnixEpoch, OwnedDeviceId, OwnedEventId, OwnedRoomAliasId, OwnedRoomId,
+    OwnedServerName, OwnedUserId, RoomAliasId, room_version_rules::RoomVersionRules, serde::Base64,
 };
 
 use crate::api::server_server::DestinationResponse;
 
 use crate::{
+    Config, Error, Result,
     config::{DirectoryStructure, MediaBackendConfig, TurnConfig},
-    services, Config, Error, Result,
+    services,
 };
 use futures_util::FutureExt;
 use hickory_resolver::TokioResolver;
 use hyper_util::client::legacy::connect::dns::{GaiResolver, Name as HyperName};
 use reqwest::dns::{Addrs, Name, Resolve, Resolving};
 use ruma::{
-    api::{client::sync::sync_events, federation::discovery::ServerSigningKeys},
     DeviceId, RoomVersionId, ServerName, UserId,
+    api::{client::sync::sync_events, federation::discovery::ServerSigningKeys},
 };
 use std::{
     collections::{BTreeMap, HashMap},
@@ -29,12 +30,12 @@ use std::{
     path::PathBuf,
     str::FromStr,
     sync::{
-        atomic::{self, AtomicBool},
         Arc, RwLock as StdRwLock,
+        atomic::{self, AtomicBool},
     },
     time::{Duration, Instant},
 };
-use tokio::sync::{broadcast, watch::Receiver, Mutex, RwLock, Semaphore};
+use tokio::sync::{Mutex, RwLock, Semaphore, broadcast, watch::Receiver};
 use tower_service::Service as TowerService;
 use tracing::{error, info};
 
@@ -88,7 +89,7 @@ impl RotationHandler {
         Self(s)
     }
 
-    pub fn watch(&self) -> impl Future<Output = ()> {
+    pub fn watch(&self) -> impl Future<Output = ()> + use<> {
         let mut r = self.0.subscribe();
 
         async move {

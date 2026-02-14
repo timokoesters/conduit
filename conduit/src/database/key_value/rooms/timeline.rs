@@ -1,11 +1,11 @@
 use std::{collections::hash_map, mem::size_of, sync::Arc};
 
 use ruma::{
-    api::client::error::ErrorKind, CanonicalJsonObject, EventId, OwnedUserId, RoomId, UserId,
+    CanonicalJsonObject, EventId, OwnedUserId, RoomId, UserId, api::client::error::ErrorKind,
 };
 use tracing::error;
 
-use crate::{database::KeyValueDatabase, service, services, utils, Error, PduEvent, Result};
+use crate::{Error, PduEvent, Result, database::KeyValueDatabase, service, services, utils};
 
 use service::rooms::timeline::PduCount;
 
@@ -346,11 +346,7 @@ fn count_to_id(
             pdu_id.extend_from_slice(&0_u64.to_be_bytes());
             let num = u64::MAX - x;
             if subtract {
-                if num > 0 {
-                    num - offset
-                } else {
-                    num
-                }
+                if num > 0 { num - offset } else { num }
             } else {
                 num + offset
             }

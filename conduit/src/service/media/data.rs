@@ -1,7 +1,7 @@
 use ruma::{OwnedServerName, ServerName, UserId};
-use sha2::{digest::Output, Sha256};
+use sha2::{Sha256, digest::Output};
 
-use crate::{config::MediaRetentionConfig, Error, Result};
+use crate::{Error, Result, config::MediaRetentionConfig};
 
 use super::{
     BlockedMediaInfo, DbFileMeta, MediaListItem, MediaQuery, MediaType, ServerNameOrUserId,

@@ -4,20 +4,21 @@ use std::{io::Cursor, sync::Arc};
 pub use data::Data;
 use http::StatusCode;
 use ruma::{
+    OwnedServerName, ServerName, UserId,
     api::client::{error::ErrorKind, media::is_safe_inline_content_type},
     http_headers::{ContentDisposition, ContentDispositionType},
-    OwnedServerName, ServerName, UserId,
 };
 use rusty_s3::{
-    actions::{DeleteObjectsResponse, ObjectIdentifier},
     S3Action,
+    actions::{DeleteObjectsResponse, ObjectIdentifier},
 };
-use sha2::{digest::Output, Digest, Sha256};
+use sha2::{Digest, Sha256, digest::Output};
 use tracing::{error, info, warn};
 
 use crate::{
+    Error, Result,
     config::{DirectoryStructure, MediaBackendConfig, S3MediaBackend},
-    services, utils, Error, Result,
+    services, utils,
 };
 use image::imageops::FilterType;
 

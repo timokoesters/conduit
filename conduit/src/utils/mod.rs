@@ -5,13 +5,13 @@ use cmp::Ordering;
 use rand::prelude::*;
 use ring::digest;
 use ruma::{
+    CanonicalJsonError, CanonicalJsonObject, CanonicalJsonValue, RoomId,
     api::{client::error::ErrorKind, federation::membership::RawStrippedState},
     canonical_json::try_from_json_map,
     events::AnyStrippedStateEvent,
     room_version_rules::RoomVersionRules,
     serde::Raw,
     signatures::Verified,
-    CanonicalJsonError, CanonicalJsonObject, CanonicalJsonValue, RoomId,
 };
 use serde_json::value::to_raw_value;
 use std::{
@@ -24,7 +24,7 @@ use std::{
 use tokio::sync::RwLock;
 use tracing::warn;
 
-use crate::{service::pdu::gen_event_id_canonical_json, services, Error, Result};
+use crate::{Error, Result, service::pdu::gen_event_id_canonical_json, services};
 
 pub fn millis_since_unix_epoch() -> u64 {
     SystemTime::now()

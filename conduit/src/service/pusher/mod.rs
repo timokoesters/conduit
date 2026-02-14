@@ -2,21 +2,22 @@ mod data;
 pub use data::Data;
 use ruma::{events::AnySyncTimelineEvent, push::PushConditionPowerLevelsCtx};
 
-use crate::{services, Error, PduEvent, Result, SUPPORTED_VERSIONS};
+use crate::{Error, PduEvent, Result, SUPPORTED_VERSIONS, services};
 use bytes::BytesMut;
 use ruma::{
+    RoomId, UInt, UserId,
     api::{
-        client::push::{set_pusher, Pusher, PusherKind},
+        IncomingResponse, OutgoingRequest, SendAccessToken,
+        client::push::{Pusher, PusherKind, set_pusher},
         push_gateway::send_event_notification::{
             self,
             v1::{Device, Notification, NotificationCounts, NotificationPriority},
         },
-        IncomingResponse, OutgoingRequest, SendAccessToken,
     },
     events::TimelineEventType,
     push::{Action, PushConditionRoomCtx, PushFormat, Ruleset, Tweak},
     serde::Raw,
-    uint, RoomId, UInt, UserId,
+    uint,
 };
 
 use std::{fmt::Debug, mem};
