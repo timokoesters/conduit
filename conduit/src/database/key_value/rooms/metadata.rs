@@ -1,6 +1,6 @@
 use ruma::{OwnedRoomId, RoomId};
 
-use crate::{database::KeyValueDatabase, service, services, utils, Error, Result};
+use crate::{Error, Result, database::KeyValueDatabase, service, services, utils};
 
 impl service::rooms::metadata::Data for KeyValueDatabase {
     fn exists(&self, room_id: &RoomId) -> Result<bool> {

@@ -1,23 +1,24 @@
 use crate::Error;
 use ruma::{
+    CanonicalJsonObject, CanonicalJsonValue, EventId, MilliSecondsSinceUnixEpoch, OwnedEventId,
+    OwnedRoomId, OwnedUserId, RoomId, UInt, UserId,
     api::client::error::ErrorKind,
     canonical_json::redact_content_in_place,
     events::{
-        room::{member::RoomMemberEventContent, redaction::RoomRedactionEventContent},
-        space::child::HierarchySpaceChildEvent,
         AnyInitialStateEvent, AnyMessageLikeEvent, AnyStateEvent, AnyStrippedStateEvent,
         AnySyncMessageLikeEvent, AnySyncStateEvent, AnySyncTimelineEvent, AnyTimelineEvent,
         StateEvent, TimelineEventType,
+        room::{member::RoomMemberEventContent, redaction::RoomRedactionEventContent},
+        space::child::HierarchySpaceChildEvent,
     },
     room_version_rules::{RedactionRules, RoomVersionRules},
     serde::{JsonCastable, Raw},
-    state_res, CanonicalJsonObject, CanonicalJsonValue, EventId, MilliSecondsSinceUnixEpoch,
-    OwnedEventId, OwnedRoomId, OwnedUserId, RoomId, UInt, UserId,
+    state_res,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{
     json,
-    value::{to_raw_value, RawValue as RawJsonValue},
+    value::{RawValue as RawJsonValue, to_raw_value},
 };
 use std::{borrow::Cow, cmp::Ordering, collections::BTreeMap, sync::Arc};
 use tracing::warn;

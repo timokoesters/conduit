@@ -1,4 +1,4 @@
-use super::{watchers::Watchers, KeyValueDatabaseEngine, KvTree};
+use super::{KeyValueDatabaseEngine, KvTree, watchers::Watchers};
 use crate::Result;
 use conduit_config::Config;
 use parking_lot::{Mutex, MutexGuard};

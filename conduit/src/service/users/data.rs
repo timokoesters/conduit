@@ -1,11 +1,11 @@
 use crate::Result;
 use ruma::{
+    DeviceId, MilliSecondsSinceUnixEpoch, OneTimeKeyAlgorithm, OwnedDeviceId, OwnedMxcUri,
+    OwnedOneTimeKeyId, OwnedUserId, UInt, UserId,
     api::client::{device::Device, filter::FilterDefinition},
     encryption::{CrossSigningKey, DeviceKeys, OneTimeKey},
     events::AnyToDeviceEvent,
     serde::Raw,
-    DeviceId, MilliSecondsSinceUnixEpoch, OneTimeKeyAlgorithm, OwnedDeviceId, OwnedMxcUri,
-    OwnedOneTimeKeyId, OwnedUserId, UInt, UserId,
 };
 use std::collections::BTreeMap;
 
@@ -198,7 +198,7 @@ pub trait Data: Send + Sync {
 
     /// Get device metadata.
     fn get_device_metadata(&self, user_id: &UserId, device_id: &DeviceId)
-        -> Result<Option<Device>>;
+    -> Result<Option<Device>>;
 
     fn get_devicelist_version(&self, user_id: &UserId) -> Result<Option<u64>>;
 

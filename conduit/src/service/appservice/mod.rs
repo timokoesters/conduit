@@ -7,12 +7,12 @@ pub use data::Data;
 use futures_util::Future;
 use regex::RegexSet;
 use ruma::{
-    api::appservice::{Namespace, Registration},
     RoomAliasId, RoomId, UserId,
+    api::appservice::{Namespace, Registration},
 };
 use tokio::sync::RwLock;
 
-use crate::{services, Result};
+use crate::{Result, services};
 
 /// Compiled regular expressions for a namespace.
 #[derive(Clone, Debug)]

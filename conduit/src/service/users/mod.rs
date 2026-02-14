@@ -8,6 +8,8 @@ use std::{
 
 pub use data::Data;
 use ruma::{
+    DeviceId, MilliSecondsSinceUnixEpoch, OneTimeKeyAlgorithm, OwnedDeviceId, OwnedMxcUri,
+    OwnedOneTimeKeyId, OwnedRoomId, OwnedUserId, UInt, UserId,
     api::client::{
         device::Device,
         filter::FilterDefinition,
@@ -16,13 +18,11 @@ use ruma::{
     encryption::{CrossSigningKey, DeviceKeys, OneTimeKey},
     events::AnyToDeviceEvent,
     serde::Raw,
-    DeviceId, MilliSecondsSinceUnixEpoch, OneTimeKeyAlgorithm, OwnedDeviceId, OwnedMxcUri,
-    OwnedOneTimeKeyId, OwnedRoomId, OwnedUserId, UInt, UserId,
 };
 use tokio::{sync::Mutex, time::interval};
 use tracing::{debug, warn};
 
-use crate::{services, Error, Result};
+use crate::{Error, Result, services};
 
 pub struct SlidingSyncCache {
     lists: BTreeMap<String, sync_events::v5::request::List>,
@@ -374,7 +374,7 @@ impl Service {
     pub fn all_device_ids<'a>(
         &'a self,
         user_id: &UserId,
-    ) -> impl Iterator<Item = Result<OwnedDeviceId>> + 'a {
+    ) -> impl Iterator<Item = Result<OwnedDeviceId>> + 'a + use<'a> {
         self.db.all_device_ids(user_id)
     }
 
@@ -456,7 +456,7 @@ impl Service {
         user_or_room_id: &str,
         from: u64,
         to: Option<u64>,
-    ) -> impl Iterator<Item = Result<OwnedUserId>> + 'a {
+    ) -> impl Iterator<Item = Result<OwnedUserId>> + 'a + use<'a> {
         self.db.keys_changed(user_or_room_id, from, to)
     }
 

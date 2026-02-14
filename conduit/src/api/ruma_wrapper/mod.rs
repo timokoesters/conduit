@@ -1,7 +1,7 @@
-use crate::{service::appservice::RegistrationInfo, Error};
+use crate::{Error, service::appservice::RegistrationInfo};
 use ruma::{
-    api::client::uiaa::UiaaResponse, CanonicalJsonValue, OwnedDeviceId, OwnedServerName,
-    OwnedUserId,
+    CanonicalJsonValue, OwnedDeviceId, OwnedServerName, OwnedUserId,
+    api::client::uiaa::UiaaResponse,
 };
 use std::ops::Deref;
 

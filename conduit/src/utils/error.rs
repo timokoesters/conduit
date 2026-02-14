@@ -2,11 +2,11 @@ use std::convert::Infallible;
 
 use http::StatusCode;
 use ruma::{
+    OwnedServerName,
     api::client::{
         error::{Error as RumaError, ErrorBody, ErrorKind},
         uiaa::{UiaaInfo, UiaaResponse},
     },
-    OwnedServerName,
 };
 use thiserror::Error;
 use tracing::{error, info};

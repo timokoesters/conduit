@@ -1,31 +1,32 @@
 use crate::{
+    Error, PduEvent, Result, Ruma, RumaResponse,
     service::{pdu::EventHash, rooms::timeline::PduCount},
-    services, utils, Error, PduEvent, Result, Ruma, RumaResponse,
+    services, utils,
 };
 
 use ruma::{
+    DeviceId, EventId, JsOption, OwnedDeviceId, OwnedUserId, RoomId, UInt, UserId,
     api::client::{
         filter::{FilterDefinition, LazyLoadOptions},
         sync::sync_events::{
-            self,
+            self, DeviceLists, UnreadNotificationsCount,
             v3::{
                 Ephemeral, Filter, GlobalAccountData, InviteState, InvitedRoom, JoinedRoom,
                 KnockState, KnockedRoom, LeftRoom, Presence, RoomAccountData, RoomSummary, Rooms,
                 State, StateEvents, Timeline, ToDevice,
             },
-            DeviceLists, UnreadNotificationsCount,
         },
         uiaa::UiaaResponse,
     },
     events::{
-        room::member::{MembershipState, RoomMemberEventContent},
         StateEventType, TimelineEventType,
+        room::member::{MembershipState, RoomMemberEventContent},
     },
     serde::Raw,
-    uint, DeviceId, EventId, JsOption, OwnedDeviceId, OwnedUserId, RoomId, UInt, UserId,
+    uint,
 };
 use std::{
-    collections::{hash_map::Entry, BTreeMap, BTreeSet, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet, hash_map::Entry},
     sync::Arc,
     time::Duration,
 };

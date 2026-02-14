@@ -1,4 +1,4 @@
-use crate::{services, Error, Result, Ruma};
+use crate::{Error, Result, Ruma, services};
 use ruma::{
     api::client::{
         error::ErrorKind,
@@ -8,7 +8,7 @@ use ruma::{
             set_pushrule_enabled,
         },
     },
-    events::{push_rules::PushRulesEvent, GlobalAccountDataEventType},
+    events::{GlobalAccountDataEventType, push_rules::PushRulesEvent},
     push::{InsertPushRuleError, RemovePushRuleError},
 };
 

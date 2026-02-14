@@ -1,4 +1,4 @@
-use crate::{services, utils, Error, Result, Ruma};
+use crate::{Error, Result, Ruma, services, utils};
 use ruma::api::client::{
     device::{self, delete_device, delete_devices, get_device, get_devices, update_device},
     error::ErrorKind,

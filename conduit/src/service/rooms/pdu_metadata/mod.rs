@@ -3,13 +3,13 @@ use std::sync::Arc;
 
 pub use data::Data;
 use ruma::{
-    api::{client::relations::get_relating_events, Direction},
-    events::{relation::RelationType, TimelineEventType},
     EventId, RoomId, UInt, UserId,
+    api::{Direction, client::relations::get_relating_events},
+    events::{TimelineEventType, relation::RelationType},
 };
 use serde::Deserialize;
 
-use crate::{services, PduEvent, Result};
+use crate::{PduEvent, Result, services};
 
 use super::timeline::PduCount;
 
@@ -197,7 +197,7 @@ impl Service {
                     pdus.clone().iter().map(|pdu| (pdu.to_owned(), 1)).collect();
 
                 while let Some(stack_pdu) = stack.pop() {
-                    let target = match stack_pdu.0 .0 {
+                    let target = match stack_pdu.0.0 {
                         PduCount::Normal(c) => c,
                         // TODO: Support backfilled relations
                         PduCount::Backfilled(_) => 0, // This will result in an empty iterator

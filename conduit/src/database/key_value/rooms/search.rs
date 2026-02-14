@@ -1,6 +1,6 @@
 use ruma::RoomId;
 
-use crate::{database::KeyValueDatabase, service, services, utils, Result};
+use crate::{Result, database::KeyValueDatabase, service, services, utils};
 
 /// Splits a string into tokens used as keys in the search inverted index
 ///

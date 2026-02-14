@@ -2,14 +2,15 @@ mod data;
 
 pub use data::Data;
 use ruma::{
+    CanonicalJsonValue, EventId, RoomId, UserId,
     api::client::{error::ErrorKind, threads::get_threads::v1::IncludeThreads},
     events::relation::BundledThread,
-    uint, CanonicalJsonValue, EventId, RoomId, UserId,
+    uint,
 };
 
 use serde_json::json;
 
-use crate::{services, Error, PduEvent, Result};
+use crate::{Error, PduEvent, Result, services};
 
 pub struct Service {
     pub db: &'static dyn Data,

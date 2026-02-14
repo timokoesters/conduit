@@ -1,38 +1,40 @@
 use std::{
-    collections::{hash_map::Entry, BTreeMap, HashMap},
+    collections::{BTreeMap, HashMap, hash_map::Entry},
     sync::Arc,
     time::{Duration, Instant},
 };
 
 use ruma::{
+    CanonicalJsonObject, CanonicalJsonValue, EventId, MilliSecondsSinceUnixEpoch, OwnedEventId,
+    OwnedServerName, RoomId, RoomVersionId, UserId,
     api::{
         client::{
             error::ErrorKind,
-            membership::{join_room_by_id, ThirdPartySigned},
+            membership::{ThirdPartySigned, join_room_by_id},
         },
         federation,
     },
     events::{
+        TimelineEventType,
         room::{
             join_rules::{AllowRule, JoinRule, RoomJoinRulesEventContent},
             member::{MembershipState, RoomMemberEventContent},
         },
-        TimelineEventType,
     },
     room_version_rules::RoomVersionRules,
-    state_res, CanonicalJsonObject, CanonicalJsonValue, EventId, MilliSecondsSinceUnixEpoch,
-    OwnedEventId, OwnedServerName, RoomId, RoomVersionId, UserId,
+    state_res,
 };
-use serde_json::value::{to_raw_value, RawValue as RawJsonValue};
+use serde_json::value::{RawValue as RawJsonValue, to_raw_value};
 use tokio::sync::RwLock;
 use tracing::{debug, error, info, warn};
 
 use crate::{
+    Error, PduEvent, Result,
     service::{
         globals::SigningKeys,
-        pdu::{gen_event_id_canonical_json, PduBuilder},
+        pdu::{PduBuilder, gen_event_id_canonical_json},
     },
-    services, utils, Error, PduEvent, Result,
+    services, utils,
 };
 
 pub struct Service;
@@ -120,7 +122,9 @@ impl Service {
             info!("send_join finished");
 
             if let Some(signed_raw) = &send_join_response.room_state.event {
-                info!("There is a signed event. This room is probably using restricted joins. Adding signature to our event");
+                info!(
+                    "There is a signed event. This room is probably using restricted joins. Adding signature to our event"
+                );
                 let (signed_event_id, signed_value) =
                     match gen_event_id_canonical_json(signed_raw, &room_version_rules) {
                         Ok(t) => t,
@@ -162,8 +166,8 @@ impl Service {
                     }
                     Err(e) => {
                         warn!(
-                        "Server {remote_server} sent invalid signature in sendjoin signatures for event {signed_value:?}: {e:?}",
-                    );
+                            "Server {remote_server} sent invalid signature in sendjoin signatures for event {signed_value:?}: {e:?}",
+                        );
                     }
                 }
             }
@@ -426,8 +430,8 @@ impl Service {
                     .any(|s| *s != services().globals.server_name())
             {
                 info!(
-                "We couldn't do the join locally, maybe federation can help to satisfy the restricted join requirements"
-            );
+                    "We couldn't do the join locally, maybe federation can help to satisfy the restricted join requirements"
+                );
                 let (make_join_response, remote_server) =
                     make_join_request(sender_user, room_id, servers).await?;
 

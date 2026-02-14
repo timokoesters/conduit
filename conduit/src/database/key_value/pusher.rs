@@ -1,9 +1,9 @@
 use ruma::{
-    api::client::push::{set_pusher, Pusher},
     UserId,
+    api::client::push::{Pusher, set_pusher},
 };
 
-use crate::{database::KeyValueDatabase, service, utils, Error, Result};
+use crate::{Error, Result, database::KeyValueDatabase, service, utils};
 
 impl service::pusher::Data for KeyValueDatabase {
     fn set_pusher(&self, sender: &UserId, pusher: set_pusher::v3::PusherAction) -> Result<()> {

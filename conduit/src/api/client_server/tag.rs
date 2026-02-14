@@ -1,9 +1,9 @@
-use crate::{services, Error, Result, Ruma};
+use crate::{Error, Result, Ruma, services};
 use ruma::{
     api::client::tag::{create_tag, delete_tag, get_tags},
     events::{
-        tag::{TagEvent, TagEventContent},
         RoomAccountDataEventType,
+        tag::{TagEvent, TagEventContent},
     },
 };
 use std::collections::BTreeMap;

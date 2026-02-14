@@ -1,6 +1,6 @@
-use ruma::{api::client::threads::get_threads::v1::IncludeThreads, OwnedUserId, RoomId, UserId};
+use ruma::{OwnedUserId, RoomId, UserId, api::client::threads::get_threads::v1::IncludeThreads};
 
-use crate::{database::KeyValueDatabase, service, services, utils, Error, PduEvent, Result};
+use crate::{Error, PduEvent, Result, database::KeyValueDatabase, service, services, utils};
 
 impl service::rooms::threads::Data for KeyValueDatabase {
     fn threads_until<'a>(

@@ -1,15 +1,15 @@
 use std::collections::BTreeMap;
 
 use ruma::{
+    OwnedRoomId, RoomId, UserId,
     api::client::{
         backup::{BackupAlgorithm, KeyBackupData, RoomKeyBackup},
         error::ErrorKind,
     },
     serde::Raw,
-    OwnedRoomId, RoomId, UserId,
 };
 
-use crate::{database::KeyValueDatabase, service, services, utils, Error, Result};
+use crate::{Error, Result, database::KeyValueDatabase, service, services, utils};
 
 impl service::key_backups::Data for KeyValueDatabase {
     fn create_backup(

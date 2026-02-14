@@ -1,7 +1,7 @@
 use crate::Result;
 use ruma::{
-    api::client::push::{set_pusher, Pusher},
     UserId,
+    api::client::push::{Pusher, set_pusher},
 };
 
 pub trait Data: Send + Sync {
@@ -12,5 +12,5 @@ pub trait Data: Send + Sync {
     fn get_pushers(&self, sender: &UserId) -> Result<Vec<Pusher>>;
 
     fn get_pushkeys<'a>(&'a self, sender: &UserId)
-        -> Box<dyn Iterator<Item = Result<String>> + 'a>;
+    -> Box<dyn Iterator<Item = Result<String>> + 'a>;
 }

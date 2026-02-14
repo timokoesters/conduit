@@ -1,4 +1,4 @@
-use crate::{services, utils::HtmlEscape, Error, Result, Ruma};
+use crate::{Error, Result, Ruma, services, utils::HtmlEscape};
 use ruma::{
     api::client::{error::ErrorKind, room::report_content},
     events::room::message,
@@ -20,7 +20,7 @@ pub async fn report_event_route(
             return Err(Error::BadRequest(
                 ErrorKind::InvalidParam,
                 "Invalid Event ID",
-            ))
+            ));
         }
     };
 

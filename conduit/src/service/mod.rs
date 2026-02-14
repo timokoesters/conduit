@@ -4,7 +4,7 @@ use std::{
 };
 
 use lru_cache::LruCache;
-use tokio::sync::{broadcast, Mutex};
+use tokio::sync::{Mutex, broadcast};
 
 use crate::{Config, Result};
 use tokio::sync::RwLock;

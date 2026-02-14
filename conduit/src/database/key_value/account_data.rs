@@ -1,13 +1,13 @@
 use std::collections::HashMap;
 
 use ruma::{
+    RoomId, UserId,
     api::client::error::ErrorKind,
     events::{AnyGlobalAccountDataEvent, AnyRoomAccountDataEvent, RoomAccountDataEventType},
     serde::Raw,
-    RoomId, UserId,
 };
 
-use crate::{database::KeyValueDatabase, service, services, utils, Error, Result};
+use crate::{Error, Result, database::KeyValueDatabase, service, services, utils};
 
 impl service::account_data::Data for KeyValueDatabase {
     /// Places one event in the account data of the user and removes the previous entry.

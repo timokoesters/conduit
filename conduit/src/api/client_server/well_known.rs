@@ -1,6 +1,6 @@
 use ruma::api::client::discovery::discover_homeserver::{self, HomeserverInfo};
 
-use crate::{services, Result, Ruma};
+use crate::{Result, Ruma, services};
 
 /// # `GET /.well-known/matrix/client`
 ///

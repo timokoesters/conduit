@@ -25,7 +25,7 @@ impl Service {
         &'a self,
         room_id: &RoomId,
         search_string: &str,
-    ) -> Result<Option<(impl Iterator<Item = Vec<u8>> + 'a, Vec<String>)>> {
+    ) -> Result<Option<(impl Iterator<Item = Vec<u8>> + 'a + use<'a>, Vec<String>)>> {
         self.db.search_pdus(room_id, search_string)
     }
 }

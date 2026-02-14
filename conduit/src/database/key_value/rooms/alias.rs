@@ -1,9 +1,9 @@
 use ruma::{
-    api::client::error::ErrorKind, OwnedRoomAliasId, OwnedRoomId, OwnedUserId, RoomAliasId, RoomId,
-    UserId,
+    OwnedRoomAliasId, OwnedRoomId, OwnedUserId, RoomAliasId, RoomId, UserId,
+    api::client::error::ErrorKind,
 };
 
-use crate::{database::KeyValueDatabase, service, services, utils, Error, Result};
+use crate::{Error, Result, database::KeyValueDatabase, service, services, utils};
 
 impl service::rooms::alias::Data for KeyValueDatabase {
     fn set_alias(&self, alias: &RoomAliasId, room_id: &RoomId, user_id: &UserId) -> Result<()> {

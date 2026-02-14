@@ -1,4 +1,4 @@
-use crate::{services, Error, Result, Ruma};
+use crate::{Error, Result, Ruma, services};
 use ruma::api::client::{
     error::ErrorKind,
     search::search_events::{
@@ -63,7 +63,7 @@ pub async fn search_events_route(
             return Err(Error::BadRequest(
                 ErrorKind::InvalidParam,
                 "Invalid next_batch token.",
-            ))
+            ));
         }
         None => 0, // Default to the start
     };

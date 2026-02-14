@@ -3,13 +3,13 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use crate::{services, Result};
+use crate::{Result, services};
 use async_trait::async_trait;
 use ruma::{
+    DeviceId, MilliSecondsSinceUnixEpoch, ServerName, UserId,
     api::federation::discovery::{OldVerifyKey, ServerSigningKeys, VerifyKey},
     serde::Base64,
     signatures::Ed25519KeyPair,
-    DeviceId, MilliSecondsSinceUnixEpoch, ServerName, UserId,
 };
 use serde::Deserialize;
 

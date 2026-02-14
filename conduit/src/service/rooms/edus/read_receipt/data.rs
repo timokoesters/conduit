@@ -1,5 +1,5 @@
 use crate::Result;
-use ruma::{events::receipt::ReceiptEvent, serde::Raw, OwnedUserId, RoomId, UserId};
+use ruma::{OwnedUserId, RoomId, UserId, events::receipt::ReceiptEvent, serde::Raw};
 
 pub trait Data: Send + Sync {
     /// Replaces the previous read receipt.

@@ -1,11 +1,11 @@
-use crate::{service::rooms::timeline::PduCount, services, Error, Result, Ruma};
+use crate::{Error, Result, Ruma, service::rooms::timeline::PduCount, services};
 use ruma::{
+    MilliSecondsSinceUnixEpoch,
     api::client::{error::ErrorKind, read_marker::set_read_marker, receipt::create_receipt},
     events::{
-        receipt::{ReceiptThread, ReceiptType},
         RoomAccountDataEventType,
+        receipt::{ReceiptThread, ReceiptType},
     },
-    MilliSecondsSinceUnixEpoch,
 };
 use std::collections::BTreeMap;
 
@@ -55,7 +55,7 @@ pub async fn set_read_marker_route(
                 return Err(Error::BadRequest(
                     ErrorKind::InvalidParam,
                     "Read receipt is in backfilled timeline",
-                ))
+                ));
             }
             PduCount::Normal(c) => c,
         };
@@ -165,7 +165,7 @@ pub async fn create_receipt_route(
                     return Err(Error::BadRequest(
                         ErrorKind::InvalidParam,
                         "Read receipt is in backfilled timeline",
-                    ))
+                    ));
                 }
                 PduCount::Normal(c) => c,
             };

@@ -1,12 +1,13 @@
 use ruma::{ServerName, UserId};
 
 use crate::{
+    Error, Result,
     database::KeyValueDatabase,
     service::{
         self,
         sending::{OutgoingKind, SendingEventType},
     },
-    services, utils, Error, Result,
+    services, utils,
 };
 
 impl service::sending::Data for KeyValueDatabase {

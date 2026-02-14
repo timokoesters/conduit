@@ -1,18 +1,19 @@
 use std::collections::HashMap;
 
 use async_trait::async_trait;
-use futures_util::{stream::FuturesUnordered, StreamExt};
+use futures_util::{StreamExt, stream::FuturesUnordered};
 use lru_cache::LruCache;
 use ruma::{
+    DeviceId, ServerName, UserId,
     api::federation::discovery::{OldVerifyKey, ServerSigningKeys},
     signatures::Ed25519KeyPair,
-    DeviceId, ServerName, UserId,
 };
 
 use crate::{
+    Error, Result,
     database::KeyValueDatabase,
     service::{self, globals::SigningKeys},
-    services, utils, Error, Result,
+    services, utils,
 };
 
 pub const COUNTER: &[u8] = b"c";

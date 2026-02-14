@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
-use ruma::{events::StateEventType, EventId, RoomId};
+use ruma::{EventId, RoomId, events::StateEventType};
 
-use crate::{database::KeyValueDatabase, service, services, utils, Error, Result};
+use crate::{Error, Result, database::KeyValueDatabase, service, services, utils};
 
 impl service::rooms::short::Data for KeyValueDatabase {
     fn get_or_create_shorteventid(&self, event_id: &EventId) -> Result<u64> {

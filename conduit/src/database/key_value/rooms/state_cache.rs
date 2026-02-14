@@ -1,15 +1,16 @@
 use std::{collections::HashSet, sync::Arc};
 
 use ruma::{
+    OwnedRoomId, OwnedServerName, OwnedUserId, RoomId, ServerName, UserId,
     events::{AnyStrippedStateEvent, AnySyncStateEvent},
     serde::Raw,
-    OwnedRoomId, OwnedServerName, OwnedUserId, RoomId, ServerName, UserId,
 };
 
 use crate::{
-    database::{abstraction::KvTree, KeyValueDatabase},
+    Error, Result,
+    database::{KeyValueDatabase, abstraction::KvTree},
     service::{self, appservice::RegistrationInfo},
-    services, utils, Error, Result,
+    services, utils,
 };
 
 use super::{get_room_and_user_byte_ids, get_userroom_id_bytes};

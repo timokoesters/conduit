@@ -3,9 +3,10 @@
 
 use std::time::Duration;
 
-use crate::{service::media::FileMeta, services, utils, Error, Result, Ruma};
+use crate::{Error, Result, Ruma, service::media::FileMeta, services, utils};
 use http::header::{CONTENT_DISPOSITION, CONTENT_TYPE};
 use ruma::{
+    ServerName, UInt,
     api::{
         client::{
             authenticated_media::{
@@ -18,7 +19,6 @@ use ruma::{
     },
     http_headers::{ContentDisposition, ContentDispositionType},
     media::Method,
-    ServerName, UInt,
 };
 
 const MXC_LENGTH: usize = 32;

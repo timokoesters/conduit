@@ -3,9 +3,10 @@ use std::sync::Arc;
 use ruma::{EventId, RoomId, UserId};
 
 use crate::{
+    Error, PduEvent, Result,
     database::KeyValueDatabase,
     service::{self, rooms::timeline::PduCount},
-    services, utils, Error, PduEvent, Result,
+    services, utils,
 };
 
 impl service::rooms::pdu_metadata::Data for KeyValueDatabase {

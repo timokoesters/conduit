@@ -3,7 +3,7 @@ use ruma::api::client::relations::{
     get_relating_events_with_rel_type_and_event_type,
 };
 
-use crate::{services, Result, Ruma};
+use crate::{Result, Ruma, services};
 
 /// # `GET /_matrix/client/r0/rooms/{roomId}/relations/{eventId}/{relType}/{eventType}`
 pub async fn get_relating_events_with_rel_type_and_event_type_route(

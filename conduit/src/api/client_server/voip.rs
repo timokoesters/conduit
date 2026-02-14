@@ -1,10 +1,10 @@
-use crate::{services, Error, Result, Ruma};
-use base64::{engine::general_purpose, Engine as _};
+use crate::{Error, Result, Ruma, services};
+use base64::{Engine as _, engine::general_purpose};
 use conduit_config::TurnAuth;
 use hmac::{Hmac, Mac};
 use ruma::{
-    api::client::{error::ErrorKind, voip::get_turn_server_info},
     SecondsSinceUnixEpoch,
+    api::client::{error::ErrorKind, voip::get_turn_server_info},
 };
 use sha1::Sha1;
 use std::time::{Duration, SystemTime};

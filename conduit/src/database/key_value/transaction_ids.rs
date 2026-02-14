@@ -1,6 +1,6 @@
 use ruma::{DeviceId, TransactionId, UserId};
 
-use crate::{database::KeyValueDatabase, service, Result};
+use crate::{Result, database::KeyValueDatabase, service};
 
 impl service::transaction_ids::Data for KeyValueDatabase {
     fn add_txnid(

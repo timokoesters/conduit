@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::{service::rooms::timeline::PduCount, PduEvent, Result};
+use crate::{PduEvent, Result, service::rooms::timeline::PduCount};
 use ruma::{EventId, RoomId, UserId};
 
 pub trait Data: Send + Sync {

@@ -4,15 +4,15 @@ pub use data::Data;
 use rand::seq::SliceRandom;
 use tracing::warn;
 
-use crate::{services, Error, Result};
+use crate::{Error, Result, services};
 use ruma::{
+    OwnedRoomAliasId, OwnedRoomId, RoomAliasId, RoomId, UserId,
     api::{
         appservice,
         client::{alias::get_alias, error::ErrorKind},
         federation,
     },
     events::StateEventType,
-    OwnedRoomAliasId, OwnedRoomId, RoomAliasId, RoomId, UserId,
 };
 
 pub struct Service {
@@ -149,7 +149,7 @@ impl Service {
                 return Err(Error::BadRequest(
                     ErrorKind::NotFound,
                     "Room with alias not found.",
-                ))
+                ));
             }
         };
 

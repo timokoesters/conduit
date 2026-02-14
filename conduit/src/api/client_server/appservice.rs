@@ -5,7 +5,7 @@ use ruma::api::{
     client::{appservice::request_ping, error::ErrorKind},
 };
 
-use crate::{api::appservice_server, Error, Result, Ruma};
+use crate::{Error, Result, Ruma, api::appservice_server};
 
 /// # `POST /_matrix/client/v1/appservice/{appserviceId}/ping`
 ///

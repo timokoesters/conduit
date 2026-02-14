@@ -1,41 +1,41 @@
 use std::{future::Future, io, net::SocketAddr, sync::atomic, time::Duration};
 
 use axum::{
+    Router,
     body::Body,
     extract::{FromRequestParts, MatchedPath},
     middleware::map_response,
     response::{IntoResponse, Response},
-    routing::{any, get, on, MethodFilter},
-    Router,
+    routing::{MethodFilter, any, get, on},
 };
-use axum_server::{bind, bind_rustls, tls_rustls::RustlsConfig, Handle as ServerHandle};
+use axum_server::{Handle as ServerHandle, bind, bind_rustls, tls_rustls::RustlsConfig};
 use conduit::api::{client_server, server_server};
 use figment::{
+    Figment,
     providers::{Env, Format, Toml},
     value::Uncased,
-    Figment,
 };
 use http::{
-    header::{self, HeaderName, CONTENT_SECURITY_POLICY},
     Method, StatusCode, Uri,
+    header::{self, CONTENT_SECURITY_POLICY, HeaderName},
 };
 use opentelemetry::trace::TracerProvider;
 use ruma::api::{
+    IncomingRequest,
     client::{
         error::{Error as RumaError, ErrorBody, ErrorKind},
         uiaa::UiaaResponse,
     },
-    IncomingRequest,
 };
 use tokio::signal;
 use tower::ServiceBuilder;
 use tower_http::{
+    ServiceBuilderExt as _,
     cors::{self, CorsLayer},
     trace::TraceLayer,
-    ServiceBuilderExt as _,
 };
 use tracing::{debug, error, info, warn};
-use tracing_subscriber::{prelude::*, EnvFilter};
+use tracing_subscriber::{EnvFilter, prelude::*};
 
 pub use conduit::*; // Re-export everything from the library crate
 
@@ -124,7 +124,9 @@ async fn main() {
     }
 
     if was_deprecated {
-        warn!("Read conduit documentation and check your configuration if any new configuration parameters should be adjusted");
+        warn!(
+            "Read conduit documentation and check your configuration if any new configuration parameters should be adjusted"
+        );
     }
 
     let jaeger = if config.allow_jaeger {
@@ -178,7 +180,9 @@ async fn main() {
         let filter_layer = match EnvFilter::try_new(&config.log) {
             Ok(s) => s,
             Err(e) => {
-                eprintln!("It looks like your config is invalid. The following error occurred while parsing it: {e}");
+                eprintln!(
+                    "It looks like your config is invalid. The following error occurred while parsing it: {e}"
+                );
                 EnvFilter::try_new("warn").unwrap()
             }
         };
@@ -217,7 +221,11 @@ async fn main() {
 /// Adds additional headers to prevent any potential XSS attacks via the media repo
 async fn set_csp_header(response: Response) -> impl IntoResponse {
     (
-        [(CONTENT_SECURITY_POLICY, "sandbox; default-src 'none'; script-src 'none'; plugin-types application/pdf; style-src 'unsafe-inline'; object-src 'self';")], response
+        [(
+            CONTENT_SECURITY_POLICY,
+            "sandbox; default-src 'none'; script-src 'none'; plugin-types application/pdf; style-src 'unsafe-inline'; object-src 'self';",
+        )],
+        response,
     )
 }
 
@@ -665,7 +673,7 @@ fn method_to_filter(method: Method) -> MethodFilter {
 #[cfg(unix)]
 #[tracing::instrument(err)]
 fn maximize_fd_limit() -> Result<(), nix::errno::Errno> {
-    use nix::sys::resource::{getrlimit, setrlimit, Resource};
+    use nix::sys::resource::{Resource, getrlimit, setrlimit};
 
     let res = Resource::RLIMIT_NOFILE;
 

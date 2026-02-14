@@ -8,10 +8,10 @@ use std::{
 
 use bytesize::ByteSize;
 pub use error::Error;
-use ruma::{api::federation::discovery::VerifyKey, serde::Base64, OwnedServerName, RoomVersionId};
+use ruma::{OwnedServerName, RoomVersionId, api::federation::discovery::VerifyKey, serde::Base64};
 use serde::{
-    de::{Error as _, IgnoredAny},
     Deserialize,
+    de::{Error as _, IgnoredAny},
 };
 use url::Url;
 
@@ -728,7 +728,7 @@ impl std::fmt::Display for Config {
         let mut msg: String = "Active config values:\n\n".to_owned();
 
         for line in lines.into_iter().enumerate() {
-            msg += &format!("{}: {}\n", line.1 .0, line.1 .1);
+            msg += &format!("{}: {}\n", line.1.0, line.1.1);
         }
 
         write!(f, "{msg}")

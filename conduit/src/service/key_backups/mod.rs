@@ -3,9 +3,9 @@ pub use data::Data;
 
 use crate::Result;
 use ruma::{
+    OwnedRoomId, RoomId, UserId,
     api::client::backup::{BackupAlgorithm, KeyBackupData, RoomKeyBackup},
     serde::Raw,
-    OwnedRoomId, RoomId, UserId,
 };
 use std::collections::BTreeMap;
 
