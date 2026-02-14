@@ -17,7 +17,7 @@ str_to_string = "warn"
 edition = "2024"
 homepage = "https://conduit.rs"
 repository = "https://gitlab.com/famedly/conduit"
-rust-version = "1.85.0"
+rust-version = "1.88.0"
 
 [profile.dev]
 incremental = true

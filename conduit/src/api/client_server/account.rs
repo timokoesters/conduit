@@ -181,7 +181,7 @@ pub async fn register_route(body: Ruma<register::v3::Request>) -> Result<registe
                 &uiaainfo,
             )?;
             if !worked {
-                return Err(Error::Uiaa(uiaainfo));
+                return Err(Error::uiaa(uiaainfo));
             }
         // Success!
         } else if let Some(json) = body.json_body {
@@ -193,7 +193,7 @@ pub async fn register_route(body: Ruma<register::v3::Request>) -> Result<registe
                 &uiaainfo,
                 &json,
             )?;
-            return Err(Error::Uiaa(uiaainfo));
+            return Err(Error::uiaa(uiaainfo));
         } else {
             return Err(Error::BadRequest(ErrorKind::NotJson, "Not json."));
         }
@@ -341,7 +341,7 @@ pub async fn change_password_route(
                 .uiaa
                 .try_auth(sender_user, sender_device, auth, &uiaainfo)?;
         if !worked {
-            return Err(Error::Uiaa(uiaainfo));
+            return Err(Error::uiaa(uiaainfo));
         }
     // Success!
     } else if let Some(json) = body.json_body {
@@ -349,7 +349,7 @@ pub async fn change_password_route(
         services()
             .uiaa
             .create(sender_user, sender_device, &uiaainfo, &json)?;
-        return Err(Error::Uiaa(uiaainfo));
+        return Err(Error::uiaa(uiaainfo));
     } else {
         return Err(Error::BadRequest(ErrorKind::NotJson, "Not json."));
     }
@@ -432,7 +432,7 @@ pub async fn deactivate_route(
                 .uiaa
                 .try_auth(sender_user, sender_device, auth, &uiaainfo)?;
         if !worked {
-            return Err(Error::Uiaa(uiaainfo));
+            return Err(Error::uiaa(uiaainfo));
         }
     // Success!
     } else if let Some(json) = body.json_body {
@@ -440,7 +440,7 @@ pub async fn deactivate_route(
         services()
             .uiaa
             .create(sender_user, sender_device, &uiaainfo, &json)?;
-        return Err(Error::Uiaa(uiaainfo));
+        return Err(Error::uiaa(uiaainfo));
     } else {
         return Err(Error::BadRequest(ErrorKind::NotJson, "Not json."));
     }

@@ -63,7 +63,7 @@ pub enum Error {
     /// Don't create this directly. Use Error::bad_database instead.
     BadDatabase(&'static str),
     #[error("uiaa")]
-    Uiaa(UiaaInfo),
+    Uiaa(Box<UiaaInfo>),
     #[error("{n}: {1}", n = _0.errcode())]
     BadRequest(ErrorKind, &'static str),
     #[error("{0}")]
@@ -95,12 +95,17 @@ impl Error {
         error!("BadConfig: {}", message);
         Self::BadConfig(message)
     }
+
+    /// Constructs `Self::Uiaa`, wrapping the input with `Box`.
+    pub fn uiaa(uiaa: UiaaInfo) -> Self {
+        Self::Uiaa(Box::new(uiaa))
+    }
 }
 
 impl Error {
     pub fn to_response(&self) -> RumaResponse<UiaaResponse> {
         if let Self::Uiaa(uiaainfo) = self {
-            return RumaResponse(UiaaResponse::AuthResponse(uiaainfo.clone()));
+            return RumaResponse(UiaaResponse::AuthResponse(*uiaainfo.clone()));
         }
 
         if let Self::FederationError(origin, error) = self {

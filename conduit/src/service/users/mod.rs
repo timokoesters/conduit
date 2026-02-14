@@ -77,12 +77,12 @@ impl Service {
             guard.clear();
             drop(guard);
 
-            let result = self
+            
+            self
                 .db
                 .set_devices_last_seen(&map)
                 .filter_map(Result::err)
-                .collect();
-            result
+                .collect()
         } else {
             Vec::new()
         }

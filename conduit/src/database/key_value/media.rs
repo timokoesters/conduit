@@ -613,9 +613,9 @@ impl service::media::Data for KeyValueDatabase {
         self.servername_userlocalpart_mediaid
             .scan_prefix(prefix)
             .map(|(k, _)| {
-                let parts = k.split(|&b| b == 0xff);
+                let mut parts = k.split(|&b| b == 0xff);
 
-                let media_id = parts.last().ok_or_else(|| {
+                let media_id = parts.next_back().ok_or_else(|| {
                     Error::bad_database("Invalid format of key in blocked_servername_mediaid")
                 })?;
 

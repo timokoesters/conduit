@@ -415,7 +415,7 @@ pub struct ListMediaArgs {
 #[derive(Debug)]
 pub enum AdminRoomEvent {
     ProcessMessage(String),
-    SendMessage(RoomMessageEventContent),
+    SendMessage(Box<RoomMessageEventContent>),
 }
 
 pub struct Service {
@@ -451,7 +451,7 @@ impl Service {
                 tokio::select! {
                     Some(event) = receiver.recv() => {
                         let message_content = match event {
-                            AdminRoomEvent::SendMessage(content) => content.into(),
+                            AdminRoomEvent::SendMessage(content) => (*content).into(),
                             AdminRoomEvent::ProcessMessage(room_message) => self.process_admin_message(room_message).await,
                         };
 
@@ -498,7 +498,7 @@ impl Service {
 
     pub fn send_message(&self, message_content: RoomMessageEventContent) {
         self.sender
-            .send(AdminRoomEvent::SendMessage(message_content))
+            .send(AdminRoomEvent::SendMessage(Box::new(message_content)))
             .unwrap();
     }
 
