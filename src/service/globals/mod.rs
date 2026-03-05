@@ -543,7 +543,9 @@ impl Service {
 }
 
 fn reqwest_client_builder(config: &Config) -> Result<reqwest::ClientBuilder> {
+    let user_agent = format!("Conduit/{}", env!("CARGO_PKG_VERSION"));
     let mut reqwest_client_builder = reqwest::Client::builder()
+        .user_agent(&user_agent)
         .pool_max_idle_per_host(0)
         .connect_timeout(Duration::from_secs(30))
         .timeout(Duration::from_secs(60 * 3));
