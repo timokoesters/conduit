@@ -7,7 +7,7 @@ use crate::{
 };
 use abstraction::{KeyValueDatabaseEngine, KvTree};
 use base64::{engine::general_purpose, Engine};
-use directories::ProjectDirs;
+use conduit_config::DatabaseBackend;
 use key_value::media::FilehashMetadata;
 use lru_cache::LruCache;
 
@@ -25,7 +25,7 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
-    fs::{self, remove_dir_all},
+    fs,
     io::Write,
     mem::size_of,
     path::{Path, PathBuf},
@@ -214,18 +214,6 @@ pub struct KeyValueDatabase {
 }
 
 impl KeyValueDatabase {
-    /// Tries to remove the old database but ignores all errors.
-    pub fn try_remove(server_name: &str) -> Result<()> {
-        let mut path = ProjectDirs::from("xyz", "koesters", "conduit")
-            .ok_or_else(|| Error::bad_config("The OS didn't return a valid home directory path."))?
-            .data_dir()
-            .to_path_buf();
-        path.push(server_name);
-        let _ = remove_dir_all(path);
-
-        Ok(())
-    }
-
     fn check_db_setup(config: &Config) -> Result<()> {
         let path = Path::new(&config.database_path);
 
@@ -252,22 +240,32 @@ impl KeyValueDatabase {
             return Ok(());
         }
 
-        if sled_exists && config.database_backend != "sled" {
-            return Err(Error::bad_config(
+        if sled_exists {
+            return Err(Error::Initialization(
                 "Found sled at database_path, but is not specified in config.",
             ));
         }
 
-        if sqlite_exists && config.database_backend != "sqlite" {
-            return Err(Error::bad_config(
-                "Found sqlite at database_path, but is not specified in config.",
-            ));
-        }
-
-        if rocksdb_exists && config.database_backend != "rocksdb" {
-            return Err(Error::bad_config(
-                "Found rocksdb at database_path, but is not specified in config.",
-            ));
+        // Only works as these are the only two active backends currently. If there ever were
+        // to be more than 2, this could get complicated due to there not being attributes
+        // available on expressions yet: https://github.com/rust-lang/rust/issues/15701
+        match config.database_backend {
+            #[cfg(feature = "rocksdb")]
+            DatabaseBackend::RocksDB => {
+                if sqlite_exists {
+                    return Err(Error::Initialization(
+                        "Found sqlite at database_path, but is not specified in config.",
+                    ));
+                }
+            }
+            #[cfg(feature = "sqlite")]
+            DatabaseBackend::SQLite => {
+                if rocksdb_exists {
+                    return Err(Error::Initialization(
+                        "Found rocksdb at database_path, but is not specified in config.",
+                    ));
+                }
+            }
         }
 
         Ok(())
@@ -279,22 +277,17 @@ impl KeyValueDatabase {
 
         if !Path::new(&config.database_path).exists() {
             fs::create_dir_all(&config.database_path)
-                .map_err(|_| Error::BadConfig("Database folder doesn't exists and couldn't be created (e.g. due to missing permissions). Please create the database folder yourself."))?;
+                .map_err(|_| Error::Initialization("Database folder doesn't exists and couldn't be created (e.g. due to missing permissions). Please create the database folder yourself."))?;
         }
 
-        let builder: Arc<dyn KeyValueDatabaseEngine> = match &*config.database_backend {
+        let builder: Arc<dyn KeyValueDatabaseEngine> = match &config.database_backend {
             #[cfg(feature = "sqlite")]
-            "sqlite" => Arc::new(Arc::<abstraction::sqlite::Engine>::open(&config)?),
+            DatabaseBackend::SQLite => Arc::new(Arc::<abstraction::sqlite::Engine>::open(&config)?),
             #[cfg(feature = "rocksdb")]
-            "rocksdb" => Arc::new(Arc::<abstraction::rocksdb::Engine>::open(&config)?),
-            _ => {
-                return Err(Error::BadConfig("Database backend not found."));
+            DatabaseBackend::RocksDB => {
+                Arc::new(Arc::<abstraction::rocksdb::Engine>::open(&config)?)
             }
         };
-
-        if config.registration_token == Some(String::new()) {
-            return Err(Error::bad_config("Registration token is empty"));
-        }
 
         if config.max_request_size < 1024 {
             error!(?config.max_request_size, "Max request size is less than 1KB. Please increase it.");
@@ -1056,9 +1049,9 @@ impl KeyValueDatabase {
             }
 
             if services().globals.database_version()? < 18 {
-                if let crate::config::MediaBackendConfig::FileSystem {
+                if let conduit_config::MediaBackendConfig::FileSystem {
                     path,
-                    directory_structure: crate::config::DirectoryStructure::Deep { length, depth },
+                    directory_structure: conduit_config::DirectoryStructure::Deep { length, depth },
                 } = &services().globals.config.media.backend
                 {
                     for file in fs::read_dir(path)
@@ -1074,7 +1067,7 @@ impl KeyValueDatabase {
                             file.path(),
                             services().globals.get_media_path(
                                 path.as_str(),
-                                &crate::config::DirectoryStructure::Deep {
+                                &conduit_config::DirectoryStructure::Deep {
                                     length: *length,
                                     depth: *depth,
                                 },

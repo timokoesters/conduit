@@ -52,6 +52,15 @@ static SUB_TABLES: [&str; 3] = ["well_known", "tls", "media"]; // Not doing `pro
 // this is what we have to deal with. Also see: https://github.com/SergioBenitez/Figment/issues/12#issuecomment-801449465
 static SUB_SUB_TABLES: [&str; 2] = ["directory_structure", "retention"];
 
+const DEPRECATED_KEYS: &[&str] = &[
+    "cache_capacity",
+    "turn_username",
+    "turn_password",
+    "turn_uris",
+    "turn_secret",
+    "turn_ttl",
+];
+
 #[tokio::main]
 async fn main() {
     clap::parse();
@@ -104,7 +113,19 @@ async fn main() {
         }
     };
 
-    config.warn_deprecated();
+    let mut was_deprecated = false;
+    for key in config
+        .catchall
+        .keys()
+        .filter(|key| DEPRECATED_KEYS.iter().any(|s| s == key))
+    {
+        warn!("Config parameter {} is deprecated", key);
+        was_deprecated = true;
+    }
+
+    if was_deprecated {
+        warn!("Read conduit documentation and check your configuration if any new configuration parameters should be adjusted");
+    }
 
     let jaeger = if config.allow_jaeger {
         opentelemetry::global::set_text_map_propagator(
@@ -544,7 +565,7 @@ async fn shutdown_signal(handle: ServerHandle) {
 }
 
 async fn federation_disabled(_: Uri) -> impl IntoResponse {
-    Error::bad_config("Federation is disabled.")
+    Error::BadServerResponse("Federation is disabled.")
 }
 
 async fn not_found(uri: Uri) -> impl IntoResponse {

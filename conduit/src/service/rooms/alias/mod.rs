@@ -2,6 +2,7 @@ mod data;
 
 pub use data::Data;
 use rand::seq::SliceRandom;
+use tracing::warn;
 
 use crate::{services, Error, Result};
 use ruma::{
@@ -131,7 +132,10 @@ impl Service {
                     {
                         room_id =
                             Some(self.resolve_local_alias(&room_alias)?.ok_or_else(|| {
-                                Error::bad_config("Appservice lied to us. Room does not exist.")
+                                warn!(id = appservice.registration.id, alias = room_alias.to_string(), "Appservice claimed to create room for alias, but the alias could not be resolved.");
+                                Error::BadServerResponse(
+                                    "Appservice lied to us. Room does not exist.",
+                                )
                             })?);
                         break;
                     }

@@ -1,7 +1,8 @@
+use conduit_config::MediaRetentionConfig;
 use ruma::{OwnedServerName, ServerName, UserId};
 use sha2::{digest::Output, Sha256};
 
-use crate::{config::MediaRetentionConfig, Error, Result};
+use crate::{Error, Result};
 
 use super::{
     BlockedMediaInfo, DbFileMeta, MediaListItem, MediaQuery, MediaType, ServerNameOrUserId,

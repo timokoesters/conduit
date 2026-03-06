@@ -1,7 +1,9 @@
+use std::{fmt, str::FromStr};
+
 use reqwest::{Proxy, Url};
 use serde::Deserialize;
 
-use crate::Result;
+use crate::error::Result;
 
 /// ## Examples:
 /// - No proxy (default):
@@ -34,7 +36,6 @@ pub enum ProxyConfig {
     #[default]
     None,
     Global {
-        #[serde(deserialize_with = "crate::utils::deserialize_from_str")]
         url: Url,
     },
     ByDomain(Vec<PartialProxyConfig>),
@@ -53,7 +54,6 @@ impl ProxyConfig {
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct PartialProxyConfig {
-    #[serde(deserialize_with = "crate::utils::deserialize_from_str")]
     url: Url,
     #[serde(default)]
     include: Vec<WildCardedDomain>,
@@ -120,7 +120,8 @@ impl WildCardedDomain {
         }
     }
 }
-impl std::str::FromStr for WildCardedDomain {
+
+impl FromStr for WildCardedDomain {
     type Err = std::convert::Infallible;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         // maybe do some domain validation?
@@ -138,6 +139,30 @@ impl<'de> Deserialize<'de> for WildCardedDomain {
     where
         D: serde::de::Deserializer<'de>,
     {
-        crate::utils::deserialize_from_str(deserializer)
+        deserialize_from_str(deserializer)
     }
+}
+
+fn deserialize_from_str<
+    'de,
+    D: serde::de::Deserializer<'de>,
+    T: FromStr<Err = E>,
+    E: fmt::Display,
+>(
+    deserializer: D,
+) -> Result<T, D::Error> {
+    struct Visitor<T: FromStr<Err = E>, E>(std::marker::PhantomData<T>);
+    impl<T: FromStr<Err = Err>, Err: fmt::Display> serde::de::Visitor<'_> for Visitor<T, Err> {
+        type Value = T;
+        fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(formatter, "a parsable string")
+        }
+        fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            v.parse().map_err(serde::de::Error::custom)
+        }
+    }
+    deserializer.deserialize_str(Visitor(std::marker::PhantomData))
 }

@@ -1,6 +1,5 @@
 pub mod api;
 pub mod clap;
-mod config;
 mod database;
 mod service;
 mod utils;
@@ -14,7 +13,7 @@ use std::{
 };
 
 pub use api::ruma_wrapper::{Ruma, RumaResponse};
-pub use config::Config;
+pub use conduit_config::Config;
 pub use database::KeyValueDatabase;
 use ruma::api::{MatrixVersion, SupportedVersions};
 pub use service::{pdu::PduEvent, Services};

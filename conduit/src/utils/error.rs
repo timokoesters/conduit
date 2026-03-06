@@ -57,8 +57,13 @@ pub enum Error {
     CannotDeleteS3File(String), // This is only needed when an S3 deletion fails
     #[error("{0}")]
     BadServerResponse(&'static str),
+    #[error("{source}")]
+    BadConfig {
+        #[from]
+        source: conduit_config::Error,
+    },
     #[error("{0}")]
-    BadConfig(&'static str),
+    Initialization(&'static str),
     #[error("{0}")]
     /// Don't create this directly. Use Error::bad_database instead.
     BadDatabase(&'static str),
@@ -89,11 +94,6 @@ impl Error {
     pub fn bad_database(message: &'static str) -> Self {
         error!("BadDatabase: {}", message);
         Self::BadDatabase(message)
-    }
-
-    pub fn bad_config(message: &'static str) -> Self {
-        error!("BadConfig: {}", message);
-        Self::BadConfig(message)
     }
 }
 

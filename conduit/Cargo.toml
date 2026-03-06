@@ -16,6 +16,9 @@ version = "0.11.0-alpha"
 workspace = true
 
 [dependencies]
+# For the configuration
+conduit-config.workspace = true
+
 # Web framework
 axum = { version = "0.8", default-features = false, features = [
   "form",
@@ -42,8 +45,6 @@ tokio = { version = "1", features = ["fs", "macros", "signal", "sync"] }
 # Used for the http request / response body type for Ruma endpoints used with reqwest
 bytes = "1"
 http = "1"
-# Used to find data directory for default db path
-directories = "6"
 # Used for ruma wrapper
 serde_json = { version = "1", features = ["raw_value"] }
 # Used for appservice registration files
@@ -62,12 +63,9 @@ hyper-util = { version = "0.1", features = [
   "http1",
   "http2",
 ] }
-reqwest = { version = "0.12", default-features = false, features = [
-  "rustls-tls-native-roots",
-  "socks",
-] }
+reqwest = { workspace = true, features = ["rustls-tls-native-roots", "socks"] }
 # Used for conduit::Error type
-thiserror = "2" #TODO: 2
+thiserror.workspace = true
 # Used to generate thumbnails for images
 image = { version = "0.25", default-features = false, features = [
   "gif",
@@ -78,9 +76,9 @@ image = { version = "0.25", default-features = false, features = [
 # Used for creating media filenames
 hex = "0.4"
 sha2 = "0.10"
-# Used for parsing media retention policies from the config
-bytesize = { version = "2", features = ["serde"] }
-humantime-serde = "1"
+
+# Used for parsing admin commands and purging media files for space limitations
+bytesize.workspace = true
 # Used to encode server public key
 base64 = "0.22"
 # Used when hashing the state
@@ -132,9 +130,6 @@ futures-util = { version = "0.3", default-features = false }
 # Used for reading the configuration from conduit.toml & environment variables
 figment = { version = "0.10", features = ["env", "toml"] }
 
-# Validating urls in config
-url = { version = "2", features = ["serde"] }
-
 async-trait = "0.1"
 tikv-jemallocator = { version = "0.6", features = [
   "unprefixed_malloc_on_supported_platforms",
@@ -144,7 +139,7 @@ sd-notify = { version = "0.4", optional = true }
 # Used for inspecting request errors
 http-body-util = "0.1.3"
 # Used for S3 media backend
-rusty-s3 = "0.8.1"
+rusty-s3.workspace = true
 
 # Used for matrix spec type definitions and helpers
 [dependencies.ruma]
@@ -169,7 +164,7 @@ features = [
   "unstable-msc4186",
   "unstable-msc4311",
 ]
-git = "https://github.com/ruma/ruma.git"
+workspace = true
 
 [dependencies.rocksdb]
 features = ["lz4", "multi-threaded-cf", "zstd"]
@@ -181,8 +176,8 @@ version = "0.43"
 nix = { version = "0.30", features = ["resource"] }
 
 [features]
-backend_rocksdb = ["rocksdb"]
-backend_sqlite = ["sqlite"]
+backend_rocksdb = ["conduit-config/rocksdb", "rocksdb"]
+backend_sqlite = ["conduit-config/sqlite", "sqlite"]
 conduit_bin = ["axum"]
 default = ["backend_rocksdb", "backend_sqlite", "conduit_bin", "systemd"]
 jemalloc = ["tikv-jemallocator"]

@@ -1,12 +1,12 @@
 use std::{collections::BTreeMap, ops::Range, slice::Split};
 
 use bytesize::ByteSize;
+use conduit_config::{MediaRetentionConfig, MediaRetentionScope};
 use ruma::{api::client::error::ErrorKind, OwnedServerName, ServerName, UserId};
 use sha2::{digest::Output, Sha256};
 use tracing::error;
 
 use crate::{
-    config::{MediaRetentionConfig, MediaRetentionScope},
     database::KeyValueDatabase,
     service::{
         self,

@@ -7,10 +7,8 @@ use ruma::{
 
 use crate::api::server_server::DestinationResponse;
 
-use crate::{
-    config::{DirectoryStructure, MediaBackendConfig, TurnConfig},
-    services, Config, Error, Result,
-};
+use crate::{services, Config, Error, Result};
+use conduit_config::{DirectoryStructure, MediaBackendConfig, TurnConfig};
 use futures_util::FutureExt;
 use hickory_resolver::TokioResolver;
 use hyper_util::client::legacy::connect::dns::{GaiResolver, Name as HyperName};
@@ -207,7 +205,7 @@ impl Service {
                         "Failed to set up trust dns resolver with system config: {}",
                         e
                     );
-                    Error::bad_config("Failed to set up trust dns resolver with system config.")
+                    Error::Initialization("Failed to set up trust dns resolver with system config.")
                 })?
                 .build(),
             actual_destination_cache: Arc::new(RwLock::new(WellKnownMap::new())),
@@ -239,8 +237,8 @@ impl Service {
             .supported_room_versions()
             .contains(&s.config.default_room_version)
         {
-            error!(config=?s.config.default_room_version, fallback=?crate::config::default_default_room_version(), "Room version in config isn't supported, falling back to default version");
-            s.config.default_room_version = crate::config::default_default_room_version();
+            error!(config=?s.config.default_room_version, fallback=?conduit_config::default_default_room_version(), "Room version in config isn't supported, falling back to default version");
+            s.config.default_room_version = conduit_config::default_default_room_version();
         };
 
         Ok(s)

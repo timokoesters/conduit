@@ -130,11 +130,11 @@ where
     T: OutgoingRequest + Debug,
 {
     if !services().globals.allow_federation() {
-        return Err(Error::bad_config("Federation is disabled."));
+        return Err(Error::BadServerResponse("Federation is disabled."));
     }
 
     if destination == services().globals.server_name() {
-        return Err(Error::bad_config(
+        return Err(Error::BadServerResponse(
             "Won't send federation request to ourselves",
         ));
     }

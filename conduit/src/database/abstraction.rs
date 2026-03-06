@@ -1,5 +1,6 @@
-use super::Config;
 use crate::Result;
+
+use conduit_config::Config;
 
 use std::{future::Future, pin::Pin, sync::Arc};
 

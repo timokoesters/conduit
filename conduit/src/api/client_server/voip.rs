@@ -1,5 +1,6 @@
-use crate::{config::TurnAuth, services, Error, Result, Ruma};
+use crate::{services, Error, Result, Ruma};
 use base64::{engine::general_purpose, Engine as _};
+use conduit_config::TurnAuth;
 use hmac::{Hmac, Mac};
 use ruma::{
     api::client::{error::ErrorKind, voip::get_turn_server_info},

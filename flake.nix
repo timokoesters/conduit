@@ -26,6 +26,8 @@
         craneLib =
           (inputs.crane.mkLib pkgs).overrideToolchain (_: self.toolchain);
 
+        workspaceMembers = (pkgs.lib.importTOML ./Cargo.toml).workspace.members;
+
         default = self.callPackage ./nix/pkgs/default {};
 
         inherit inputs;

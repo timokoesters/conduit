@@ -6,6 +6,7 @@
 , rocksdb
 , rust
 , stdenv
+, workspaceMembers
 
 # Options (keep sorted)
 , default-features ? true
@@ -56,8 +57,8 @@ let
         ".cargo"
         "Cargo.lock"
         "Cargo.toml"
-        "conduit"
-      ];
+      ]
+      ++ workspaceMembers;
     };
 
     nativeBuildInputs = [

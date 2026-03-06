@@ -1,6 +1,5 @@
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
-    fmt,
     net::{IpAddr, Ipv4Addr},
     num::NonZeroU8,
     path::PathBuf,
@@ -8,14 +7,15 @@ use std::{
 };
 
 use bytesize::ByteSize;
+pub use error::Error;
 use ruma::{api::federation::discovery::VerifyKey, serde::Base64, OwnedServerName, RoomVersionId};
-use serde::{de::IgnoredAny, Deserialize};
-use tokio::time::{interval, Interval};
-use tracing::warn;
+use serde::{
+    de::{Error as _, IgnoredAny},
+    Deserialize,
+};
 use url::Url;
 
-use crate::Error;
-
+pub mod error;
 mod proxy;
 use self::proxy::ProxyConfig;
 
@@ -30,7 +30,7 @@ pub struct IncompleteConfig {
     pub tls: Option<TlsConfig>,
 
     pub server_name: OwnedServerName,
-    pub database_backend: String,
+    pub database_backend: DatabaseBackend,
     pub database_path: String,
     #[serde(default = "default_db_cache_capacity_mb")]
     pub db_cache_capacity_mb: f64,
@@ -54,6 +54,7 @@ pub struct IncompleteConfig {
     pub max_fetch_prev_events: u16,
     #[serde(default = "false_fn")]
     pub allow_registration: bool,
+    #[serde(default, deserialize_with = "forbid_empty_registration_token")]
     pub registration_token: Option<String>,
     #[serde(default = "default_openid_token_ttl")]
     pub openid_token_ttl: u64,
@@ -109,7 +110,7 @@ pub struct Config {
     pub tls: Option<TlsConfig>,
 
     pub server_name: OwnedServerName,
-    pub database_backend: String,
+    pub database_backend: DatabaseBackend,
     pub database_path: String,
     pub db_cache_capacity_mb: f64,
     pub enable_lightning_bolt: bool,
@@ -296,6 +297,43 @@ impl From<IncompleteConfig> for Config {
     }
 }
 
+fn forbid_empty_registration_token<'de, D>(de: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let opt = Option::<String>::deserialize(de)?;
+    if opt
+        .as_ref()
+        .map(|token| token.is_empty())
+        .unwrap_or_default()
+    {
+        return Err(D::Error::custom(Error::EmptyRegistrationToken));
+    }
+
+    Ok(opt)
+}
+#[derive(Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum DatabaseBackend {
+    #[cfg(feature = "sqlite")]
+    SQLite,
+    #[cfg(feature = "rocksdb")]
+    RocksDB,
+}
+
+#[cfg(any(feature = "sqlite", feature = "rocksdb"))]
+impl std::fmt::Display for DatabaseBackend {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let string = match self {
+            #[cfg(feature = "rocksdb")]
+            DatabaseBackend::RocksDB => "RocksDB",
+            #[cfg(feature = "sqlite")]
+            DatabaseBackend::SQLite => "SQLite",
+        };
+        write!(f, "{}", string)
+    }
+}
+
 #[derive(Clone, Debug, Deserialize)]
 pub struct TlsConfig {
     pub certs: String,
@@ -356,7 +394,7 @@ pub struct MediaRetentionConfig {
 
 impl MediaRetentionConfig {
     /// Interval for the duration-based retention policies to be checked & enforced
-    pub fn cleanup_interval(&self) -> Option<Interval> {
+    pub fn cleanup_interval(&self) -> Option<Duration> {
         self.scoped
             .values()
             .filter_map(|scoped| match (scoped.created, scoped.accessed) {
@@ -369,7 +407,6 @@ impl MediaRetentionConfig {
                     .max(Duration::from_secs(60).min(Duration::from_secs(60 * 60 * 24)))
             })
             .min()
-            .map(interval)
     }
 }
 
@@ -559,7 +596,7 @@ impl TryFrom<ShadowDirectoryStructure> for DirectoryStructure {
                 {
                     Ok(Self::Deep { length, depth })
                 } else {
-                    Err(Error::bad_config("The media directory structure depth multiplied by the depth is equal to or greater than a sha256 hex hash, please reduce at least one of the two so that their product is less than 64"))
+                    Err(Error::DirectoryStructureLengthDepthTooLarge)
                 }
             }
         }
@@ -603,7 +640,7 @@ impl TryFrom<ShadowS3MediaBackend> for S3MediaBackend {
                 path: value.path,
                 directory_structure: value.directory_structure,
             }),
-            Err(_) => Err(Error::bad_config("Invalid S3 config")),
+            Err(_) => Err(Error::S3),
         }
     }
 }
@@ -618,39 +655,14 @@ pub struct S3MediaBackend {
     pub directory_structure: DirectoryStructure,
 }
 
-const DEPRECATED_KEYS: &[&str] = &[
-    "cache_capacity",
-    "turn_username",
-    "turn_password",
-    "turn_uris",
-    "turn_secret",
-    "turn_ttl",
-];
-
-impl Config {
-    pub fn warn_deprecated(&self) {
-        let mut was_deprecated = false;
-        for key in self
-            .catchall
-            .keys()
-            .filter(|key| DEPRECATED_KEYS.iter().any(|s| s == key))
-        {
-            warn!("Config parameter {} is deprecated", key);
-            was_deprecated = true;
-        }
-
-        if was_deprecated {
-            warn!("Read conduit documentation and check your configuration if any new configuration parameters should be adjusted");
-        }
-    }
-}
-
-impl fmt::Display for Config {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+#[cfg(any(feature = "sqlite", feature = "rocksdb"))]
+impl std::fmt::Display for Config {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // Prepare a list of config values to show
+        // TODO: Replace this with something more fit-for-purpose, especially with tables in mind.
         let lines = [
             ("Server name", self.server_name.host()),
-            ("Database backend", &self.database_backend),
+            ("Database backend", &self.database_backend.to_string()),
             ("Database path", &self.database_path),
             (
                 "Database cache capacity (MB)",

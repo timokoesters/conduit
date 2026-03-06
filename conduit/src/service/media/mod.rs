@@ -1,6 +1,7 @@
 mod data;
 use std::{io::Cursor, sync::Arc};
 
+use conduit_config::{DirectoryStructure, MediaBackendConfig, S3MediaBackend};
 pub use data::Data;
 use http::StatusCode;
 use ruma::{
@@ -15,10 +16,7 @@ use rusty_s3::{
 use sha2::{digest::Output, Digest, Sha256};
 use tracing::{error, info, warn};
 
-use crate::{
-    config::{DirectoryStructure, MediaBackendConfig, S3MediaBackend},
-    services, utils, Error, Result,
-};
+use crate::{services, utils, Error, Result};
 use image::imageops::FilterType;
 
 pub struct DbFileMeta {
@@ -31,6 +29,7 @@ pub struct DbFileMeta {
 use tokio::{
     fs::{self, File},
     io::{AsyncReadExt, AsyncWriteExt},
+    time::interval,
 };
 
 pub struct MediaQuery {
@@ -126,7 +125,13 @@ pub struct BlockedMediaInfo {
 impl Service {
     pub fn start_time_retention_checker(self: &Arc<Self>) {
         let self2 = Arc::clone(self);
-        if let Some(cleanup_interval) = services().globals.config.media.retention.cleanup_interval()
+        if let Some(cleanup_interval) = services()
+            .globals
+            .config
+            .media
+            .retention
+            .cleanup_interval()
+            .map(interval)
         {
             tokio::spawn(async move {
                 let mut i = cleanup_interval;

@@ -1,5 +1,6 @@
-use super::{super::Config, watchers::Watchers, KeyValueDatabaseEngine, KvTree};
+use super::{watchers::Watchers, KeyValueDatabaseEngine, KvTree};
 use crate::{utils, Result};
+use conduit_config::Config;
 use std::{
     future::Future,
     pin::Pin,

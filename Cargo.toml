@@ -1,6 +1,6 @@
 [workspace]
 default-members = ["conduit"]
-members = ["conduit"]
+members = ["conduit", "conduit-config"]
 resolver = "2"
 
 [workspace.lints.rust]
@@ -18,6 +18,15 @@ edition = "2021"
 homepage = "https://conduit.rs"
 repository = "https://gitlab.com/famedly/conduit"
 rust-version = "1.85.0"
+
+[workspace.dependencies]
+bytesize = "2"
+conduit-config.path = "conduit-config"
+reqwest = { version = "0.12", default-features = false }
+ruma.git = "https://github.com/ruma/ruma.git"
+rusty-s3 = "0.8"
+serde = "1"
+thiserror = "2"
 
 [profile.dev]
 incremental = true
