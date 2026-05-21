@@ -1664,10 +1664,15 @@ pub async fn sync_events_v5_route(
         let required_state = required_state_request
             .iter()
             .flat_map(|state| {
+                let state_key = if state.1 == "$ME" {
+                    sender_user.as_str()
+                } else {
+                    &state.1
+                };
                 services()
                     .rooms
                     .state_accessor
-                    .room_state_get(room_id, &state.0, &state.1)
+                    .room_state_get(room_id, &state.0, state_key)
                     .ok()
                     .flatten()
                     .map(|state| state.to_sync_state_event())
