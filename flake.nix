@@ -16,7 +16,6 @@
     # introduce in the next commit attempts to link the musl targets against glibc
     # for some reason. Unpin once this is fixed.
     crane.url = "github:kladki/crane?ref=use-full-path-for-cc-cross";
-    attic.url = "github:zhaofengli/attic?ref=main";
   };
 
   outputs = inputs:
