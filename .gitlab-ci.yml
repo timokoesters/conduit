@@ -41,8 +41,8 @@ before_script:
   - if command -v nix > /dev/null; then echo "extra-substituters = https://nix-community.cachix.org" >> ~/.config/nix/nix.conf; fi
   - if command -v nix > /dev/null; then echo "extra-trusted-public-keys = nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs=" >> ~/.config/nix/nix.conf; fi
 
-  # Install direnv and nix-direnv
-  - if command -v nix > /dev/null; then nix-env -iA nixpkgs.direnv nixpkgs.nix-direnv; fi
+  # Install direnv and nix-direnv if not yet installed
+  - if command -v nix > /dev/null && [ -z "$(command -v direnv)" ]; then nix-env -iA nixpkgs.direnv nixpkgs.nix-direnv; fi
 
   # Allow .envrc
   - if command -v nix > /dev/null; then direnv allow; fi
