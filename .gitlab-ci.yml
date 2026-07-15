@@ -49,15 +49,12 @@ before_script:
   # Set CARGO_HOME to a cacheable path
   - export CARGO_HOME="$(git rev-parse --show-toplevel)/.gitlab-ci.d/cargo"
 
-  # Cache attic client
-  - if command -v nix > /dev/null; then ./bin/nix-build-and-cache --inputs-from . attic; fi
-
 ci:
   stage: ci
   image: nixos/nix:2.22.0
   script:
     # Cache the inputs required for the devShell
-    - ./bin/nix-build-and-cache .#devShells.x86_64-linux.default.inputDerivation
+    - nix build .#devShells.x86_64-linux.default.inputDerivation
 
     - direnv exec . engage
   cache:
@@ -81,7 +78,7 @@ artifacts:
   stage: artifacts
   image: nixos/nix:2.22.0
   script:
-    - ./bin/nix-build-and-cache .#static-x86_64-unknown-linux-musl
+    - nix build .#static-x86_64-unknown-linux-musl
     - cp result/bin/conduit x86_64-unknown-linux-musl
 
     - mkdir -p target/x86_64-unknown-linux-musl/release
@@ -89,18 +86,10 @@ artifacts:
     - direnv exec . cargo deb --no-build --target x86_64-unknown-linux-musl
     - mv target/x86_64-unknown-linux-musl/debian/*.deb x86_64-unknown-linux-musl.deb
 
-    # Since the OCI image package is based on the binary package, this has the
-    # fun side effect of uploading the normal binary too. Conduit users who are
-    # deploying with Nix can leverage this fact by adding our binary cache to
-    # their systems.
-    #
-    # Note that although we have an `oci-image-x86_64-unknown-linux-musl`
-    # output, we don't build it because it would be largely redundant to this
-    # one since it's all containerized anyway.
-    - ./bin/nix-build-and-cache .#oci-image
+    - nix build .#oci-image-x86_64-unknown-linux-musl
     - cp result oci-image-amd64.tar.gz
 
-    - ./bin/nix-build-and-cache .#static-aarch64-unknown-linux-musl
+    - nix build .#static-aarch64-unknown-linux-musl
     - cp result/bin/conduit aarch64-unknown-linux-musl
 
     - mkdir -p target/aarch64-unknown-linux-musl/release
@@ -109,10 +98,10 @@ artifacts:
     - direnv exec . cargo deb --no-strip --no-build --target aarch64-unknown-linux-musl
     - mv target/aarch64-unknown-linux-musl/debian/*.deb aarch64-unknown-linux-musl.deb
 
-    - ./bin/nix-build-and-cache .#oci-image-aarch64-unknown-linux-musl
+    - nix build .#oci-image-aarch64-unknown-linux-musl
     - cp result oci-image-arm64v8.tar.gz
 
-    - ./bin/nix-build-and-cache .#book
+    - nix build .#book
     # We can't just copy the symlink, we need to dereference it https://gitlab.com/gitlab-org/gitlab/-/issues/19746
     - cp -r --dereference result public
   artifacts:

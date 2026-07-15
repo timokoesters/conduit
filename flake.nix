@@ -16,7 +16,6 @@
     # introduce in the next commit attempts to link the musl targets against glibc
     # for some reason. Unpin once this is fixed.
     crane.url = "github:ipetkov/crane?rev=bb1c9567c43e4434f54e9481eb4b8e8e0d50f0b5";
-    attic.url = "github:zhaofengli/attic?ref=main";
   };
 
   outputs = inputs:
