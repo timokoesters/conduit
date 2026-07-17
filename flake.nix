@@ -61,7 +61,7 @@
             file = ./rust-toolchain.toml;
 
             # See also `rust-toolchain.toml`
-            sha256 = "sha256-Qxt8XAuaUR2OMdKbN4u8dBJOhSHxS+uS06Wl9+flVEk=";
+            sha256 = "sha256-+9FmLhAOezBZCOziO0Qct1NOrfpjNsXxc/8I0c7BdKE=";
           };
         
         # The timestamp of the last commit in ISO 8601 format
