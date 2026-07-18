@@ -16,7 +16,6 @@ quote = "1"
 syn = { version = "2", features = ["full"] }
 
 [features]
-default = ["doc-generators"]
 doc-generators = []
 
 [lints]
