@@ -6,9 +6,10 @@ use rand::prelude::*;
 use ring::digest;
 use ruma::{
     CanonicalJsonError, CanonicalJsonObject, CanonicalJsonValue, RoomId,
-    api::{client::error::ErrorKind, federation::membership::RawStrippedState},
-    canonical_json::try_from_json_map,
+    api::{error::ErrorKind, federation::membership::RawStrippedState},
+    canonical_json::to_canonical_value,
     events::AnyStrippedStateEvent,
+    profile::StaticProfileField,
     room_version_rules::RoomVersionRules,
     serde::Raw,
     signatures::Verified,
@@ -54,10 +55,7 @@ pub fn increment(old: Option<&[u8]>) -> Option<Vec<u8>> {
 pub fn generate_keypair() -> Vec<u8> {
     let mut value = random_string(8).as_bytes().to_vec();
     value.push(0xff);
-    value.extend_from_slice(
-        &ruma::signatures::Ed25519KeyPair::generate()
-            .expect("Ed25519KeyPair generation always works (?)"),
-    );
+    value.extend_from_slice(&ruma::signatures::Ed25519KeyPair::generate());
     value
 }
 
@@ -129,13 +127,11 @@ pub fn common_elements(
 pub fn to_canonical_object<T: serde::Serialize>(
     value: T,
 ) -> Result<CanonicalJsonObject, CanonicalJsonError> {
-    use serde::ser::Error;
-
-    match serde_json::to_value(value).map_err(CanonicalJsonError::SerDe)? {
-        serde_json::Value::Object(map) => try_from_json_map(map),
-        _ => Err(CanonicalJsonError::SerDe(serde_json::Error::custom(
-            "Value must be an object",
-        ))),
+    match to_canonical_value(value)? {
+        CanonicalJsonValue::Object(btree_map) => Ok(btree_map),
+        _ => Err(CanonicalJsonError::Other(
+            "Value must be an object".to_owned(),
+        )),
     }
 }
 
@@ -183,6 +179,8 @@ pub fn convert_stripped_state(
     stripped_state
         .into_iter()
         .map(|stripped_state| match stripped_state {
+            // `check_stripped_state` enforces that we don't have stripped state
+            #[allow(deprecated)]
             RawStrippedState::Stripped(state) => Ok(state),
             RawStrippedState::Pdu(state) => {
                 let mut event: CanonicalJsonObject =
@@ -217,11 +215,10 @@ pub async fn check_stripped_state(
         return Ok(());
     }
 
-    #[cfg(feature = "enforce_msc4311")]
     let mut seen_create_event = false;
-    #[cfg(feature = "enforce_msc4311")]
     if !stripped_state.iter().all(|state| match state {
         RawStrippedState::Pdu(_) => true,
+        #[allow(deprecated)]
         RawStrippedState::Stripped(_) => false,
     }) {
         return Err(Error::BadRequest(
@@ -307,14 +304,10 @@ pub async fn check_stripped_state(
                 ));
             }
 
-            #[cfg(feature = "enforce_msc4311")]
-            {
-                seen_create_event = true;
-            }
+            seen_create_event = true;
         }
     }
 
-    #[cfg(feature = "enforce_msc4311")]
     if !seen_create_event {
         return Err(Error::BadRequest(
             ErrorKind::InvalidParam,
@@ -323,4 +316,17 @@ pub async fn check_stripped_state(
     }
 
     Ok(())
+}
+
+/// Helper type for accessing blurhash from profile.
+/// <https://github.com/matrix-org/matrix-spec-proposals/pull/2448>
+///
+/// Not in ruma because the MSC hasn't officially updated to reflect extensible profiles.
+pub struct BlurHash {}
+
+impl StaticProfileField for BlurHash {
+    type Value = String;
+
+    // Change to stable name once stabilized
+    const NAME: &str = "xyz.amorgan.blurhash";
 }

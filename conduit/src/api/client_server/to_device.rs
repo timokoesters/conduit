@@ -1,9 +1,10 @@
 use std::collections::BTreeMap;
 
-use crate::{Error, Result, Ruma, services};
+use crate::{Error, Result, Ruma, api::UserOrAppserviceInfo, services};
 use ruma::{
     api::{
-        client::{error::ErrorKind, to_device::send_event_to_device},
+        client::to_device::send_event_to_device,
+        error::ErrorKind,
         federation::{self, transactions::edu::DirectDeviceContent},
     },
     to_device::DeviceIdOrAllDevices,
@@ -15,13 +16,18 @@ use ruma::{
 pub async fn send_event_to_device_route(
     body: Ruma<send_event_to_device::v3::Request>,
 ) -> Result<send_event_to_device::v3::Response> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
-    let sender_device = body.sender_device.as_deref();
+    let Ruma { body, sender, .. } = body;
+
+    let UserOrAppserviceInfo {
+        user_id: sender_user,
+        device_id: sender_device,
+        appservice_info: _,
+    } = sender;
 
     // Check if this is a new transaction id
     if services()
         .transaction_ids
-        .existing_txnid(sender_user, sender_device, &body.txn_id)?
+        .existing_txnid(&sender_user, sender_device.as_deref(), &body.txn_id)?
         .is_some()
     {
         return Ok(send_event_to_device::v3::Response {});
@@ -56,7 +62,7 @@ pub async fn send_event_to_device_route(
             match target_device_id_maybe {
                 DeviceIdOrAllDevices::DeviceId(target_device_id) => {
                     services().users.add_to_device_event(
-                        sender_user,
+                        &sender_user,
                         target_user_id,
                         target_device_id,
                         &body.event_type.to_string(),
@@ -69,7 +75,7 @@ pub async fn send_event_to_device_route(
                 DeviceIdOrAllDevices::AllDevices => {
                     for target_device_id in services().users.all_device_ids(target_user_id) {
                         services().users.add_to_device_event(
-                            sender_user,
+                            &sender_user,
                             target_user_id,
                             &target_device_id?,
                             &body.event_type.to_string(),
@@ -84,9 +90,12 @@ pub async fn send_event_to_device_route(
     }
 
     // Save transaction id with empty data
-    services()
-        .transaction_ids
-        .add_txnid(sender_user, sender_device, &body.txn_id, &[])?;
+    services().transaction_ids.add_txnid(
+        &sender_user,
+        sender_device.as_deref(),
+        &body.txn_id,
+        &[],
+    )?;
 
     Ok(send_event_to_device::v3::Response {})
 }

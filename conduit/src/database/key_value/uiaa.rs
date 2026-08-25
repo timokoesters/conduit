@@ -1,6 +1,6 @@
 use ruma::{
     CanonicalJsonValue, DeviceId, UserId,
-    api::client::{error::ErrorKind, uiaa::UiaaInfo},
+    api::{client::uiaa::UiaaInfo, error::ErrorKind},
 };
 
 use crate::{Error, Result, database::KeyValueDatabase, service};
@@ -80,7 +80,7 @@ impl service::uiaa::Data for KeyValueDatabase {
                 .userdevicesessionid_uiaainfo
                 .get(&userdevicesessionid)?
                 .ok_or(Error::BadRequest(
-                    ErrorKind::forbidden(),
+                    ErrorKind::Forbidden,
                     "UIAA session does not exist.",
                 ))?,
         )

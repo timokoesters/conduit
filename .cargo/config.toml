@@ -1,5 +1,6 @@
 [env]
 RUMA_UNSTABLE_EXHAUSTIVE_TYPES = "1"
+RUMA_IDENTIFIERS_STORAGE="Arc"
 
 [alias]
 xtask = "run --package xtask --"

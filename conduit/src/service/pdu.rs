@@ -2,7 +2,7 @@ use crate::Error;
 use ruma::{
     CanonicalJsonObject, CanonicalJsonValue, EventId, MilliSecondsSinceUnixEpoch, OwnedEventId,
     OwnedRoomId, OwnedUserId, RoomId, UInt, UserId,
-    api::client::error::ErrorKind,
+    api::error::ErrorKind,
     canonical_json::redact_content_in_place,
     events::{
         AnyInitialStateEvent, AnyMessageLikeEvent, AnyStateEvent, AnyStrippedStateEvent,
@@ -20,7 +20,7 @@ use serde_json::{
     json,
     value::{RawValue as RawJsonValue, to_raw_value},
 };
-use std::{borrow::Cow, cmp::Ordering, collections::BTreeMap, sync::Arc};
+use std::{borrow::Cow, cmp::Ordering, collections::BTreeMap};
 use tracing::warn;
 
 /// Content hashes of a PDU.
@@ -32,7 +32,7 @@ pub struct EventHash {
 
 #[derive(Clone, Deserialize, Debug, Serialize)]
 pub struct PduEvent {
-    pub event_id: Arc<EventId>,
+    pub event_id: OwnedEventId,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub room_id: Option<OwnedRoomId>,
     pub sender: OwnedUserId,
@@ -42,11 +42,11 @@ pub struct PduEvent {
     pub content: Box<RawJsonValue>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub state_key: Option<String>,
-    pub prev_events: Vec<Arc<EventId>>,
+    pub prev_events: Vec<OwnedEventId>,
     pub depth: UInt,
-    pub auth_events: Vec<Arc<EventId>>,
+    pub auth_events: Vec<OwnedEventId>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub redacts: Option<Arc<EventId>>,
+    pub redacts: Option<OwnedEventId>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub unsigned: Option<Box<RawJsonValue>>,
     pub hashes: EventHash,
@@ -65,8 +65,7 @@ impl PduEvent {
 
         let mut content = serde_json::from_str(self.content.get())
             .map_err(|_| Error::bad_database("PDU in db has invalid content."))?;
-        redact_content_in_place(&mut content, &redaction_rules, self.kind.to_string())
-            .map_err(|e| Error::RedactionError(self.sender.server_name().to_owned(), e))?;
+        redact_content_in_place(&mut content, &redaction_rules, self.kind.to_string());
 
         self.unsigned = Some(to_raw_value(&json!({
             "redacted_because": serde_json::to_value(reason).expect("to_value(PduEvent) always works")
@@ -131,20 +130,19 @@ impl PduEvent {
     /// > For improved compatibility with newer clients, servers should add a redacts property
     /// > to the content of m.room.redaction events in older room versions when serving
     /// > such events over the Client-Server API.
-    pub fn copy_redacts(&self) -> (Option<Arc<EventId>>, Box<RawJsonValue>) {
-        if self.kind == TimelineEventType::RoomRedaction {
-            if let Ok(mut content) =
+    pub fn copy_redacts(&self) -> (Option<OwnedEventId>, Box<RawJsonValue>) {
+        if self.kind == TimelineEventType::RoomRedaction
+            && let Ok(mut content) =
                 serde_json::from_str::<RoomRedactionEventContent>(self.content.get())
-            {
-                if let Some(redacts) = content.redacts {
-                    return (Some(redacts.into()), self.content.clone());
-                } else if let Some(redacts) = self.redacts.clone() {
-                    content.redacts = Some(redacts.into());
-                    return (
-                        self.redacts.clone(),
-                        to_raw_value(&content).expect("Must be valid, we only added redacts field"),
-                    );
-                }
+        {
+            if let Some(redacts) = content.redacts {
+                return (Some(redacts), self.content.clone());
+            } else if let Some(redacts) = self.redacts.clone() {
+                content.redacts = Some(redacts);
+                return (
+                    self.redacts.clone(),
+                    to_raw_value(&content).expect("Must be valid, we only added redacts field"),
+                );
             }
         }
 
@@ -155,7 +153,7 @@ impl PduEvent {
     ///
     /// From `org.matrix.hydra.11`, this constructs the room ID from the event ID if it is an
     /// `m.room.create` event.
-    pub fn room_id(&self) -> Cow<RoomId> {
+    pub fn room_id(&self) -> Cow<'_, RoomId> {
         if let Some(room_id) = &self.room_id {
             Cow::Borrowed(room_id)
         } else {
@@ -385,7 +383,7 @@ impl PduEvent {
 }
 
 impl state_res::Event for PduEvent {
-    type Id = Arc<EventId>;
+    type Id = OwnedEventId;
 
     fn event_id(&self) -> &Self::Id {
         &self.event_id
@@ -486,7 +484,7 @@ pub struct PduBuilder {
     pub content: Box<RawJsonValue>,
     pub unsigned: Option<BTreeMap<String, serde_json::Value>>,
     pub state_key: Option<String>,
-    pub redacts: Option<Arc<EventId>>,
+    pub redacts: Option<OwnedEventId>,
     /// For timestamped messaging, should only be used for appservices
     ///
     /// Will be set to current time if None

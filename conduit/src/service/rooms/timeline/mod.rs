@@ -12,11 +12,12 @@ pub use data::Data;
 use ruma::{
     CanonicalJsonObject, CanonicalJsonValue, EventId, MilliSecondsSinceUnixEpoch, OwnedEventId,
     OwnedRoomId, OwnedServerName, RoomId, ServerName, UserId,
-    api::{client::error::ErrorKind, federation},
+    api::{error::ErrorKind, federation},
     canonical_json::to_canonical_value,
     events::{
         GlobalAccountDataEventType, StateEventType, TimelineEventType,
         push_rules::PushRulesEvent,
+        relation::Reply,
         room::{
             canonical_alias::RoomCanonicalAliasEventContent, create::RoomCreateEventContent,
             encrypted::Relation, member::MembershipState, redaction::RoomRedactionEventContent,
@@ -228,21 +229,19 @@ impl Service {
                     .state_accessor
                     .pdu_shortstatehash(&pdu.event_id)
                     .unwrap()
-                {
-                    if let Some(prev_state) = services()
+                    && let Some(prev_state) = services()
                         .rooms
                         .state_accessor
                         .state_get(shortstatehash, &pdu.kind.to_string().into(), state_key)
                         .unwrap()
-                    {
-                        unsigned.insert(
-                            "prev_content".to_owned(),
-                            CanonicalJsonValue::Object(
-                                utils::to_canonical_object(prev_state.content.clone())
-                                    .expect("event is valid, we just created it"),
-                            ),
-                        );
-                    }
+                {
+                    unsigned.insert(
+                        "prev_content".to_owned(),
+                        CanonicalJsonValue::Object(
+                            utils::to_canonical_object(prev_state.content.clone())
+                                .expect("event is valid, we just created it"),
+                        ),
+                    );
                 }
             } else {
                 error!("Invalid unsigned type in pdu.");
@@ -296,98 +295,98 @@ impl Service {
         //
         // Will fail if this is the first event (the create event), which is fine, since it cannot
         // notify anyone else anyways
-        if pdu.kind != TimelineEventType::RoomCreate
-            || pdu.state_key.as_deref().is_none_or(|key| !key.is_empty())
-        {
-            if let Ok(power_levels) = services()
+        if (pdu.kind != TimelineEventType::RoomCreate
+            || pdu.state_key.as_deref().is_none_or(|key| !key.is_empty()))
+            && let Ok(power_levels) = services()
                 .rooms
                 .state_accessor
                 .power_levels(&pdu.room_id())
                 .map(PushConditionPowerLevelsCtx::from)
+        {
+            let sync_pdu = pdu.to_sync_room_event();
+
+            let mut notifies = Vec::new();
+            let mut highlights = Vec::new();
+
+            let mut push_target = services()
+                .rooms
+                .state_cache
+                .get_our_real_users(&pdu.room_id())?;
+
+            if pdu.kind == TimelineEventType::RoomMember
+                && let Some(state_key) = &pdu.state_key
             {
-                let sync_pdu = pdu.to_sync_room_event();
+                let target_user_id = UserId::parse(state_key.clone())
+                    .expect("This state_key was previously validated");
 
-                let mut notifies = Vec::new();
-                let mut highlights = Vec::new();
-
-                let mut push_target = services()
-                    .rooms
-                    .state_cache
-                    .get_our_real_users(&pdu.room_id())?;
-
-                if pdu.kind == TimelineEventType::RoomMember {
-                    if let Some(state_key) = &pdu.state_key {
-                        let target_user_id = UserId::parse(state_key.clone())
-                            .expect("This state_key was previously validated");
-
-                        if !push_target.contains(&target_user_id) {
-                            let mut target = push_target.as_ref().clone();
-                            target.insert(target_user_id);
-                            push_target = Arc::new(target);
-                        }
-                    }
+                if !push_target.contains(&target_user_id) {
+                    let mut target = push_target.as_ref().clone();
+                    target.insert(target_user_id);
+                    push_target = Arc::new(target);
                 }
-
-                for user in push_target.iter() {
-                    // Don't notify the user of their own events
-                    if user == &pdu.sender {
-                        continue;
-                    }
-
-                    let rules_for_user = services()
-                        .account_data
-                        .get(
-                            None,
-                            user,
-                            GlobalAccountDataEventType::PushRules.to_string().into(),
-                        )?
-                        .map(|event| {
-                            serde_json::from_str::<PushRulesEvent>(event.get())
-                                .map_err(|_| Error::bad_database("Invalid push rules event in db."))
-                        })
-                        .transpose()?
-                        .map(|ev: PushRulesEvent| ev.content.global)
-                        .unwrap_or_else(|| Ruleset::server_default(user));
-
-                    let mut highlight = false;
-                    let mut notify = false;
-
-                    for action in services()
-                        .pusher
-                        .get_actions(
-                            user,
-                            &rules_for_user,
-                            power_levels.clone(),
-                            &sync_pdu,
-                            &pdu.room_id(),
-                        )
-                        .await?
-                    {
-                        match action {
-                            Action::Notify => notify = true,
-                            Action::SetTweak(Tweak::Highlight(true)) => {
-                                highlight = true;
-                            }
-                            _ => {}
-                        };
-                    }
-
-                    if notify {
-                        notifies.push(user.clone());
-                    }
-
-                    if highlight {
-                        highlights.push(user.clone());
-                    }
-
-                    for push_key in services().pusher.get_pushkeys(user) {
-                        services().sending.send_push_pdu(&pdu_id, user, push_key?)?;
-                    }
-                }
-
-                self.db
-                    .increment_notification_counts(&pdu.room_id(), notifies, highlights)?;
             }
+
+            for user in push_target.iter() {
+                // Don't notify the user of their own events
+                if user == &pdu.sender {
+                    continue;
+                }
+
+                let rules_for_user = services()
+                    .account_data
+                    .get(
+                        None,
+                        user,
+                        GlobalAccountDataEventType::PushRules.to_string().into(),
+                    )?
+                    .map(|event| {
+                        serde_json::from_str::<PushRulesEvent>(event.get())
+                            .map_err(|_| Error::bad_database("Invalid push rules event in db."))
+                    })
+                    .transpose()?
+                    .map(|ev: PushRulesEvent| ev.content.global)
+                    .unwrap_or_else(|| Ruleset::server_default(user));
+
+                let mut highlight = false;
+                let mut notify = false;
+
+                for action in services()
+                    .pusher
+                    .get_actions(
+                        user,
+                        &rules_for_user,
+                        power_levels.clone(),
+                        &sync_pdu,
+                        &pdu.room_id(),
+                    )
+                    .await?
+                {
+                    match action {
+                        Action::Notify => notify = true,
+                        Action::SetTweak(Tweak::Highlight(
+                            ruma::push::HighlightTweakValue::Yes,
+                        )) => {
+                            highlight = true;
+                        }
+                        _ => {}
+                    };
+                }
+
+                if notify {
+                    notifies.push(user.clone());
+                }
+
+                if highlight {
+                    highlights.push(user.clone());
+                }
+
+                for push_key in services().pusher.get_pushkeys(user) {
+                    services().sending.send_push_pdu(&pdu_id, user, push_key?)?;
+                }
+            }
+
+            self.db
+                .increment_notification_counts(&pdu.room_id(), notifies, highlights)?;
         }
 
         match pdu.kind {
@@ -404,25 +403,25 @@ impl Service {
                             .map_err(|_| {
                                 Error::bad_database("Invalid content in redaction pdu.")
                             })?;
-                    if let Some(redact_id) = &content.redacts {
-                        if services().rooms.state_accessor.user_can_redact(
+                    if let Some(redact_id) = &content.redacts
+                        && services().rooms.state_accessor.user_can_redact(
                             redact_id,
                             &pdu.sender,
                             &pdu.room_id(),
                             false,
-                        )? {
-                            self.redact_pdu(redact_id, pdu, shortroomid)?;
-                        }
+                        )?
+                    {
+                        self.redact_pdu(redact_id, pdu, shortroomid)?;
                     }
-                } else if let Some(redact_id) = &pdu.redacts {
-                    if services().rooms.state_accessor.user_can_redact(
+                } else if let Some(redact_id) = &pdu.redacts
+                    && services().rooms.state_accessor.user_can_redact(
                         redact_id,
                         &pdu.sender,
                         &pdu.room_id(),
                         false,
-                    )? {
-                        self.redact_pdu(redact_id, pdu, shortroomid)?;
-                    }
+                    )?
+                {
+                    self.redact_pdu(redact_id, pdu, shortroomid)?;
                 };
             }
             TimelineEventType::SpaceChild => {
@@ -507,17 +506,16 @@ impl Service {
                     let from_conduit = pdu.sender == *server_user
                         && services().globals.emergency_password().is_none();
 
-                    if let Some(admin_room) = services().admin.get_admin_room()? {
-                        if to_conduit
-                            && !from_conduit
-                            && admin_room == *pdu.room_id()
-                            && services()
-                                .rooms
-                                .state_cache
-                                .is_joined(server_user, &admin_room)?
-                        {
-                            services().admin.process_message(body);
-                        }
+                    if let Some(admin_room) = services().admin.get_admin_room()?
+                        && to_conduit
+                        && !from_conduit
+                        && admin_room == *pdu.room_id()
+                        && services()
+                            .rooms
+                            .state_cache
+                            .is_joined(server_user, &admin_room)?
+                    {
+                        services().admin.process_message(body);
                     }
                 }
             }
@@ -541,22 +539,21 @@ impl Service {
             relates_to: ExtractEventId,
         }
 
-        if let Ok(content) = serde_json::from_str::<ExtractRelatesToEventId>(pdu.content.get()) {
-            if let Some(related_pducount) = services()
+        if let Ok(content) = serde_json::from_str::<ExtractRelatesToEventId>(pdu.content.get())
+            && let Some(related_pducount) = services()
                 .rooms
                 .timeline
                 .get_pdu_count(&content.relates_to.event_id)?
-            {
-                services()
-                    .rooms
-                    .pdu_metadata
-                    .add_relation(PduCount::Normal(count2), related_pducount)?;
-            }
+        {
+            services()
+                .rooms
+                .pdu_metadata
+                .add_relation(PduCount::Normal(count2), related_pducount)?;
         }
 
         if let Ok(content) = serde_json::from_str::<ExtractRelatesTo>(pdu.content.get()) {
             match content.relates_to {
-                Relation::Reply { in_reply_to } => {
+                Relation::Reply(Reply { in_reply_to }) => {
                     // We need to do it again here, because replies don't have
                     // event_id as a top level field
                     if let Some(related_pducount) = services()
@@ -594,20 +591,18 @@ impl Service {
 
             // If the RoomMember event has a non-empty state_key, it is targeted at someone.
             // If it is our appservice user, we send this PDU to it.
-            if pdu.kind == TimelineEventType::RoomMember {
-                if let Some(state_key_uid) = &pdu
+            if pdu.kind == TimelineEventType::RoomMember
+                && let Some(state_key_uid) = &pdu
                     .state_key
                     .as_ref()
                     .and_then(|state_key| UserId::parse(state_key.as_str()).ok())
-                {
-                    let appservice_uid = appservice.registration.sender_localpart.as_str();
-                    if state_key_uid == appservice_uid {
-                        services().sending.send_pdu_appservice(
-                            appservice.registration.id.clone(),
-                            pdu_id.clone(),
-                        )?;
-                        continue;
-                    }
+            {
+                let appservice_uid = appservice.registration.sender_localpart.as_str();
+                if state_key_uid == appservice_uid {
+                    services()
+                        .sending
+                        .send_pdu_appservice(appservice.registration.id.clone(), pdu_id.clone())?;
+                    continue;
                 }
             }
 
@@ -757,21 +752,21 @@ impl Service {
 
         let mut unsigned = unsigned.unwrap_or_default();
 
-        if let Some((state_key, room_id)) = state_key.as_deref().zip(room_id.as_deref()) {
-            if let Some(prev_pdu) = services().rooms.state_accessor.room_state_get(
+        if let Some((state_key, room_id)) = state_key.as_deref().zip(room_id.as_deref())
+            && let Some(prev_pdu) = services().rooms.state_accessor.room_state_get(
                 room_id,
                 &event_type.to_string().into(),
                 state_key,
-            )? {
-                unsigned.insert(
-                    "prev_content".to_owned(),
-                    serde_json::from_str(prev_pdu.content.get()).expect("string is valid json"),
-                );
-                unsigned.insert(
-                    "prev_sender".to_owned(),
-                    serde_json::to_value(&prev_pdu.sender).expect("UserId::to_value always works"),
-                );
-            }
+            )?
+        {
+            unsigned.insert(
+                "prev_content".to_owned(),
+                serde_json::from_str(prev_pdu.content.get()).expect("string is valid json"),
+            );
+            unsigned.insert(
+                "prev_sender".to_owned(),
+                serde_json::to_value(&prev_pdu.sender).expect("UserId::to_value always works"),
+            );
         }
 
         let mut pdu = PduEvent {
@@ -824,7 +819,7 @@ impl Service {
             .is_err()
         {
             return Err(Error::BadRequest(
-                ErrorKind::forbidden(),
+                ErrorKind::Forbidden,
                 "Event is not authorized.",
             ));
         }
@@ -852,7 +847,7 @@ impl Service {
             Ok(_) => {}
             Err(e) => {
                 return match e {
-                    ruma::signatures::Error::PduSize => Err(Error::BadRequest(
+                    ruma::signatures::JsonError::PduTooLarge => Err(Error::BadRequest(
                         ErrorKind::TooLarge,
                         "Message is too long",
                     )),
@@ -873,11 +868,10 @@ impl Service {
         }
 
         // Generate event id
-        pdu.event_id = EventId::parse_arc(format!(
-            "${}",
-            ruma::signatures::reference_hash(&pdu_json, &room_version_rules)
-                .expect("Event format validated when event was hashed")
-        ))
+        pdu.event_id = EventId::new_v2_or_v3(
+            &ruma::signatures::reference_hash(&pdu_json, &room_version_rules)
+                .expect("Event format validated when event was hashed"),
+        )
         .expect("ruma's reference hashes are valid event ids");
 
         pdu_json.insert(
@@ -988,89 +982,89 @@ impl Service {
         sender: &UserId,
         room_id: &RoomId,
         state_lock: &MutexGuard<'_, ()>, // Take mutex guard to make sure users get the room state mutex
-    ) -> Result<Arc<EventId>> {
+    ) -> Result<OwnedEventId> {
         let (pdu, pdu_json) =
             self.create_hash_and_sign_event(pdu_builder, sender, Some((room_id, state_lock)))?;
 
-        if let Some(admin_room) = services().admin.get_admin_room()? {
-            if admin_room == *room_id {
-                match pdu.event_type() {
-                    TimelineEventType::RoomEncryption => {
-                        warn!("Encryption is not allowed in the admins room");
-                        return Err(Error::BadRequest(
-                            ErrorKind::forbidden(),
-                            "Encryption is not allowed in the admins room.",
-                        ));
-                    }
-                    TimelineEventType::RoomMember => {
-                        #[derive(Deserialize)]
-                        struct ExtractMembership {
-                            membership: MembershipState,
-                        }
-
-                        let target = pdu
-                            .state_key()
-                            .filter(|v| v.starts_with('@'))
-                            .unwrap_or(sender.as_str());
-                        let server_name = services().globals.server_name();
-                        let server_user = services().globals.server_user().as_str();
-                        let content = serde_json::from_str::<ExtractMembership>(pdu.content.get())
-                            .map_err(|_| Error::bad_database("Invalid content in pdu."))?;
-
-                        if content.membership == MembershipState::Leave {
-                            if target == server_user {
-                                warn!("Conduit user cannot leave from admins room");
-                                return Err(Error::BadRequest(
-                                    ErrorKind::forbidden(),
-                                    "Conduit user cannot leave from admins room.",
-                                ));
-                            }
-
-                            let count = services()
-                                .rooms
-                                .state_cache
-                                .room_members(room_id)
-                                .filter_map(|m| m.ok())
-                                .filter(|m| m.server_name() == server_name)
-                                .filter(|m| m != target)
-                                .count();
-                            if count < 2 {
-                                warn!("Last admin cannot leave from admins room");
-                                return Err(Error::BadRequest(
-                                    ErrorKind::forbidden(),
-                                    "Last admin cannot leave from admins room.",
-                                ));
-                            }
-                        }
-
-                        if content.membership == MembershipState::Ban && pdu.state_key().is_some() {
-                            if target == server_user {
-                                warn!("Conduit user cannot be banned in admins room");
-                                return Err(Error::BadRequest(
-                                    ErrorKind::forbidden(),
-                                    "Conduit user cannot be banned in admins room.",
-                                ));
-                            }
-
-                            let count = services()
-                                .rooms
-                                .state_cache
-                                .room_members(room_id)
-                                .filter_map(|m| m.ok())
-                                .filter(|m| m.server_name() == server_name)
-                                .filter(|m| m != target)
-                                .count();
-                            if count < 2 {
-                                warn!("Last admin cannot be banned in admins room");
-                                return Err(Error::BadRequest(
-                                    ErrorKind::forbidden(),
-                                    "Last admin cannot be banned in admins room.",
-                                ));
-                            }
-                        }
-                    }
-                    _ => {}
+        if let Some(admin_room) = services().admin.get_admin_room()?
+            && admin_room == *room_id
+        {
+            match pdu.event_type() {
+                TimelineEventType::RoomEncryption => {
+                    warn!("Encryption is not allowed in the admins room");
+                    return Err(Error::BadRequest(
+                        ErrorKind::Forbidden,
+                        "Encryption is not allowed in the admins room.",
+                    ));
                 }
+                TimelineEventType::RoomMember => {
+                    #[derive(Deserialize)]
+                    struct ExtractMembership {
+                        membership: MembershipState,
+                    }
+
+                    let target = pdu
+                        .state_key()
+                        .filter(|v| v.starts_with('@'))
+                        .unwrap_or(sender.as_str());
+                    let server_name = services().globals.server_name();
+                    let server_user = services().globals.server_user().as_str();
+                    let content = serde_json::from_str::<ExtractMembership>(pdu.content.get())
+                        .map_err(|_| Error::bad_database("Invalid content in pdu."))?;
+
+                    if content.membership == MembershipState::Leave {
+                        if target == server_user {
+                            warn!("Conduit user cannot leave from admins room");
+                            return Err(Error::BadRequest(
+                                ErrorKind::Forbidden,
+                                "Conduit user cannot leave from admins room.",
+                            ));
+                        }
+
+                        let count = services()
+                            .rooms
+                            .state_cache
+                            .room_members(room_id)
+                            .filter_map(|m| m.ok())
+                            .filter(|m| m.server_name() == server_name)
+                            .filter(|m| m != target)
+                            .count();
+                        if count < 2 {
+                            warn!("Last admin cannot leave from admins room");
+                            return Err(Error::BadRequest(
+                                ErrorKind::Forbidden,
+                                "Last admin cannot leave from admins room.",
+                            ));
+                        }
+                    }
+
+                    if content.membership == MembershipState::Ban && pdu.state_key().is_some() {
+                        if target == server_user {
+                            warn!("Conduit user cannot be banned in admins room");
+                            return Err(Error::BadRequest(
+                                ErrorKind::Forbidden,
+                                "Conduit user cannot be banned in admins room.",
+                            ));
+                        }
+
+                        let count = services()
+                            .rooms
+                            .state_cache
+                            .room_members(room_id)
+                            .filter_map(|m| m.ok())
+                            .filter(|m| m.server_name() == server_name)
+                            .filter(|m| m != target)
+                            .count();
+                        if count < 2 {
+                            warn!("Last admin cannot be banned in admins room");
+                            return Err(Error::BadRequest(
+                                ErrorKind::Forbidden,
+                                "Last admin cannot be banned in admins room.",
+                            ));
+                        }
+                    }
+                }
+                _ => {}
             }
         }
 
@@ -1086,31 +1080,31 @@ impl Service {
                 let content = serde_json::from_str::<RoomRedactionEventContent>(pdu.content.get())
                     .map_err(|_| Error::bad_database("Invalid content in redaction pdu."))?;
 
-                if let Some(redact_id) = &content.redacts {
-                    if !services().rooms.state_accessor.user_can_redact(
+                if let Some(redact_id) = &content.redacts
+                    && !services().rooms.state_accessor.user_can_redact(
                         redact_id,
                         &pdu.sender,
                         &pdu.room_id(),
                         false,
-                    )? {
-                        return Err(Error::BadRequest(
-                            ErrorKind::forbidden(),
-                            "User cannot redact this event.",
-                        ));
-                    }
+                    )?
+                {
+                    return Err(Error::BadRequest(
+                        ErrorKind::Forbidden,
+                        "User cannot redact this event.",
+                    ));
                 }
-            } else if let Some(redact_id) = &pdu.redacts {
-                if !services().rooms.state_accessor.user_can_redact(
+            } else if let Some(redact_id) = &pdu.redacts
+                && !services().rooms.state_accessor.user_can_redact(
                     redact_id,
                     &pdu.sender,
                     &pdu.room_id(),
                     false,
-                )? {
-                    return Err(Error::BadRequest(
-                        ErrorKind::forbidden(),
-                        "User cannot redact this event.",
-                    ));
-                }
+                )?
+            {
+                return Err(Error::BadRequest(
+                    ErrorKind::Forbidden,
+                    "User cannot redact this event.",
+                ));
             }
         }
 
@@ -1144,14 +1138,13 @@ impl Service {
             .collect();
 
         // In case we are kicking or banning a user, we need to inform their server of the change
-        if pdu.kind == TimelineEventType::RoomMember {
-            if let Some(state_key_uid) = &pdu
+        if pdu.kind == TimelineEventType::RoomMember
+            && let Some(state_key_uid) = &pdu
                 .state_key
                 .as_ref()
                 .and_then(|state_key| UserId::parse(state_key.as_str()).ok())
-            {
-                servers.insert(state_key_uid.server_name().to_owned());
-            }
+        {
+            servers.insert(state_key_uid.server_name().to_owned());
         }
 
         // Remove our server from the server list since it will be added to it by room_servers() and/or the if statement above
@@ -1313,7 +1306,7 @@ impl Service {
                     backfill_server,
                     federation::backfill::get_backfill::v1::Request {
                         room_id: room_id.to_owned(),
-                        v: vec![first_pdu.1.event_id.as_ref().to_owned()],
+                        v: vec![first_pdu.1.event_id.clone()],
                         limit: uint!(100),
                     },
                 )

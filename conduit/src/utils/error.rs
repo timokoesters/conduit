@@ -3,9 +3,9 @@ use std::convert::Infallible;
 use http::StatusCode;
 use ruma::{
     OwnedServerName,
-    api::client::{
-        error::{Error as RumaError, ErrorBody, ErrorKind},
-        uiaa::{UiaaInfo, UiaaResponse},
+    api::{
+        client::uiaa::{UiaaInfo, UiaaResponse},
+        error::{Error as RumaError, ErrorBody, ErrorKind, StandardErrorBody},
     },
 };
 use thiserror::Error;
@@ -85,7 +85,10 @@ pub enum Error {
     #[error("{0}")]
     AdminCommand(&'static str),
     #[error("from {0}: {1}")]
-    RedactionError(OwnedServerName, ruma::canonical_json::RedactionError),
+    RedactionError(
+        OwnedServerName,
+        ruma::canonical_json::CanonicalJsonFieldError,
+    ),
     #[error("{0} in {1}")]
     InconsistentRoomState(&'static str, ruma::OwnedRoomId),
 }
@@ -110,10 +113,10 @@ impl Error {
 
         if let Self::FederationError(origin, error) = self {
             let mut error = error.clone();
-            error.body = ErrorBody::Standard {
+            error.body = ErrorBody::Standard(StandardErrorBody {
                 kind: Unknown,
                 message: format!("Answer from {origin}: {error}"),
-            };
+            });
             return RumaResponse(UiaaResponse::MatrixError(error));
         }
 
@@ -125,7 +128,7 @@ impl Error {
                 kind.clone(),
                 match kind {
                     WrongRoomKeysVersion { .. }
-                    | Forbidden { .. }
+                    | Forbidden
                     | GuestAccessForbidden
                     | ThreepidAuthFailed
                     | ThreepidDenied => StatusCode::FORBIDDEN,
@@ -146,7 +149,7 @@ impl Error {
         info!("Returning an error: {}: {}", status_code, message);
 
         RumaResponse(UiaaResponse::MatrixError(RumaError {
-            body: ErrorBody::Standard { kind, message },
+            body: ErrorBody::Standard(StandardErrorBody { kind, message }),
             status_code,
         }))
     }

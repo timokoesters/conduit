@@ -9,7 +9,7 @@ use axum::{
     routing::{MethodFilter, any, get, on},
 };
 use axum_server::{Handle as ServerHandle, bind, bind_rustls, tls_rustls::RustlsConfig};
-use conduit::api::{client_server, server_server};
+use conduit::api::{client_server, ruma_wrapper::axum::SupportedAuthScheme, server_server};
 use figment::{
     Figment,
     providers::{Env, Format, Toml},
@@ -21,11 +21,10 @@ use http::{
 };
 use opentelemetry::trace::TracerProvider;
 use ruma::api::{
-    IncomingRequest,
-    client::{
-        error::{Error as RumaError, ErrorBody, ErrorKind},
-        uiaa::UiaaResponse,
-    },
+    IncomingRequest, Metadata,
+    client::uiaa::UiaaResponse,
+    error::{Error as RumaError, ErrorBody, ErrorKind, StandardErrorBody},
+    path_builder::PathBuilder,
 };
 use tokio::signal;
 use tower::ServiceBuilder;
@@ -323,10 +322,10 @@ async fn unrecognized_method(
     if inner.status() == StatusCode::METHOD_NOT_ALLOWED {
         warn!("Method not allowed: {method} {uri}");
         return Ok(RumaResponse(UiaaResponse::MatrixError(RumaError {
-            body: ErrorBody::Standard {
+            body: ErrorBody::Standard(StandardErrorBody {
                 kind: ErrorKind::Unrecognized,
                 message: "M_UNRECOGNIZED: Unrecognized request".to_owned(),
-            },
+            }),
             status_code: StatusCode::METHOD_NOT_ALLOWED,
         }))
         .into_response());
@@ -368,11 +367,10 @@ fn routes(config: &Config) -> Router {
         .ruma_route(client_server::set_room_account_data_route)
         .ruma_route(client_server::get_global_account_data_route)
         .ruma_route(client_server::get_room_account_data_route)
-        .ruma_route(client_server::set_displayname_route)
-        .ruma_route(client_server::get_displayname_route)
-        .ruma_route(client_server::set_avatar_url_route)
-        .ruma_route(client_server::get_avatar_url_route)
+        .ruma_route(client_server::set_profile_field_route)
+        .ruma_route(client_server::delete_profile_field_route)
         .ruma_route(client_server::get_profile_route)
+        .ruma_route(client_server::get_profile_field_route)
         .ruma_route(client_server::set_presence_route)
         .ruma_route(client_server::get_presence_route)
         .ruma_route(client_server::upload_keys_route)
@@ -515,7 +513,6 @@ fn routes(config: &Config) -> Router {
             .ruma_route(server_server::get_room_state_route)
             .ruma_route(server_server::get_room_state_ids_route)
             .ruma_route(server_server::create_join_event_template_route)
-            .ruma_route(server_server::create_join_event_v1_route)
             .ruma_route(server_server::create_join_event_v2_route)
             .ruma_route(server_server::create_leave_event_template_route)
             .ruma_route(server_server::create_leave_event_route)
@@ -623,23 +620,22 @@ macro_rules! impl_ruma_handler {
         #[allow(non_snake_case)]
         impl<Req, E, F, Fut, $($ty,)*> RumaHandler<($($ty,)* Ruma<Req>,)> for F
         where
-            Req: IncomingRequest + Send + 'static,
+            Req: IncomingRequest + Send +'static,
+            <Req as Metadata>::Authentication: SupportedAuthScheme,
+            <Req::Authentication as SupportedAuthScheme>::SenderInfo: Send,
             F: FnOnce($($ty,)* Ruma<Req>) -> Fut + Clone + Send + Sync + 'static,
             Fut: Future<Output = Result<Req::OutgoingResponse, E>>
-                + Send,
+                 + Send,
             E: IntoResponse,
             $( $ty: FromRequestParts<()> + Send + 'static, )*
         {
             fn add_to_router(self, mut router: Router) -> Router {
-                let meta = Req::METADATA;
-                let method_filter = method_to_filter(meta.method);
+                let method_filter = method_to_filter(<Req as Metadata>::METHOD);
 
-                for path in meta.history.all_paths() {
+                for path in <Req as Metadata>::PATH_BUILDER.all_paths() {
                     let handler = self.clone();
 
-                    router = router.route(path, on(method_filter, |$( $ty: $ty, )* req| async move {
-                        handler($($ty,)* req).await.map(RumaResponse)
-                    }))
+                    router = router.route(path, on(method_filter, async |$( $ty: $ty,)* req| { handler($($ty,)* req).await.map(RumaResponse)}));
                 }
 
                 router

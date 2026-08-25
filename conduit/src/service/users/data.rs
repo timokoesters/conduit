@@ -1,10 +1,11 @@
 use crate::Result;
 use ruma::{
-    DeviceId, MilliSecondsSinceUnixEpoch, OneTimeKeyAlgorithm, OwnedDeviceId, OwnedMxcUri,
-    OwnedOneTimeKeyId, OwnedUserId, UInt, UserId,
+    DeviceId, MilliSecondsSinceUnixEpoch, OneTimeKeyAlgorithm, OwnedDeviceId, OwnedOneTimeKeyId,
+    OwnedUserId, UInt, UserId,
     api::client::{device::Device, filter::FilterDefinition},
     encryption::{CrossSigningKey, DeviceKeys, OneTimeKey},
     events::AnyToDeviceEvent,
+    profile::{ProfileFieldName, ProfileFieldValue, UserProfile},
     serde::Raw,
 };
 use std::collections::BTreeMap;
@@ -36,23 +37,21 @@ pub trait Data: Send + Sync {
     /// Hash and set the user's password to the Argon2 hash
     fn set_password(&self, user_id: &UserId, password: Option<&str>) -> Result<()>;
 
-    /// Returns the displayname of a user on this homeserver.
-    fn displayname(&self, user_id: &UserId) -> Result<Option<String>>;
+    /// Returns the complete profile of a user on this homeserver.
+    fn profile(&self, user_id: &UserId) -> Result<UserProfile>;
 
-    /// Sets a new displayname or removes it if displayname is None. You still need to nofify all rooms of this change.
-    fn set_displayname(&self, user_id: &UserId, displayname: Option<String>) -> Result<()>;
+    /// Returns the specified field from the profile of a user on this homeserver.
+    fn profile_field(
+        &self,
+        user_id: &UserId,
+        key: &ProfileFieldName,
+    ) -> Result<Option<serde_json::Value>>;
 
-    /// Get the avatar_url of a user.
-    fn avatar_url(&self, user_id: &UserId) -> Result<Option<OwnedMxcUri>>;
+    /// Sets the specified profile field of a user on this homeserver.
+    fn set_profile_field(&self, user_id: &UserId, value: &ProfileFieldValue) -> Result<()>;
 
-    /// Sets a new avatar_url or removes it if avatar_url is None.
-    fn set_avatar_url(&self, user_id: &UserId, avatar_url: Option<OwnedMxcUri>) -> Result<()>;
-
-    /// Get the blurhash of a user.
-    fn blurhash(&self, user_id: &UserId) -> Result<Option<String>>;
-
-    /// Sets a new avatar_url or removes it if avatar_url is None.
-    fn set_blurhash(&self, user_id: &UserId, blurhash: Option<String>) -> Result<()>;
+    /// Deletes the specified profile field of a user on this homeserver.
+    fn delete_profile_field(&self, user_id: &UserId, key: &ProfileFieldName) -> Result<()>;
 
     /// Adds a new device to a user.
     fn create_device(

@@ -5,8 +5,8 @@ use conduit_config::{DirectoryStructure, MediaBackendConfig, S3MediaBackend};
 pub use data::Data;
 use http::StatusCode;
 use ruma::{
-    OwnedServerName, ServerName, UserId,
-    api::client::{error::ErrorKind, media::is_safe_inline_content_type},
+    OwnedServerName, OwnedUserId, ServerName, UserId,
+    api::{client::media::is_safe_inline_content_type, error::ErrorKind},
     http_headers::{ContentDisposition, ContentDispositionType},
 };
 use rusty_s3::{
@@ -77,8 +77,8 @@ pub struct MediaListItem {
 }
 
 pub enum ServerNameOrUserId {
-    ServerName(Box<ServerName>),
-    UserId(Box<UserId>),
+    ServerName(OwnedServerName),
+    UserId(OwnedUserId),
 }
 
 pub struct FileMeta {
@@ -242,7 +242,7 @@ impl Service {
         &self,
         servername: &ServerName,
         media_id: &str,
-        target: Option<Target>,
+        target: Target,
     ) -> Result<Option<FileMeta>> {
         let DbFileMeta {
             sha256_digest,
@@ -251,9 +251,7 @@ impl Service {
             unauthenticated_access_permitted,
         } = self.db.search_file_metadata(servername, media_id)?;
 
-        if !(target.as_ref().is_some_and(Target::is_authenticated)
-            || unauthenticated_access_permitted)
-        {
+        if !target.is_authenticated() && !unauthenticated_access_permitted {
             return Ok(None);
         }
 
@@ -300,7 +298,7 @@ impl Service {
         media_id: &str,
         width: u32,
         height: u32,
-        target: Option<Target>,
+        target: Target,
     ) -> Result<Option<FileMeta>> {
         if let Some((width, height, crop)) = self.thumbnail_properties(width, height) {
             if let Ok(DbFileMeta {
@@ -312,9 +310,7 @@ impl Service {
                 .db
                 .search_thumbnail_metadata(servername, media_id, width, height)
             {
-                if !(target.as_ref().is_some_and(Target::is_authenticated)
-                    || unauthenticated_access_permitted)
-                {
+                if !target.is_authenticated() && !unauthenticated_access_permitted {
                     return Ok(None);
                 }
 
@@ -335,8 +331,8 @@ impl Service {
                     content_type,
                     file,
                 }))
-            } else if !target.as_ref().is_some_and(Target::is_authenticated) {
-                return Ok(None);
+            } else if !target.is_authenticated() {
+                Ok(None)
             } else if let Ok(DbFileMeta {
                 sha256_digest,
                 filename,
@@ -443,9 +439,7 @@ impl Service {
                 return Ok(None);
             };
 
-            if !(target.as_ref().is_some_and(Target::is_authenticated)
-                || unauthenticated_access_permitted)
-            {
+            if !target.is_authenticated() && !unauthenticated_access_permitted {
                 return Ok(None);
             }
 
@@ -704,10 +698,10 @@ pub async fn create_file(sha256_hex: &str, file: &[u8]) -> Result<()> {
                 .get_media_path(path, directory_structure, sha256_hex)?;
 
             // Create all directories leading up to file
-            if let DirectoryStructure::Deep { .. } = directory_structure {
-                if let Some(parent) = path.parent() {
-                    fs::create_dir_all(&parent).await.inspect_err(|e| error!("Error creating leading directories for media with sha256 hash of {sha256_hex}: {e}"))?;
-                }
+            if let DirectoryStructure::Deep { .. } = directory_structure
+                && let Some(parent) = path.parent()
+            {
+                fs::create_dir_all(&parent).await.inspect_err(|e| error!("Error creating leading directories for media with sha256 hash of {sha256_hex}: {e}"))?;
             }
 
             let mut f = File::create(path).await?;

@@ -1,19 +1,26 @@
 use super::{DEVICE_ID_LENGTH, SESSION_ID_LENGTH, TOKEN_LENGTH};
-use crate::{Error, Result, Ruma, api::client_server, services, utils};
+use crate::{
+    Error, Result, Ruma,
+    api::{OptionalAuthSenderInfo, UserOrAppserviceInfo, client_server},
+    services, utils,
+};
 use ruma::{
     UserId,
-    api::client::{
-        account::{
-            ThirdPartyIdRemovalStatus, change_password, deactivate, get_3pids,
-            get_username_availability,
-            register::{self, LoginType},
-            request_3pid_management_token_via_email, request_3pid_management_token_via_msisdn,
-            whoami,
+    api::{
+        client::{
+            account::{
+                ThirdPartyIdRemovalStatus, change_password, deactivate, get_3pids,
+                get_username_availability,
+                register::{self, LoginType},
+                request_3pid_management_token_via_email, request_3pid_management_token_via_msisdn,
+                whoami,
+            },
+            uiaa::{AuthFlow, AuthType, UiaaInfo},
         },
         error::ErrorKind,
-        uiaa::{AuthFlow, AuthType, UiaaInfo},
     },
     events::{GlobalAccountDataEventType, room::message::RoomMessageEventContent},
+    profile::ProfileFieldValue,
     push,
 };
 use tracing::{info, warn};
@@ -77,10 +84,11 @@ pub async fn get_register_available_route(
 /// - If type is not guest and no username is given: Always fails after UIAA check
 /// - Creates a new account and populates it with default account data
 /// - If `inhibit_login` is false: Creates a device and returns device id and access_token
+#[conduit_macros::rate_limiting(ClientRestriction::Registration)]
 pub async fn register_route(body: Ruma<register::v3::Request>) -> Result<register::v3::Response> {
-    if !services().globals.allow_registration().await && body.appservice_info.is_none() {
+    if !services().globals.allow_registration().await && body.sender.is_none() {
         return Err(Error::BadRequest(
-            ErrorKind::forbidden(),
+            ErrorKind::Forbidden,
             "Registration has been disabled.",
         ));
     }
@@ -123,7 +131,7 @@ pub async fn register_route(body: Ruma<register::v3::Request>) -> Result<registe
     };
 
     if body.body.login_type == Some(LoginType::ApplicationService) {
-        if let Some(ref info) = body.appservice_info {
+        if let OptionalAuthSenderInfo::Some(info) = &body.sender {
             if !info.is_user_match(&user_id) {
                 return Err(Error::BadRequest(
                     ErrorKind::Exclusive,
@@ -156,7 +164,8 @@ pub async fn register_route(body: Ruma<register::v3::Request>) -> Result<registe
             session: None,
             auth_error: None,
         };
-        body.appservice_info.is_some()
+        // `sender` in this case is the appserivce info
+        body.sender.is_some()
     } else {
         // No registration token necessary, but clients must still go through the flow
         uiaainfo = UiaaInfo {
@@ -168,7 +177,7 @@ pub async fn register_route(body: Ruma<register::v3::Request>) -> Result<registe
             session: None,
             auth_error: None,
         };
-        body.appservice_info.is_some() || is_guest
+        body.sender.is_some() || is_guest
     };
 
     if !skip_auth {
@@ -216,9 +225,10 @@ pub async fn register_route(body: Ruma<register::v3::Request>) -> Result<registe
         displayname.push_str(" ⚡️");
     }
 
-    services()
-        .users
-        .set_displayname(&user_id, Some(displayname.clone()))?;
+    services().users.set_profile_field(
+        &user_id,
+        &ProfileFieldValue::DisplayName(displayname.clone()),
+    )?;
 
     // Initial account data
     services().account_data.update(
@@ -264,7 +274,7 @@ pub async fn register_route(body: Ruma<register::v3::Request>) -> Result<registe
     )?;
 
     info!("New user {} registered on this server.", user_id);
-    if body.appservice_info.is_none() && !is_guest {
+    if body.sender.is_none() && !is_guest {
         services()
             .admin
             .send_message(RoomMessageEventContent::notice_plain(format!(
@@ -274,22 +284,20 @@ pub async fn register_route(body: Ruma<register::v3::Request>) -> Result<registe
 
     // If this is the first real user, grant them admin privileges
     // Note: the server user, @conduit:servername, is generated first
-    if !is_guest {
-        if let Some(admin_room) = services().admin.get_admin_room()? {
-            if services()
-                .rooms
-                .state_cache
-                .room_joined_count(&admin_room)?
-                == Some(1)
-            {
-                services()
-                    .admin
-                    .make_user_admin(&user_id, displayname)
-                    .await?;
+    if !is_guest
+        && let Some(admin_room) = services().admin.get_admin_room()?
+        && services()
+            .rooms
+            .state_cache
+            .room_joined_count(&admin_room)?
+            == Some(1)
+    {
+        services()
+            .admin
+            .make_user_admin(&user_id, displayname)
+            .await?;
 
-                warn!("Granting {} admin privileges as the first user", user_id);
-            }
-        }
+        warn!("Granting {} admin privileges as the first user", user_id);
     }
 
     Ok(register::v3::Response {
@@ -318,12 +326,31 @@ pub async fn register_route(body: Ruma<register::v3::Request>) -> Result<registe
 pub async fn change_password_route(
     body: Ruma<change_password::v3::Request>,
 ) -> Result<change_password::v3::Response> {
-    let sender_user = body
-        .sender_user
-        .as_ref()
+    let Ruma {
+        body,
+        sender,
+        json_body,
+    } = body;
+
+    let OptionalAuthSenderInfo::Some(UserOrAppserviceInfo {
+        user_id: sender_user,
+        device_id: sender_device,
+        appservice_info: _,
+    }) = sender
+    else {
         // In the future password changes could be performed with UIA with 3PIDs, but we don't support that currently
-        .ok_or_else(|| Error::BadRequest(ErrorKind::MissingToken, "Missing access token."))?;
-    let sender_device = body.sender_device.as_ref().expect("user is authenticated");
+        return Err(Error::BadRequest(
+            ErrorKind::MissingToken,
+            "Missing access token.",
+        ));
+    };
+
+    let Some(sender_device) = sender_device else {
+        return Err(Error::BadRequest(
+            ErrorKind::MissingParam,
+            "Missing associated device (i.e. is appservice)",
+        ));
+    };
 
     let mut uiaainfo = UiaaInfo {
         flows: vec![AuthFlow {
@@ -339,16 +366,16 @@ pub async fn change_password_route(
         let (worked, uiaainfo) =
             services()
                 .uiaa
-                .try_auth(sender_user, sender_device, auth, &uiaainfo)?;
+                .try_auth(&sender_user, &sender_device, auth, &uiaainfo)?;
         if !worked {
             return Err(Error::uiaa(uiaainfo));
         }
     // Success!
-    } else if let Some(json) = body.json_body {
+    } else if let Some(json) = json_body {
         uiaainfo.session = Some(utils::random_string(SESSION_ID_LENGTH));
         services()
             .uiaa
-            .create(sender_user, sender_device, &uiaainfo, &json)?;
+            .create(&sender_user, &sender_device, &uiaainfo, &json)?;
         return Err(Error::uiaa(uiaainfo));
     } else {
         return Err(Error::BadRequest(ErrorKind::NotJson, "Not json."));
@@ -356,17 +383,17 @@ pub async fn change_password_route(
 
     services()
         .users
-        .set_password(sender_user, Some(&body.new_password))?;
+        .set_password(&sender_user, Some(&body.new_password))?;
 
     if body.logout_devices {
         // Logout all devices except the current one
         for id in services()
             .users
-            .all_device_ids(sender_user)
+            .all_device_ids(&sender_user)
             .filter_map(|id| id.ok())
-            .filter(|id| id != sender_device)
+            .filter(|id| id != &sender_device)
         {
-            services().users.remove_device(sender_user, &id)?;
+            services().users.remove_device(&sender_user, &id)?;
         }
     }
 
@@ -386,13 +413,16 @@ pub async fn change_password_route(
 ///
 /// Note: Also works for Application Services
 pub async fn whoami_route(body: Ruma<whoami::v3::Request>) -> Result<whoami::v3::Response> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
-    let device_id = body.sender_device.as_ref().cloned();
+    let UserOrAppserviceInfo {
+        user_id,
+        device_id,
+        appservice_info,
+    } = body.sender;
 
     Ok(whoami::v3::Response {
-        user_id: sender_user.clone(),
+        is_guest: services().users.is_deactivated(&user_id)? && appservice_info.is_none(),
+        user_id,
         device_id,
-        is_guest: services().users.is_deactivated(sender_user)? && body.appservice_info.is_none(),
     })
 }
 
@@ -409,12 +439,31 @@ pub async fn whoami_route(body: Ruma<whoami::v3::Request>) -> Result<whoami::v3:
 pub async fn deactivate_route(
     body: Ruma<deactivate::v3::Request>,
 ) -> Result<deactivate::v3::Response> {
-    let sender_user = body
-        .sender_user
-        .as_ref()
-        // In the future password changes could be performed with UIA with SSO, but we don't support that currently
-        .ok_or_else(|| Error::BadRequest(ErrorKind::MissingToken, "Missing access token."))?;
-    let sender_device = body.sender_device.as_ref().expect("user is authenticated");
+    let Ruma {
+        body,
+        sender,
+        json_body,
+    } = body;
+
+    let OptionalAuthSenderInfo::Some(UserOrAppserviceInfo {
+        user_id: sender_user,
+        device_id: sender_device,
+        appservice_info: _,
+    }) = sender
+    else {
+        // In the future password changes could be performed with UIA with 3PIDs, but we don't support that currently
+        return Err(Error::BadRequest(
+            ErrorKind::MissingToken,
+            "Missing access token.",
+        ));
+    };
+
+    let Some(sender_device) = sender_device else {
+        return Err(Error::BadRequest(
+            ErrorKind::MissingParam,
+            "Missing associated device (i.e. is appservice)",
+        ));
+    };
 
     let mut uiaainfo = UiaaInfo {
         flows: vec![AuthFlow {
@@ -430,26 +479,26 @@ pub async fn deactivate_route(
         let (worked, uiaainfo) =
             services()
                 .uiaa
-                .try_auth(sender_user, sender_device, auth, &uiaainfo)?;
+                .try_auth(&sender_user, &sender_device, auth, &uiaainfo)?;
         if !worked {
             return Err(Error::uiaa(uiaainfo));
         }
     // Success!
-    } else if let Some(json) = body.json_body {
+    } else if let Some(json) = json_body {
         uiaainfo.session = Some(utils::random_string(SESSION_ID_LENGTH));
         services()
             .uiaa
-            .create(sender_user, sender_device, &uiaainfo, &json)?;
+            .create(&sender_user, &sender_device, &uiaainfo, &json)?;
         return Err(Error::uiaa(uiaainfo));
     } else {
         return Err(Error::BadRequest(ErrorKind::NotJson, "Not json."));
     }
 
     // Make the user leave all rooms before deactivation
-    client_server::leave_all_rooms(sender_user).await?;
+    client_server::leave_all_rooms(&sender_user).await?;
 
     // Remove devices and mark account as deactivated
-    services().users.deactivate_account(sender_user)?;
+    services().users.deactivate_account(&sender_user)?;
 
     info!("User {} deactivated their account.", sender_user);
     services()
@@ -471,7 +520,7 @@ pub async fn deactivate_route(
 pub async fn third_party_route(
     body: Ruma<get_3pids::v3::Request>,
 ) -> Result<get_3pids::v3::Response> {
-    let _sender_user = body.sender_user.as_ref().expect("user is authenticated");
+    let _sender_user = body.sender.user_id;
 
     Ok(get_3pids::v3::Response::new(Vec::new()))
 }

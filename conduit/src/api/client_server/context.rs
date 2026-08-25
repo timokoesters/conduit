@@ -1,6 +1,9 @@
-use crate::{Error, Result, Ruma, services};
+use crate::{Error, Result, Ruma, api::UserOrAppserviceInfo, services};
 use ruma::{
-    api::client::{context::get_context, error::ErrorKind, filter::LazyLoadOptions},
+    api::{
+        client::{context::get_context, filter::LazyLoadOptions},
+        error::ErrorKind,
+    },
     events::StateEventType,
 };
 use std::collections::HashSet;
@@ -15,8 +18,20 @@ use tracing::error;
 pub async fn get_context_route(
     body: Ruma<get_context::v3::Request>,
 ) -> Result<get_context::v3::Response> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
-    let sender_device = body.sender_device.as_ref().expect("user is authenticated");
+    let Ruma { body, sender, .. } = body;
+
+    let UserOrAppserviceInfo {
+        user_id: sender_user,
+        device_id: sender_device,
+        appservice_info: _,
+    } = sender;
+
+    let Some(sender_device) = sender_device else {
+        return Err(Error::BadRequest(
+            ErrorKind::MissingParam,
+            "Missing associated device (i.e. is appservice)",
+        ));
+    };
 
     let (lazy_load_enabled, lazy_load_send_redundant) = match &body.filter.lazy_load_options {
         LazyLoadOptions::Enabled {
@@ -48,20 +63,20 @@ pub async fn get_context_route(
 
     let room_id = base_event.room_id();
 
-    if !services()
-        .rooms
-        .state_accessor
-        .user_can_see_event(sender_user, &room_id, &body.event_id)?
-    {
+    if !services().rooms.state_accessor.user_can_see_event(
+        &sender_user,
+        &room_id,
+        &body.event_id,
+    )? {
         return Err(Error::BadRequest(
-            ErrorKind::forbidden(),
+            ErrorKind::Forbidden,
             "You don't have permission to view this event.",
         ));
     }
 
     if !services().rooms.lazy_loading.lazy_load_was_sent_before(
-        sender_user,
-        sender_device,
+        &sender_user,
+        &sender_device,
         &room_id,
         &base_event.sender,
     )? || lazy_load_send_redundant
@@ -77,22 +92,22 @@ pub async fn get_context_route(
     let events_before: Vec<_> = services()
         .rooms
         .timeline
-        .pdus_until(sender_user, &room_id, base_token)?
+        .pdus_until(&sender_user, &room_id, base_token)?
         .take(limit / 2)
         .filter_map(|r| r.ok()) // Remove buggy events
         .filter(|(_, pdu)| {
             services()
                 .rooms
                 .state_accessor
-                .user_can_see_event(sender_user, &room_id, &pdu.event_id)
+                .user_can_see_event(&sender_user, &room_id, &pdu.event_id)
                 .unwrap_or(false)
         })
         .collect();
 
     for (_, event) in &events_before {
         if !services().rooms.lazy_loading.lazy_load_was_sent_before(
-            sender_user,
-            sender_device,
+            &sender_user,
+            &sender_device,
             &room_id,
             &event.sender,
         )? || lazy_load_send_redundant
@@ -114,22 +129,22 @@ pub async fn get_context_route(
     let events_after: Vec<_> = services()
         .rooms
         .timeline
-        .pdus_after(sender_user, &room_id, base_token)?
+        .pdus_after(&sender_user, &room_id, base_token)?
         .take(limit / 2)
         .filter_map(|r| r.ok()) // Remove buggy events
         .filter(|(_, pdu)| {
             services()
                 .rooms
                 .state_accessor
-                .user_can_see_event(sender_user, &room_id, &pdu.event_id)
+                .user_can_see_event(&sender_user, &room_id, &pdu.event_id)
                 .unwrap_or(false)
         })
         .collect();
 
     for (_, event) in &events_after {
         if !services().rooms.lazy_loading.lazy_load_was_sent_before(
-            sender_user,
-            sender_device,
+            &sender_user,
+            &sender_device,
             &room_id,
             &event.sender,
         )? || lazy_load_send_redundant

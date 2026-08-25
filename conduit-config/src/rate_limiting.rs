@@ -1,7 +1,6 @@
 use std::{collections::HashMap, num::NonZeroU64};
 
 use bytesize::ByteSize;
-use ruma::api::Metadata;
 use serde::Deserialize;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -308,87 +307,6 @@ pub enum FederationRestriction {
     Transaction, */
     /// For downloading media.
     MediaDownload,
-}
-
-impl TryFrom<Metadata> for Restriction {
-    type Error = ();
-
-    fn try_from(value: Metadata) -> Result<Self, Self::Error> {
-        use Restriction::*;
-        use ruma::api::{
-            IncomingRequest,
-            client::{
-                account::{check_registration_token_validity, register},
-                alias::create_alias,
-                authenticated_media::{
-                    get_content, get_content_as_filename, get_content_thumbnail, get_media_preview,
-                },
-                knock::knock_room,
-                media::{self, create_content, create_mxc_uri},
-                membership::{invite_user, join_room_by_id, join_room_by_id_or_alias},
-                message::send_message_event,
-                reporting::report_user,
-                room::{report_content, report_room},
-                session::login,
-                state::send_state_event,
-            },
-            federation::{
-                authenticated_media::{
-                    get_content as federation_get_content,
-                    get_content_thumbnail as federation_get_content_thumbnail,
-                },
-                membership::{create_invite, create_join_event, create_knock_event},
-            },
-        };
-
-        Ok(match value {
-            register::v3::Request::METADATA => Client(ClientRestriction::Registration),
-            check_registration_token_validity::v1::Request::METADATA => {
-                Client(ClientRestriction::RegistrationTokenValidity)
-            }
-            login::v3::Request::METADATA => Client(ClientRestriction::Login),
-            send_message_event::v3::Request::METADATA | send_state_event::v3::Request::METADATA => {
-                Client(ClientRestriction::SendEvent)
-            }
-            join_room_by_id::v3::Request::METADATA
-            | join_room_by_id_or_alias::v3::Request::METADATA => Client(ClientRestriction::Join),
-            invite_user::v3::Request::METADATA => Client(ClientRestriction::Invite),
-            knock_room::v3::Request::METADATA => Client(ClientRestriction::Knock),
-            report_user::v3::Request::METADATA
-            | report_content::v3::Request::METADATA
-            | report_room::v3::Request::METADATA => Client(ClientRestriction::SendReport),
-            create_alias::v3::Request::METADATA => Client(ClientRestriction::CreateAlias),
-            // NOTE: handle async media upload in a way that doesn't half the number of uploads you can do within a short timeframe, while not allowing pre-generation of MXC uris to allow uploading double the number of media at once
-            create_content::v3::Request::METADATA | create_mxc_uri::v1::Request::METADATA => {
-                Client(ClientRestriction::MediaCreate)
-            }
-            // Unauthenticate media is deprecated
-            #[allow(deprecated)]
-            media::get_content::v3::Request::METADATA
-            | media::get_content_as_filename::v3::Request::METADATA
-            | media::get_content_thumbnail::v3::Request::METADATA
-            | media::get_media_preview::v3::Request::METADATA
-            | get_content::v1::Request::METADATA
-            | get_content_as_filename::v1::Request::METADATA
-            | get_content_thumbnail::v1::Request::METADATA
-            | get_media_preview::v1::Request::METADATA => Client(ClientRestriction::MediaDownload),
-            federation_get_content::v1::Request::METADATA
-            | federation_get_content_thumbnail::v1::Request::METADATA => {
-                Federation(FederationRestriction::MediaDownload)
-            }
-            // v1 is deprecated
-            #[allow(deprecated)]
-            create_join_event::v1::Request::METADATA | create_join_event::v2::Request::METADATA => {
-                Federation(FederationRestriction::Join)
-            }
-            create_knock_event::v1::Request::METADATA => Federation(FederationRestriction::Knock),
-            create_invite::v1::Request::METADATA | create_invite::v2::Request::METADATA => {
-                Federation(FederationRestriction::Invite)
-            }
-
-            _ => return Err(()),
-        })
-    }
 }
 
 impl<T> ConfigFragment<T>

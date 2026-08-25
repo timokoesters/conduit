@@ -38,3 +38,37 @@ pub fn get_struct_field_value(item: TokenStream) -> TokenStream {
 
     quote! { #docs }.into()
 }
+
+#[cfg(feature = "rate-limiting")]
+#[proc_macro_attribute]
+pub fn rate_limiting(attr: TokenStream, item: TokenStream) -> TokenStream {
+    use syn::{Block, ItemFn, Path, parse_macro_input};
+
+    let attr = parse_macro_input!(attr as Path);
+
+    let ItemFn {
+        attrs,
+        vis,
+        sig,
+        block,
+    } = parse_macro_input!(item as ItemFn);
+
+    let Block {
+        brace_token: _,
+        stmts,
+    } = *block;
+
+    let rate_limiting = quote! {
+        services().rate_limiting.check(body.sender.clone().into(), conduit_config::rate_limiting::#attr.into()).await?;
+    };
+
+    quote! {
+        #(#attrs)*
+        #vis #sig {
+            #rate_limiting
+
+            #(#stmts)*
+        }
+    }
+    .into()
+}

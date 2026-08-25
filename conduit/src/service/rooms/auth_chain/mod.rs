@@ -5,7 +5,11 @@ use std::{
 };
 
 pub use data::Data;
-use ruma::{EventId, RoomId, api::client::error::ErrorKind, state_res::StateMap};
+use ruma::{
+    EventId, OwnedEventId, RoomId,
+    api::error::ErrorKind,
+    state_res::{StateMap, utils::event_id_set::EventIdSet},
+};
 use tracing::{debug, error, warn};
 
 use crate::{Error, Result, services};
@@ -28,8 +32,8 @@ impl Service {
     pub async fn get_auth_chain<'a>(
         &self,
         room_id: &RoomId,
-        starting_events: Vec<Arc<EventId>>,
-    ) -> Result<impl Iterator<Item = Arc<EventId>> + 'a + use<'a>> {
+        starting_events: Vec<OwnedEventId>,
+    ) -> Result<impl Iterator<Item = OwnedEventId> + 'a + use<'a>> {
         const NUM_BUCKETS: usize = 50;
 
         let mut buckets = vec![BTreeSet::new(); NUM_BUCKETS];
@@ -126,17 +130,14 @@ impl Service {
 
     #[tracing::instrument(skip(self, event_id))]
     fn get_auth_chain_inner(&self, room_id: &RoomId, event_id: &EventId) -> Result<HashSet<u64>> {
-        let mut todo = vec![Arc::from(event_id)];
+        let mut todo = vec![event_id.to_owned()];
         let mut found = HashSet::new();
 
         while let Some(event_id) = todo.pop() {
             match services().rooms.timeline.get_pdu(&event_id) {
                 Ok(Some(pdu)) => {
                     if pdu.room_id().as_ref() != room_id {
-                        return Err(Error::BadRequest(
-                            ErrorKind::forbidden(),
-                            "Evil event in db",
-                        ));
+                        return Err(Error::BadRequest(ErrorKind::Forbidden, "Evil event in db"));
                     }
                     for auth_event in &pdu.auth_events {
                         let sauthevent = services()
@@ -167,11 +168,11 @@ impl Service {
     pub fn get_conflicted_state_subgraph(
         &self,
         room_id: &RoomId,
-        conflicted_state_set: &StateMap<Vec<Arc<EventId>>>,
-    ) -> Result<HashSet<Arc<EventId>>> {
+        conflicted_state_set: &StateMap<Vec<OwnedEventId>>,
+    ) -> Result<EventIdSet<OwnedEventId>> {
         let conflicted_event_ids: HashSet<_> =
             conflicted_state_set.values().flatten().cloned().collect();
-        let mut conflicted_state_subgraph = HashSet::new();
+        let mut conflicted_state_subgraph = EventIdSet::new();
 
         let mut stack = vec![conflicted_event_ids.iter().cloned().collect::<Vec<_>>()];
         let mut path = Vec::new();
@@ -225,10 +226,7 @@ impl Service {
 
             if let Some(pdu) = services().rooms.timeline.get_pdu(&event_id)? {
                 if pdu.room_id().as_ref() != room_id {
-                    return Err(Error::BadRequest(
-                        ErrorKind::forbidden(),
-                        "Evil event in db",
-                    ));
+                    return Err(Error::BadRequest(ErrorKind::Forbidden, "Evil event in db"));
                 }
 
                 stack.push(pdu.auth_events.clone());

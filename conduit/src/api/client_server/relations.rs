@@ -9,13 +9,11 @@ use crate::{Result, Ruma, services};
 pub async fn get_relating_events_with_rel_type_and_event_type_route(
     body: Ruma<get_relating_events_with_rel_type_and_event_type::v1::Request>,
 ) -> Result<get_relating_events_with_rel_type_and_event_type::v1::Response> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
-
     let res = services()
         .rooms
         .pdu_metadata
         .paginate_relations_with_filter(
-            sender_user,
+            &body.sender.user_id,
             &body.room_id,
             &body.event_id,
             Some(body.event_type.clone()),
@@ -41,13 +39,11 @@ pub async fn get_relating_events_with_rel_type_and_event_type_route(
 pub async fn get_relating_events_with_rel_type_route(
     body: Ruma<get_relating_events_with_rel_type::v1::Request>,
 ) -> Result<get_relating_events_with_rel_type::v1::Response> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
-
     let res = services()
         .rooms
         .pdu_metadata
         .paginate_relations_with_filter(
-            sender_user,
+            &body.sender.user_id,
             &body.room_id,
             &body.event_id,
             None,
@@ -71,13 +67,11 @@ pub async fn get_relating_events_with_rel_type_route(
 pub async fn get_relating_events_route(
     body: Ruma<get_relating_events::v1::Request>,
 ) -> Result<get_relating_events::v1::Response> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
-
     services()
         .rooms
         .pdu_metadata
         .paginate_relations_with_filter(
-            sender_user,
+            &body.sender.user_id,
             &body.room_id,
             &body.event_id,
             None,

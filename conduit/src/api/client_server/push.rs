@@ -1,12 +1,12 @@
 use crate::{Error, Result, Ruma, services};
 use ruma::{
-    api::client::{
-        error::ErrorKind,
-        push::{
+    api::{
+        client::push::{
             delete_pushrule, get_pushers, get_pushrule, get_pushrule_actions, get_pushrule_enabled,
             get_pushrules_all, set_pusher, set_pushrule, set_pushrule_actions,
             set_pushrule_enabled,
         },
+        error::ErrorKind,
     },
     events::{GlobalAccountDataEventType, push_rules::PushRulesEvent},
     push::{InsertPushRuleError, RemovePushRuleError},
@@ -18,13 +18,11 @@ use ruma::{
 pub async fn get_pushrules_all_route(
     body: Ruma<get_pushrules_all::v3::Request>,
 ) -> Result<get_pushrules_all::v3::Response> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
-
     let event = services()
         .account_data
         .get(
             None,
-            sender_user,
+            &body.sender.user_id,
             GlobalAccountDataEventType::PushRules.to_string().into(),
         )?
         .ok_or(Error::BadRequest(
@@ -47,13 +45,11 @@ pub async fn get_pushrules_all_route(
 pub async fn get_pushrule_route(
     body: Ruma<get_pushrule::v3::Request>,
 ) -> Result<get_pushrule::v3::Response> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
-
     let event = services()
         .account_data
         .get(
             None,
-            sender_user,
+            &body.sender.user_id,
             GlobalAccountDataEventType::PushRules.to_string().into(),
         )?
         .ok_or(Error::BadRequest(
@@ -86,14 +82,18 @@ pub async fn get_pushrule_route(
 pub async fn set_pushrule_route(
     body: Ruma<set_pushrule::v3::Request>,
 ) -> Result<set_pushrule::v3::Response> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
-    let body = body.body;
+    let Ruma { body, sender, .. } = body;
+    let set_pushrule::v3::Request {
+        rule,
+        before,
+        after,
+    } = body;
 
     let event = services()
         .account_data
         .get(
             None,
-            sender_user,
+            &sender.user_id,
             GlobalAccountDataEventType::PushRules.to_string().into(),
         )?
         .ok_or(Error::BadRequest(
@@ -104,11 +104,12 @@ pub async fn set_pushrule_route(
     let mut account_data = serde_json::from_str::<PushRulesEvent>(event.get())
         .map_err(|_| Error::bad_database("Invalid account data event in db."))?;
 
-    if let Err(error) = account_data.content.global.insert(
-        body.rule.clone(),
-        body.after.as_deref(),
-        body.before.as_deref(),
-    ) {
+    if let Err(error) =
+        account_data
+            .content
+            .global
+            .insert(rule, after.as_deref(), before.as_deref())
+    {
         let err = match error {
             InsertPushRuleError::ServerDefaultRuleId => Error::BadRequest(
                 ErrorKind::InvalidParam,
@@ -138,7 +139,7 @@ pub async fn set_pushrule_route(
 
     services().account_data.update(
         None,
-        sender_user,
+        &sender.user_id,
         GlobalAccountDataEventType::PushRules.to_string().into(),
         &serde_json::to_value(account_data).expect("to json value always works"),
     )?;
@@ -152,13 +153,11 @@ pub async fn set_pushrule_route(
 pub async fn get_pushrule_actions_route(
     body: Ruma<get_pushrule_actions::v3::Request>,
 ) -> Result<get_pushrule_actions::v3::Response> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
-
     let event = services()
         .account_data
         .get(
             None,
-            sender_user,
+            &body.sender.user_id,
             GlobalAccountDataEventType::PushRules.to_string().into(),
         )?
         .ok_or(Error::BadRequest(
@@ -188,13 +187,11 @@ pub async fn get_pushrule_actions_route(
 pub async fn set_pushrule_actions_route(
     body: Ruma<set_pushrule_actions::v3::Request>,
 ) -> Result<set_pushrule_actions::v3::Response> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
-
     let event = services()
         .account_data
         .get(
             None,
-            sender_user,
+            &body.sender.user_id,
             GlobalAccountDataEventType::PushRules.to_string().into(),
         )?
         .ok_or(Error::BadRequest(
@@ -219,7 +216,7 @@ pub async fn set_pushrule_actions_route(
 
     services().account_data.update(
         None,
-        sender_user,
+        &body.sender.user_id,
         GlobalAccountDataEventType::PushRules.to_string().into(),
         &serde_json::to_value(account_data).expect("to json value always works"),
     )?;
@@ -233,13 +230,11 @@ pub async fn set_pushrule_actions_route(
 pub async fn get_pushrule_enabled_route(
     body: Ruma<get_pushrule_enabled::v3::Request>,
 ) -> Result<get_pushrule_enabled::v3::Response> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
-
     let event = services()
         .account_data
         .get(
             None,
-            sender_user,
+            &body.sender.user_id,
             GlobalAccountDataEventType::PushRules.to_string().into(),
         )?
         .ok_or(Error::BadRequest(
@@ -268,13 +263,11 @@ pub async fn get_pushrule_enabled_route(
 pub async fn set_pushrule_enabled_route(
     body: Ruma<set_pushrule_enabled::v3::Request>,
 ) -> Result<set_pushrule_enabled::v3::Response> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
-
     let event = services()
         .account_data
         .get(
             None,
-            sender_user,
+            &body.sender.user_id,
             GlobalAccountDataEventType::PushRules.to_string().into(),
         )?
         .ok_or(Error::BadRequest(
@@ -299,7 +292,7 @@ pub async fn set_pushrule_enabled_route(
 
     services().account_data.update(
         None,
-        sender_user,
+        &body.sender.user_id,
         GlobalAccountDataEventType::PushRules.to_string().into(),
         &serde_json::to_value(account_data).expect("to json value always works"),
     )?;
@@ -313,13 +306,11 @@ pub async fn set_pushrule_enabled_route(
 pub async fn delete_pushrule_route(
     body: Ruma<delete_pushrule::v3::Request>,
 ) -> Result<delete_pushrule::v3::Response> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
-
     let event = services()
         .account_data
         .get(
             None,
-            sender_user,
+            &body.sender.user_id,
             GlobalAccountDataEventType::PushRules.to_string().into(),
         )?
         .ok_or(Error::BadRequest(
@@ -351,7 +342,7 @@ pub async fn delete_pushrule_route(
 
     services().account_data.update(
         None,
-        sender_user,
+        &body.sender.user_id,
         GlobalAccountDataEventType::PushRules.to_string().into(),
         &serde_json::to_value(account_data).expect("to json value always works"),
     )?;
@@ -365,10 +356,8 @@ pub async fn delete_pushrule_route(
 pub async fn get_pushers_route(
     body: Ruma<get_pushers::v3::Request>,
 ) -> Result<get_pushers::v3::Response> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
-
     Ok(get_pushers::v3::Response {
-        pushers: services().pusher.get_pushers(sender_user)?,
+        pushers: services().pusher.get_pushers(&body.sender.user_id)?,
     })
 }
 
@@ -380,11 +369,9 @@ pub async fn get_pushers_route(
 pub async fn set_pushers_route(
     body: Ruma<set_pusher::v3::Request>,
 ) -> Result<set_pusher::v3::Response> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
-
     services()
         .pusher
-        .set_pusher(sender_user, body.action.clone())?;
+        .set_pusher(&body.sender.user_id, body.action.clone())?;
 
     Ok(set_pusher::v3::Response::default())
 }

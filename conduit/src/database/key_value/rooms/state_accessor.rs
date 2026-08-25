@@ -2,11 +2,11 @@ use std::{collections::HashMap, sync::Arc};
 
 use crate::{Error, PduEvent, Result, database::KeyValueDatabase, service, services, utils};
 use async_trait::async_trait;
-use ruma::{EventId, RoomId, events::StateEventType};
+use ruma::{EventId, OwnedEventId, RoomId, events::StateEventType};
 
 #[async_trait]
 impl service::rooms::state_accessor::Data for KeyValueDatabase {
-    async fn state_full_ids(&self, shortstatehash: u64) -> Result<HashMap<u64, Arc<EventId>>> {
+    async fn state_full_ids(&self, shortstatehash: u64) -> Result<HashMap<u64, OwnedEventId>> {
         let full_state = services()
             .rooms
             .state_compressor
@@ -78,7 +78,7 @@ impl service::rooms::state_accessor::Data for KeyValueDatabase {
         shortstatehash: u64,
         event_type: &StateEventType,
         state_key: &str,
-    ) -> Result<Option<Arc<EventId>>> {
+    ) -> Result<Option<OwnedEventId>> {
         let shortstatekey = match services()
             .rooms
             .short
@@ -158,7 +158,7 @@ impl service::rooms::state_accessor::Data for KeyValueDatabase {
         room_id: &RoomId,
         event_type: &StateEventType,
         state_key: &str,
-    ) -> Result<Option<Arc<EventId>>> {
+    ) -> Result<Option<OwnedEventId>> {
         if let Some(current_shortstatehash) =
             services().rooms.state.get_room_shortstatehash(room_id)?
         {

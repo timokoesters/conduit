@@ -1,11 +1,18 @@
-use std::{collections::BTreeMap, mem::size_of};
+use std::{
+    collections::{BTreeMap, HashMap},
+    mem::size_of,
+};
 
 use ruma::{
-    DeviceId, MilliSecondsSinceUnixEpoch, OneTimeKeyAlgorithm, OwnedDeviceId, OwnedMxcUri,
-    OwnedOneTimeKeyId, OwnedUserId, UInt, UserId,
-    api::client::{device::Device, error::ErrorKind, filter::FilterDefinition},
+    DeviceId, MilliSecondsSinceUnixEpoch, OneTimeKeyAlgorithm, OwnedDeviceId, OwnedOneTimeKeyId,
+    OwnedUserId, UInt, UserId,
+    api::{
+        client::{device::Device, filter::FilterDefinition},
+        error::ErrorKind,
+    },
     encryption::{CrossSigningKey, DeviceKeys, OneTimeKey},
     events::{AnyToDeviceEvent, StateEventType},
+    profile::{ProfileFieldName, ProfileFieldValue, UserProfile},
     serde::Raw,
 };
 use tracing::warn;
@@ -122,76 +129,60 @@ impl service::users::Data for KeyValueDatabase {
         }
     }
 
-    /// Returns the displayname of a user on this homeserver.
-    fn displayname(&self, user_id: &UserId) -> Result<Option<String>> {
-        self.userid_displayname
-            .get(user_id.as_bytes())?
-            .map_or(Ok(None), |bytes| {
-                Ok(Some(utils::string_from_bytes(&bytes).map_err(|_| {
-                    Error::bad_database("Displayname in db is invalid.")
-                })?))
-            })
+    fn profile(&self, user_id: &UserId) -> Result<UserProfile> {
+        self.userid_profile.get(user_id.as_bytes())?.map_or_else(
+            || Ok(UserProfile::new()),
+            |bytes| {
+                serde_json::from_slice(&bytes)
+                    .map_err(|_| Error::bad_database("Profile in db is invalid."))
+            },
+        )
     }
 
-    /// Sets a new displayname or removes it if displayname is None. You still need to nofify all rooms of this change.
-    fn set_displayname(&self, user_id: &UserId, displayname: Option<String>) -> Result<()> {
-        if let Some(displayname) = displayname {
-            self.userid_displayname
-                .insert(user_id.as_bytes(), displayname.as_bytes())?;
-        } else {
-            self.userid_displayname.remove(user_id.as_bytes())?;
-        }
-
-        Ok(())
+    fn profile_field(
+        &self,
+        user_id: &UserId,
+        key: &ProfileFieldName,
+    ) -> Result<Option<serde_json::Value>> {
+        self.userid_profile.get(user_id.as_bytes())?.map_or_else(
+            || Ok(None),
+            |bytes| {
+                serde_json::from_slice::<HashMap<String, _>>(&bytes)
+                    .map(|mut map| map.remove(key.as_str()))
+                    .map_err(|_| Error::bad_database("Profile in db is invalid."))
+            },
+        )
     }
 
-    /// Get the avatar_url of a user.
-    fn avatar_url(&self, user_id: &UserId) -> Result<Option<OwnedMxcUri>> {
-        self.userid_avatarurl
-            .get(user_id.as_bytes())?
-            .map(|bytes| {
-                utils::string_from_bytes(&bytes)
-                    .map_err(|_| Error::bad_database("Avatar URL in db is invalid."))
-                    .map(Into::into)
-            })
-            .transpose()
+    fn set_profile_field(&self, user_id: &UserId, value: &ProfileFieldValue) -> Result<()> {
+        let mut profile = self.profile(user_id)?;
+        profile.set(value.field_name().to_string(), value.value().into_owned());
+
+        self.userid_profile.insert(
+            user_id.as_bytes(),
+            &serde_json::to_vec(&profile).expect(
+                "Full profile is serializable, since it was serialized when we fetched it.",
+            ),
+        )
     }
 
-    /// Sets a new avatar_url or removes it if avatar_url is None.
-    fn set_avatar_url(&self, user_id: &UserId, avatar_url: Option<OwnedMxcUri>) -> Result<()> {
-        if let Some(avatar_url) = avatar_url {
-            self.userid_avatarurl
-                .insert(user_id.as_bytes(), avatar_url.to_string().as_bytes())?;
-        } else {
-            self.userid_avatarurl.remove(user_id.as_bytes())?;
-        }
+    fn delete_profile_field(&self, user_id: &UserId, key: &ProfileFieldName) -> Result<()> {
+        let mut profile = self.userid_profile.get(user_id.as_bytes())?.map_or_else(
+            || Ok(BTreeMap::<String, serde_json::Value>::new()),
+            |bytes| {
+                serde_json::from_slice(&bytes)
+                    .map_err(|_| Error::bad_database("Profile in db is invalid."))
+            },
+        )?;
 
-        Ok(())
-    }
+        profile.remove(key.as_str());
 
-    /// Get the blurhash of a user.
-    fn blurhash(&self, user_id: &UserId) -> Result<Option<String>> {
-        self.userid_blurhash
-            .get(user_id.as_bytes())?
-            .map(|bytes| {
-                let s = utils::string_from_bytes(&bytes)
-                    .map_err(|_| Error::bad_database("Avatar URL in db is invalid."))?;
-
-                Ok(s)
-            })
-            .transpose()
-    }
-
-    /// Sets a new avatar_url or removes it if avatar_url is None.
-    fn set_blurhash(&self, user_id: &UserId, blurhash: Option<String>) -> Result<()> {
-        if let Some(blurhash) = blurhash {
-            self.userid_blurhash
-                .insert(user_id.as_bytes(), blurhash.as_bytes())?;
-        } else {
-            self.userid_blurhash.remove(user_id.as_bytes())?;
-        }
-
-        Ok(())
+        self.userid_profile.insert(
+            user_id.as_bytes(),
+            &serde_json::to_vec(&profile).expect(
+                "Full profile is serializable, since it was serialized when we fetched it.",
+            ),
+        )
     }
 
     /// Adds a new device to a user.

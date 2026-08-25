@@ -1,8 +1,7 @@
 mod data;
-use std::sync::Arc;
 
 pub use data::Data;
-use ruma::{EventId, RoomId, events::StateEventType};
+use ruma::{EventId, OwnedEventId, RoomId, events::StateEventType};
 
 use crate::Result;
 
@@ -31,7 +30,7 @@ impl Service {
         self.db.get_or_create_shortstatekey(event_type, state_key)
     }
 
-    pub fn get_eventid_from_short(&self, shorteventid: u64) -> Result<Arc<EventId>> {
+    pub fn get_eventid_from_short(&self, shorteventid: u64) -> Result<OwnedEventId> {
         self.db.get_eventid_from_short(shorteventid)
     }
 

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use ruma::{
     RoomId, UserId,
-    api::client::error::ErrorKind,
+    api::error::ErrorKind,
     events::{AnyGlobalAccountDataEvent, AnyRoomAccountDataEvent, RoomAccountDataEventType},
     serde::Raw,
 };

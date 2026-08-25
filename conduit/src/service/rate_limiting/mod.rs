@@ -11,17 +11,19 @@ use conduit_config::{
 };
 use ruma::{
     OwnedServerName, OwnedUserId, UserId,
-    api::{
-        Metadata,
-        client::error::{ErrorKind, RetryAfter},
-    },
+    api::error::{ErrorKind, LimitExceededErrorData, RetryAfter},
 };
 use tokio::{
     sync::{Mutex, MutexGuard, RwLock},
     time::Instant,
 };
 
-use crate::{Error, Result, service::appservice::RegistrationInfo, services};
+use crate::{
+    Error, Result,
+    api::{OptionalAuthSenderInfo, UserOrAppserviceInfo},
+    service::appservice::RegistrationInfo,
+    services,
+};
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum Target {
@@ -30,6 +32,55 @@ pub enum Target {
     Server(OwnedServerName),
     Appservice { id: String, rate_limited: bool },
     Ip(IpAddr),
+}
+
+impl From<UserOrAppserviceInfo> for Option<Target> {
+    fn from(value: UserOrAppserviceInfo) -> Self {
+        Some(value.into())
+    }
+}
+
+impl From<IpAddr> for Target {
+    fn from(value: IpAddr) -> Self {
+        Target::Ip(value)
+    }
+}
+
+impl From<RegistrationInfo> for Target {
+    fn from(value: RegistrationInfo) -> Self {
+        Self::Appservice {
+            id: value.registration.id,
+            rate_limited: value.registration.rate_limited.unwrap_or(true),
+        }
+    }
+}
+
+impl From<UserOrAppserviceInfo> for Target {
+    fn from(value: UserOrAppserviceInfo) -> Self {
+        if let Some(info) = value.appservice_info {
+            info.into()
+        } else {
+            Self::User(value.user_id)
+        }
+    }
+}
+
+impl From<OwnedServerName> for Target {
+    fn from(value: OwnedServerName) -> Self {
+        Self::Server(value)
+    }
+}
+
+impl<T> From<OptionalAuthSenderInfo<T>> for Target
+where
+    Target: From<T>,
+{
+    fn from(value: OptionalAuthSenderInfo<T>) -> Self {
+        match value {
+            OptionalAuthSenderInfo::Some(sender) => sender.into(),
+            OptionalAuthSenderInfo::None(ip_addr) => ip_addr.into(),
+        }
+    }
 }
 
 impl Target {
@@ -133,11 +184,7 @@ impl Service {
     /// Takes the target and request, and either accepts the request while adding to the
     /// bucket, or rejects the request, returning the duration that should be waited until
     /// the request should be retried.
-    pub async fn check(&self, target: Option<Target>, request: Metadata) -> Result<()> {
-        let Ok(restriction) = request.try_into() else {
-            // Endpoint has no associated restriction
-            return Ok(());
-        };
+    pub async fn check(&self, target: Target, restriction: Restriction) -> Result<()> {
         let arrival = Instant::now();
 
         let config = services()
@@ -147,10 +194,10 @@ impl Service {
             .global
             .get(&restriction);
 
-        let mut map = self.global_bucket.lock().await;
+        let mut global_map = self.global_bucket.lock().await;
 
-        let entry = map.entry(restriction);
-        let proposed_entry = match &entry {
+        let global_entry = global_map.entry(restriction);
+        let proposed_entry = match &global_entry {
             Entry::Occupied(occupied_entry) => {
                 let entry = Arc::clone(occupied_entry.get());
                 let entry = entry.lock().await;
@@ -173,52 +220,49 @@ impl Service {
             }
         };
 
-        if let Some(target) = target {
-            let config = services()
-                .globals
-                .config
-                .rate_limiting
-                .target
-                .get(&restriction);
+        let config = services()
+            .globals
+            .config
+            .rate_limiting
+            .target
+            .get(&restriction);
 
-            let mut map = self.buckets.lock().await;
-            let entry = map.entry((target, restriction));
-            match entry {
-                Entry::Occupied(occupied_entry) => {
-                    let entry = Arc::clone(occupied_entry.get());
-                    let mut entry = entry.lock().await;
+        let mut target_map = self.buckets.lock().await;
+        let target_entry = target_map.entry((target, restriction));
+        match target_entry {
+            Entry::Occupied(occupied_entry) => {
+                let entry = Arc::clone(occupied_entry.get());
+                let mut entry = entry.lock().await;
 
-                    if arrival.checked_duration_since(*entry).is_none() {
-                        return instant_to_err(&entry);
-                    }
+                if arrival.checked_duration_since(*entry).is_none() {
+                    return instant_to_err(&entry);
+                }
 
-                    let min_instant = arrival
+                let min_instant = arrival
+                    - Duration::from_nanos(
+                        config.timeframe.nano_gap() * config.burst_capacity.get(),
+                    );
+                *entry = entry.max(min_instant) + Duration::from_nanos(config.timeframe.nano_gap());
+            }
+            Entry::Vacant(vacant_entry) => {
+                vacant_entry.insert(Arc::new(Mutex::new(
+                    arrival
                         - Duration::from_nanos(
-                            config.timeframe.nano_gap() * config.burst_capacity.get(),
-                        );
-                    *entry =
-                        entry.max(min_instant) + Duration::from_nanos(config.timeframe.nano_gap());
-                }
-                Entry::Vacant(vacant_entry) => {
-                    vacant_entry.insert(Arc::new(Mutex::new(
-                        arrival
-                            - Duration::from_nanos(
-                                config.timeframe.nano_gap() * (config.burst_capacity.get() - 1),
-                            ),
-                    )));
-                }
+                            config.timeframe.nano_gap() * (config.burst_capacity.get() - 1),
+                        ),
+                )));
             }
         }
 
-        entry.insert_entry(Arc::new(Mutex::new(proposed_entry)));
+        global_entry.insert_entry(Arc::new(Mutex::new(proposed_entry)));
 
         Ok(())
     }
 
-    pub async fn check_media_download(&self, target: Option<Target>, size: u64) -> Result<()> {
+    pub async fn check_media_download(&self, target: Target, size: u64) -> Result<()> {
         // All targets besides servers use the client-server API
         let (target_limitation, global_limitation, global_bucket) =
-            if let Some(Target::Server(_)) = &target {
+            if let Target::Server(_) = &target {
                 (
                     services()
                         .globals
@@ -293,7 +337,7 @@ impl Service {
             .upload;
 
         check_media(
-            Some(target),
+            target,
             size,
             target_limitation,
             global_limitation,
@@ -516,14 +560,14 @@ fn get_proposed_entry(
 }
 
 async fn check_media(
-    target: Option<Target>,
+    target: Target,
     size: u64,
     target_limitation: MediaLimitation,
     global_limitation: MediaLimitation,
     target_map: &MediaBucket,
     global_bucket: &GlobalMediaBucket,
 ) -> Result<()> {
-    if !target.as_ref().is_some_and(Target::rate_limited) {
+    if !target.rate_limited() {
         return Ok(());
     }
 
@@ -532,19 +576,17 @@ async fn check_media(
     let mut global_bucket = global_bucket.lock().await;
     let proposed = get_proposed_entry(size, &global_limitation, &arrival, &global_bucket, true)?;
 
-    if let Some(target) = target {
-        let mut map = target_map.lock().await;
-        let entry = map.entry(target);
+    let mut map = target_map.lock().await;
+    let entry = map.entry(target);
 
-        match entry {
-            Entry::Occupied(occupied_entry) => {
-                let entry = Arc::clone(occupied_entry.get());
+    match entry {
+        Entry::Occupied(occupied_entry) => {
+            let entry = Arc::clone(occupied_entry.get());
 
-                update_media_entry(size, &target_limitation, &arrival, entry, true).await?;
-            }
-            Entry::Vacant(vacant_entry) => {
-                vacant_entry.insert(default_media_entry(target_limitation, arrival));
-            }
+            update_media_entry(size, &target_limitation, &arrival, entry, true).await?;
+        }
+        Entry::Vacant(vacant_entry) => {
+            vacant_entry.insert(default_media_entry(target_limitation, arrival));
         }
     }
 
@@ -570,10 +612,10 @@ fn instant_to_err(instant: &Instant) -> Result<()> {
     let now = Instant::now();
 
     Err(Error::BadRequest(
-        ErrorKind::LimitExceeded {
+        ErrorKind::LimitExceeded(LimitExceededErrorData {
             // Not using ::DateTime because conversion from Instant to SystemTime is convoluted
             retry_after: Some(RetryAfter::Delay(instant.duration_since(now))),
-        },
+        }),
         "Rate limit exceeded",
     ))
 }

@@ -4,6 +4,7 @@ type AsyncRecursiveType<'a, T> = Pin<Box<dyn Future<Output = T> + 'a + Send>>;
 use std::{
     collections::{BTreeMap, HashMap, HashSet, hash_map},
     pin::Pin,
+    slice,
     sync::Arc,
     time::{Duration, Instant, SystemTime},
 };
@@ -12,10 +13,10 @@ use conduit_config::TrustedServer;
 use futures_util::{Future, StreamExt, stream::FuturesUnordered};
 use globals::SigningKeys;
 use ruma::{
-    CanonicalJsonObject, CanonicalJsonValue, EventId, MilliSecondsSinceUnixEpoch, OwnedServerName,
-    OwnedServerSigningKeyId, RoomId, ServerName,
+    CanonicalJsonObject, CanonicalJsonValue, EventId, MilliSecondsSinceUnixEpoch, OwnedEventId,
+    OwnedServerName, OwnedServerSigningKeyId, RoomId, ServerName,
     api::{
-        client::error::ErrorKind,
+        error::ErrorKind,
         federation::{
             discovery::{
                 get_remote_server_keys,
@@ -36,7 +37,10 @@ use ruma::{
     int,
     room_version_rules::{AuthorizationRules, RoomVersionRules, StateResolutionV2Rules},
     serde::Base64,
-    state_res::{self, StateMap},
+    state_res::{
+        self, StateMap,
+        utils::{event_id_map::EventIdMap, event_id_set::EventIdSet},
+    },
     uint,
 };
 use serde_json::value::RawValue as RawJsonValue;
@@ -95,7 +99,7 @@ impl Service {
 
         if services().rooms.metadata.is_disabled(room_id)? {
             return Err(Error::BadRequest(
-                ErrorKind::forbidden(),
+                ErrorKind::Forbidden,
                 "Federation of this room is currently disabled on this server.",
             ));
         }
@@ -169,7 +173,7 @@ impl Service {
             // Check for disabled again because it might have changed
             if services().rooms.metadata.is_disabled(room_id)? {
                 return Err(Error::BadRequest(
-                    ErrorKind::forbidden(),
+                    ErrorKind::Forbidden,
                     "Federation of this room is currently disabled on this server.",
                 ));
             }
@@ -410,11 +414,7 @@ impl Service {
                 debug!(event_id = ?incoming_pdu.event_id, "Fetching auth events");
                 self.fetch_and_handle_outliers(
                     origin,
-                    &incoming_pdu
-                        .auth_events
-                        .iter()
-                        .map(|x| Arc::from(&**x))
-                        .collect::<Vec<_>>(),
+                    &incoming_pdu.auth_events,
                     create_event,
                     room_id,
                     &room_version_rules,
@@ -468,13 +468,12 @@ impl Service {
             if room_version_rules
                 .authorization
                 .room_create_event_id_as_room_id
+                && let Some(room_id) = &incoming_pdu.room_id
             {
-                if let Some(room_id) = &incoming_pdu.room_id {
-                    let event_id = EventId::parse(format!("${}",room_id.strip_sigil())).map_err(|_| {
+                let event_id = EventId::parse(format!("${}",room_id.strip_sigil())).map_err(|_| {
                     Error::BadRequest(ErrorKind::InvalidParam, "Room ID cannot be converted to event ID, despite room version rules requiring so.")
                 })?;
-                    insert_auth_event(&mut auth_events, &mut auth_events_by_event_id, &event_id)?;
-                }
+                insert_auth_event(&mut auth_events, &mut auth_events_by_event_id, &event_id)?;
             }
 
             // first time we are doing any sort of auth check, so we check state-independent
@@ -561,7 +560,7 @@ impl Service {
         let mut state_at_incoming_event = None;
 
         if incoming_pdu.prev_events.len() == 1 {
-            let prev_event = &*incoming_pdu.prev_events[0];
+            let prev_event = &incoming_pdu.prev_events[0];
             let prev_event_sstatehash = services()
                 .rooms
                 .state_accessor
@@ -597,7 +596,7 @@ impl Service {
                         state_key,
                     )?;
 
-                    state.insert(shortstatekey, Arc::from(prev_event));
+                    state.insert(shortstatekey, prev_event.to_owned());
                     // Now it's the state after the pdu
                 }
 
@@ -647,7 +646,7 @@ impl Service {
                             &prev_event.kind.to_string().into(),
                             state_key,
                         )?;
-                        leaf_state.insert(shortstatekey, Arc::from(&*prev_event.event_id));
+                        leaf_state.insert(shortstatekey, prev_event.event_id.clone());
                         // Now it's the state after the pdu
                     }
 
@@ -747,15 +746,10 @@ impl Service {
             {
                 Ok(res) => {
                     debug!("Fetching state events at event.");
-                    let collect = res
-                        .pdu_ids
-                        .iter()
-                        .map(|x| Arc::from(&**x))
-                        .collect::<Vec<_>>();
                     let state_vec = self
                         .fetch_and_handle_outliers(
                             origin,
-                            &collect,
+                            &res.pdu_ids,
                             create_event,
                             room_id,
                             &room_version_rules,
@@ -763,7 +757,7 @@ impl Service {
                         )
                         .await;
 
-                    let mut state: HashMap<_, Arc<EventId>> = HashMap::new();
+                    let mut state: HashMap<_, OwnedEventId> = HashMap::new();
                     for (pdu, _) in state_vec {
                         let state_key = pdu.state_key.clone().ok_or_else(|| {
                             Error::bad_database("Found non-state pdu in state events.")
@@ -776,7 +770,7 @@ impl Service {
 
                         match state.entry(shortstatekey) {
                             hash_map::Entry::Vacant(v) => {
-                                v.insert(Arc::from(&*pdu.event_id));
+                                v.insert(pdu.event_id.clone());
                             }
                             hash_map::Entry::Occupied(_) => {
                                 return Err(Error::bad_database(
@@ -793,9 +787,7 @@ impl Service {
                         .get_shortstatekey(&StateEventType::RoomCreate, "")?
                         .expect("Room exists");
 
-                    if state.get(&create_shortstatekey).map(|id| id.as_ref())
-                        != Some(&create_event.event_id)
-                    {
+                    if state.get(&create_shortstatekey) != Some(&create_event.event_id) {
                         return Err(Error::bad_database(
                             "Incoming event refers to wrong create event.",
                         ));
@@ -942,7 +934,7 @@ impl Service {
                     state_key,
                 )?;
 
-                state_after.insert(shortstatekey, Arc::from(&*incoming_pdu.event_id));
+                state_after.insert(shortstatekey, incoming_pdu.event_id.clone());
             }
 
             let new_room_state = self
@@ -1033,7 +1025,7 @@ impl Service {
         room_id: &RoomId,
         auth_rules: &AuthorizationRules,
         state_res_rules: &StateResolutionV2Rules,
-        incoming_state: HashMap<u64, Arc<EventId>>,
+        incoming_state: HashMap<u64, OwnedEventId>,
     ) -> Result<Arc<HashSet<CompressedStateEvent>>> {
         debug!("Loading current room state ids");
         let current_sstatehash = services()
@@ -1148,7 +1140,7 @@ impl Service {
     pub(crate) fn fetch_and_handle_outliers<'a>(
         &'a self,
         origin: &'a ServerName,
-        events: &'a [Arc<EventId>],
+        events: &'a [OwnedEventId],
         create_event: &'a PduEvent,
         room_id: &'a RoomId,
         room_version_rules: &'a RoomVersionRules,
@@ -1187,7 +1179,7 @@ impl Service {
                 // c. Ask origin server over federation
                 // We also handle its auth chain here so we don't get a stack overflow in
                 // handle_outlier_pdu.
-                let mut todo_auth_events = vec![Arc::clone(id)];
+                let mut todo_auth_events = vec![id.clone()];
                 let mut events_in_reverse_order = Vec::new();
                 let mut events_all = HashSet::new();
                 let mut i = 0;
@@ -1263,7 +1255,7 @@ impl Service {
                                     if let Ok(auth_event) =
                                         serde_json::from_value(auth_event.clone().into())
                                     {
-                                        let a: Arc<EventId> = auth_event;
+                                        let a: OwnedEventId = auth_event;
                                         todo_auth_events.push(a);
                                     } else {
                                         warn!("Auth event id is not valid");
@@ -1339,14 +1331,14 @@ impl Service {
         room_id: &RoomId,
         room_version_rules: &RoomVersionRules,
         pub_key_map: &RwLock<BTreeMap<String, SigningKeys>>,
-        initial_set: Vec<Arc<EventId>>,
+        initial_set: Vec<OwnedEventId>,
     ) -> Result<(
-        Vec<Arc<EventId>>,
-        HashMap<Arc<EventId>, (Arc<PduEvent>, BTreeMap<String, CanonicalJsonValue>)>,
+        Vec<OwnedEventId>,
+        HashMap<OwnedEventId, (Arc<PduEvent>, BTreeMap<String, CanonicalJsonValue>)>,
     )> {
-        let mut graph: HashMap<Arc<EventId>, _> = HashMap::new();
+        let mut graph: EventIdMap<OwnedEventId, EventIdSet<_>> = EventIdMap::new();
         let mut eventid_info = HashMap::new();
-        let mut todo_outlier_stack: Vec<Arc<EventId>> = initial_set;
+        let mut todo_outlier_stack: Vec<OwnedEventId> = initial_set;
 
         let first_pdu_in_room = services()
             .rooms
@@ -1360,7 +1352,7 @@ impl Service {
             if let Some((pdu, json_opt)) = self
                 .fetch_and_handle_outliers(
                     origin,
-                    &[prev_event_id.clone()],
+                    slice::from_ref(&prev_event_id),
                     create_event,
                     room_id,
                     room_version_rules,
@@ -1374,7 +1366,7 @@ impl Service {
                 if amount > services().globals.max_fetch_prev_events() {
                     // Max limit reached
                     warn!("Max prev event limit reached!");
-                    graph.insert(prev_event_id.clone(), HashSet::new());
+                    graph.insert(prev_event_id.clone(), EventIdSet::new());
                     continue;
                 }
 
@@ -1389,7 +1381,7 @@ impl Service {
                     if pdu.origin_server_ts > first_pdu_in_room.origin_server_ts {
                         amount += 1;
                         for prev_prev in &pdu.prev_events {
-                            if !graph.contains_key(prev_prev) {
+                            if !graph.contains_event_id(prev_prev) {
                                 todo_outlier_stack.push(prev_prev.clone());
                             }
                         }
@@ -1400,17 +1392,17 @@ impl Service {
                         );
                     } else {
                         // Time based check failed
-                        graph.insert(prev_event_id.clone(), HashSet::new());
+                        graph.insert(prev_event_id.clone(), EventIdSet::new());
                     }
 
                     eventid_info.insert(prev_event_id.clone(), (pdu, json));
                 } else {
                     // Get json failed, so this was not fetched over federation
-                    graph.insert(prev_event_id.clone(), HashSet::new());
+                    graph.insert(prev_event_id.clone(), EventIdSet::new());
                 }
             } else {
                 // Fetch and handle failed
-                graph.insert(prev_event_id.clone(), HashSet::new());
+                graph.insert(prev_event_id.clone(), EventIdSet::new());
             }
         }
 
@@ -1821,7 +1813,7 @@ impl Service {
                 server_name, room_id
             );
             Err(Error::BadRequest(
-                ErrorKind::forbidden(),
+                ErrorKind::Forbidden,
                 "Server was denied by room ACL",
             ))
         }

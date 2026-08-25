@@ -1,8 +1,10 @@
-use crate::{Error, Result, Ruma, services, utils};
-use ruma::api::client::{
-    device::{self, delete_device, delete_devices, get_device, get_devices, update_device},
+use crate::{Error, Result, Ruma, api::UserOrAppserviceInfo, services, utils};
+use ruma::api::{
+    client::{
+        device::{self, delete_device, delete_devices, get_device, get_devices, update_device},
+        uiaa::{AuthFlow, AuthType, UiaaInfo},
+    },
     error::ErrorKind,
-    uiaa::{AuthFlow, AuthType, UiaaInfo},
 };
 
 use super::SESSION_ID_LENGTH;
@@ -13,11 +15,9 @@ use super::SESSION_ID_LENGTH;
 pub async fn get_devices_route(
     body: Ruma<get_devices::v3::Request>,
 ) -> Result<get_devices::v3::Response> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
-
     let devices: Vec<device::Device> = services()
         .users
-        .all_user_devices_metadata(sender_user)
+        .all_user_devices_metadata(&body.sender.user_id)
         .await
         .collect();
 
@@ -30,11 +30,9 @@ pub async fn get_devices_route(
 pub async fn get_device_route(
     body: Ruma<get_device::v3::Request>,
 ) -> Result<get_device::v3::Response> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
-
     let device = services()
         .users
-        .get_device_metadata(sender_user, &body.body.device_id)?
+        .get_device_metadata(&body.sender.user_id, &body.body.device_id)?
         .ok_or(Error::BadRequest(ErrorKind::NotFound, "Device not found."))?;
 
     Ok(get_device::v3::Response { device })
@@ -46,18 +44,16 @@ pub async fn get_device_route(
 pub async fn update_device_route(
     body: Ruma<update_device::v3::Request>,
 ) -> Result<update_device::v3::Response> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
-
     let mut device = services()
         .users
-        .get_device_metadata(sender_user, &body.device_id)?
+        .get_device_metadata(&body.sender.user_id, &body.device_id)?
         .ok_or(Error::BadRequest(ErrorKind::NotFound, "Device not found."))?;
 
     device.display_name.clone_from(&body.display_name);
 
     services()
         .users
-        .update_device_metadata(sender_user, &body.device_id, &device)?;
+        .update_device_metadata(&body.sender.user_id, &body.device_id, &device)?;
 
     Ok(update_device::v3::Response {})
 }
@@ -74,8 +70,24 @@ pub async fn update_device_route(
 pub async fn delete_device_route(
     body: Ruma<delete_device::v3::Request>,
 ) -> Result<delete_device::v3::Response> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
-    let sender_device = body.sender_device.as_ref().expect("user is authenticated");
+    let Ruma {
+        body,
+        sender,
+        json_body,
+    } = body;
+
+    let UserOrAppserviceInfo {
+        user_id: sender_user,
+        device_id: sender_device,
+        appservice_info: _,
+    } = sender;
+
+    let Some(sender_device) = sender_device else {
+        return Err(Error::BadRequest(
+            ErrorKind::MissingParam,
+            "Missing associated device (i.e. is appservice)",
+        ));
+    };
 
     // UIAA
     let mut uiaainfo = UiaaInfo {
@@ -92,16 +104,16 @@ pub async fn delete_device_route(
         let (worked, uiaainfo) =
             services()
                 .uiaa
-                .try_auth(sender_user, sender_device, auth, &uiaainfo)?;
+                .try_auth(&sender_user, &sender_device, auth, &uiaainfo)?;
         if !worked {
             return Err(Error::uiaa(uiaainfo));
         }
     // Success!
-    } else if let Some(json) = body.json_body {
+    } else if let Some(json) = json_body {
         uiaainfo.session = Some(utils::random_string(SESSION_ID_LENGTH));
         services()
             .uiaa
-            .create(sender_user, sender_device, &uiaainfo, &json)?;
+            .create(&sender_user, &sender_device, &uiaainfo, &json)?;
         return Err(Error::uiaa(uiaainfo));
     } else {
         return Err(Error::BadRequest(ErrorKind::NotJson, "Not json."));
@@ -109,7 +121,7 @@ pub async fn delete_device_route(
 
     services()
         .users
-        .remove_device(sender_user, &body.device_id)?;
+        .remove_device(&sender_user, &body.device_id)?;
 
     Ok(delete_device::v3::Response {})
 }
@@ -128,8 +140,24 @@ pub async fn delete_device_route(
 pub async fn delete_devices_route(
     body: Ruma<delete_devices::v3::Request>,
 ) -> Result<delete_devices::v3::Response> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
-    let sender_device = body.sender_device.as_ref().expect("user is authenticated");
+    let Ruma {
+        body,
+        sender,
+        json_body,
+    } = body;
+
+    let UserOrAppserviceInfo {
+        user_id: sender_user,
+        device_id: sender_device,
+        appservice_info: _,
+    } = sender;
+
+    let Some(sender_device) = sender_device else {
+        return Err(Error::BadRequest(
+            ErrorKind::MissingParam,
+            "Missing associated device (i.e. is appservice)",
+        ));
+    };
 
     // UIAA
     let mut uiaainfo = UiaaInfo {
@@ -146,23 +174,23 @@ pub async fn delete_devices_route(
         let (worked, uiaainfo) =
             services()
                 .uiaa
-                .try_auth(sender_user, sender_device, auth, &uiaainfo)?;
+                .try_auth(&sender_user, &sender_device, auth, &uiaainfo)?;
         if !worked {
             return Err(Error::uiaa(uiaainfo));
         }
     // Success!
-    } else if let Some(json) = body.json_body {
+    } else if let Some(json) = json_body {
         uiaainfo.session = Some(utils::random_string(SESSION_ID_LENGTH));
         services()
             .uiaa
-            .create(sender_user, sender_device, &uiaainfo, &json)?;
+            .create(&sender_user, &sender_device, &uiaainfo, &json)?;
         return Err(Error::uiaa(uiaainfo));
     } else {
         return Err(Error::BadRequest(ErrorKind::NotJson, "Not json."));
     }
 
     for device_id in &body.devices {
-        services().users.remove_device(sender_user, device_id)?
+        services().users.remove_device(&sender_user, device_id)?
     }
 
     Ok(delete_devices::v3::Response {})

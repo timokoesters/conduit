@@ -8,10 +8,8 @@ use ruma::{
     CanonicalJsonObject, CanonicalJsonValue, EventId, MilliSecondsSinceUnixEpoch, OwnedEventId,
     OwnedServerName, RoomId, RoomVersionId, UserId,
     api::{
-        client::{
-            error::ErrorKind,
-            membership::{ThirdPartySigned, join_room_by_id},
-        },
+        client::membership::{ThirdPartySigned, join_room_by_id},
+        error::ErrorKind,
         federation,
     },
     events::{
@@ -21,6 +19,7 @@ use ruma::{
             member::{MembershipState, RoomMemberEventContent},
         },
     },
+    profile::{AvatarUrl, DisplayName},
     room_version_rules::RoomVersionRules,
     state_res,
 };
@@ -34,7 +33,8 @@ use crate::{
         globals::SigningKeys,
         pdu::{PduBuilder, gen_event_id_canonical_json},
     },
-    services, utils,
+    services,
+    utils::{self, BlurHash},
 };
 
 pub struct Service;
@@ -391,13 +391,14 @@ impl Service {
                 None
             };
 
+            let profile = services().users.profile(sender_user)?;
             let event = RoomMemberEventContent {
                 membership: MembershipState::Join,
-                displayname: services().users.displayname(sender_user)?,
-                avatar_url: services().users.avatar_url(sender_user)?,
+                displayname: profile.get_static::<DisplayName>().ok().flatten(),
+                avatar_url: profile.get_static::<AvatarUrl>().ok().flatten(),
                 is_direct: None,
                 third_party_invite: None,
-                blurhash: services().users.blurhash(sender_user)?,
+                blurhash: profile.get_static::<BlurHash>().ok().flatten(),
                 reason: reason.clone(),
                 join_authorized_via_users_server: authorized_user,
             };
@@ -559,16 +560,17 @@ impl Service {
         member_event_stub.insert("type".to_owned(), "m.room.member".into());
 
         content.insert("membership".to_owned(), membership.to_string().into());
-        if let Some(displayname) = services().users.displayname(sender_user)? {
+        let profile = services().users.profile(sender_user)?;
+        if let Some(displayname) = profile.get_static::<DisplayName>().ok().flatten() {
             content.insert("displayname".to_owned(), displayname.into());
         }
-        if let Some(avatar_url) = services().users.avatar_url(sender_user)? {
+        if let Some(avatar_url) = profile.get_static::<AvatarUrl>().ok().flatten() {
             content.insert(
                 "avatar_url".to_owned(),
                 avatar_url.as_str().to_owned().into(),
             );
         }
-        if let Some(blurhash) = services().users.blurhash(sender_user)? {
+        if let Some(blurhash) = profile.get_static::<BlurHash>().ok().flatten() {
             content.insert("blurhash".to_owned(), blurhash.into());
         }
         if let Some(reason) = reason {

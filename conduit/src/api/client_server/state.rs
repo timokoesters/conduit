@@ -2,13 +2,13 @@ use std::sync::Arc;
 
 use crate::{Error, Result, Ruma, RumaResponse, service::pdu::PduBuilder, services};
 use ruma::{
-    EventId, MilliSecondsSinceUnixEpoch, RoomId, UserId,
-    api::client::{
-        error::ErrorKind,
-        state::{
+    MilliSecondsSinceUnixEpoch, OwnedEventId, RoomId, UserId,
+    api::{
+        client::state::{
             get_state_event_for_key::{self, v3::StateEventFormat},
             get_state_events, send_state_event,
         },
+        error::ErrorKind,
     },
     events::{
         AnyStateEventContent, StateEventType, room::canonical_alias::RoomCanonicalAliasEventContent,
@@ -24,18 +24,17 @@ use tracing::warn;
 /// - The only requirement for the content is that it has to be valid json
 /// - Tries to send the event into the room, auth rules will determine if it is allowed
 /// - If event is new canonical_alias: Rejects if alias is incorrect
+#[conduit_macros::rate_limiting(ClientRestriction::SendEvent)]
 pub async fn send_state_event_for_key_route(
     body: Ruma<send_state_event::v3::Request>,
 ) -> Result<send_state_event::v3::Response> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
-
     let event_id = send_state_event_for_key_helper(
-        sender_user,
+        &body.sender.user_id,
         &body.room_id,
         &body.event_type,
         &body.body.body, // Yes, I hate it too
         body.state_key.to_owned(),
-        if body.appservice_info.is_some() {
+        if body.sender.appservice_info.is_some() {
             body.timestamp
         } else {
             None
@@ -57,23 +56,21 @@ pub async fn send_state_event_for_key_route(
 pub async fn send_state_event_for_empty_key_route(
     body: Ruma<send_state_event::v3::Request>,
 ) -> Result<RumaResponse<send_state_event::v3::Response>> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
-
     // Forbid m.room.encryption if encryption is disabled
     if body.event_type == StateEventType::RoomEncryption && !services().globals.allow_encryption() {
         return Err(Error::BadRequest(
-            ErrorKind::forbidden(),
+            ErrorKind::Forbidden,
             "Encryption has been disabled",
         ));
     }
 
     let event_id = send_state_event_for_key_helper(
-        sender_user,
+        &body.sender.user_id,
         &body.room_id,
         &body.event_type.to_string().into(),
         &body.body.body,
         body.state_key.to_owned(),
-        if body.appservice_info.is_some() {
+        if body.sender.appservice_info.is_some() {
             body.timestamp
         } else {
             None
@@ -93,15 +90,13 @@ pub async fn send_state_event_for_empty_key_route(
 pub async fn get_state_events_route(
     body: Ruma<get_state_events::v3::Request>,
 ) -> Result<get_state_events::v3::Response> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
-
     if !services()
         .rooms
         .state_accessor
-        .user_can_see_state_events(sender_user, &body.room_id)?
+        .user_can_see_state_events(&body.sender.user_id, &body.room_id)?
     {
         return Err(Error::BadRequest(
-            ErrorKind::forbidden(),
+            ErrorKind::Forbidden,
             "You don't have permission to view the room state.",
         ));
     }
@@ -126,15 +121,13 @@ pub async fn get_state_events_route(
 pub async fn get_state_event_for_key_route(
     body: Ruma<get_state_event_for_key::v3::Request>,
 ) -> Result<get_state_event_for_key::v3::Response> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
-
     if !services()
         .rooms
         .state_accessor
-        .user_can_see_state_events(sender_user, &body.room_id)?
+        .user_can_see_state_events(&body.sender.user_id, &body.room_id)?
     {
         return Err(Error::BadRequest(
-            ErrorKind::forbidden(),
+            ErrorKind::Forbidden,
             "You don't have permission to view the room state.",
         ));
     }
@@ -156,6 +149,12 @@ pub async fn get_state_event_for_key_route(
             Raw::<AnyStateEventContent>::from_json(event.content.clone()).into()
         }
         StateEventFormat::Event => event.to_state_event().into(),
+        StateEventFormat::_Custom(_) => {
+            return Err(Error::BadRequest(
+                ErrorKind::Unrecognized,
+                "Unknown event format",
+            ));
+        }
     };
 
     Ok(response)
@@ -169,15 +168,13 @@ pub async fn get_state_event_for_key_route(
 pub async fn get_state_event_for_empty_key_route(
     body: Ruma<get_state_event_for_key::v3::Request>,
 ) -> Result<RumaResponse<get_state_event_for_key::v3::Response>> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
-
     if !services()
         .rooms
         .state_accessor
-        .user_can_see_state_events(sender_user, &body.room_id)?
+        .user_can_see_state_events(&body.sender.user_id, &body.room_id)?
     {
         return Err(Error::BadRequest(
-            ErrorKind::forbidden(),
+            ErrorKind::Forbidden,
             "You don't have permission to view the room state.",
         ));
     }
@@ -199,6 +196,12 @@ pub async fn get_state_event_for_empty_key_route(
             Raw::<AnyStateEventContent>::from_json(event.content.clone()).into()
         }
         StateEventFormat::Event => event.to_state_event().into(),
+        StateEventFormat::_Custom(_) => {
+            return Err(Error::BadRequest(
+                ErrorKind::Unrecognized,
+                "Unknown event format",
+            ));
+        }
     };
 
     Ok(response.into())
@@ -212,15 +215,13 @@ pub async fn get_state_event_for_empty_key_route(
 pub async fn get_state_events_for_key_route(
     body: Ruma<get_state_event_for_key::v3::Request>,
 ) -> Result<get_state_event_for_key::v3::Response> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
-
     if !services()
         .rooms
         .state_accessor
-        .user_can_see_state_events(sender_user, &body.room_id)?
+        .user_can_see_state_events(&body.sender.user_id, &body.room_id)?
     {
         return Err(Error::BadRequest(
-            ErrorKind::forbidden(),
+            ErrorKind::Forbidden,
             "You don't have permission to view the room state.",
         ));
     }
@@ -253,15 +254,13 @@ pub async fn get_state_events_for_key_route(
 pub async fn get_state_events_for_empty_key_route(
     body: Ruma<get_state_event_for_key::v3::Request>,
 ) -> Result<RumaResponse<get_state_event_for_key::v3::Response>> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
-
     if !services()
         .rooms
         .state_accessor
-        .user_can_see_state_events(sender_user, &body.room_id)?
+        .user_can_see_state_events(&body.sender.user_id, &body.room_id)?
     {
         return Err(Error::BadRequest(
-            ErrorKind::forbidden(),
+            ErrorKind::Forbidden,
             "You don't have permission to view the room state.",
         ));
     }
@@ -294,7 +293,7 @@ async fn send_state_event_for_key_helper(
     json: &Raw<AnyStateEventContent>,
     state_key: String,
     timestamp: Option<MilliSecondsSinceUnixEpoch>,
-) -> Result<Arc<EventId>> {
+) -> Result<OwnedEventId> {
     let sender_user = sender;
 
     // TODO: Review this check, error if event is unparsable, use event type, allow alias if it
@@ -318,7 +317,7 @@ async fn send_state_event_for_key_helper(
                     .is_none()
             {
                 return Err(Error::BadRequest(
-                    ErrorKind::forbidden(),
+                    ErrorKind::Forbidden,
                     "You are only allowed to send canonical_alias \
                     events when it's aliases already exists",
                 ));

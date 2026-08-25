@@ -1,6 +1,6 @@
 use crate::Result;
-use ruma::{EventId, OwnedEventId, RoomId};
-use std::{collections::HashSet, sync::Arc};
+use ruma::{OwnedEventId, RoomId};
+use std::collections::HashSet;
 use tokio::sync::MutexGuard;
 
 pub trait Data: Send + Sync {
@@ -19,7 +19,7 @@ pub trait Data: Send + Sync {
     fn set_event_state(&self, shorteventid: u64, shortstatehash: u64) -> Result<()>;
 
     /// Returns all events we would send as the prev_events of the next event.
-    fn get_forward_extremities(&self, room_id: &RoomId) -> Result<HashSet<Arc<EventId>>>;
+    fn get_forward_extremities(&self, room_id: &RoomId) -> Result<HashSet<OwnedEventId>>;
 
     /// Replace the forward extremities of the room.
     fn set_forward_extremities(

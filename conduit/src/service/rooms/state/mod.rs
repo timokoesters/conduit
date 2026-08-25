@@ -7,7 +7,7 @@ use std::{
 pub use data::Data;
 use ruma::{
     EventId, OwnedEventId, RoomId, RoomVersionId, UserId,
-    api::{client::error::ErrorKind, federation::membership::RawStrippedState},
+    api::{error::ErrorKind, federation::membership::RawStrippedState},
     events::{
         AnyStrippedStateEvent, RECOMMENDED_STRIPPED_STATE_EVENT_TYPES, StateEventType,
         TimelineEventType,
@@ -344,7 +344,7 @@ impl Service {
         self.db.get_room_shortstatehash(room_id)
     }
 
-    pub fn get_forward_extremities(&self, room_id: &RoomId) -> Result<HashSet<Arc<EventId>>> {
+    pub fn get_forward_extremities(&self, room_id: &RoomId) -> Result<HashSet<OwnedEventId>> {
         self.db.get_forward_extremities(room_id)
     }
 

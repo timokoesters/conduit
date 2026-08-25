@@ -2,7 +2,7 @@ use std::{collections::BTreeMap, ops::Range, slice::Split};
 
 use bytesize::ByteSize;
 use conduit_config::{MediaRetentionConfig, MediaRetentionScope};
-use ruma::{OwnedServerName, ServerName, UserId, api::client::error::ErrorKind};
+use ruma::{OwnedServerName, ServerName, UserId, api::error::ErrorKind};
 use sha2::{Sha256, digest::Output};
 use tracing::error;
 
@@ -1229,14 +1229,14 @@ impl service::media::Data for KeyValueDatabase {
 
         let mut files_to_delete = Vec::new();
 
-        if media_type.is_thumb() {
-            if let Some(mut f) = self.purge_if_necessary(
+        if media_type.is_thumb()
+            && let Some(mut f) = self.purge_if_necessary(
                 scoped_space(MediaRetentionScope::Thumbnail),
                 |k| self.file_is_thumb(k),
                 &new_size,
-            ) {
-                files_to_delete.append(&mut f);
-            }
+            )
+        {
+            files_to_delete.append(&mut f);
         }
 
         match media_type {
@@ -1273,16 +1273,16 @@ impl service::media::Data for KeyValueDatabase {
         let should_be_deleted = |k: &[u8], metadata: &FilehashMetadata| {
             let check_policy = |retention_scope| {
                 if let Some(scoped_retention) = retention.scoped.get(&retention_scope) {
-                    if let Some(created_policy) = scoped_retention.created {
-                        if now - metadata.creation(k)? > created_policy.as_secs() {
-                            return Ok(true);
-                        }
+                    if let Some(created_policy) = scoped_retention.created
+                        && now - metadata.creation(k)? > created_policy.as_secs()
+                    {
+                        return Ok(true);
                     }
 
-                    if let Some(accessed_policy) = scoped_retention.accessed {
-                        if now - metadata.last_access(k)? > accessed_policy.as_secs() {
-                            return Ok(true);
-                        }
+                    if let Some(accessed_policy) = scoped_retention.accessed
+                        && now - metadata.last_access(k)? > accessed_policy.as_secs()
+                    {
+                        return Ok(true);
                     }
                 }
                 Ok(false)

@@ -7,7 +7,7 @@ use std::{
 
 pub use data::Data;
 use lru_cache::LruCache;
-use ruma::{EventId, RoomId};
+use ruma::{EventId, OwnedEventId, RoomId};
 
 use crate::{Result, services, utils};
 
@@ -109,7 +109,7 @@ impl Service {
     pub fn parse_compressed_state_event(
         &self,
         compressed_event: &CompressedStateEvent,
-    ) -> Result<(u64, Arc<EventId>)> {
+    ) -> Result<(u64, OwnedEventId)> {
         Ok((
             utils::u64_from_bytes(&compressed_event[0..size_of::<u64>()])
                 .expect("bytes have right length"),

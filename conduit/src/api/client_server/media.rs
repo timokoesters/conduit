@@ -19,9 +19,9 @@ use ruma::{
             authenticated_media::{
                 get_content, get_content_as_filename, get_content_thumbnail, get_media_config,
             },
-            error::ErrorKind,
             media::{self, create_content},
         },
+        error::ErrorKind,
         federation::authenticated_media::{self as federation_media, FileOrLocation},
     },
     http_headers::{ContentDisposition, ContentDispositionType},
@@ -58,11 +58,10 @@ pub async fn get_media_config_auth_route(
 ///
 /// - Some metadata will be saved in the database
 /// - Media will be saved in the media/ directory
+#[conduit_macros::rate_limiting(ClientRestriction::MediaCreate)]
 pub async fn create_content_route(
     body: Ruma<create_content::v3::Request>,
 ) -> Result<create_content::v3::Response> {
-    let sender_user = body.sender_user.expect("user is authenticated");
-
     let create_content::v3::Request {
         filename,
         content_type,
@@ -70,11 +69,10 @@ pub async fn create_content_route(
         ..
     } = body.body;
 
-    let target = Target::from_client_request(body.appservice_info, &sender_user);
-
+    let sender_user = body.sender.user_id.clone();
     services()
         .rate_limiting
-        .check_media_upload(target, size(&file)?)
+        .check_media_upload(body.sender.into(), size(&file)?)
         .await?;
 
     let media_id = utils::random_string(MXC_LENGTH);
@@ -188,6 +186,7 @@ pub async fn get_remote_content(
 /// Load media from our server or over federation.
 ///
 /// - Only allows federation if `allow_remote` is true
+#[conduit_macros::rate_limiting(ClientRestriction::MediaDownload)]
 pub async fn get_content_route(
     body: Ruma<media::get_content::v3::Request>,
 ) -> Result<media::get_content::v3::Response> {
@@ -195,23 +194,12 @@ pub async fn get_content_route(
         file,
         content_disposition,
         content_type,
-    } = get_content(
-        &body.server_name,
-        body.media_id.clone(),
-        body.sender_ip_address.map(Target::Ip),
-    )
-    .await?;
+    } = get_content(&body.server_name, body.media_id.clone(), body.sender.into()).await?;
 
-    if let Some(target) = Target::from_client_request_optional_auth(
-        body.appservice_info,
-        &body.sender_user,
-        body.sender_ip_address,
-    ) {
-        services()
-            .rate_limiting
-            .update_media_post_fetch(target, size(&file)?)
-            .await;
-    }
+    services()
+        .rate_limiting
+        .update_media_post_fetch(body.sender.into(), size(&file)?)
+        .await;
 
     Ok(media::get_content::v3::Response {
         file,
@@ -224,27 +212,19 @@ pub async fn get_content_route(
 /// # `GET /_matrix/client/v1/media/download/{serverName}/{mediaId}`
 ///
 /// Load media from our server or over federation.
+#[conduit_macros::rate_limiting(ClientRestriction::MediaDownload)]
 pub async fn get_content_auth_route(
     body: Ruma<get_content::v1::Request>,
 ) -> Result<get_content::v1::Response> {
-    let Ruma::<get_content::v1::Request> {
-        body,
-        sender_user,
-        appservice_info,
-        ..
-    } = body;
+    let Ruma::<get_content::v1::Request> { body, sender, .. } = body;
 
-    let sender_user = sender_user.as_ref().expect("user is authenticated");
-
-    let target = Target::from_client_request(appservice_info, sender_user);
-
-    get_content(&body.server_name, body.media_id.clone(), Some(target)).await
+    get_content(&body.server_name, body.media_id.clone(), sender.into()).await
 }
 
 pub async fn get_content(
     server_name: &ServerName,
     media_id: String,
-    target: Option<Target>,
+    target: Target,
 ) -> Result<get_content::v1::Response, Error> {
     services().media.check_blocked(server_name, &media_id)?;
 
@@ -262,25 +242,17 @@ pub async fn get_content(
             content_type,
             content_disposition: Some(content_disposition),
         })
+    } else if server_name != services().globals.server_name() && target.is_authenticated() {
+        let remote_content_response =
+            get_remote_content(server_name, media_id.clone(), target).await?;
+
+        Ok(get_content::v1::Response {
+            content_disposition: remote_content_response.content_disposition,
+            content_type: remote_content_response.content_type,
+            file: remote_content_response.file,
+        })
     } else {
-        let error = Err(Error::BadRequest(ErrorKind::NotFound, "Media not found."));
-
-        if let Some(target) = target {
-            if server_name != services().globals.server_name() && target.is_authenticated() {
-                let remote_content_response =
-                    get_remote_content(server_name, media_id.clone(), target).await?;
-
-                Ok(get_content::v1::Response {
-                    content_disposition: remote_content_response.content_disposition,
-                    content_type: remote_content_response.content_type,
-                    file: remote_content_response.file,
-                })
-            } else {
-                error
-            }
-        } else {
-            error
-        }
+        Err(Error::BadRequest(ErrorKind::NotFound, "Media not found."))
     }
 }
 
@@ -289,6 +261,7 @@ pub async fn get_content(
 /// Load media from our server or over federation, permitting desired filename.
 ///
 /// - Only allows federation if `allow_remote` is true
+#[conduit_macros::rate_limiting(ClientRestriction::MediaDownload)]
 pub async fn get_content_as_filename_route(
     body: Ruma<media::get_content_as_filename::v3::Request>,
 ) -> Result<media::get_content_as_filename::v3::Response> {
@@ -300,7 +273,7 @@ pub async fn get_content_as_filename_route(
         &body.server_name,
         body.media_id.clone(),
         body.filename.clone(),
-        body.sender_ip_address.map(Target::Ip),
+        body.sender.into(),
     )
     .await?;
 
@@ -315,25 +288,17 @@ pub async fn get_content_as_filename_route(
 /// # `GET /_matrix/client/v1/media/download/{serverName}/{mediaId}/{fileName}`
 ///
 /// Load media from our server or over federation, permitting desired filename.
+#[conduit_macros::rate_limiting(ClientRestriction::MediaDownload)]
 pub async fn get_content_as_filename_auth_route(
     body: Ruma<get_content_as_filename::v1::Request>,
 ) -> Result<get_content_as_filename::v1::Response, Error> {
-    let Ruma::<get_content_as_filename::v1::Request> {
-        body,
-        sender_user,
-        appservice_info,
-        ..
-    } = body;
-
-    let sender_user = sender_user.as_ref().expect("user is authenticated");
-
-    let target = Target::from_client_request(appservice_info, sender_user);
+    let Ruma::<get_content_as_filename::v1::Request> { body, sender, .. } = body;
 
     get_content_as_filename(
         &body.server_name,
         body.media_id.clone(),
         body.filename.clone(),
-        Some(target),
+        sender.into(),
     )
     .await
 }
@@ -342,7 +307,7 @@ async fn get_content_as_filename(
     server_name: &ServerName,
     media_id: String,
     filename: String,
-    target: Option<Target>,
+    target: Target,
 ) -> Result<get_content_as_filename::v1::Response, Error> {
     services().media.check_blocked(server_name, &media_id)?;
 
@@ -361,28 +326,20 @@ async fn get_content_as_filename(
                     .with_filename(Some(filename.clone())),
             ),
         })
+    } else if server_name != services().globals.server_name() && target.is_authenticated() {
+        let remote_content_response =
+            get_remote_content(server_name, media_id.clone(), target).await?;
+
+        Ok(get_content_as_filename::v1::Response {
+            content_disposition: Some(
+                ContentDisposition::new(ContentDispositionType::Inline)
+                    .with_filename(Some(filename.clone())),
+            ),
+            content_type: remote_content_response.content_type,
+            file: remote_content_response.file,
+        })
     } else {
-        let error = Err(Error::BadRequest(ErrorKind::NotFound, "Media not found."));
-
-        if let Some(target) = target {
-            if server_name != services().globals.server_name() && target.is_authenticated() {
-                let remote_content_response =
-                    get_remote_content(server_name, media_id.clone(), target).await?;
-
-                Ok(get_content_as_filename::v1::Response {
-                    content_disposition: Some(
-                        ContentDisposition::new(ContentDispositionType::Inline)
-                            .with_filename(Some(filename.clone())),
-                    ),
-                    content_type: remote_content_response.content_type,
-                    file: remote_content_response.file,
-                })
-            } else {
-                error
-            }
-        } else {
-            error
-        }
+        Err(Error::BadRequest(ErrorKind::NotFound, "Media not found."))
     }
 }
 
@@ -391,19 +348,11 @@ async fn get_content_as_filename(
 /// Load media thumbnail from our server or over federation.
 ///
 /// - Only allows federation if `allow_remote` is true
+#[conduit_macros::rate_limiting(ClientRestriction::MediaDownload)]
 pub async fn get_content_thumbnail_route(
     body: Ruma<media::get_content_thumbnail::v3::Request>,
 ) -> Result<media::get_content_thumbnail::v3::Response> {
-    let Ruma::<media::get_content_thumbnail::v3::Request> {
-        body,
-        sender_user,
-        sender_ip_address,
-        appservice_info,
-        ..
-    } = body;
-
-    let target =
-        Target::from_client_request_optional_auth(appservice_info, &sender_user, sender_ip_address);
+    let Ruma::<media::get_content_thumbnail::v3::Request> { body, sender, .. } = body;
 
     let get_content_thumbnail::v1::Response {
         file,
@@ -416,7 +365,7 @@ pub async fn get_content_thumbnail_route(
         body.width,
         body.method.clone(),
         body.animated,
-        target,
+        sender.into(),
     )
     .await?;
 
@@ -431,18 +380,11 @@ pub async fn get_content_thumbnail_route(
 /// # `GET /_matrix/client/v1/media/thumbnail/{serverName}/{mediaId}`
 ///
 /// Load media thumbnail from our server or over federation.
+#[conduit_macros::rate_limiting(ClientRestriction::MediaDownload)]
 pub async fn get_content_thumbnail_auth_route(
     body: Ruma<get_content_thumbnail::v1::Request>,
 ) -> Result<get_content_thumbnail::v1::Response> {
-    let Ruma::<get_content_thumbnail::v1::Request> {
-        body,
-        sender_user,
-        appservice_info,
-        ..
-    } = body;
-    let sender_user = sender_user.as_ref().expect("user is authenticated");
-    let target = Target::from_client_request(appservice_info, sender_user);
-
+    let Ruma::<get_content_thumbnail::v1::Request> { body, sender, .. } = body;
     get_content_thumbnail(
         &body.server_name,
         body.media_id.clone(),
@@ -450,7 +392,7 @@ pub async fn get_content_thumbnail_auth_route(
         body.width,
         body.method.clone(),
         body.animated,
-        Some(target),
+        sender.into(),
     )
     .await
 }
@@ -463,7 +405,7 @@ async fn get_content_thumbnail(
     width: UInt,
     method: Option<Method>,
     animated: Option<bool>,
-    target: Option<Target>,
+    target: Target,
 ) -> Result<get_content_thumbnail::v1::Response, Error> {
     services().media.check_blocked(server_name, &media_id)?;
 
@@ -491,117 +433,109 @@ async fn get_content_thumbnail(
             content_type,
             content_disposition: Some(content_disposition),
         })
-    } else {
-        let error = Err(Error::BadRequest(ErrorKind::NotFound, "Media not found."));
+    } else if server_name != services().globals.server_name() {
+        services()
+            .rate_limiting
+            .check_media_pre_fetch(&target)
+            .await?;
 
-        if let Some(target) = target {
-            if server_name != services().globals.server_name() {
-                services()
-                    .rate_limiting
-                    .check_media_pre_fetch(&target)
-                    .await?;
+        let thumbnail_response = match services()
+            .sending
+            .send_federation_request(
+                server_name,
+                federation_media::get_content_thumbnail::v1::Request {
+                    height,
+                    width,
+                    method: method.clone(),
+                    media_id: media_id.clone(),
+                    timeout_ms: Duration::from_secs(20),
+                    animated,
+                },
+            )
+            .await
+        {
+            Ok(federation_media::get_content_thumbnail::v1::Response {
+                metadata: _,
+                content: FileOrLocation::File(content),
+            }) => get_content_thumbnail::v1::Response {
+                file: content.file,
+                content_type: content.content_type,
+                content_disposition: content.content_disposition,
+            },
 
-                let thumbnail_response = match services()
+            Ok(federation_media::get_content_thumbnail::v1::Response {
+                metadata: _,
+                content: FileOrLocation::Location(url),
+            }) => {
+                let get_content::v1::Response {
+                    file,
+                    content_type,
+                    content_disposition,
+                } = get_location_content(url).await?;
+
+                get_content_thumbnail::v1::Response {
+                    file,
+                    content_type,
+                    content_disposition,
+                }
+            }
+            Err(Error::BadRequest(ErrorKind::Unrecognized, _)) => {
+                let media::get_content_thumbnail::v3::Response {
+                    file,
+                    content_type,
+                    content_disposition,
+                    ..
+                } = services()
                     .sending
                     .send_federation_request(
                         server_name,
-                        federation_media::get_content_thumbnail::v1::Request {
+                        media::get_content_thumbnail::v3::Request {
                             height,
                             width,
                             method: method.clone(),
+                            server_name: server_name.to_owned(),
                             media_id: media_id.clone(),
                             timeout_ms: Duration::from_secs(20),
+                            allow_redirect: false,
                             animated,
+                            allow_remote: false,
                         },
-                    )
-                    .await
-                {
-                    Ok(federation_media::get_content_thumbnail::v1::Response {
-                        metadata: _,
-                        content: FileOrLocation::File(content),
-                    }) => get_content_thumbnail::v1::Response {
-                        file: content.file,
-                        content_type: content.content_type,
-                        content_disposition: content.content_disposition,
-                    },
-
-                    Ok(federation_media::get_content_thumbnail::v1::Response {
-                        metadata: _,
-                        content: FileOrLocation::Location(url),
-                    }) => {
-                        let get_content::v1::Response {
-                            file,
-                            content_type,
-                            content_disposition,
-                        } = get_location_content(url).await?;
-
-                        get_content_thumbnail::v1::Response {
-                            file,
-                            content_type,
-                            content_disposition,
-                        }
-                    }
-                    Err(Error::BadRequest(ErrorKind::Unrecognized, _)) => {
-                        let media::get_content_thumbnail::v3::Response {
-                            file,
-                            content_type,
-                            content_disposition,
-                            ..
-                        } = services()
-                            .sending
-                            .send_federation_request(
-                                server_name,
-                                media::get_content_thumbnail::v3::Request {
-                                    height,
-                                    width,
-                                    method: method.clone(),
-                                    server_name: server_name.to_owned(),
-                                    media_id: media_id.clone(),
-                                    timeout_ms: Duration::from_secs(20),
-                                    allow_redirect: false,
-                                    animated,
-                                    allow_remote: false,
-                                },
-                            )
-                            .await?;
-
-                        get_content_thumbnail::v1::Response {
-                            file,
-                            content_type,
-                            content_disposition,
-                        }
-                    }
-                    Err(e) => return Err(e),
-                };
-
-                services()
-                    .rate_limiting
-                    .update_media_post_fetch(target, size(&thumbnail_response.file)?)
-                    .await;
-
-                services()
-                    .media
-                    .upload_thumbnail(
-                        server_name,
-                        &media_id,
-                        thumbnail_response
-                            .content_disposition
-                            .as_ref()
-                            .and_then(|cd| cd.filename.as_deref()),
-                        thumbnail_response.content_type.as_deref(),
-                        width.try_into().expect("all UInts are valid u32s"),
-                        height.try_into().expect("all UInts are valid u32s"),
-                        &thumbnail_response.file,
                     )
                     .await?;
 
-                Ok(thumbnail_response)
-            } else {
-                error
+                get_content_thumbnail::v1::Response {
+                    file,
+                    content_type,
+                    content_disposition,
+                }
             }
-        } else {
-            error
-        }
+            Err(e) => return Err(e),
+        };
+
+        services()
+            .rate_limiting
+            .update_media_post_fetch(target, size(&thumbnail_response.file)?)
+            .await;
+
+        services()
+            .media
+            .upload_thumbnail(
+                server_name,
+                &media_id,
+                thumbnail_response
+                    .content_disposition
+                    .as_ref()
+                    .and_then(|cd| cd.filename.as_deref()),
+                thumbnail_response.content_type.as_deref(),
+                width.try_into().expect("all UInts are valid u32s"),
+                height.try_into().expect("all UInts are valid u32s"),
+                &thumbnail_response.file,
+            )
+            .await?;
+
+        Ok(thumbnail_response)
+    } else {
+        Err(Error::BadRequest(ErrorKind::NotFound, "Media not found."))
     }
 }
 

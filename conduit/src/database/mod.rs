@@ -4,7 +4,8 @@ pub mod key_value;
 use crate::{
     Config, Error, PduEvent, Result, SERVICES, Services,
     service::{globals, rooms::timeline::PduCount},
-    services, utils,
+    services,
+    utils::{self, BlurHash},
 };
 use abstraction::{KeyValueDatabaseEngine, KvTree};
 use base64::{Engine, engine::general_purpose};
@@ -20,6 +21,7 @@ use ruma::{
         push_rules::{PushRulesEvent, PushRulesEventContent},
         room::message::RoomMessageEventContent,
     },
+    profile::{ProfileFieldValue, StaticProfileField},
     push::Ruleset,
 };
 use serde::Deserialize;
@@ -72,9 +74,7 @@ pub struct KeyValueDatabase {
 
     //pub users: users::Users,
     pub(super) userid_password: Arc<dyn KvTree>,
-    pub(super) userid_displayname: Arc<dyn KvTree>,
-    pub(super) userid_avatarurl: Arc<dyn KvTree>,
-    pub(super) userid_blurhash: Arc<dyn KvTree>,
+    pub(super) userid_profile: Arc<dyn KvTree>,
     pub(super) userdeviceid_token: Arc<dyn KvTree>,
     pub(super) userdeviceid_metadata: Arc<dyn KvTree>, // This is also used to check if a device exists
     pub(super) userid_devicelistversion: Arc<dyn KvTree>, // DevicelistVersion = u64
@@ -204,7 +204,7 @@ pub struct KeyValueDatabase {
     pub(super) senderkey_pusher: Arc<dyn KvTree>,
 
     pub(super) pdu_cache: Mutex<LruCache<OwnedEventId, Arc<PduEvent>>>,
-    pub(super) shorteventid_cache: Mutex<LruCache<u64, Arc<EventId>>>,
+    pub(super) shorteventid_cache: Mutex<LruCache<u64, OwnedEventId>>,
     pub(super) auth_chain_cache: Mutex<LruCache<Vec<u64>, Arc<HashSet<u64>>>>,
     pub(super) eventidshort_cache: Mutex<LruCache<OwnedEventId, u64>>,
     pub(super) statekeyshort_cache: Mutex<LruCache<(StateEventType, String), u64>>,
@@ -297,9 +297,7 @@ impl KeyValueDatabase {
         let db_raw = Box::new(Self {
             _db: builder.clone(),
             userid_password: builder.open_tree("userid_password")?,
-            userid_displayname: builder.open_tree("userid_displayname")?,
-            userid_avatarurl: builder.open_tree("userid_avatarurl")?,
-            userid_blurhash: builder.open_tree("userid_blurhash")?,
+            userid_profile: builder.open_tree("userid_profile")?,
             userdeviceid_token: builder.open_tree("userdeviceid_token")?,
             userdeviceid_metadata: builder.open_tree("userdeviceid_metadata")?,
             userid_devicelistversion: builder.open_tree("userid_devicelistversion")?,
@@ -453,7 +451,7 @@ impl KeyValueDatabase {
         }
 
         // If the database has any data, perform data migrations before starting
-        let latest_database_version = 18;
+        let latest_database_version = 19;
 
         if services().users.count()? > 0 {
             // MIGRATIONS
@@ -880,8 +878,7 @@ impl KeyValueDatabase {
                             [".m.rules.contains_user_name", ".m.rule.contains_user_name"];
 
                         let rule = rules_list.content.get(content_rule_transformation[0]);
-                        if rule.is_some() {
-                            let mut rule = rule.unwrap().clone();
+                        if let Some(mut rule) = rule.cloned() {
                             content_rule_transformation[1].clone_into(&mut rule.rule_id);
                             rules_list
                                 .content
@@ -1084,6 +1081,63 @@ impl KeyValueDatabase {
                 services().globals.bump_database_version(18)?;
 
                 warn!("Migration: 17 -> 18 finished");
+            }
+
+            if services().globals.database_version()? < 19 {
+                let displayname_tree = db._db.open_tree("userid_displayname")?;
+                let avatarurl_tree = db._db.open_tree("userid_avatarurl")?;
+                let blurhash_tree = db._db.open_tree("userid_blurhash")?;
+
+                let bytes_to_userid = |bytes: Vec<u8>| {
+                    let string = utils::string_from_bytes(&bytes)
+                        .map_err(|_| Error::bad_database("User ID in db is invalid."))?;
+                    UserId::parse(string)
+                        .map_err(|_| Error::bad_database("User ID in db is invalid."))
+                };
+
+                for (user, displayname) in displayname_tree.iter() {
+                    let displayname = utils::string_from_bytes(&displayname)
+                        .map_err(|_| Error::bad_database("Displayname in db is invalid."))?;
+                    let user_id = bytes_to_userid(user)?;
+
+                    services().users.set_profile_field(
+                        &user_id,
+                        &ProfileFieldValue::DisplayName(displayname),
+                    )?;
+                }
+                displayname_tree.clear()?;
+
+                for (user, avatarurl) in avatarurl_tree.iter() {
+                    let avatarurl = utils::string_from_bytes(&avatarurl)
+                        .map_err(|_| Error::bad_database("Avatar url in db is invalid."))?
+                        .into();
+                    let user_id = bytes_to_userid(user)?;
+
+                    services()
+                        .users
+                        .set_profile_field(&user_id, &ProfileFieldValue::AvatarUrl(avatarurl))?;
+                }
+                avatarurl_tree.clear()?;
+
+                for (user, blurhash) in blurhash_tree.iter() {
+                    let blurhash = utils::string_from_bytes(&blurhash)
+                        .map_err(|_| Error::bad_database("Blurhash in db is invalid."))?;
+                    let user_id = bytes_to_userid(user)?;
+
+                    services().users.set_profile_field(
+                        &user_id,
+                        &ProfileFieldValue::new(
+                            BlurHash::NAME,
+                            serde_json::Value::String(blurhash),
+                        )
+                        .expect("Profile field value has correct type"),
+                    )?;
+                }
+                blurhash_tree.clear()?;
+
+                services().globals.bump_database_version(19)?;
+
+                warn!("Migration: 18 -> 19 finished");
             }
 
             assert_eq!(

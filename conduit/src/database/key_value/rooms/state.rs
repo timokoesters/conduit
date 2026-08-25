@@ -1,7 +1,6 @@
 use ruma::{EventId, OwnedEventId, RoomId};
 use std::collections::HashSet;
 
-use std::sync::Arc;
 use tokio::sync::MutexGuard;
 
 use crate::{Error, Result, database::KeyValueDatabase, service, utils};
@@ -34,14 +33,14 @@ impl service::rooms::state::Data for KeyValueDatabase {
         Ok(())
     }
 
-    fn get_forward_extremities(&self, room_id: &RoomId) -> Result<HashSet<Arc<EventId>>> {
+    fn get_forward_extremities(&self, room_id: &RoomId) -> Result<HashSet<OwnedEventId>> {
         let mut prefix = room_id.as_bytes().to_vec();
         prefix.push(0xff);
 
         self.roomid_pduleaves
             .scan_prefix(prefix)
             .map(|(_, bytes)| {
-                EventId::parse_arc(utils::string_from_bytes(&bytes).map_err(|_| {
+                EventId::parse(utils::string_from_bytes(&bytes).map_err(|_| {
                     Error::bad_database("EventID in roomid_pduleaves is invalid unicode.")
                 })?)
                 .map_err(|_| Error::bad_database("EventId in roomid_pduleaves is invalid."))

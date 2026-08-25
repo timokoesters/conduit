@@ -7,9 +7,9 @@ use ruma::{
                 get_public_rooms, get_public_rooms_filtered, get_room_visibility,
                 set_room_visibility,
             },
-            error::ErrorKind,
             room,
         },
+        error::ErrorKind,
         federation,
     },
     directory::{Filter, PublicRoomsChunk, RoomNetwork},
@@ -79,8 +79,6 @@ pub async fn get_public_rooms_route(
 pub async fn set_room_visibility_route(
     body: Ruma<set_room_visibility::v3::Request>,
 ) -> Result<set_room_visibility::v3::Response> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
-
     if !services().rooms.metadata.exists(&body.room_id)? {
         // Return 404 if the room doesn't exist
         return Err(Error::BadRequest(ErrorKind::NotFound, "Room not found"));
@@ -89,7 +87,7 @@ pub async fn set_room_visibility_route(
     match &body.visibility {
         room::Visibility::Public => {
             services().rooms.directory.set_public(&body.room_id)?;
-            info!("{} made {} public", sender_user, body.room_id);
+            info!("{} made {} public", &body.sender.user_id, body.room_id);
         }
         room::Visibility::Private => services().rooms.directory.set_not_public(&body.room_id)?,
         _ => {
@@ -306,22 +304,22 @@ pub(crate) async fn get_public_rooms_filtered_helper(
                 .as_ref()
                 .map(|q| q.to_lowercase())
             {
-                if let Some(name) = &chunk.name {
-                    if name.as_str().to_lowercase().contains(&query) {
-                        return true;
-                    }
+                if let Some(name) = &chunk.name
+                    && name.as_str().to_lowercase().contains(&query)
+                {
+                    return true;
                 }
 
-                if let Some(topic) = &chunk.topic {
-                    if topic.to_lowercase().contains(&query) {
-                        return true;
-                    }
+                if let Some(topic) = &chunk.topic
+                    && topic.to_lowercase().contains(&query)
+                {
+                    return true;
                 }
 
-                if let Some(canonical_alias) = &chunk.canonical_alias {
-                    if canonical_alias.as_str().to_lowercase().contains(&query) {
-                        return true;
-                    }
+                if let Some(canonical_alias) = &chunk.canonical_alias
+                    && canonical_alias.as_str().to_lowercase().contains(&query)
+                {
+                    return true;
                 }
 
                 false

@@ -1,11 +1,17 @@
 use super::{DEVICE_ID_LENGTH, TOKEN_LENGTH};
-use crate::{Error, Result, Ruma, services, utils};
+use crate::{
+    Error, Result, Ruma,
+    api::{OptionalAuthSenderInfo, UserOrAppserviceInfo},
+    services, utils,
+};
 use ruma::{
     UserId,
-    api::client::{
+    api::{
+        client::{
+            session::{get_login_types, login, logout, logout_all},
+            uiaa::UserIdentifier,
+        },
         error::ErrorKind,
-        session::{get_login_types, login, logout, logout_all},
-        uiaa::UserIdentifier,
     },
 };
 use serde::Deserialize;
@@ -41,9 +47,10 @@ pub async fn get_login_types_route(
 ///
 /// Note: You can use [`GET /_matrix/client/r0/login`](fn.get_supported_versions_route.html) to see
 /// supported login types.
+#[conduit_macros::rate_limiting(ClientRestriction::Login)]
+// To allow deprecated login methods
+#[allow(deprecated)]
 pub async fn login_route(body: Ruma<login::v3::Request>) -> Result<login::v3::Response> {
-    // To allow deprecated login methods
-    #![allow(deprecated)]
     // Validate login method
     // TODO: Other login methods
     let user_id = match &body.login_info {
@@ -54,16 +61,16 @@ pub async fn login_route(body: Ruma<login::v3::Request>) -> Result<login::v3::Re
             address: _,
             medium: _,
         }) => {
-            let user_id = if let Some(UserIdentifier::UserIdOrLocalpart(user_id)) = identifier {
+            let user_id = if let Some(UserIdentifier::Matrix(user_id)) = identifier {
                 UserId::parse_with_server_name(
-                    user_id.to_lowercase(),
+                    user_id.user.to_lowercase(),
                     services().globals.server_name(),
                 )
             } else if let Some(user) = user {
                 UserId::parse(user)
             } else {
                 warn!("Bad login type: {:?}", &body.login_info);
-                return Err(Error::BadRequest(ErrorKind::forbidden(), "Bad login type."));
+                return Err(Error::BadRequest(ErrorKind::Forbidden, "Bad login type."));
             }
             .map_err(|_| Error::BadRequest(ErrorKind::InvalidUsername, "Username is invalid."))?;
 
@@ -78,7 +85,7 @@ pub async fn login_route(body: Ruma<login::v3::Request>) -> Result<login::v3::Re
                 .users
                 .password_hash(&user_id)?
                 .ok_or(Error::BadRequest(
-                    ErrorKind::forbidden(),
+                    ErrorKind::Forbidden,
                     "Wrong username or password.",
                 ))?;
 
@@ -93,7 +100,7 @@ pub async fn login_route(body: Ruma<login::v3::Request>) -> Result<login::v3::Re
 
             if !hash_matches {
                 return Err(Error::BadRequest(
-                    ErrorKind::forbidden(),
+                    ErrorKind::Forbidden,
                     "Wrong username or password.",
                 ));
             }
@@ -134,20 +141,20 @@ pub async fn login_route(body: Ruma<login::v3::Request>) -> Result<login::v3::Re
             identifier,
             user,
         }) => {
-            let user_id = if let Some(UserIdentifier::UserIdOrLocalpart(user_id)) = identifier {
+            let user_id = if let Some(UserIdentifier::Matrix(user_id)) = identifier {
                 UserId::parse_with_server_name(
-                    user_id.to_lowercase(),
+                    user_id.user.to_lowercase(),
                     services().globals.server_name(),
                 )
             } else if let Some(user) = user {
                 UserId::parse(user)
             } else {
                 warn!("Bad login type: {:?}", &body.login_info);
-                return Err(Error::BadRequest(ErrorKind::forbidden(), "Bad login type."));
+                return Err(Error::BadRequest(ErrorKind::Forbidden, "Bad login type."));
             }
             .map_err(|_| Error::BadRequest(ErrorKind::InvalidUsername, "Username is invalid."))?;
 
-            if let Some(ref info) = body.appservice_info {
+            if let OptionalAuthSenderInfo::Some(info) = &body.sender {
                 if !info.is_user_match(&user_id) {
                     return Err(Error::BadRequest(
                         ErrorKind::Exclusive,
@@ -224,19 +231,31 @@ pub async fn login_route(body: Ruma<login::v3::Request>) -> Result<login::v3::Re
 /// - Forgets to-device events
 /// - Triggers device list updates
 pub async fn logout_route(body: Ruma<logout::v3::Request>) -> Result<logout::v3::Response> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
-    let sender_device = body.sender_device.as_ref().expect("user is authenticated");
+    let UserOrAppserviceInfo {
+        user_id: sender_user,
+        device_id: sender_device,
+        appservice_info,
+    } = body.sender;
 
-    if let Some(ref info) = body.appservice_info {
-        if !info.is_user_match(sender_user) {
-            return Err(Error::BadRequest(
-                ErrorKind::Exclusive,
-                "User is not in namespace.",
-            ));
-        }
+    let Some(sender_device) = sender_device else {
+        return Err(Error::BadRequest(
+            ErrorKind::MissingToken,
+            "Missing associated device (i.e. is appservice)",
+        ));
+    };
+
+    if let Some(info) = &appservice_info
+        && !info.is_user_match(&sender_user)
+    {
+        return Err(Error::BadRequest(
+            ErrorKind::Exclusive,
+            "User is not in namespace.",
+        ));
     }
 
-    services().users.remove_device(sender_user, sender_device)?;
+    services()
+        .users
+        .remove_device(&sender_user, &sender_device)?;
 
     Ok(logout::v3::Response::new())
 }
@@ -255,19 +274,14 @@ pub async fn logout_route(body: Ruma<logout::v3::Request>) -> Result<logout::v3:
 pub async fn logout_all_route(
     body: Ruma<logout_all::v3::Request>,
 ) -> Result<logout_all::v3::Response> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
+    let sender_user = &body.sender.user_id;
 
-    if let Some(ref info) = body.appservice_info {
-        if !info.is_user_match(sender_user) {
-            return Err(Error::BadRequest(
-                ErrorKind::Exclusive,
-                "User is not in namespace.",
-            ));
-        }
-    } else {
+    if let Some(info) = &body.sender.appservice_info
+        && !info.is_user_match(sender_user)
+    {
         return Err(Error::BadRequest(
-            ErrorKind::MissingToken,
-            "Missing appservice token.",
+            ErrorKind::Exclusive,
+            "User is not in namespace.",
         ));
     }
 

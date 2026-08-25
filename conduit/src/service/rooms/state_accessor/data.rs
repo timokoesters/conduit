@@ -1,7 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
-use ruma::{EventId, RoomId, events::StateEventType};
+use ruma::{EventId, OwnedEventId, RoomId, events::StateEventType};
 
 use crate::{PduEvent, Result};
 
@@ -9,7 +9,7 @@ use crate::{PduEvent, Result};
 pub trait Data: Send + Sync {
     /// Builds a StateMap by iterating over all keys that start
     /// with state_hash, this gives the full state for the given state_hash.
-    async fn state_full_ids(&self, shortstatehash: u64) -> Result<HashMap<u64, Arc<EventId>>>;
+    async fn state_full_ids(&self, shortstatehash: u64) -> Result<HashMap<u64, OwnedEventId>>;
 
     async fn state_full(
         &self,
@@ -22,7 +22,7 @@ pub trait Data: Send + Sync {
         shortstatehash: u64,
         event_type: &StateEventType,
         state_key: &str,
-    ) -> Result<Option<Arc<EventId>>>;
+    ) -> Result<Option<OwnedEventId>>;
 
     /// Returns a single PDU from `room_id` with key (`event_type`, `state_key`).
     fn state_get(
@@ -47,7 +47,7 @@ pub trait Data: Send + Sync {
         room_id: &RoomId,
         event_type: &StateEventType,
         state_key: &str,
-    ) -> Result<Option<Arc<EventId>>>;
+    ) -> Result<Option<OwnedEventId>>;
 
     /// Returns a single PDU from `room_id` with key (`event_type`, `state_key`).
     fn room_state_get(

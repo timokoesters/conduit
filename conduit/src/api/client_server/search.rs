@@ -1,10 +1,13 @@
 use crate::{Error, Result, Ruma, services};
-use ruma::api::client::{
-    error::ErrorKind,
-    search::search_events::{
+use ruma::api::{
+    client::search::search_events::{
         self,
-        v3::{EventContextResult, ResultCategories, ResultRoomEvents, SearchResult},
+        v3::{
+            EventContextResult, ResultCategories, ResultGroupMapsByGroupingKey, ResultRoomEvents,
+            SearchResult,
+        },
     },
+    error::ErrorKind,
 };
 
 use std::collections::BTreeMap;
@@ -17,7 +20,7 @@ use std::collections::BTreeMap;
 pub async fn search_events_route(
     body: Ruma<search_events::v3::Request>,
 ) -> Result<search_events::v3::Response> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
+    let sender_user = &body.sender.user_id;
 
     let search_criteria = body.search_categories.room_events.as_ref().unwrap();
     let filter = &search_criteria.filter;
@@ -43,7 +46,7 @@ pub async fn search_events_route(
             .is_joined(sender_user, &room_id)?
         {
             return Err(Error::BadRequest(
-                ErrorKind::forbidden(),
+                ErrorKind::Forbidden,
                 "You don't have permission to view this room.",
             ));
         }
@@ -125,7 +128,7 @@ pub async fn search_events_route(
     Ok(search_events::v3::Response::new(ResultCategories {
         room_events: ResultRoomEvents {
             count: Some((results.len() as u32).into()), // TODO: set this to none. Element shouldn't depend on it
-            groups: BTreeMap::new(),                    // TODO
+            groups: ResultGroupMapsByGroupingKey::new(), // TODO
             next_batch,
             results,
             state: BTreeMap::new(), // TODO

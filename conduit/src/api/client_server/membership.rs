@@ -2,14 +2,15 @@ use ruma::{
     OwnedServerName, RoomId, UserId,
     api::{
         client::{
-            error::ErrorKind,
             knock::knock_room,
             membership::{
-                ban_user, forget_room, get_member_events, invite_user, join_room_by_id,
-                join_room_by_id_or_alias, joined_members, joined_rooms, kick_user, leave_room,
-                unban_user,
+                ban_user, forget_room, get_member_events,
+                invite_user::{self, v3::InviteUserId},
+                join_room_by_id, join_room_by_id_or_alias, joined_members, joined_rooms, kick_user,
+                leave_room, unban_user,
             },
         },
+        error::ErrorKind,
         federation::{
             self,
             membership::{RawStrippedState, create_invite},
@@ -22,6 +23,7 @@ use ruma::{
             member::{MembershipState, RoomMemberEventContent},
         },
     },
+    profile::{AvatarUrl, DisplayName},
 };
 use serde_json::value::to_raw_value;
 use std::{
@@ -34,7 +36,8 @@ use tracing::{error, info, warn};
 use crate::{
     Error, PduEvent, Result, Ruma,
     service::pdu::{PduBuilder, gen_event_id_canonical_json},
-    services, utils,
+    services,
+    utils::{self, BlurHash},
 };
 
 /// # `POST /_matrix/client/r0/rooms/{roomId}/join`
@@ -43,12 +46,11 @@ use crate::{
 ///
 /// - If the server knowns about this room: creates the join event and does auth rules locally
 /// - If the server does not know about the room: asks other servers over federation
+#[conduit_macros::rate_limiting(ClientRestriction::Join)]
 pub async fn join_room_by_id_route(
     body: Ruma<join_room_by_id::v3::Request>,
 ) -> Result<join_room_by_id::v3::Response> {
-    let Ruma::<join_room_by_id::v3::Request> {
-        body, sender_user, ..
-    } = body;
+    let Ruma::<join_room_by_id::v3::Request> { body, sender, .. } = body;
 
     let join_room_by_id::v3::Request {
         room_id,
@@ -56,19 +58,17 @@ pub async fn join_room_by_id_route(
         third_party_signed,
     } = body;
 
-    let sender_user = sender_user.as_ref().expect("user is authenticated");
-
     let (servers, room_id) = services()
         .rooms
         .state_cache
-        .get_room_id_and_via_servers(sender_user, room_id.into(), vec![])
+        .get_room_id_and_via_servers(&sender.user_id, room_id.into(), vec![])
         .await?;
 
     services()
         .rooms
         .helpers
         .join_room_by_id(
-            sender_user,
+            &sender.user_id,
             &room_id,
             reason.clone(),
             &servers,
@@ -83,23 +83,23 @@ pub async fn join_room_by_id_route(
 ///
 /// - If the server knowns about this room: creates the join event and does auth rules locally
 /// - If the server does not know about the room: asks other servers over federation
+#[conduit_macros::rate_limiting(ClientRestriction::Join)]
 pub async fn join_room_by_id_or_alias_route(
     body: Ruma<join_room_by_id_or_alias::v3::Request>,
 ) -> Result<join_room_by_id_or_alias::v3::Response> {
-    let sender_user = body.sender_user.as_deref().expect("user is authenticated");
-    let body = body.body;
+    let Ruma { body, sender, .. } = body;
 
     let (servers, room_id) = services()
         .rooms
         .state_cache
-        .get_room_id_and_via_servers(sender_user, body.room_id_or_alias, body.via)
+        .get_room_id_and_via_servers(&sender.user_id, body.room_id_or_alias, body.via)
         .await?;
 
     let join_room_response = services()
         .rooms
         .helpers
         .join_room_by_id(
-            sender_user,
+            &sender.user_id,
             &room_id,
             body.reason.clone(),
             &servers,
@@ -118,11 +118,12 @@ pub async fn join_room_by_id_or_alias_route(
 ///
 /// - If the server knowns about this room: creates the knock event and does auth rules locally
 /// - If the server does not know about the room: asks other servers over federation
+#[conduit_macros::rate_limiting(ClientRestriction::Knock)]
 pub async fn knock_room_route(
     body: Ruma<knock_room::v3::Request>,
 ) -> Result<knock_room::v3::Response> {
-    let sender_user = body.sender_user.as_deref().expect("user is authenticated");
-    let body = body.body;
+    let Ruma { body, sender, .. } = body;
+    let sender_user = &sender.user_id;
 
     let (servers, room_id) = services()
         .rooms
@@ -252,19 +253,21 @@ pub async fn knock_room_route(
             Some(JoinRule::Knock) | Some(JoinRule::KnockRestricted(_)) => (),
             _ => {
                 return Err(Error::BadRequest(
-                    ErrorKind::forbidden(),
+                    ErrorKind::Forbidden,
                     "You are not allowed to knock on this room.",
                 ));
             }
         };
 
+        let profile = services().users.profile(sender_user)?;
+
         let event = RoomMemberEventContent {
             membership: MembershipState::Knock,
-            displayname: services().users.displayname(sender_user)?,
-            avatar_url: services().users.avatar_url(sender_user)?,
+            displayname: profile.get_static::<DisplayName>().ok().flatten(),
+            avatar_url: profile.get_static::<AvatarUrl>().ok().flatten(),
             is_direct: None,
             third_party_invite: None,
-            blurhash: services().users.blurhash(sender_user)?,
+            blurhash: profile.get_static::<BlurHash>().ok().flatten(),
             reason: body.reason.clone(),
             join_authorized_via_users_server: None,
         };
@@ -299,9 +302,7 @@ pub async fn knock_room_route(
 pub async fn leave_room_route(
     body: Ruma<leave_room::v3::Request>,
 ) -> Result<leave_room::v3::Response> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
-
-    leave_room(sender_user, &body.room_id, body.reason.clone()).await?;
+    leave_room(&body.sender.user_id, &body.room_id, body.reason.clone()).await?;
 
     Ok(leave_room::v3::Response::new())
 }
@@ -309,20 +310,16 @@ pub async fn leave_room_route(
 /// # `POST /_matrix/client/r0/rooms/{roomId}/invite`
 ///
 /// Tries to send an invite event into the room.
+#[conduit_macros::rate_limiting(ClientRestriction::Invite)]
 pub async fn invite_user_route(
     body: Ruma<invite_user::v3::Request>,
 ) -> Result<invite_user::v3::Response> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
+    let Ruma { body, sender, .. } = body;
 
-    if let invite_user::v3::InvitationRecipient::UserId { user_id } = &body.recipient {
-        invite_helper(
-            sender_user,
-            user_id,
-            &body.room_id,
-            body.reason.clone(),
-            false,
-        )
-        .await?;
+    if let invite_user::v3::InvitationRecipient::UserId(InviteUserId { user_id, reason }) =
+        body.recipient
+    {
+        invite_helper(&sender.user_id, &user_id, &body.room_id, reason, false).await?;
         Ok(invite_user::v3::Response {})
     } else {
         Err(Error::BadRequest(ErrorKind::NotFound, "User not found."))
@@ -335,8 +332,6 @@ pub async fn invite_user_route(
 pub async fn kick_user_route(
     body: Ruma<kick_user::v3::Request>,
 ) -> Result<kick_user::v3::Response> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
-
     let event: RoomMemberEventContent = serde_json::from_str(
         services()
             .rooms
@@ -392,7 +387,7 @@ pub async fn kick_user_route(
                 redacts: None,
                 timestamp: None,
             },
-            sender_user,
+            &body.sender.user_id,
             &body.room_id,
             &state_lock,
         )
@@ -407,8 +402,6 @@ pub async fn kick_user_route(
 ///
 /// Tries to send a ban event into the room.
 pub async fn ban_user_route(body: Ruma<ban_user::v3::Request>) -> Result<ban_user::v3::Response> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
-
     let event = if let Some(event) = services()
         .rooms
         .state_accessor
@@ -465,7 +458,7 @@ pub async fn ban_user_route(body: Ruma<ban_user::v3::Request>) -> Result<ban_use
                 redacts: None,
                 timestamp: None,
             },
-            sender_user,
+            &body.sender.user_id,
             &body.room_id,
             &state_lock,
         )
@@ -482,8 +475,6 @@ pub async fn ban_user_route(body: Ruma<ban_user::v3::Request>) -> Result<ban_use
 pub async fn unban_user_route(
     body: Ruma<unban_user::v3::Request>,
 ) -> Result<unban_user::v3::Response> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
-
     let event: RoomMemberEventContent = serde_json::from_str(
         services()
             .rooms
@@ -539,7 +530,7 @@ pub async fn unban_user_route(
                 redacts: None,
                 timestamp: None,
             },
-            sender_user,
+            &body.sender.user_id,
             &body.room_id,
             &state_lock,
         )
@@ -561,12 +552,10 @@ pub async fn unban_user_route(
 pub async fn forget_room_route(
     body: Ruma<forget_room::v3::Request>,
 ) -> Result<forget_room::v3::Response> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
-
     services()
         .rooms
         .state_cache
-        .forget(&body.room_id, sender_user)?;
+        .forget(&body.room_id, &body.sender.user_id)?;
 
     Ok(forget_room::v3::Response::new())
 }
@@ -577,13 +566,11 @@ pub async fn forget_room_route(
 pub async fn joined_rooms_route(
     body: Ruma<joined_rooms::v3::Request>,
 ) -> Result<joined_rooms::v3::Response> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
-
     Ok(joined_rooms::v3::Response {
         joined_rooms: services()
             .rooms
             .state_cache
-            .rooms_joined(sender_user)
+            .rooms_joined(&body.sender.user_id)
             .filter_map(|r| r.ok())
             .collect(),
     })
@@ -597,15 +584,13 @@ pub async fn joined_rooms_route(
 pub async fn get_member_events_route(
     body: Ruma<get_member_events::v3::Request>,
 ) -> Result<get_member_events::v3::Response> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
-
     if !services()
         .rooms
         .state_accessor
-        .user_can_see_state_events(sender_user, &body.room_id)?
+        .user_can_see_state_events(&body.sender.user_id, &body.room_id)?
     {
         return Err(Error::BadRequest(
-            ErrorKind::forbidden(),
+            ErrorKind::Forbidden,
             "You don't have permission to view this room.",
         ));
     }
@@ -632,15 +617,13 @@ pub async fn get_member_events_route(
 pub async fn joined_members_route(
     body: Ruma<joined_members::v3::Request>,
 ) -> Result<joined_members::v3::Response> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
-
     if !services()
         .rooms
         .state_accessor
-        .user_can_see_state_events(sender_user, &body.room_id)?
+        .user_can_see_state_events(&body.sender.user_id, &body.room_id)?
     {
         return Err(Error::BadRequest(
-            ErrorKind::forbidden(),
+            ErrorKind::Forbidden,
             "You don't have permission to view this room.",
         ));
     }
@@ -652,8 +635,10 @@ pub async fn joined_members_route(
         .room_members(&body.room_id)
         .filter_map(|r| r.ok())
     {
-        let display_name = services().users.displayname(&user_id)?;
-        let avatar_url = services().users.avatar_url(&user_id)?;
+        let profile = services().users.profile(&body.sender.user_id)?;
+
+        let display_name = profile.get_static::<DisplayName>().ok().flatten();
+        let avatar_url = profile.get_static::<AvatarUrl>().ok().flatten();
 
         joined.insert(
             user_id,
@@ -818,7 +803,7 @@ pub(crate) async fn invite_helper(
             .is_joined(sender_user, room_id)?
         {
             return Err(Error::BadRequest(
-                ErrorKind::forbidden(),
+                ErrorKind::Forbidden,
                 "You don't have permission to view this room.",
             ));
         }
@@ -834,6 +819,8 @@ pub(crate) async fn invite_helper(
         );
         let state_lock = mutex_state.lock().await;
 
+        let profile = services().users.profile(sender_user)?;
+
         services()
             .rooms
             .timeline
@@ -842,11 +829,11 @@ pub(crate) async fn invite_helper(
                     event_type: TimelineEventType::RoomMember,
                     content: to_raw_value(&RoomMemberEventContent {
                         membership: MembershipState::Invite,
-                        displayname: services().users.displayname(user_id)?,
-                        avatar_url: services().users.avatar_url(user_id)?,
+                        displayname: profile.get_static::<DisplayName>().ok().flatten(),
+                        avatar_url: profile.get_static::<AvatarUrl>().ok().flatten(),
                         is_direct: Some(is_direct),
                         third_party_invite: None,
-                        blurhash: services().users.blurhash(user_id)?,
+                        blurhash: profile.get_static::<BlurHash>().ok().flatten(),
                         reason,
                         join_authorized_via_users_server: None,
                     })

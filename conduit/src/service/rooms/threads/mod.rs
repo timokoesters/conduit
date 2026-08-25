@@ -3,7 +3,7 @@ mod data;
 pub use data::Data;
 use ruma::{
     CanonicalJsonValue, EventId, RoomId, UserId,
-    api::client::{error::ErrorKind, threads::get_threads::v1::IncludeThreads},
+    api::{client::threads::get_threads::v1::IncludeThreads, error::ErrorKind},
     events::relation::BundledThread,
     uint,
 };

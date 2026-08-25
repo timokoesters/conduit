@@ -1,7 +1,7 @@
 use crate::{Result, Ruma, services};
 use ruma::api::client::discovery::get_capabilities::{
     self,
-    v3::{Capabilities, RoomVersionStability, RoomVersionsCapability},
+    v3::{Capabilities, ProfileFieldsCapability, RoomVersionStability, RoomVersionsCapability},
 };
 use std::collections::BTreeMap;
 
@@ -24,6 +24,12 @@ pub async fn get_capabilities_route(
         default: services().globals.default_room_version(),
         available,
     };
+    capabilities.profile_fields = Some(ProfileFieldsCapability {
+        enabled: true,
+        // Absence means all are allowed
+        allowed: None,
+        disallowed: None,
+    });
 
     Ok(get_capabilities::v3::Response { capabilities })
 }

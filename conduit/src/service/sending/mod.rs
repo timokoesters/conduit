@@ -11,7 +11,7 @@ use std::{
 
 use crate::{
     Config, Error, PduEvent, Result,
-    api::{appservice_server, server_server},
+    api::{FederationAuthScheme, SupportedPathBuilder, appservice_server, server_server},
     services,
     utils::calculate_hash,
 };
@@ -24,7 +24,7 @@ use ruma::{
     MilliSecondsSinceUnixEpoch, OwnedServerName, OwnedUserId, ServerName, UInt, UserId,
     api::{
         OutgoingRequest,
-        appservice::{self, Registration},
+        appservice::{self, HomeserverToken, Registration},
         federation::{
             self,
             transactions::edu::{
@@ -255,12 +255,12 @@ impl Service {
                 events.push(e);
             }
 
-            if let OutgoingKind::Normal(server_name) = outgoing_kind {
-                if let Ok((select_edus, last_count)) = self.select_edus(server_name) {
-                    events.extend(select_edus.into_iter().map(SendingEventType::Edu));
+            if let OutgoingKind::Normal(server_name) = outgoing_kind
+                && let Ok((select_edus, last_count)) = self.select_edus(server_name)
+            {
+                events.extend(select_edus.into_iter().map(SendingEventType::Edu));
 
-                    self.db.set_latest_educount(server_name, last_count)?;
-                }
+                self.db.set_latest_educount(server_name, last_count)?;
             }
         }
 
@@ -552,14 +552,12 @@ impl Service {
 
                 for pdu in pdus {
                     // Redacted events are not notification targets (we don't send push for them)
-                    if let Some(unsigned) = &pdu.unsigned {
-                        if let Ok(unsigned) =
+                    if let Some(unsigned) = &pdu.unsigned
+                        && let Ok(unsigned) =
                             serde_json::from_str::<serde_json::Value>(unsigned.get())
-                        {
-                            if unsigned.get("redacted_because").is_some() {
-                                continue;
-                            }
-                        }
+                        && unsigned.get("redacted_because").is_some()
+                    {
+                        continue;
                     }
 
                     let pusher = match services()
@@ -684,7 +682,9 @@ impl Service {
         request: T,
     ) -> Result<T::IncomingResponse>
     where
-        T: OutgoingRequest + Debug,
+        T: OutgoingRequest,
+        T::Authentication: for<'a> FederationAuthScheme<'a>,
+        T::PathBuilder: SupportedPathBuilder,
     {
         debug!("Waiting for permit");
         let permit = self.maximum_requests.acquire().await;
@@ -713,7 +713,8 @@ impl Service {
         request: T,
     ) -> Result<Option<T::IncomingResponse>>
     where
-        T: OutgoingRequest + Debug,
+        T: OutgoingRequest<Authentication = HomeserverToken>,
+        T::PathBuilder: SupportedPathBuilder,
     {
         let permit = self.maximum_requests.acquire().await;
         let response = appservice_server::send_request(registration, request).await;

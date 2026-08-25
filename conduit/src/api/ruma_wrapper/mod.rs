@@ -1,26 +1,30 @@
-use crate::{Error, service::appservice::RegistrationInfo};
+use crate::{Error, api::ruma_wrapper::axum::SupportedAuthScheme};
 use ruma::{
-    CanonicalJsonValue, OwnedDeviceId, OwnedServerName, OwnedUserId,
-    api::client::uiaa::UiaaResponse,
+    CanonicalJsonValue,
+    api::{IncomingRequest, client::uiaa::UiaaResponse},
 };
-use std::{net::IpAddr, ops::Deref};
+use std::ops::Deref;
 
 #[cfg(feature = "conduit_bin")]
-mod axum;
+pub mod axum;
 
 /// Extractor for Ruma request structs
-pub struct Ruma<T> {
+pub struct Ruma<T>
+where
+    T: IncomingRequest,
+    T::Authentication: SupportedAuthScheme,
+{
     pub body: T,
-    pub sender_user: Option<OwnedUserId>,
-    pub sender_device: Option<OwnedDeviceId>,
-    pub sender_servername: Option<OwnedServerName>,
-    pub sender_ip_address: Option<IpAddr>,
+    pub sender: <T::Authentication as SupportedAuthScheme>::SenderInfo,
     // This is None when body is not a valid string
     pub json_body: Option<CanonicalJsonValue>,
-    pub appservice_info: Option<RegistrationInfo>,
 }
 
-impl<T> Deref for Ruma<T> {
+impl<T> Deref for Ruma<T>
+where
+    T: IncomingRequest,
+    T::Authentication: SupportedAuthScheme,
+{
     type Target = T;
 
     fn deref(&self) -> &Self::Target {

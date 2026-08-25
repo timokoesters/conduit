@@ -35,7 +35,7 @@ clap = { version = "4", default-features = false, features = [
 conduit-config.path = "conduit-config"
 conduit-macros.path = "conduit-macros"
 reqwest = { version = "0.12", default-features = false }
-ruma.git = "https://github.com/ruma/ruma.git"
+ruma = "0.17"
 rusty-s3 = "0.8"
 serde = "1"
 serde_json = "1"

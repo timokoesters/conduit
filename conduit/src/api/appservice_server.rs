@@ -1,7 +1,12 @@
-use crate::{Error, Result, SUPPORTED_VERSIONS, services, utils};
+use super::SupportedPathBuilder;
+
+use crate::{Error, Result, services, utils};
 use bytes::BytesMut;
-use ruma::api::{IncomingResponse, OutgoingRequest, SendAccessToken, appservice::Registration};
-use std::{fmt::Debug, mem, time::Duration};
+use ruma::api::{
+    IncomingResponseExt, OutgoingRequest, OutgoingRequestExt,
+    appservice::{HomeserverToken, Registration},
+};
+use std::{mem, time::Duration};
 use tracing::warn;
 
 /// Sends a request to an appservice
@@ -13,7 +18,8 @@ pub(crate) async fn send_request<T>(
     request: T,
 ) -> Result<Option<T::IncomingResponse>>
 where
-    T: OutgoingRequest + Debug,
+    T: OutgoingRequest<Authentication = HomeserverToken>,
+    T::PathBuilder: SupportedPathBuilder,
 {
     let destination = match registration.url {
         Some(url) => url,
@@ -27,8 +33,8 @@ where
     let mut http_request = request
         .try_into_http_request::<BytesMut>(
             &destination,
-            SendAccessToken::IfRequired(hs_token),
-            &SUPPORTED_VERSIONS,
+            hs_token,
+            <T::PathBuilder as SupportedPathBuilder>::input(),
         )
         .unwrap()
         .map(|body| body.freeze());
@@ -98,7 +104,7 @@ where
 
     let response = T::IncomingResponse::try_from_http_response(
         http_response_builder
-            .body(body)
+            .body(body.as_ref())
             .expect("reqwest body is valid http body"),
     );
 

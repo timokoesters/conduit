@@ -4,7 +4,7 @@ use conduit_config::TurnAuth;
 use hmac::{Hmac, Mac};
 use ruma::{
     SecondsSinceUnixEpoch,
-    api::client::{error::ErrorKind, voip::get_turn_server_info},
+    api::{client::voip::get_turn_server_info, error::ErrorKind},
 };
 use sha1::Sha1;
 use std::time::{Duration, SystemTime};
@@ -17,8 +17,6 @@ type HmacSha1 = Hmac<Sha1>;
 pub async fn turn_server_route(
     body: Ruma<get_turn_server_info::v3::Request>,
 ) -> Result<get_turn_server_info::v3::Response> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
-
     if let Some(turn) = services().globals.turn() {
         let (username, password) = match turn.auth {
             TurnAuth::Secret { secret } => {
@@ -27,7 +25,7 @@ pub async fn turn_server_route(
                 )
                 .expect("time is valid");
 
-                let username: String = format!("{}:{}", expiry.get(), sender_user);
+                let username: String = format!("{}:{}", expiry.get(), &body.sender.user_id);
 
                 let mut mac = HmacSha1::new_from_slice(secret.as_bytes())
                     .expect("HMAC can take key of any size");

@@ -12,8 +12,8 @@ use clap::{Args, Parser};
 use image::GenericImageView;
 use regex::Regex;
 use ruma::{
-    EventId, MilliSecondsSinceUnixEpoch, MxcUri, OwnedMxcUri, OwnedRoomAliasId, OwnedRoomId,
-    OwnedServerName, RoomAliasId, RoomId, RoomVersionId, ServerName, UserId,
+    EventId, MilliSecondsSinceUnixEpoch, OwnedEventId, OwnedMxcUri, OwnedRoomAliasId, OwnedRoomId,
+    OwnedServerName, OwnedUserId, RoomId, RoomVersionId, ServerName, UserId,
     api::appservice::Registration,
     events::{
         TimelineEventType,
@@ -34,6 +34,7 @@ use ruma::{
             topic::RoomTopicEventContent,
         },
     },
+    profile::ProfileFieldValue,
     room_version_rules::RoomVersionRules,
 };
 use serde_json::value::to_raw_value;
@@ -97,7 +98,7 @@ enum AdminCommand {
     /// Removes an alias from the server
     RemoveAlias {
         /// The alias to be removed
-        alias: Box<RoomAliasId>,
+        alias: OwnedRoomAliasId,
     },
 
     /// Deactivate a user
@@ -107,7 +108,7 @@ enum AdminCommand {
     DeactivateUser {
         #[arg(short, long)]
         leave_rooms: bool,
-        user_id: Box<UserId>,
+        user_id: OwnedUserId,
         #[command(flatten)]
         purge_media: DeactivatePurgeMediaArgs,
     },
@@ -142,13 +143,13 @@ enum AdminCommand {
     /// Shows information about the requested media
     QueryMedia {
         /// The MXC URI of the media you want to request information about
-        mxc: Box<MxcUri>,
+        mxc: OwnedMxcUri,
     },
 
     /// Sends a message with the requested media attached, so that you can view it easily
     ShowMedia {
         /// The MXC URI of the media you want to view
-        mxc: Box<MxcUri>,
+        mxc: OwnedMxcUri,
     },
 
     /// Lists all the media matching the specified requirements
@@ -228,7 +229,7 @@ enum AdminCommand {
     /// only use this when all the media from that server is undesirable (or if
     /// you know that no media on the remote server is also uploaded locally)
     PurgeMediaFromServer {
-        server_id: Box<ServerName>,
+        server_id: OwnedServerName,
         #[arg(
             long, short = 't',
             value_parser = humantime::parse_duration
@@ -300,7 +301,7 @@ enum AdminCommand {
     /// Get the auth_chain of a PDU
     GetAuthChain {
         /// An event ID (the $ character followed by the base64 reference hash)
-        event_id: Box<EventId>,
+        event_id: OwnedEventId,
     },
 
     #[command(verbatim_doc_comment)]
@@ -318,7 +319,7 @@ enum AdminCommand {
     /// Retrieve and print a PDU by ID from the Conduit database
     GetPdu {
         /// An event ID (a $ followed by the base64 reference hash)
-        event_id: Box<EventId>,
+        event_id: OwnedEventId,
     },
 
     /// Print database memory usage statistics
@@ -351,9 +352,9 @@ enum AdminCommand {
     AllowRegistration { status: Option<bool> },
 
     /// Disables incoming federation handling for a room.
-    DisableRoom { room_id: Box<RoomId> },
+    DisableRoom { room_id: OwnedRoomId },
     /// Enables incoming federation handling for a room again.
-    EnableRoom { room_id: Box<RoomId> },
+    EnableRoom { room_id: OwnedRoomId },
 
     /// Sign a json object using Conduit's signing keys, putting the json in a codeblock
     SignJson,
@@ -404,13 +405,13 @@ pub struct ListMediaArgs {
     /// The user that uploaded the media.
     /// Only local media uploaders can be recorded, so specifying a non-local
     /// user will always yield no results
-    user: Option<Box<UserId>>,
+    user: Option<OwnedUserId>,
 
     #[arg(short, long)]
     /// The server from which the media originated from.
     /// If you want to list local media, just set this to
     /// be your own server's servername
-    server: Option<Box<ServerName>>,
+    server: Option<OwnedServerName>,
 }
 
 #[derive(Debug)]
@@ -553,10 +554,10 @@ impl Service {
         }
 
         // Backwards compatibility with `register_appservice`-style commands
-        if let Some(command) = argv.get_mut(1) {
-            if command.contains('_') {
-                *command = command.replace('_', "-");
-            }
+        if let Some(command) = argv.get_mut(1)
+            && command.contains('_')
+        {
+            *command = command.replace('_', "-");
         }
 
         AdminCommand::try_parse_from(&argv).map_err(|error| error.to_string())
@@ -662,7 +663,6 @@ impl Service {
                 RoomMessageEventContent::text_plain(&msg).into()
             }
             AdminCommand::GetAuthChain { event_id } => {
-                let event_id = Arc::<EventId>::from(event_id);
                 if let Some(event) = services().rooms.timeline.get_pdu_json(&event_id)? {
                     let room_id_str = event
                         .get("room_id")
@@ -885,9 +885,10 @@ impl Service {
                     displayname.push_str(" ⚡️");
                 }
 
-                services()
-                    .users
-                    .set_displayname(&user_id, Some(displayname))?;
+                services().users.set_profile_field(
+                    &user_id,
+                    &ProfileFieldValue::DisplayName(displayname),
+                )?;
 
                 // Initial account data
                 services().account_data.update(
@@ -942,7 +943,6 @@ impl Service {
                 user_id,
                 purge_media,
             } => {
-                let user_id = Arc::<UserId>::from(user_id);
                 if !services().users.exists(&user_id)? {
                     RoomMessageEventContent::text_plain(format!(
                         "User {user_id} doesn't exist on this server"
@@ -983,10 +983,11 @@ impl Service {
                         ))
                     } else {
                         RoomMessageEventContent ::text_plain(format!(
-                        "User {user_id} has been deactivated, but {failed_purged_media} media failed to be purged, check the logs for more details"
-                    ))
+                            "User {user_id} has been deactivated, but {failed_purged_media} media failed to be purged, check the logs for more details"
+                        ))
                     }
-                }.into()
+                }
+                .into()
             }
             AdminCommand::DeactivateAll {
                 leave_rooms,
@@ -1178,7 +1179,7 @@ impl Service {
                 } = client_server::media::get_content(
                     server_name,
                     media_id.to_owned(),
-                    Some(Target::User(services().globals.server_user().to_owned())),
+                    Target::User(services().globals.server_user().to_owned()),
                 )
                 .await?;
 
@@ -1190,7 +1191,7 @@ impl Service {
                         body: filename.clone().unwrap_or_default(),
                         formatted: None,
                         filename,
-                        source: MediaSource::Plain(OwnedMxcUri::from(mxc.to_owned())),
+                        source: MediaSource::Plain(mxc.to_owned()),
                         info: Some(Box::new(ruma::events::room::ImageInfo {
                             height: Some(height.into()),
                             width: Some(width.into()),
@@ -1200,6 +1201,7 @@ impl Service {
                             thumbnail_source: None,
                             blurhash: None,
                             thumbhash: None,
+                            is_animated: None,
                         })),
                     })
                 } else {
@@ -1209,7 +1211,7 @@ impl Service {
                         body: filename.clone().unwrap_or_default(),
                         formatted: None,
                         filename,
-                        source: MediaSource::Plain(OwnedMxcUri::from(mxc.to_owned())),
+                        source: MediaSource::Plain(mxc.to_owned()),
                         info: Some(Box::new(ruma::events::room::message::FileInfo {
                             mimetype: content_type,
                             size: size(&file)?.try_into().ok(),
@@ -2183,7 +2185,7 @@ fn media_from_body(body: Vec<&str>) -> Result<Vec<(OwnedServerName, String)>, Me
         Ok(body
             .clone()
             .drain(1..body.len() - 1)
-            .map(<Box<MxcUri>>::from)
+            .map(<OwnedMxcUri>::from)
             .filter_map(|mxc| {
                 mxc.parts()
                     .map(|(server_name, media_id)| (server_name.to_owned(), media_id.to_owned()))

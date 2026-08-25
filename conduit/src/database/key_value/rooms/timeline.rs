@@ -1,8 +1,6 @@
 use std::{collections::hash_map, mem::size_of, sync::Arc};
 
-use ruma::{
-    CanonicalJsonObject, EventId, OwnedUserId, RoomId, UserId, api::client::error::ErrorKind,
-};
+use ruma::{CanonicalJsonObject, EventId, OwnedUserId, RoomId, UserId, api::error::ErrorKind};
 use tracing::error;
 
 use crate::{Error, PduEvent, Result, database::KeyValueDatabase, service, services, utils};

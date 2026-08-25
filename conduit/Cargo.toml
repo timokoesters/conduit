@@ -18,6 +18,8 @@ workspace = true
 [dependencies]
 # For the configuration
 conduit-config.workspace = true
+# Rate limiting
+conduit-macros = { workspace = true, features = ["rate-limiting"] }
 
 # Web framework
 axum = { version = "0.8", default-features = false, features = [
@@ -139,7 +141,6 @@ rusty-s3.workspace = true
 [dependencies.ruma]
 features = [
   "appservice-api-c",
-  "canonical-json",
   "client-api",
   "compat-empty-string-null",
   "compat-get-3pids",
@@ -156,7 +157,6 @@ features = [
   "state-res",
   "unstable-msc2448",
   "unstable-msc4186",
-  "unstable-msc4311",
 ]
 workspace = true
 
@@ -177,8 +177,6 @@ default = ["backend_rocksdb", "backend_sqlite", "conduit_bin", "systemd"]
 jemalloc = ["tikv-jemallocator"]
 sqlite = ["parking_lot", "rusqlite", "tokio/signal"]
 systemd = ["sd-notify"]
-
-enforce_msc4311 = []
 
 [[bin]]
 name = "conduit"

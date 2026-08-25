@@ -1,7 +1,10 @@
 use crate::{Error, Result, Ruma, services, utils};
-use ruma::api::client::{
-    error::ErrorKind,
-    presence::{get_presence, set_presence},
+use ruma::{
+    api::{
+        client::presence::{get_presence, set_presence},
+        error::ErrorKind,
+    },
+    profile::{AvatarUrl, DisplayName},
 };
 use std::time::Duration;
 
@@ -11,7 +14,9 @@ use std::time::Duration;
 pub async fn set_presence_route(
     body: Ruma<set_presence::v3::Request>,
 ) -> Result<set_presence::v3::Response> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
+    let sender_user = &body.sender.user_id;
+
+    let profile = services().users.profile(sender_user)?;
 
     for room_id in services().rooms.state_cache.rooms_joined(sender_user) {
         let room_id = room_id?;
@@ -21,9 +26,9 @@ pub async fn set_presence_route(
             &room_id,
             ruma::events::presence::PresenceEvent {
                 content: ruma::events::presence::PresenceEventContent {
-                    avatar_url: services().users.avatar_url(sender_user)?,
+                    avatar_url: profile.get_static::<AvatarUrl>().ok().flatten(),
                     currently_active: None,
-                    displayname: services().users.displayname(sender_user)?,
+                    displayname: profile.get_static::<DisplayName>().ok().flatten(),
                     last_active_ago: Some(
                         utils::millis_since_unix_epoch()
                             .try_into()
@@ -48,14 +53,12 @@ pub async fn set_presence_route(
 pub async fn get_presence_route(
     body: Ruma<get_presence::v3::Request>,
 ) -> Result<get_presence::v3::Response> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
-
     let mut presence_event = None;
 
     for room_id in services()
         .rooms
         .user
-        .get_shared_rooms(vec![sender_user.clone(), body.user_id.clone()])?
+        .get_shared_rooms(vec![body.sender.user_id.clone(), body.user_id.clone()])?
     {
         let room_id = room_id?;
 
@@ -63,7 +66,7 @@ pub async fn get_presence_route(
             .rooms
             .edus
             .presence
-            .get_last_presence_event(sender_user, &room_id)?
+            .get_last_presence_event(&body.sender.user_id, &room_id)?
         {
             presence_event = Some(presence);
             break;

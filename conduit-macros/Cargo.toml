@@ -17,6 +17,7 @@ syn = { version = "2", features = ["full"] }
 
 [features]
 doc-generators = []
+rate-limiting = []
 
 [lints]
 workspace = true

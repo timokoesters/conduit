@@ -1,22 +1,27 @@
 use crate::{
     Error, PduEvent, Result, Ruma, RumaResponse,
+    api::UserOrAppserviceInfo,
     service::{pdu::EventHash, rooms::timeline::PduCount},
     services, utils,
 };
 
+use http::StatusCode;
 use ruma::{
     DeviceId, EventId, JsOption, OwnedDeviceId, OwnedUserId, RoomId, UInt, UserId,
-    api::client::{
-        filter::{FilterDefinition, LazyLoadOptions},
-        sync::sync_events::{
-            self, DeviceLists, UnreadNotificationsCount,
-            v3::{
-                Ephemeral, Filter, GlobalAccountData, InviteState, InvitedRoom, JoinedRoom,
-                KnockState, KnockedRoom, LeftRoom, Presence, RoomAccountData, RoomSummary, Rooms,
-                State, StateEvents, Timeline, ToDevice,
+    api::{
+        client::{
+            filter::{FilterDefinition, LazyLoadOptions},
+            sync::sync_events::{
+                self, DeviceLists, UnreadNotificationsCount,
+                v3::{
+                    Ephemeral, Filter, GlobalAccountData, InviteState, InvitedRoom, JoinedRoom,
+                    KnockState, KnockedRoom, LeftRoom, Presence, RoomAccountData, RoomSummary,
+                    Rooms, State, StateEvents, Timeline, ToDevice,
+                },
             },
+            uiaa::UiaaResponse,
         },
-        uiaa::UiaaResponse,
+        error::{Error as RumaError, ErrorBody, ErrorKind, StandardErrorBody},
     },
     events::{
         StateEventType, TimelineEventType,
@@ -70,8 +75,23 @@ use tracing::{error, info};
 pub async fn sync_events_route(
     body: Ruma<sync_events::v3::Request>,
 ) -> Result<sync_events::v3::Response, RumaResponse<UiaaResponse>> {
-    let sender_user = body.sender_user.expect("user is authenticated");
-    let sender_device = body.sender_device.expect("user is authenticated");
+    let Ruma { body, sender, .. } = body;
+
+    let UserOrAppserviceInfo {
+        user_id: sender_user,
+        device_id: sender_device,
+        appservice_info: _,
+    } = sender;
+
+    let Some(sender_device) = sender_device else {
+        return Err(RumaResponse(UiaaResponse::MatrixError(RumaError {
+            body: ErrorBody::Standard(StandardErrorBody {
+                kind: ErrorKind::MissingParam,
+                message: "Missing associated device (i.e. is appservice)".to_owned(),
+            }),
+            status_code: StatusCode::BAD_REQUEST,
+        })));
+    };
 
     let cloned_sender_user = sender_user.clone();
     let cloned_sender_device = sender_device.clone();
@@ -82,8 +102,6 @@ pub async fn sync_events_route(
             .update_device_last_seen(cloned_sender_user, cloned_sender_device)
             .await;
     });
-
-    let body = body.body;
 
     let mut rx = match services()
         .globals
@@ -129,10 +147,8 @@ pub async fn sync_events_route(
     };
 
     let we_have_to_wait = rx.borrow().is_none();
-    if we_have_to_wait {
-        if let Err(e) = rx.changed().await {
-            error!("Error waiting for sync: {}", e);
-        }
+    if we_have_to_wait && let Err(e) = rx.changed().await {
+        error!("Error waiting for sync: {}", e);
     }
 
     match rx
@@ -155,23 +171,23 @@ async fn sync_helper_wrapper(
 
     let r = sync_helper(sender_user.clone(), sender_device.clone(), body).await;
 
-    if let Ok((_, caching_allowed)) = r {
-        if !caching_allowed {
-            match services()
-                .globals
-                .sync_receivers
-                .write()
-                .await
-                .entry((sender_user, sender_device))
-            {
-                Entry::Occupied(o) => {
-                    // Only remove if the device didn't start a different /sync already
-                    if o.get().0 == since {
-                        o.remove();
-                    }
+    if let Ok((_, caching_allowed)) = r
+        && !caching_allowed
+    {
+        match services()
+            .globals
+            .sync_receivers
+            .write()
+            .await
+            .entry((sender_user, sender_device))
+        {
+            Entry::Occupied(o) => {
+                // Only remove if the device didn't start a different /sync already
+                if o.get().0 == since {
+                    o.remove();
                 }
-                Entry::Vacant(_) => {}
             }
+            Entry::Vacant(_) => {}
         }
     }
 
@@ -335,7 +351,11 @@ async fn sync_helper(
         if !services().rooms.metadata.exists(&room_id)? {
             // This is just a rejected invite, not a room we know
             let event = PduEvent {
-                event_id: EventId::new(services().globals.server_name()).into(),
+                // TODO: fix this to be an actual valid room ID for that version
+                //
+                // Ideally all of this should be valid, but we can't always get enough information
+                // to do so (maybe should be an MSC instead of just making things up for the client?)
+                event_id: EventId::new_v1(services().globals.server_name()),
                 sender: sender_user.clone(),
                 origin_server_ts: utils::millis_since_unix_epoch()
                     .try_into()
@@ -820,100 +840,10 @@ async fn load_joined_room(
             let joined_since_last_sync =
                 since_sender_member.is_none_or(|member| member.membership != MembershipState::Join);
 
-            if since_shortstatehash.is_none() || joined_since_last_sync {
-                // Probably since = 0, we will do an initial sync
-
-                let (joined_member_count, invited_member_count, heroes) = calculate_counts()?;
-
-                let current_state_ids = services()
-                    .rooms
-                    .state_accessor
-                    .state_full_ids(current_shortstatehash)
-                    .await?;
-
-                let mut state_events = Vec::new();
-                let mut lazy_loaded = HashSet::new();
-
-                let mut i = 0;
-                for (shortstatekey, id) in current_state_ids {
-                    let (event_type, state_key) = services()
-                        .rooms
-                        .short
-                        .get_statekey_from_short(shortstatekey)?;
-
-                    if event_type != StateEventType::RoomMember {
-                        let pdu = match services().rooms.timeline.get_pdu(&id)? {
-                            Some(pdu) => pdu,
-                            None => {
-                                error!("Pdu in state not found: {}", id);
-                                continue;
-                            }
-                        };
-                        state_events.push(pdu);
-
-                        i += 1;
-                        if i % 100 == 0 {
-                            tokio::task::yield_now().await;
-                        }
-                    } else if !lazy_load_enabled
-                || full_state
-                || timeline_users.contains(&state_key)
-                // TODO: Delete the following line when this is resolved: https://github.com/vector-im/element-web/issues/22565
-                || *sender_user == state_key
-                    {
-                        let pdu = match services().rooms.timeline.get_pdu(&id)? {
-                            Some(pdu) => pdu,
-                            None => {
-                                error!("Pdu in state not found: {}", id);
-                                continue;
-                            }
-                        };
-
-                        // This check is in case a bad user ID made it into the database
-                        if let Ok(uid) = UserId::parse(&state_key) {
-                            lazy_loaded.insert(uid);
-                        }
-                        state_events.push(pdu);
-
-                        i += 1;
-                        if i % 100 == 0 {
-                            tokio::task::yield_now().await;
-                        }
-                    }
-                }
-
-                // Reset lazy loading because this is an initial sync
-                services().rooms.lazy_loading.lazy_load_reset(
-                    sender_user,
-                    sender_device,
-                    room_id,
-                )?;
-
-                // The state_events above should contain all timeline_users, let's mark them as lazy
-                // loaded.
-                services()
-                    .rooms
-                    .lazy_loading
-                    .lazy_load_mark_sent(
-                        sender_user,
-                        sender_device,
-                        room_id,
-                        lazy_loaded,
-                        next_batchcount,
-                    )
-                    .await;
-
-                (
-                    heroes,
-                    joined_member_count,
-                    invited_member_count,
-                    true,
-                    state_events,
-                )
-            } else {
+            if let Some(since_shortstatehash) = since_shortstatehash
+                && !joined_since_last_sync
+            {
                 // Incremental /sync
-                let since_shortstatehash = since_shortstatehash.unwrap();
-
                 let mut state_events = Vec::new();
                 let mut lazy_loaded = HashSet::new();
 
@@ -964,21 +894,20 @@ async fn load_joined_room(
                         continue;
                     }
 
-                    if !services().rooms.lazy_loading.lazy_load_was_sent_before(
+                    if (!services().rooms.lazy_loading.lazy_load_was_sent_before(
                         sender_user,
                         sender_device,
                         room_id,
                         &event.sender,
-                    )? || lazy_load_send_redundant
-                    {
-                        if let Some(member_event) = services().rooms.state_accessor.room_state_get(
+                    )? || lazy_load_send_redundant)
+                        && let Some(member_event) = services().rooms.state_accessor.room_state_get(
                             room_id,
                             &StateEventType::RoomMember,
                             event.sender.as_str(),
-                        )? {
-                            lazy_loaded.insert(event.sender.clone());
-                            state_events.push(member_event);
-                        }
+                        )?
+                    {
+                        lazy_loaded.insert(event.sender.clone());
+                        state_events.push(member_event);
                     }
                 }
 
@@ -1082,6 +1011,96 @@ async fn load_joined_room(
                     joined_member_count,
                     invited_member_count,
                     joined_since_last_sync,
+                    state_events,
+                )
+            } else {
+                // Probably since = 0, we will do an initial sync
+
+                let (joined_member_count, invited_member_count, heroes) = calculate_counts()?;
+
+                let current_state_ids = services()
+                    .rooms
+                    .state_accessor
+                    .state_full_ids(current_shortstatehash)
+                    .await?;
+
+                let mut state_events = Vec::new();
+                let mut lazy_loaded = HashSet::new();
+
+                let mut i = 0;
+                for (shortstatekey, id) in current_state_ids {
+                    let (event_type, state_key) = services()
+                        .rooms
+                        .short
+                        .get_statekey_from_short(shortstatekey)?;
+
+                    if event_type != StateEventType::RoomMember {
+                        let pdu = match services().rooms.timeline.get_pdu(&id)? {
+                            Some(pdu) => pdu,
+                            None => {
+                                error!("Pdu in state not found: {}", id);
+                                continue;
+                            }
+                        };
+                        state_events.push(pdu);
+
+                        i += 1;
+                        if i % 100 == 0 {
+                            tokio::task::yield_now().await;
+                        }
+                    } else if !lazy_load_enabled
+                || full_state
+                || timeline_users.contains(&state_key)
+                // TODO: Delete the following line when this is resolved: https://github.com/vector-im/element-web/issues/22565
+                || *sender_user == state_key
+                    {
+                        let pdu = match services().rooms.timeline.get_pdu(&id)? {
+                            Some(pdu) => pdu,
+                            None => {
+                                error!("Pdu in state not found: {}", id);
+                                continue;
+                            }
+                        };
+
+                        // This check is in case a bad user ID made it into the database
+                        if let Ok(uid) = UserId::parse(&state_key) {
+                            lazy_loaded.insert(uid);
+                        }
+                        state_events.push(pdu);
+
+                        i += 1;
+                        if i % 100 == 0 {
+                            tokio::task::yield_now().await;
+                        }
+                    }
+                }
+
+                // Reset lazy loading because this is an initial sync
+                services().rooms.lazy_loading.lazy_load_reset(
+                    sender_user,
+                    sender_device,
+                    room_id,
+                )?;
+
+                // The state_events above should contain all timeline_users, let's mark them as lazy
+                // loaded.
+                services()
+                    .rooms
+                    .lazy_loading
+                    .lazy_load_mark_sent(
+                        sender_user,
+                        sender_device,
+                        room_id,
+                        lazy_loaded,
+                        next_batchcount,
+                    )
+                    .await;
+
+                (
+                    heroes,
+                    joined_member_count,
+                    invited_member_count,
+                    true,
                     state_events,
                 )
             }
@@ -1282,8 +1301,25 @@ fn share_encrypted_room(
 pub async fn sync_events_v5_route(
     body: Ruma<sync_events::v5::Request>,
 ) -> Result<sync_events::v5::Response, RumaResponse<UiaaResponse>> {
-    let sender_user = body.sender_user.expect("user is authenticated");
-    let sender_device = body.sender_device.expect("user is authenticated");
+    let Ruma {
+        mut body, sender, ..
+    } = body;
+
+    let UserOrAppserviceInfo {
+        user_id: sender_user,
+        device_id: sender_device,
+        appservice_info: _,
+    } = sender;
+
+    let Some(sender_device) = sender_device else {
+        return Err(RumaResponse(UiaaResponse::MatrixError(RumaError {
+            body: ErrorBody::Standard(StandardErrorBody {
+                kind: ErrorKind::MissingParam,
+                message: "Missing associated device (i.e. is appservice)".to_owned(),
+            }),
+            status_code: StatusCode::BAD_REQUEST,
+        })));
+    };
 
     let cloned_sender_user = sender_user.clone();
     let cloned_sender_device = sender_device.clone();
@@ -1295,7 +1331,6 @@ pub async fn sync_events_v5_route(
             .await;
     });
 
-    let mut body = body.body;
     // Setup watchers, so if there's no response, we can wait for them
     let watcher = services().globals.watch(&sender_user, &sender_device);
 
@@ -1307,14 +1342,14 @@ pub async fn sync_events_v5_route(
         .and_then(|string| string.parse().ok())
         .unwrap_or(0);
 
-    if globalsince == 0 {
-        if let Some(conn_id) = &body.conn_id {
-            services().users.forget_sync_request_connection(
-                sender_user.clone(),
-                sender_device.clone(),
-                conn_id.clone(),
-            )
-        }
+    if globalsince == 0
+        && let Some(conn_id) = &body.conn_id
+    {
+        services().users.forget_sync_request_connection(
+            sender_user.clone(),
+            sender_device.clone(),
+            conn_id.clone(),
+        )
     }
 
     // Get sticky parameters from cache
@@ -1425,42 +1460,36 @@ pub async fn sync_events_v5_route(
                                     continue;
                                 }
                             };
-                            if pdu.kind == TimelineEventType::RoomMember {
-                                if let Some(state_key) = &pdu.state_key {
-                                    let user_id =
-                                        UserId::parse(state_key.clone()).map_err(|_| {
-                                            Error::bad_database("Invalid UserId in member PDU.")
-                                        })?;
+                            if pdu.kind == TimelineEventType::RoomMember
+                                && let Some(state_key) = &pdu.state_key
+                            {
+                                let user_id = UserId::parse(state_key.clone()).map_err(|_| {
+                                    Error::bad_database("Invalid UserId in member PDU.")
+                                })?;
 
-                                    if user_id == sender_user {
-                                        continue;
-                                    }
+                                if user_id == sender_user {
+                                    continue;
+                                }
 
-                                    let new_membership = serde_json::from_str::<
-                                        RoomMemberEventContent,
-                                    >(
-                                        pdu.content.get()
+                                let new_membership =
+                                    serde_json::from_str::<RoomMemberEventContent>(
+                                        pdu.content.get(),
                                     )
                                     .map_err(|_| Error::bad_database("Invalid PDU in database."))?
                                     .membership;
 
-                                    match new_membership {
-                                        MembershipState::Join => {
-                                            // A new user joined an encrypted room
-                                            if !share_encrypted_room(
-                                                &sender_user,
-                                                &user_id,
-                                                room_id,
-                                            )? {
-                                                device_list_changes.insert(user_id);
-                                            }
+                                match new_membership {
+                                    MembershipState::Join => {
+                                        // A new user joined an encrypted room
+                                        if !share_encrypted_room(&sender_user, &user_id, room_id)? {
+                                            device_list_changes.insert(user_id);
                                         }
-                                        MembershipState::Leave => {
-                                            // Write down users that have left encrypted rooms we are in
-                                            left_encrypted_users.insert(user_id);
-                                        }
-                                        _ => {}
                                     }
+                                    MembershipState::Leave => {
+                                        // Write down users that have left encrypted rooms we are in
+                                        left_encrypted_users.insert(user_id);
+                                    }
+                                    _ => {}
                                 }
                             }
                         }

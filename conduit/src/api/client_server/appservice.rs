@@ -2,7 +2,8 @@ use std::time::Instant;
 
 use ruma::api::{
     appservice::ping::send_ping,
-    client::{appservice::request_ping, error::ErrorKind},
+    client::appservice::request_ping,
+    error::{BadStatusErrorData, ErrorKind},
 };
 
 use crate::{Error, Result, Ruma, api::appservice_server};
@@ -14,19 +15,12 @@ use crate::{Error, Result, Ruma, api::appservice_server};
 pub async fn ping_appservice_route(
     body: Ruma<request_ping::v1::Request>,
 ) -> Result<request_ping::v1::Response> {
-    let Ruma::<request_ping::v1::Request> {
-        appservice_info,
-        body,
-        ..
-    } = body;
-
-    let registration = appservice_info
-        .expect("Only appservices can call this endpoint")
-        .registration;
+    let Ruma { body, sender, .. } = body;
+    let registration = sender.registration;
 
     if registration.id != body.appservice_id {
         return Err(Error::BadRequest(
-            ErrorKind::forbidden(),
+            ErrorKind::Forbidden,
             "Appservice ID specified in path does not match the requesting access token",
         ));
     }
@@ -52,10 +46,10 @@ pub async fn ping_appservice_route(
                         )
                     } else if let Some(status_code) = source.status() {
                         Error::BadRequest(
-                            ErrorKind::BadStatus {
+                            ErrorKind::BadStatus(BadStatusErrorData {
                                 status: Some(status_code),
                                 body: Some(source.to_string()),
-                            },
+                            }),
                             "Ping returned error status",
                         )
                     } else {

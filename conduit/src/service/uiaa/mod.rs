@@ -4,9 +4,9 @@ pub use data::Data;
 
 use ruma::{
     CanonicalJsonValue, DeviceId, UserId,
-    api::client::{
+    api::{
+        client::uiaa::{AuthData, AuthType, Password, UiaaInfo, UserIdentifier},
         error::ErrorKind,
-        uiaa::{AuthData, AuthType, Password, UiaaInfo, UserIdentifier},
     },
 };
 use tracing::error;
@@ -64,7 +64,7 @@ impl Service {
                 ..
             }) => {
                 let username = match identifier {
-                    UserIdentifier::UserIdOrLocalpart(username) => username,
+                    UserIdentifier::Matrix(username) => username,
                     _ => {
                         return Err(Error::BadRequest(
                             ErrorKind::Unrecognized,
@@ -74,7 +74,7 @@ impl Service {
                 };
 
                 let user_id = UserId::parse_with_server_name(
-                    username.clone(),
+                    username.user.clone(),
                     services().globals.server_name(),
                 )
                 .map_err(|_| Error::BadRequest(ErrorKind::InvalidParam, "User ID is invalid."))?;
@@ -94,10 +94,10 @@ impl Service {
                     .unwrap_or(false);
 
                 if !hash_matches {
-                    uiaainfo.auth_error = Some(ruma::api::client::error::StandardErrorBody {
-                        kind: ErrorKind::forbidden(),
+                    uiaainfo.auth_error = Some(Box::new(ruma::api::error::StandardErrorBody {
+                        kind: ErrorKind::Forbidden,
                         message: "Invalid username or password.".to_owned(),
-                    });
+                    }));
                     return Ok((false, uiaainfo));
                 }
 
@@ -108,10 +108,10 @@ impl Service {
                 if Some(t.token.trim()) == services().globals.config.registration_token.as_deref() {
                     uiaainfo.completed.push(AuthType::RegistrationToken);
                 } else {
-                    uiaainfo.auth_error = Some(ruma::api::client::error::StandardErrorBody {
-                        kind: ErrorKind::forbidden(),
+                    uiaainfo.auth_error = Some(Box::new(ruma::api::error::StandardErrorBody {
+                        kind: ErrorKind::Forbidden,
                         message: "Invalid registration token.".to_owned(),
-                    });
+                    }));
                     return Ok((false, uiaainfo));
                 }
             }

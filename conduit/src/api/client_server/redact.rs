@@ -16,8 +16,7 @@ use serde_json::value::to_raw_value;
 pub async fn redact_event_route(
     body: Ruma<redact_event::v3::Request>,
 ) -> Result<redact_event::v3::Response> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
-    let body = body.body;
+    let Ruma { body, sender, .. } = body;
 
     let mutex_state = Arc::clone(
         services()
@@ -43,10 +42,10 @@ pub async fn redact_event_route(
                 .expect("event is valid, we just created it"),
                 unsigned: None,
                 state_key: None,
-                redacts: Some(body.event_id.into()),
+                redacts: Some(body.event_id),
                 timestamp: None,
             },
-            sender_user,
+            &sender.user_id,
             &body.room_id,
             &state_lock,
         )

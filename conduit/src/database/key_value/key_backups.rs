@@ -2,8 +2,8 @@ use std::collections::BTreeMap;
 
 use ruma::{
     OwnedRoomId, RoomId, UserId,
-    api::client::{
-        backup::{BackupAlgorithm, KeyBackupData, RoomKeyBackup},
+    api::{
+        client::backup::{BackupAlgorithm, KeyBackupData, RoomKeyBackup},
         error::ErrorKind,
     },
     serde::Raw,

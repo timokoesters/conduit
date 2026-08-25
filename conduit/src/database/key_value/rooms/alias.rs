@@ -1,6 +1,5 @@
 use ruma::{
-    OwnedRoomAliasId, OwnedRoomId, OwnedUserId, RoomAliasId, RoomId, UserId,
-    api::client::error::ErrorKind,
+    OwnedRoomAliasId, OwnedRoomId, OwnedUserId, RoomAliasId, RoomId, UserId, api::error::ErrorKind,
 };
 
 use crate::{Error, Result, database::KeyValueDatabase, service, services, utils};

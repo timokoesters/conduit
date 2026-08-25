@@ -1,17 +1,17 @@
 use super::SESSION_ID_LENGTH;
-use crate::{Error, Result, Ruma, services, utils};
+use crate::{Error, Result, Ruma, api::UserOrAppserviceInfo, services, utils};
 use futures_util::{StreamExt, stream::FuturesUnordered};
 use ruma::{
     OneTimeKeyAlgorithm, OwnedDeviceId, OwnedUserId, UserId,
     api::{
         client::{
-            error::ErrorKind,
             keys::{
                 claim_keys, get_key_changes, get_keys, upload_keys, upload_signatures,
                 upload_signing_keys,
             },
             uiaa::{AuthFlow, AuthType, UiaaInfo},
         },
+        error::ErrorKind,
         federation,
     },
     serde::Raw,
@@ -32,8 +32,20 @@ use tracing::{debug, error};
 pub async fn upload_keys_route(
     body: Ruma<upload_keys::v3::Request>,
 ) -> Result<upload_keys::v3::Response> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
-    let sender_device = body.sender_device.as_ref().expect("user is authenticated");
+    let Ruma { body, sender, .. } = body;
+
+    let UserOrAppserviceInfo {
+        user_id: sender_user,
+        device_id: sender_device,
+        appservice_info: _,
+    } = sender;
+
+    let Some(sender_device) = sender_device else {
+        return Err(Error::BadRequest(
+            ErrorKind::MissingParam,
+            "Missing associated device (i.e. is appservice)",
+        ));
+    };
 
     for (key_key, key_value) in &body.one_time_keys {
         key_value.deserialize().map_err(|_| {
@@ -42,7 +54,7 @@ pub async fn upload_keys_route(
 
         services()
             .users
-            .add_one_time_key(sender_user, sender_device, key_key, key_value)?;
+            .add_one_time_key(&sender_user, &sender_device, key_key, key_value)?;
     }
 
     if let Some(device_keys) = &body.device_keys {
@@ -50,7 +62,7 @@ pub async fn upload_keys_route(
         // This check is needed to assure that signatures are kept
         if services()
             .users
-            .get_device_keys(sender_user, sender_device)?
+            .get_device_keys(&sender_user, &sender_device)?
             .is_none()
         {
             device_keys.deserialize().map_err(|_| {
@@ -59,14 +71,14 @@ pub async fn upload_keys_route(
 
             services()
                 .users
-                .add_device_keys(sender_user, sender_device, device_keys)?;
+                .add_device_keys(&sender_user, &sender_device, device_keys)?;
         }
     }
 
     Ok(upload_keys::v3::Response {
         one_time_key_counts: services()
             .users
-            .count_one_time_keys(sender_user, sender_device)?,
+            .count_one_time_keys(&sender_user, &sender_device)?,
     })
 }
 
@@ -78,10 +90,10 @@ pub async fn upload_keys_route(
 /// - Gets master keys, self-signing keys, user signing keys and device keys.
 /// - The master and self-signing keys contain signatures that the user is allowed to see
 pub async fn get_keys_route(body: Ruma<get_keys::v3::Request>) -> Result<get_keys::v3::Response> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
-
-    let response =
-        get_keys_helper(Some(sender_user), &body.device_keys, |u| u == sender_user).await?;
+    let response = get_keys_helper(Some(&body.sender.user_id), &body.device_keys, |u| {
+        u == body.sender.user_id
+    })
+    .await?;
 
     Ok(response)
 }
@@ -105,8 +117,24 @@ pub async fn claim_keys_route(
 pub async fn upload_signing_keys_route(
     body: Ruma<upload_signing_keys::v3::Request>,
 ) -> Result<upload_signing_keys::v3::Response> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
-    let sender_device = body.sender_device.as_ref().expect("user is authenticated");
+    let Ruma {
+        body,
+        sender,
+        json_body,
+    } = body;
+
+    let UserOrAppserviceInfo {
+        user_id: sender_user,
+        device_id: sender_device,
+        appservice_info: _,
+    } = sender;
+
+    let Some(sender_device) = sender_device else {
+        return Err(Error::BadRequest(
+            ErrorKind::MissingParam,
+            "Missing associated device (i.e. is appservice)",
+        ));
+    };
 
     // UIAA
     let mut uiaainfo = UiaaInfo {
@@ -123,12 +151,12 @@ pub async fn upload_signing_keys_route(
         let (worked, uiaainfo) =
             services()
                 .uiaa
-                .try_auth(sender_user, sender_device, auth, &uiaainfo)?;
+                .try_auth(&sender_user, &sender_device, auth, &uiaainfo)?;
         if !worked {
             return Err(Error::uiaa(uiaainfo));
         }
     // Success!
-    } else if let Some(json) = &body.json_body {
+    } else if let Some(json) = &json_body {
         // Checks whether the request contains keys that are not currently stored in the database,
         // as per [MSC3967](https://github.com/matrix-org/matrix-spec-proposals/pull/3967).
         let req_has_new_keys = || -> Result<bool> {
@@ -139,7 +167,7 @@ pub async fn upload_signing_keys_route(
                     .keys;
                 let current_keys = services()
                     .users
-                    .get_self_signing_key(None, sender_user, &|u| u == sender_user)?
+                    .get_self_signing_key(None, &sender_user, &|u| u == sender_user)?
                     .map(|raw| raw.deserialize())
                     .transpose()
                     .map_err(|_| {
@@ -163,7 +191,7 @@ pub async fn upload_signing_keys_route(
                     .keys;
                 let current_keys = services()
                     .users
-                    .get_self_signing_key(None, sender_user, &|u| u == sender_user)?
+                    .get_self_signing_key(None, &sender_user, &|u| u == sender_user)?
                     .map(|raw| raw.deserialize())
                     .transpose()
                     .map_err(|_| {
@@ -190,7 +218,7 @@ pub async fn upload_signing_keys_route(
                     .keys;
                 let current_keys = services()
                     .users
-                    .get_user_signing_key(sender_user)?
+                    .get_user_signing_key(&sender_user)?
                     .map(|raw| raw.deserialize())
                     .transpose()
                     .map_err(|_| {
@@ -213,14 +241,14 @@ pub async fn upload_signing_keys_route(
 
         if services()
             .users
-            .get_master_key(None, sender_user, &|u| u == sender_user)?
+            .get_master_key(None, &sender_user, &|u| u == sender_user)?
             .is_some()
             && req_has_new_keys()?
         {
             uiaainfo.session = Some(utils::random_string(SESSION_ID_LENGTH));
             services()
                 .uiaa
-                .create(sender_user, sender_device, &uiaainfo, json)?;
+                .create(&sender_user, &sender_device, &uiaainfo, json)?;
             return Err(Error::uiaa(uiaainfo));
         }
     } else {
@@ -229,7 +257,7 @@ pub async fn upload_signing_keys_route(
 
     if let Some(master_key) = &body.master_key {
         services().users.add_cross_signing_keys(
-            sender_user,
+            &sender_user,
             master_key,
             &body.self_signing_key,
             &body.user_signing_key,
@@ -246,8 +274,6 @@ pub async fn upload_signing_keys_route(
 pub async fn upload_signatures_route(
     body: Ruma<upload_signatures::v3::Request>,
 ) -> Result<upload_signatures::v3::Response> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
-
     for (user_id, keys) in &body.signed_keys {
         for (key_id, key) in keys {
             let key = serde_json::to_value(key)
@@ -259,7 +285,7 @@ pub async fn upload_signatures_route(
                     ErrorKind::InvalidParam,
                     "Missing signatures field.",
                 ))?
-                .get(sender_user.to_string())
+                .get(body.sender.user_id.to_string())
                 .ok_or(Error::BadRequest(
                     ErrorKind::InvalidParam,
                     "Invalid user in signatures field.",
@@ -286,7 +312,7 @@ pub async fn upload_signatures_route(
                 );
                 services()
                     .users
-                    .sign_key(user_id, key_id, signature, sender_user)?;
+                    .sign_key(user_id, key_id, signature, &body.sender.user_id)?;
             }
         }
     }
@@ -304,15 +330,13 @@ pub async fn upload_signatures_route(
 pub async fn get_key_changes_route(
     body: Ruma<get_key_changes::v3::Request>,
 ) -> Result<get_key_changes::v3::Response> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
-
     let mut device_list_updates = HashSet::new();
 
     device_list_updates.extend(
         services()
             .users
             .keys_changed(
-                sender_user.as_str(),
+                body.sender.user_id.as_str(),
                 body.from
                     .parse()
                     .map_err(|_| Error::BadRequest(ErrorKind::InvalidParam, "Invalid `from`."))?,
@@ -328,7 +352,7 @@ pub async fn get_key_changes_route(
     for room_id in services()
         .rooms
         .state_cache
-        .rooms_joined(sender_user)
+        .rooms_joined(&body.sender.user_id)
         .filter_map(|r| r.ok())
     {
         device_list_updates.extend(
@@ -427,10 +451,10 @@ pub(crate) async fn get_keys_helper<F: Fn(&UserId) -> bool>(
         {
             self_signing_keys.insert(user_id.to_owned(), self_signing_key);
         }
-        if Some(user_id) == sender_user {
-            if let Some(user_signing_key) = services().users.get_user_signing_key(user_id)? {
-                user_signing_keys.insert(user_id.to_owned(), user_signing_key);
-            }
+        if Some(user_id) == sender_user
+            && let Some(user_signing_key) = services().users.get_user_signing_key(user_id)?
+        {
+            user_signing_keys.insert(user_id.to_owned(), user_signing_key);
         }
     }
 

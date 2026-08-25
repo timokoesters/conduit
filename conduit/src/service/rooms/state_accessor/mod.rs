@@ -7,7 +7,8 @@ use std::{
 pub use data::Data;
 use lru_cache::LruCache;
 use ruma::{
-    EventId, JsOption, OwnedRoomId, OwnedServerName, OwnedUserId, RoomId, ServerName, UserId,
+    EventId, JsOption, OwnedEventId, OwnedRoomId, OwnedServerName, OwnedUserId, RoomId, ServerName,
+    UserId,
     events::{
         StateEventType,
         room::{
@@ -39,7 +40,7 @@ impl Service {
     /// Builds a StateMap by iterating over all keys that start
     /// with state_hash, this gives the full state for the given state_hash.
     #[tracing::instrument(skip(self))]
-    pub async fn state_full_ids(&self, shortstatehash: u64) -> Result<HashMap<u64, Arc<EventId>>> {
+    pub async fn state_full_ids(&self, shortstatehash: u64) -> Result<HashMap<u64, OwnedEventId>> {
         self.db.state_full_ids(shortstatehash).await
     }
 
@@ -57,7 +58,7 @@ impl Service {
         shortstatehash: u64,
         event_type: &StateEventType,
         state_key: &str,
-    ) -> Result<Option<Arc<EventId>>> {
+    ) -> Result<Option<OwnedEventId>> {
         self.db.state_get_id(shortstatehash, event_type, state_key)
     }
 
@@ -264,7 +265,7 @@ impl Service {
         room_id: &RoomId,
         event_type: &StateEventType,
         state_key: &str,
-    ) -> Result<Option<Arc<EventId>>> {
+    ) -> Result<Option<OwnedEventId>> {
         self.db.room_state_get_id(room_id, event_type, state_key)
     }
 

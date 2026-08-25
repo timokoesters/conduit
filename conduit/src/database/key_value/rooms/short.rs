@@ -1,6 +1,4 @@
-use std::sync::Arc;
-
-use ruma::{EventId, RoomId, events::StateEventType};
+use ruma::{EventId, OwnedEventId, RoomId, events::StateEventType};
 
 use crate::{Error, Result, database::KeyValueDatabase, service, services, utils};
 
@@ -107,14 +105,14 @@ impl service::rooms::short::Data for KeyValueDatabase {
         Ok(short)
     }
 
-    fn get_eventid_from_short(&self, shorteventid: u64) -> Result<Arc<EventId>> {
+    fn get_eventid_from_short(&self, shorteventid: u64) -> Result<OwnedEventId> {
         if let Some(id) = self
             .shorteventid_cache
             .lock()
             .unwrap()
             .get_mut(&shorteventid)
         {
-            return Ok(Arc::clone(id));
+            return Ok(id.clone());
         }
 
         let bytes = self
@@ -122,7 +120,7 @@ impl service::rooms::short::Data for KeyValueDatabase {
             .get(&shorteventid.to_be_bytes())?
             .ok_or_else(|| Error::bad_database("Shorteventid does not exist"))?;
 
-        let event_id = EventId::parse_arc(utils::string_from_bytes(&bytes).map_err(|_| {
+        let event_id = EventId::parse(utils::string_from_bytes(&bytes).map_err(|_| {
             Error::bad_database("EventID in shorteventid_eventid is invalid unicode.")
         })?)
         .map_err(|_| Error::bad_database("EventId in shorteventid_eventid is invalid."))?;
@@ -130,7 +128,7 @@ impl service::rooms::short::Data for KeyValueDatabase {
         self.shorteventid_cache
             .lock()
             .unwrap()
-            .insert(shorteventid, Arc::clone(&event_id));
+            .insert(shorteventid, event_id.clone());
 
         Ok(event_id)
     }

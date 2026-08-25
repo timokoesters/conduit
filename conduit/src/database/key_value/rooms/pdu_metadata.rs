@@ -1,6 +1,4 @@
-use std::sync::Arc;
-
-use ruma::{EventId, RoomId, UserId};
+use ruma::{EventId, OwnedEventId, RoomId, UserId};
 
 use crate::{
     Error, PduEvent, Result,
@@ -60,7 +58,7 @@ impl service::rooms::pdu_metadata::Data for KeyValueDatabase {
         ))
     }
 
-    fn mark_as_referenced(&self, room_id: &RoomId, event_ids: &[Arc<EventId>]) -> Result<()> {
+    fn mark_as_referenced(&self, room_id: &RoomId, event_ids: &[OwnedEventId]) -> Result<()> {
         for prev in event_ids {
             let mut key = room_id.as_bytes().to_vec();
             key.extend_from_slice(prev.as_bytes());

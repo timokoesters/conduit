@@ -1,13 +1,18 @@
 mod data;
 pub use data::Data;
-use ruma::{events::AnySyncTimelineEvent, push::PushConditionPowerLevelsCtx};
+use ruma::{
+    api::{IncomingResponseExt, OutgoingRequestExt, auth_scheme::NoAuthentication},
+    events::AnySyncTimelineEvent,
+    profile::DisplayName,
+    push::{HighlightTweakValue, PushConditionPowerLevelsCtx},
+};
 
-use crate::{Error, PduEvent, Result, SUPPORTED_VERSIONS, services};
+use crate::{Error, PduEvent, Result, api::SupportedPathBuilder, services};
 use bytes::BytesMut;
 use ruma::{
     RoomId, UInt, UserId,
     api::{
-        IncomingResponse, OutgoingRequest, SendAccessToken,
+        OutgoingRequest,
         client::push::{Pusher, PusherKind, set_pusher},
         push_gateway::send_event_notification::{
             self,
@@ -20,7 +25,7 @@ use ruma::{
     uint,
 };
 
-use std::{fmt::Debug, mem};
+use std::mem;
 use tracing::{info, warn};
 
 pub struct Service {
@@ -51,15 +56,16 @@ impl Service {
         request: T,
     ) -> Result<T::IncomingResponse>
     where
-        T: OutgoingRequest + Debug,
+        T: OutgoingRequest<Authentication = NoAuthentication>,
+        T::PathBuilder: SupportedPathBuilder,
     {
         let destination = destination.replace("/_matrix/push/v1/notify", "");
 
         let http_request = request
             .try_into_http_request::<BytesMut>(
                 &destination,
-                SendAccessToken::IfRequired(""),
-                &SUPPORTED_VERSIONS,
+                (),
+                <T::PathBuilder as SupportedPathBuilder>::input(),
             )
             .map_err(|e| {
                 warn!("Failed to find destination {}: {}", destination, e);
@@ -110,7 +116,7 @@ impl Service {
 
                 let response = T::IncomingResponse::try_from_http_response(
                     http_response_builder
-                        .body(body)
+                        .body(body.as_ref())
                         .expect("reqwest body is valid http body"),
                 );
                 response.map_err(|_| {
@@ -190,16 +196,16 @@ impl Service {
         pdu: &Raw<AnySyncTimelineEvent>,
         room_id: &RoomId,
     ) -> Result<&'a [Action]> {
-        let ctx = PushConditionRoomCtx {
-            room_id: room_id.to_owned(),
-            member_count: 10_u32.into(), // TODO: get member count efficiently
-            user_id: user.to_owned(),
-            user_display_name: services()
+        let ctx = PushConditionRoomCtx::new(
+            room_id.to_owned(),
+            10_u32.into(), // TODO: get member count efficiently
+            user.to_owned(),
+            services()
                 .users
-                .displayname(user)?
+                .static_profile_field::<DisplayName>(user)?
                 .unwrap_or_else(|| user.localpart().to_owned()),
-            power_levels: Some(power_levels),
-        };
+        )
+        .with_power_levels(power_levels);
 
         Ok(ruleset.get_actions(pdu, &ctx).await)
     }
@@ -240,9 +246,12 @@ impl Service {
                 notifi.counts = NotificationCounts::new(unread, uint!(0));
 
                 if event.kind == TimelineEventType::RoomEncrypted
-                    || tweaks
-                        .iter()
-                        .any(|t| matches!(t, Tweak::Highlight(true) | Tweak::Sound(_)))
+                    || tweaks.iter().any(|t| {
+                        matches!(
+                            t,
+                            Tweak::Highlight(HighlightTweakValue::Yes) | Tweak::Sound(_)
+                        )
+                    })
                 {
                     notifi.prio = NotificationPriority::High
                 }
@@ -260,7 +269,9 @@ impl Service {
                             event.state_key.as_deref() == Some(event.sender.as_str());
                     }
 
-                    notifi.sender_display_name = services().users.displayname(&event.sender)?;
+                    notifi.sender_display_name = services()
+                        .users
+                        .static_profile_field::<DisplayName>(&event.sender)?;
 
                     notifi.room_name =
                         services().rooms.state_accessor.get_name(&event.room_id())?;

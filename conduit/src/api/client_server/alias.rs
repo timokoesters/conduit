@@ -1,17 +1,16 @@
 use crate::{Error, Result, Ruma, services};
-use ruma::api::client::{
-    alias::{create_alias, delete_alias, get_alias},
+use ruma::api::{
+    client::alias::{create_alias, delete_alias, get_alias},
     error::ErrorKind,
 };
 
 /// # `PUT /_matrix/client/r0/directory/room/{roomAlias}`
 ///
 /// Creates a new room alias on this server.
+#[conduit_macros::rate_limiting(ClientRestriction::CreateAlias)]
 pub async fn create_alias_route(
     body: Ruma<create_alias::v3::Request>,
 ) -> Result<create_alias::v3::Response> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
-
     if body.room_alias.server_name() != services().globals.server_name() {
         return Err(Error::BadRequest(
             ErrorKind::InvalidParam,
@@ -19,7 +18,7 @@ pub async fn create_alias_route(
         ));
     }
 
-    if let Some(ref info) = body.appservice_info {
+    if let Some(ref info) = body.sender.appservice_info {
         if !info.aliases.is_match(body.room_alias.as_str()) {
             return Err(Error::BadRequest(
                 ErrorKind::Exclusive,
@@ -49,7 +48,7 @@ pub async fn create_alias_route(
     services()
         .rooms
         .alias
-        .set_alias(&body.room_alias, &body.room_id, sender_user)?;
+        .set_alias(&body.room_alias, &body.room_id, &body.sender.user_id)?;
 
     Ok(create_alias::v3::Response::new())
 }
@@ -62,8 +61,6 @@ pub async fn create_alias_route(
 pub async fn delete_alias_route(
     body: Ruma<delete_alias::v3::Request>,
 ) -> Result<delete_alias::v3::Response> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
-
     if body.room_alias.server_name() != services().globals.server_name() {
         return Err(Error::BadRequest(
             ErrorKind::InvalidParam,
@@ -71,7 +68,7 @@ pub async fn delete_alias_route(
         ));
     }
 
-    if let Some(ref info) = body.appservice_info {
+    if let Some(info) = &body.sender.appservice_info {
         if !info.aliases.is_match(body.room_alias.as_str()) {
             return Err(Error::BadRequest(
                 ErrorKind::Exclusive,
@@ -92,7 +89,7 @@ pub async fn delete_alias_route(
     services()
         .rooms
         .alias
-        .remove_alias(&body.room_alias, sender_user)?;
+        .remove_alias(&body.room_alias, &body.sender.user_id)?;
 
     // TODO: update alt_aliases?
 

@@ -1,9 +1,8 @@
 mod data;
-use std::sync::Arc;
 
 pub use data::Data;
 use ruma::{
-    EventId, RoomId, UInt, UserId,
+    EventId, OwnedEventId, RoomId, UInt, UserId,
     api::{Direction, client::relations::get_relating_events},
     events::{TimelineEventType, relation::RelationType},
 };
@@ -221,7 +220,7 @@ impl Service {
     }
 
     #[tracing::instrument(skip(self, room_id, event_ids))]
-    pub fn mark_as_referenced(&self, room_id: &RoomId, event_ids: &[Arc<EventId>]) -> Result<()> {
+    pub fn mark_as_referenced(&self, room_id: &RoomId, event_ids: &[OwnedEventId]) -> Result<()> {
         self.db.mark_as_referenced(room_id, event_ids)
     }
 

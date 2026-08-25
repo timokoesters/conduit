@@ -1,12 +1,16 @@
 use crate::{
-    Error, Result, Ruma, api::client_server::invite_helper, service::pdu::PduBuilder, services,
+    Error, Result, Ruma,
+    api::{UserOrAppserviceInfo, client_server::invite_helper},
+    service::pdu::PduBuilder,
+    services,
+    utils::BlurHash,
 };
 use ruma::{
     CanonicalJsonObject, CanonicalJsonValue, Int, OwnedRoomAliasId, OwnedUserId, RoomAliasId,
     RoomVersionId,
-    api::client::{
+    api::{
+        client::room::{self, aliases, create_room, get_room_event, upgrade_room},
         error::ErrorKind,
-        room::{self, aliases, create_room, get_room_event, upgrade_room},
     },
     events::{
         StateEventType, TimelineEventType,
@@ -24,6 +28,7 @@ use ruma::{
         },
     },
     int,
+    profile::{AvatarUrl, DisplayName},
     serde::JsonObject,
 };
 use serde::Deserialize;
@@ -57,14 +62,20 @@ pub async fn create_room_route(
 ) -> Result<create_room::v3::Response> {
     use create_room::v3::RoomPreset;
 
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
+    let Ruma { body, sender, .. } = body;
+
+    let UserOrAppserviceInfo {
+        user_id: sender_user,
+        device_id: _,
+        appservice_info,
+    } = sender;
 
     if !services().globals.allow_room_creation()
-        && body.appservice_info.is_none()
-        && !services().users.is_admin(sender_user)?
+        && appservice_info.is_none()
+        && !services().users.is_admin(&sender_user)?
     {
         return Err(Error::BadRequest(
-            ErrorKind::forbidden(),
+            ErrorKind::Forbidden,
             "Room creation has been disabled.",
         ));
     }
@@ -96,8 +107,8 @@ pub async fn create_room_route(
                 }
             })?;
 
-    if let Some(ref alias) = alias {
-        if let Some(ref info) = body.appservice_info {
+    if let Some(alias) = &alias {
+        if let Some(info) = &appservice_info {
             if !info.aliases.is_match(alias.as_str()) {
                 return Err(Error::BadRequest(
                     ErrorKind::Exclusive,
@@ -242,13 +253,14 @@ pub async fn create_room_route(
         .timeline
         .send_create_room(
             to_raw_value(&content).expect("event is valid, we just created it"),
-            sender_user,
+            &sender_user,
             &rules,
         )
         .await?;
     let state_lock = mutex_state.lock().await;
 
     // 2. Let the room creator join
+    let profile = services().users.profile(&sender_user)?;
     services()
         .rooms
         .timeline
@@ -257,11 +269,11 @@ pub async fn create_room_route(
                 event_type: TimelineEventType::RoomMember,
                 content: to_raw_value(&RoomMemberEventContent {
                     membership: MembershipState::Join,
-                    displayname: services().users.displayname(sender_user)?,
-                    avatar_url: services().users.avatar_url(sender_user)?,
+                    displayname: profile.get_static::<DisplayName>().ok().flatten(),
+                    avatar_url: profile.get_static::<AvatarUrl>().ok().flatten(),
                     is_direct: Some(body.is_direct),
                     third_party_invite: None,
-                    blurhash: services().users.blurhash(sender_user)?,
+                    blurhash: profile.get_static::<BlurHash>().ok().flatten(),
                     reason: None,
                     join_authorized_via_users_server: None,
                 })
@@ -271,7 +283,7 @@ pub async fn create_room_route(
                 redacts: None,
                 timestamp: None,
             },
-            sender_user,
+            &sender_user,
             &room_id,
             &state_lock,
         )
@@ -308,7 +320,7 @@ pub async fn create_room_route(
                 redacts: None,
                 timestamp: None,
             },
-            sender_user,
+            &sender_user,
             &room_id,
             &state_lock,
         )
@@ -332,7 +344,7 @@ pub async fn create_room_route(
                     redacts: None,
                     timestamp: None,
                 },
-                sender_user,
+                &sender_user,
                 &room_id,
                 &state_lock,
             )
@@ -359,7 +371,7 @@ pub async fn create_room_route(
                 redacts: None,
                 timestamp: None,
             },
-            sender_user,
+            &sender_user,
             &room_id,
             &state_lock,
         )
@@ -381,7 +393,7 @@ pub async fn create_room_route(
                 redacts: None,
                 timestamp: None,
             },
-            sender_user,
+            &sender_user,
             &room_id,
             &state_lock,
         )
@@ -404,7 +416,7 @@ pub async fn create_room_route(
                 redacts: None,
                 timestamp: None,
             },
-            sender_user,
+            &sender_user,
             &room_id,
             &state_lock,
         )
@@ -430,7 +442,7 @@ pub async fn create_room_route(
         services()
             .rooms
             .timeline
-            .build_and_append_pdu(pdu_builder, sender_user, &room_id, &state_lock)
+            .build_and_append_pdu(pdu_builder, &sender_user, &room_id, &state_lock)
             .await?;
     }
 
@@ -449,7 +461,7 @@ pub async fn create_room_route(
                     redacts: None,
                     timestamp: None,
                 },
-                sender_user,
+                &sender_user,
                 &room_id,
                 &state_lock,
             )
@@ -470,7 +482,7 @@ pub async fn create_room_route(
                     redacts: None,
                     timestamp: None,
                 },
-                sender_user,
+                &sender_user,
                 &room_id,
                 &state_lock,
             )
@@ -480,7 +492,7 @@ pub async fn create_room_route(
     // 8. Events implied by invite (and TODO: invite_3pid)
     drop(state_lock);
     for user_id in &body.invite {
-        let _ = invite_helper(sender_user, user_id, &room_id, None, body.is_direct).await;
+        let _ = invite_helper(&sender_user, user_id, &room_id, None, body.is_direct).await;
     }
 
     // Homeserver specific stuff
@@ -488,7 +500,7 @@ pub async fn create_room_route(
         services()
             .rooms
             .alias
-            .set_alias(&alias, &room_id, sender_user)?;
+            .set_alias(&alias, &room_id, &sender_user)?;
     }
 
     if body.visibility == room::Visibility::Public {
@@ -508,8 +520,6 @@ pub async fn create_room_route(
 pub async fn get_room_event_route(
     body: Ruma<get_room_event::v3::Request>,
 ) -> Result<get_room_event::v3::Response> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
-
     let event = services()
         .rooms
         .timeline
@@ -520,12 +530,12 @@ pub async fn get_room_event_route(
         })?;
 
     if !services().rooms.state_accessor.user_can_see_event(
-        sender_user,
+        &body.sender.user_id,
         &event.room_id(),
         &body.event_id,
     )? {
         return Err(Error::BadRequest(
-            ErrorKind::forbidden(),
+            ErrorKind::Forbidden,
             "You don't have permission to view this event.",
         ));
     }
@@ -546,15 +556,13 @@ pub async fn get_room_event_route(
 pub async fn get_room_aliases_route(
     body: Ruma<aliases::v3::Request>,
 ) -> Result<aliases::v3::Response> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
-
     if !services()
         .rooms
         .state_cache
-        .is_joined(sender_user, &body.room_id)?
+        .is_joined(&body.sender.user_id, &body.room_id)?
     {
         return Err(Error::BadRequest(
-            ErrorKind::forbidden(),
+            ErrorKind::Forbidden,
             "You don't have permission to view this room.",
         ));
     }
@@ -582,7 +590,7 @@ pub async fn get_room_aliases_route(
 pub async fn upgrade_room_route(
     body: Ruma<upgrade_room::v3::Request>,
 ) -> Result<upgrade_room::v3::Response> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
+    let sender_user = &body.sender.user_id;
 
     if !services()
         .globals
@@ -734,6 +742,7 @@ pub async fn upgrade_room_route(
     let state_lock = mutex_state.lock().await;
 
     // Join the new room
+    let profile = services().users.profile(sender_user)?;
     services()
         .rooms
         .timeline
@@ -742,11 +751,11 @@ pub async fn upgrade_room_route(
                 event_type: TimelineEventType::RoomMember,
                 content: to_raw_value(&RoomMemberEventContent {
                     membership: MembershipState::Join,
-                    displayname: services().users.displayname(sender_user)?,
-                    avatar_url: services().users.avatar_url(sender_user)?,
+                    displayname: profile.get_static::<DisplayName>().ok().flatten(),
+                    avatar_url: profile.get_static::<AvatarUrl>().ok().flatten(),
                     is_direct: None,
                     third_party_invite: None,
-                    blurhash: services().users.blurhash(sender_user)?,
+                    blurhash: profile.get_static::<BlurHash>().ok().flatten(),
                     reason: None,
                     join_authorized_via_users_server: None,
                 })
@@ -817,14 +826,13 @@ pub async fn upgrade_room_route(
                 } else if old_rules.explicitly_privilege_room_creators {
                     users.insert(create_event.sender.to_string(), Int::MAX.into());
 
-                    if old_rules.additional_room_creators {
-                        if let Some(CanonicalJsonValue::Array(creators)) =
+                    if old_rules.additional_room_creators
+                        && let Some(CanonicalJsonValue::Array(creators)) =
                             create_event_content.get("additional_creators")
-                        {
-                            for creator in creators {
-                                if let CanonicalJsonValue::String(creator) = creator {
-                                    users.insert(creator.to_owned(), Int::MAX.into());
-                                }
+                    {
+                        for creator in creators {
+                            if let CanonicalJsonValue::String(creator) = creator {
+                                users.insert(creator.to_owned(), Int::MAX.into());
                             }
                         }
                     }

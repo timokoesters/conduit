@@ -1,7 +1,10 @@
 use crate::{Error, Result, Ruma, service::rooms::timeline::PduCount, services};
 use ruma::{
     MilliSecondsSinceUnixEpoch,
-    api::client::{error::ErrorKind, read_marker::set_read_marker, receipt::create_receipt},
+    api::{
+        client::{read_marker::set_read_marker, receipt::create_receipt},
+        error::ErrorKind,
+    },
     events::{
         RoomAccountDataEventType,
         receipt::{ReceiptThread, ReceiptType},
@@ -18,7 +21,7 @@ use std::collections::BTreeMap;
 pub async fn set_read_marker_route(
     body: Ruma<set_read_marker::v3::Request>,
 ) -> Result<set_read_marker::v3::Response> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
+    let sender_user = &body.sender.user_id;
 
     if let Some(fully_read) = &body.fully_read {
         let fully_read_event = ruma::events::fully_read::FullyReadEvent {
@@ -101,7 +104,7 @@ pub async fn set_read_marker_route(
 pub async fn create_receipt_route(
     body: Ruma<create_receipt::v3::Request>,
 ) -> Result<create_receipt::v3::Response> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
+    let sender_user = &body.sender.user_id;
 
     if matches!(
         &body.receipt_type,
@@ -130,7 +133,7 @@ pub async fn create_receipt_route(
         create_receipt::v3::ReceiptType::Read => {
             let mut user_receipts = BTreeMap::new();
             user_receipts.insert(
-                sender_user.clone(),
+                sender_user.to_owned(),
                 ruma::events::receipt::Receipt {
                     ts: Some(MilliSecondsSinceUnixEpoch::now()),
                     thread: ReceiptThread::Unthreaded,

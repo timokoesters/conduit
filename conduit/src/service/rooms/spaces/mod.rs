@@ -7,7 +7,8 @@ use lru_cache::LruCache;
 use ruma::{
     OwnedRoomId, OwnedServerName, RoomId, ServerName, UInt, UserId,
     api::{
-        client::{self, error::ErrorKind, space::SpaceHierarchyRoomsChunk},
+        client::{self, space::SpaceHierarchyRoomsChunk},
+        error::ErrorKind,
         federation::{self, space::SpaceHierarchyParentSummary},
     },
     events::{
@@ -360,7 +361,7 @@ impl Service {
             debug!("User is not allowed to see room {room_id}");
             // This error will be caught later
             return Err(Error::BadRequest(
-                ErrorKind::forbidden(),
+                ErrorKind::Forbidden,
                 "User is not allowed to see the room",
             ));
         }
@@ -530,13 +531,13 @@ impl Service {
                     }
                     (Some(SummaryAccessibility::Inaccessible), true) => {
                         return Err(Error::BadRequest(
-                            ErrorKind::forbidden(),
+                            ErrorKind::Forbidden,
                             "The requested room is inaccessible",
                         ));
                     }
                     (None, true) => {
                         return Err(Error::BadRequest(
-                            ErrorKind::forbidden(),
+                            ErrorKind::Forbidden,
                             "The requested room was not found",
                         ));
                     }

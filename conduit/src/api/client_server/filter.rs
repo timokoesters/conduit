@@ -1,7 +1,7 @@
 use crate::{Error, Result, Ruma, services};
-use ruma::api::client::{
+use ruma::api::{
+    client::filter::{create_filter, get_filter},
     error::ErrorKind,
-    filter::{create_filter, get_filter},
 };
 
 /// # `GET /_matrix/client/r0/user/{userId}/filter/{filterId}`
@@ -12,8 +12,10 @@ use ruma::api::client::{
 pub async fn get_filter_route(
     body: Ruma<get_filter::v3::Request>,
 ) -> Result<get_filter::v3::Response> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
-    let filter = match services().users.get_filter(sender_user, &body.filter_id)? {
+    let filter = match services()
+        .users
+        .get_filter(&body.sender.user_id, &body.filter_id)?
+    {
         Some(filter) => filter,
         None => return Err(Error::BadRequest(ErrorKind::NotFound, "Filter not found.")),
     };
@@ -27,8 +29,9 @@ pub async fn get_filter_route(
 pub async fn create_filter_route(
     body: Ruma<create_filter::v3::Request>,
 ) -> Result<create_filter::v3::Response> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
     Ok(create_filter::v3::Response::new(
-        services().users.create_filter(sender_user, &body.filter)?,
+        services()
+            .users
+            .create_filter(&body.sender.user_id, &body.filter)?,
     ))
 }

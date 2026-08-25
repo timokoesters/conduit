@@ -8,8 +8,8 @@ use std::{
 
 pub use data::Data;
 use ruma::{
-    DeviceId, MilliSecondsSinceUnixEpoch, OneTimeKeyAlgorithm, OwnedDeviceId, OwnedMxcUri,
-    OwnedOneTimeKeyId, OwnedRoomId, OwnedUserId, UInt, UserId,
+    DeviceId, MilliSecondsSinceUnixEpoch, OneTimeKeyAlgorithm, OwnedDeviceId, OwnedOneTimeKeyId,
+    OwnedRoomId, OwnedUserId, UInt, UserId,
     api::client::{
         device::Device,
         filter::FilterDefinition,
@@ -17,6 +17,7 @@ use ruma::{
     },
     encryption::{CrossSigningKey, DeviceKeys, OneTimeKey},
     events::AnyToDeviceEvent,
+    profile::{ProfileFieldName, ProfileFieldValue, StaticProfileField, UserProfile},
     serde::Raw,
 };
 use tokio::{sync::Mutex, time::interval};
@@ -321,34 +322,40 @@ impl Service {
         self.db.set_password(user_id, password)
     }
 
-    /// Returns the displayname of a user on this homeserver.
-    pub fn displayname(&self, user_id: &UserId) -> Result<Option<String>> {
-        self.db.displayname(user_id)
+    /// Returns the complete profile of a user on this homeserver.
+    pub fn profile(&self, user_id: &UserId) -> Result<UserProfile> {
+        self.db.profile(user_id)
     }
 
-    /// Sets a new displayname or removes it if displayname is None. You still need to nofify all rooms of this change.
-    pub fn set_displayname(&self, user_id: &UserId, displayname: Option<String>) -> Result<()> {
-        self.db.set_displayname(user_id, displayname)
+    /// Returns the specified key from the profile of a user on this homeserver.
+    pub fn profile_field(
+        &self,
+        user_id: &UserId,
+        key: &ProfileFieldName,
+    ) -> Result<Option<serde_json::Value>> {
+        self.db.profile_field(user_id, key)
     }
 
-    /// Get the avatar_url of a user.
-    pub fn avatar_url(&self, user_id: &UserId) -> Result<Option<OwnedMxcUri>> {
-        self.db.avatar_url(user_id)
+    /// Returns the specified key from the profile of a user on this homeserver.
+    pub fn static_profile_field<T: StaticProfileField>(
+        &self,
+        user_id: &UserId,
+    ) -> Result<Option<<T as StaticProfileField>::Value>> {
+        let profile = self.db.profile(user_id)?;
+
+        profile
+            .get_static::<T>()
+            .map_err(|_| Error::bad_database("Profile in db is invalid."))
     }
 
-    /// Sets a new avatar_url or removes it if avatar_url is None.
-    pub fn set_avatar_url(&self, user_id: &UserId, avatar_url: Option<OwnedMxcUri>) -> Result<()> {
-        self.db.set_avatar_url(user_id, avatar_url)
+    /// Sets the specified profile key of a user on this homeserver.
+    pub fn set_profile_field(&self, user_id: &UserId, value: &ProfileFieldValue) -> Result<()> {
+        self.db.set_profile_field(user_id, value)
     }
 
-    /// Get the blurhash of a user.
-    pub fn blurhash(&self, user_id: &UserId) -> Result<Option<String>> {
-        self.db.blurhash(user_id)
-    }
-
-    /// Sets a new avatar_url or removes it if avatar_url is None.
-    pub fn set_blurhash(&self, user_id: &UserId, blurhash: Option<String>) -> Result<()> {
-        self.db.set_blurhash(user_id, blurhash)
+    /// Deletes the specified profile key of a user on this homeserver.
+    pub fn delete_profile_field(&self, user_id: &UserId, key: &ProfileFieldName) -> Result<()> {
+        self.db.delete_profile_field(user_id, key)
     }
 
     /// Adds a new device to a user.

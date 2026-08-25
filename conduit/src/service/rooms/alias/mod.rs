@@ -7,11 +7,7 @@ use tracing::warn;
 use crate::{Error, Result, services};
 use ruma::{
     OwnedRoomAliasId, OwnedRoomId, RoomAliasId, RoomId, UserId,
-    api::{
-        appservice,
-        client::{alias::get_alias, error::ErrorKind},
-        federation,
-    },
+    api::{appservice, client::alias::get_alias, error::ErrorKind, federation},
     events::StateEventType,
 };
 
@@ -25,7 +21,7 @@ impl Service {
         if alias == services().globals.admin_alias() && user_id != services().globals.server_user()
         {
             Err(Error::BadRequest(
-                ErrorKind::forbidden(),
+                ErrorKind::Forbidden,
                 "Only the server user can set this alias",
             ))
         } else {
@@ -69,7 +65,7 @@ impl Service {
             self.db.remove_alias(alias)
         } else {
             Err(Error::BadRequest(
-                ErrorKind::forbidden(),
+                ErrorKind::Forbidden,
                 "User is not permitted to remove this alias.",
             ))
         }

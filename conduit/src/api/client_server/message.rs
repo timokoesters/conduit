@@ -1,12 +1,13 @@
 use crate::{
     Error, Result, Ruma,
+    api::UserOrAppserviceInfo,
     service::{pdu::PduBuilder, rooms::timeline::PduCount},
     services, utils,
 };
 use ruma::{
-    api::client::{
+    api::{
+        client::message::{get_message_events, send_message_event},
         error::ErrorKind,
-        message::{get_message_events, send_message_event},
     },
     events::{StateEventType, TimelineEventType},
 };
@@ -22,11 +23,17 @@ use std::{
 /// - Is a NOOP if the txn id was already used before and returns the same event id again
 /// - The only requirement for the content is that it has to be valid json
 /// - Tries to send the event into the room, auth rules will determine if it is allowed
+#[conduit_macros::rate_limiting(ClientRestriction::SendEvent)]
 pub async fn send_message_event_route(
     body: Ruma<send_message_event::v3::Request>,
 ) -> Result<send_message_event::v3::Response> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
-    let sender_device = body.sender_device.as_deref();
+    let Ruma { body, sender, .. } = body;
+
+    let UserOrAppserviceInfo {
+        user_id: sender_user,
+        device_id: sender_device,
+        appservice_info,
+    } = sender;
 
     let mutex_state = Arc::clone(
         services()
@@ -44,17 +51,17 @@ pub async fn send_message_event_route(
         && !services().globals.allow_encryption()
     {
         return Err(Error::BadRequest(
-            ErrorKind::forbidden(),
+            ErrorKind::Forbidden,
             "Encryption has been disabled",
         ));
     }
 
     // Check if this is a new transaction id
-    if let Some(response) =
-        services()
-            .transaction_ids
-            .existing_txnid(sender_user, sender_device, &body.txn_id)?
-    {
+    if let Some(response) = services().transaction_ids.existing_txnid(
+        &sender_user,
+        sender_device.as_deref(),
+        &body.txn_id,
+    )? {
         // The client might have sent a txnid of the /sendToDevice endpoint
         // This txnid has no response associated with it
         if response.is_empty() {
@@ -80,26 +87,26 @@ pub async fn send_message_event_route(
         .build_and_append_pdu(
             PduBuilder {
                 event_type: body.event_type.to_string().into(),
-                content: serde_json::from_str(body.body.body.json().get())
+                content: serde_json::from_str(body.body.json().get())
                     .map_err(|_| Error::BadRequest(ErrorKind::BadJson, "Invalid JSON body."))?,
                 unsigned: Some(unsigned),
                 state_key: None,
                 redacts: None,
-                timestamp: if body.appservice_info.is_some() {
+                timestamp: if appservice_info.is_some() {
                     body.timestamp
                 } else {
                     None
                 },
             },
-            sender_user,
+            &sender_user,
             &body.room_id,
             &state_lock,
         )
         .await?;
 
     services().transaction_ids.add_txnid(
-        sender_user,
-        sender_device,
+        &sender_user,
+        sender_device.as_deref(),
         &body.txn_id,
         event_id.as_bytes(),
     )?;
@@ -120,8 +127,20 @@ pub async fn send_message_event_route(
 pub async fn get_message_events_route(
     body: Ruma<get_message_events::v3::Request>,
 ) -> Result<get_message_events::v3::Response> {
-    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
-    let sender_device = body.sender_device.as_ref().expect("user is authenticated");
+    let Ruma { body, sender, .. } = body;
+
+    let UserOrAppserviceInfo {
+        user_id: sender_user,
+        device_id: sender_device,
+        appservice_info: _,
+    } = sender;
+
+    let Some(sender_device) = sender_device else {
+        return Err(Error::BadRequest(
+            ErrorKind::MissingParam,
+            "Missing associated device (i.e. is appservice)",
+        ));
+    };
 
     let from = match body.from.clone() {
         Some(from) => PduCount::try_from_string(&from)?,
@@ -139,7 +158,7 @@ pub async fn get_message_events_route(
     services()
         .rooms
         .lazy_loading
-        .lazy_load_confirm_delivery(sender_user, sender_device, &body.room_id, from)
+        .lazy_load_confirm_delivery(&sender_user, &sender_device, &body.room_id, from)
         .await?;
 
     let limit = u64::from(body.limit).min(100) as usize;
@@ -155,14 +174,14 @@ pub async fn get_message_events_route(
             let events_after: Vec<_> = services()
                 .rooms
                 .timeline
-                .pdus_after(sender_user, &body.room_id, from)?
+                .pdus_after(&sender_user, &body.room_id, from)?
                 .take(limit)
                 .filter_map(|r| r.ok()) // Filter out buggy events
                 .filter(|(_, pdu)| {
                     services()
                         .rooms
                         .state_accessor
-                        .user_can_see_event(sender_user, &body.room_id, &pdu.event_id)
+                        .user_can_see_event(&sender_user, &body.room_id, &pdu.event_id)
                         .unwrap_or(false)
                 })
                 .take_while(|&(k, _)| Some(k) != to) // Stop at `to`
@@ -204,14 +223,14 @@ pub async fn get_message_events_route(
             let events_before: Vec<_> = services()
                 .rooms
                 .timeline
-                .pdus_until(sender_user, &body.room_id, from)?
+                .pdus_until(&sender_user, &body.room_id, from)?
                 .take(limit)
                 .filter_map(|r| r.ok()) // Filter out buggy events
                 .filter(|(_, pdu)| {
                     services()
                         .rooms
                         .state_accessor
-                        .user_can_see_event(sender_user, &body.room_id, &pdu.event_id)
+                        .user_can_see_event(&sender_user, &body.room_id, &pdu.event_id)
                         .unwrap_or(false)
                 })
                 .take_while(|&(k, _)| Some(k) != to) // Stop at `to`
