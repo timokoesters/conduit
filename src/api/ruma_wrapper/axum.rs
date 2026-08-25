@@ -106,7 +106,7 @@ where
 
         let (sender_user, sender_device, sender_servername, appservice_info) =
             match (metadata.authentication, token) {
-                (_, Token::Invalid) => {
+                (AuthScheme::None, Token::Invalid) => {
                     // OpenID endpoint uses a query param with the same name, drop this once query params for user auth are removed from the spec
                     if query_params.access_token.is_some() {
                         (None, None, None, None)
@@ -116,6 +116,12 @@ where
                             "Unknown access token.",
                         ));
                     }
+                }
+                (_, Token::Invalid) => {
+                    return Err(Error::BadRequest(
+                        ErrorKind::UnknownToken { soft_logout: false },
+                        "Unknown access token.",
+                    ));
                 }
                 (
                     AuthScheme::AccessToken | AuthScheme::AppserviceToken,

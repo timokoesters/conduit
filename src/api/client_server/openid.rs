@@ -1,8 +1,11 @@
 use std::time::Duration;
 
-use ruma::{api::client::account, authentication::TokenType};
+use ruma::{
+    api::client::{account, error::ErrorKind},
+    authentication::TokenType,
+};
 
-use crate::{services, Result, Ruma};
+use crate::{services, Error, Result, Ruma};
 
 /// # `POST /_matrix/client/r0/user/{userId}/openid/request_token`
 ///
@@ -12,6 +15,15 @@ use crate::{services, Result, Ruma};
 pub async fn create_openid_token_route(
     body: Ruma<account::request_openid_token::v3::Request>,
 ) -> Result<account::request_openid_token::v3::Response> {
+    let sender_user = body.sender_user.as_ref().expect("user is authenticated");
+
+    if &body.user_id != sender_user {
+        return Err(Error::BadRequest(
+            ErrorKind::InvalidParam,
+            "requested user ID does not match sender",
+        ));
+    }
+
     let (access_token, expires_in) = services().users.create_openid_token(&body.user_id)?;
 
     Ok(account::request_openid_token::v3::Response {
