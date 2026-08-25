@@ -156,7 +156,7 @@ where
             (_, Token::AuthRateLimited(instant)) => {
                 return Err(instant);
             }
-            (_, Token::Invalid) => {
+            (AuthScheme::None, Token::Invalid) => {
                 // OpenID endpoint uses a query param with the same name, drop this once query params for user auth are removed from the spec
                 if query_params.access_token.is_some() {
                     (None, None, None, None)
@@ -177,6 +177,23 @@ where
                         "Unknown access token.",
                     ));
                 }
+            }
+            (_, Token::Invalid) => {
+                if let Some(addr) = sender_ip_address {
+                    services()
+                        .rate_limiting
+                        .update_post_auth_failure(addr)
+                        .await;
+                } else {
+                    error!(
+                        "Auth failure occurred, but IP address was not extracted. Please check your Conduit & reverse proxy configuration, as if nothing is done, an attacker can brute-force access tokens and login to user's accounts"
+                    );
+                }
+
+                return Err(Error::BadRequest(
+                    ErrorKind::UnknownToken { soft_logout: false },
+                    "Unknown access token.",
+                ));
             }
             (AuthScheme::AccessToken, Token::Appservice(info)) => {
                 let user_id = query_params
