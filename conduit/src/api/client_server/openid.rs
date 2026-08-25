@@ -12,7 +12,9 @@ use crate::{Result, Ruma, services};
 pub async fn create_openid_token_route(
     body: Ruma<account::request_openid_token::v3::Request>,
 ) -> Result<account::request_openid_token::v3::Response> {
-    let (access_token, expires_in) = services().users.create_openid_token(&body.user_id)?;
+    let sender_user = body.sender_user.expect("user is authenticated");
+
+    let (access_token, expires_in) = services().users.create_openid_token(&sender_user)?;
 
     Ok(account::request_openid_token::v3::Response {
         access_token,
