@@ -42,14 +42,14 @@ impl Service {
 
     pub fn try_auth(
         &self,
-        user_id: &UserId,
+        sender_user: &UserId,
         device_id: &DeviceId,
         auth: &AuthData,
         uiaainfo: &UiaaInfo,
     ) -> Result<(bool, UiaaInfo)> {
         let mut uiaainfo = auth
             .session()
-            .map(|session| self.db.get_uiaa_session(user_id, device_id, session))
+            .map(|session| self.db.get_uiaa_session(sender_user, device_id, session))
             .unwrap_or_else(|| Ok(uiaainfo.clone()))?;
 
         if uiaainfo.session.is_none() {
@@ -79,18 +79,26 @@ impl Service {
                 )
                 .map_err(|_| Error::BadRequest(ErrorKind::InvalidParam, "User ID is invalid."))?;
 
-                // Check if password is correct
-                if let Some(hash) = services().users.password_hash(&user_id)? {
-                    let hash_matches =
-                        argon2::verify_encoded(&hash, password.as_bytes()).unwrap_or(false);
+                if sender_user != user_id {
+                    return Err(Error::BadRequest(
+                        ErrorKind::InvalidParam,
+                        "User identifier does not match sender.",
+                    ));
+                }
 
-                    if !hash_matches {
-                        uiaainfo.auth_error = Some(ruma::api::client::error::StandardErrorBody {
-                            kind: ErrorKind::forbidden(),
-                            message: "Invalid username or password.".to_owned(),
-                        });
-                        return Ok((false, uiaainfo));
-                    }
+                // Check if password is correct
+                let hash_matches = services()
+                    .users
+                    .password_hash(&user_id)?
+                    .map(|hash| argon2::verify_encoded(&hash, password.as_bytes()).unwrap_or(false))
+                    .unwrap_or(false);
+
+                if !hash_matches {
+                    uiaainfo.auth_error = Some(ruma::api::client::error::StandardErrorBody {
+                        kind: ErrorKind::forbidden(),
+                        message: "Invalid username or password.".to_owned(),
+                    });
+                    return Ok((false, uiaainfo));
                 }
 
                 // Password was correct! Let's add it to `completed`
@@ -127,7 +135,7 @@ impl Service {
 
         if !completed {
             self.db.update_uiaa_session(
-                user_id,
+                sender_user,
                 device_id,
                 uiaainfo.session.as_ref().expect("session is always set"),
                 Some(&uiaainfo),
@@ -137,7 +145,7 @@ impl Service {
 
         // UIAA was successful! Remove this session and return true
         self.db.update_uiaa_session(
-            user_id,
+            sender_user,
             device_id,
             uiaainfo.session.as_ref().expect("session is always set"),
             None,
