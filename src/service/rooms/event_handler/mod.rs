@@ -41,7 +41,7 @@ use serde_json::value::RawValue as RawJsonValue;
 use tokio::sync::{RwLock, RwLockWriteGuard, Semaphore};
 use tracing::{debug, error, info, trace, warn};
 
-use crate::{service::*, services, Error, PduEvent, Result};
+use crate::{config::TrustedServer, service::*, services, Error, PduEvent, Result};
 
 use super::state_compressor::CompressedStateEvent;
 
@@ -1672,11 +1672,14 @@ impl Service {
         }
 
         for server in services().globals.trusted_servers() {
-            info!("Asking batch signing keys from trusted server {}", server);
+            info!(
+                "Asking batch signing keys from trusted server {}",
+                server.server()
+            );
             if let Ok(keys) = services()
                 .sending
                 .send_federation_request(
-                    server,
+                    server.server(),
                     get_remote_server_keys_batch::v2::Request {
                         server_keys: servers.clone(),
                     },
@@ -1684,28 +1687,60 @@ impl Service {
                 .await
             {
                 trace!("Got signing keys: {:?}", keys);
+
+                let trusted_server_keys = match server {
+                    TrustedServer::Server(server) => {
+                        trace!("Fetching signing key for trusted server {server}");
+                        let trusted_server_required_keys = keys
+                            .server_keys
+                            .iter()
+                            .filter_map(|raw_keys| raw_keys.deserialize().ok())
+                            .filter_map(|mut keys| keys.signatures.remove(server))
+                            .flat_map(|signature_map| signature_map.into_keys())
+                            .map(|key| key.to_string())
+                            .collect::<Vec<_>>();
+
+                        services()
+                            .rooms
+                            .event_handler
+                            .fetch_signing_keys(server, trusted_server_required_keys, false)
+                            .await?
+                            .verify_keys
+                    }
+                    TrustedServer::ServerWithKeys { server: _, keys } => keys.clone(),
+                };
+
                 let mut pkm = pub_key_map.write().await;
-                for k in keys.server_keys {
-                    let k = match k.deserialize() {
+                for raw_new_keys in keys.server_keys {
+                    let new_keys = match raw_new_keys.deserialize() {
                         Ok(key) => key,
                         Err(e) => {
                             warn!(
                                 "Received error {} while fetching keys from trusted server {}",
-                                e, server
+                                e,
+                                server.server()
                             );
-                            warn!("{}", k.into_json());
+                            warn!("{}", raw_new_keys.into_json());
                             continue;
                         }
                     };
 
-                    // TODO: Check signature from trusted server?
-                    servers.remove(&k.server_name);
+                    if !servers.contains_key(&new_keys.server_name) {
+                        // We should avoid using trusted servers for obtaining keys where possible,
+                        // so if we don't need them, don't store them.
+                        continue;
+                    };
 
-                    let result = services()
-                        .globals
-                        .add_signing_key_from_trusted_server(&k.server_name, k.clone())?;
+                    let result = services().globals.add_signing_key_from_trusted_server(
+                        &new_keys.server_name,
+                        raw_new_keys,
+                        new_keys.clone(),
+                        server.server(),
+                        trusted_server_keys.clone(),
+                    )?;
 
-                    pkm.insert(k.server_name.to_string(), result);
+                    pkm.insert(new_keys.server_name.to_string(), result);
+                    servers.remove(&new_keys.server_name);
                 }
             }
 
@@ -1733,12 +1768,11 @@ impl Service {
             info!("Received new result");
             if let (Ok(get_keys_response), origin) = result {
                 info!("Result is from {origin}");
-                if let Ok(key) = get_keys_response.server_key.deserialize() {
-                    let result = services()
-                        .globals
-                        .add_signing_key_from_origin(&origin, key)?;
-                    pub_key_map.write().await.insert(origin.to_string(), result);
-                }
+
+                let result = services()
+                    .globals
+                    .add_signing_key_from_origin(&origin, get_keys_response.server_key)?;
+                pub_key_map.write().await.insert(origin.to_string(), result);
             }
             info!("Done handling result");
         }
@@ -1909,54 +1943,56 @@ impl Service {
 
         debug!("Fetching signing keys for {} over federation", origin);
 
-        if let Some(mut server_key) = services()
+        if let Some(raw_server_key) = services()
             .sending
             .send_federation_request(origin, get_server_keys::v2::Request::new())
             .await
             .ok()
-            .and_then(|resp| resp.server_key.deserialize().ok())
+            .map(|resp| resp.server_key)
         {
-            // Keys should only be valid for a maximum of seven days
-            server_key.valid_until_ts = server_key.valid_until_ts.min(
-                MilliSecondsSinceUnixEpoch::from_system_time(
-                    SystemTime::now() + Duration::from_secs(7 * 86400),
-                )
-                .expect("Should be valid until year 500,000,000"),
-            );
+            if let Ok(mut server_key) = raw_server_key.deserialize() {
+                services()
+                    .globals
+                    .add_signing_key_from_origin(origin, raw_server_key)?;
 
-            services()
-                .globals
-                .add_signing_key_from_origin(origin, server_key.clone())?;
+                // Keys should only be valid for a maximum of seven days
+                server_key.valid_until_ts = server_key.valid_until_ts.min(
+                    MilliSecondsSinceUnixEpoch::from_system_time(
+                        SystemTime::now() + Duration::from_secs(7 * 86400),
+                    )
+                    .expect("Should be valid until year 500,000,000"),
+                );
 
-            if keys.valid_until_ts > server_key.valid_until_ts {
-                keys.valid_until_ts = server_key.valid_until_ts;
-            }
+                if keys.valid_until_ts > server_key.valid_until_ts {
+                    keys.valid_until_ts = server_key.valid_until_ts;
+                }
 
-            keys.verify_keys.extend(
-                server_key
-                    .verify_keys
-                    .into_iter()
-                    .map(|(id, key)| (id.to_string(), key)),
-            );
-            keys.old_verify_keys.extend(
-                server_key
-                    .old_verify_keys
-                    .into_iter()
-                    .map(|(id, key)| (id.to_string(), key)),
-            );
+                keys.verify_keys.extend(
+                    server_key
+                        .verify_keys
+                        .into_iter()
+                        .map(|(id, key)| (id.to_string(), key)),
+                );
+                keys.old_verify_keys.extend(
+                    server_key
+                        .old_verify_keys
+                        .into_iter()
+                        .map(|(id, key)| (id.to_string(), key)),
+                );
 
-            if contains_all_ids(&keys) {
-                return Ok(keys);
+                if contains_all_ids(&keys) {
+                    return Ok(keys);
+                }
             }
         }
 
         if query_via_trusted_servers {
             for server in services().globals.trusted_servers() {
-                debug!("Asking {} for {}'s signing key", server, origin);
+                debug!("Asking {} for {}'s signing key", server.server(), origin);
                 if let Some(server_keys) = services()
                     .sending
                     .send_federation_request(
-                        server,
+                        server.server(),
                         get_remote_server_keys::v2::Request::new(
                             origin.to_owned(),
                             MilliSecondsSinceUnixEpoch::from_system_time(
@@ -1969,16 +2005,37 @@ impl Service {
                     )
                     .await
                     .ok()
-                    .map(|resp| {
-                        resp.server_keys
-                            .into_iter()
-                            .filter_map(|e| e.deserialize().ok())
-                            .collect::<Vec<_>>()
-                    })
+                    .map(|resp| resp.server_keys)
                 {
                     trace!("Got signing keys: {:?}", server_keys);
-                    for mut k in server_keys {
-                        if k.valid_until_ts
+
+                    let trusted_server_keys = match server {
+                        TrustedServer::Server(server) => {
+                            trace!("Fetching signing key for trusted server {server}");
+                            let trusted_server_required_keys = server_keys
+                                .iter()
+                                .filter_map(|raw_keys| raw_keys.deserialize().ok())
+                                .filter_map(|mut keys| keys.signatures.remove(server))
+                                .flat_map(|signature_map| signature_map.into_keys())
+                                .map(|key| key.to_string())
+                                .collect::<Vec<_>>();
+
+                            Box::pin(services().rooms.event_handler.fetch_signing_keys(
+                                server,
+                                trusted_server_required_keys,
+                                false,
+                            ))
+                            .await?
+                            .verify_keys
+                        }
+                        TrustedServer::ServerWithKeys { server: _, keys } => keys.clone(),
+                    };
+                    for raw_new_keys in server_keys {
+                        let Ok(mut new_keys) = raw_new_keys.deserialize() else {
+                            continue;
+                        };
+
+                        if new_keys.valid_until_ts
                         // Half an hour should give plenty of time for the server to respond with keys that are still
                         // valid, given we requested keys which are valid at least an hour from now
                             < MilliSecondsSinceUnixEpoch::from_system_time(
@@ -1986,35 +2043,48 @@ impl Service {
                             )
                             .expect("Should be valid until year 500,000,000")
                         {
+                            if new_keys.server_name != origin {
+                                // We should avoid using trusted servers for obtaining keys where possible,
+                                // so if we don't need them, don't store them.
+                                continue;
+                            };
+
+                            services().globals.add_signing_key_from_trusted_server(
+                                origin,
+                                raw_new_keys,
+                                new_keys.clone(),
+                                server.server(),
+                                trusted_server_keys.clone(),
+                            )?;
+
                             // Keys should only be valid for a maximum of seven days
-                            k.valid_until_ts = k.valid_until_ts.min(
+                            new_keys.valid_until_ts = new_keys.valid_until_ts.min(
                                 MilliSecondsSinceUnixEpoch::from_system_time(
                                     SystemTime::now() + Duration::from_secs(7 * 86400),
                                 )
                                 .expect("Should be valid until year 500,000,000"),
                             );
 
-                            if keys.valid_until_ts > k.valid_until_ts {
-                                keys.valid_until_ts = k.valid_until_ts;
+                            if keys.valid_until_ts > new_keys.valid_until_ts {
+                                keys.valid_until_ts = new_keys.valid_until_ts;
                             }
 
-                            services()
-                                .globals
-                                .add_signing_key_from_trusted_server(origin, k.clone())?;
                             keys.verify_keys.extend(
-                                k.verify_keys
+                                new_keys
+                                    .verify_keys
                                     .into_iter()
                                     .map(|(id, key)| (id.to_string(), key)),
                             );
                             keys.old_verify_keys.extend(
-                                k.old_verify_keys
+                                new_keys
+                                    .old_verify_keys
                                     .into_iter()
                                     .map(|(id, key)| (id.to_string(), key)),
                             );
                         } else {
                             warn!(
                                 "Server {} gave us keys older than we requested, valid until: {:?}",
-                                origin, k.valid_until_ts
+                                origin, new_keys.valid_until_ts
                             );
                         }
 

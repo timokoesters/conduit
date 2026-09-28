@@ -83,7 +83,7 @@ pub trait Data: Send + Sync {
     /// receive requests from the origin server, we want to be able to accept requests from them
     fn add_signing_key_from_trusted_server(
         &self,
-        origin: &ServerName,
+        keys_for: &ServerName,
         new_keys: ServerSigningKeys,
     ) -> Result<SigningKeys>;
     /// Extends cached keys, as well as moving verify_keys that are not present in these new keys to

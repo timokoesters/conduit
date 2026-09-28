@@ -1,14 +1,17 @@
 mod data;
 pub use data::{Data, SigningKeys};
 use ruma::{
-    room_version_rules::RoomVersionRules, serde::Base64, MilliSecondsSinceUnixEpoch, OwnedDeviceId,
-    OwnedEventId, OwnedRoomAliasId, OwnedRoomId, OwnedServerName, OwnedUserId, RoomAliasId,
+    api::federation::discovery::VerifyKey,
+    room_version_rules::RoomVersionRules,
+    serde::{Base64, Raw},
+    MilliSecondsSinceUnixEpoch, OwnedDeviceId, OwnedEventId, OwnedRoomAliasId, OwnedRoomId,
+    OwnedServerName, OwnedUserId, RoomAliasId,
 };
 
-use crate::api::server_server::DestinationResponse;
+use crate::{api::server_server::DestinationResponse, utils};
 
 use crate::{
-    config::{DirectoryStructure, MediaBackendConfig, TurnConfig},
+    config::{DirectoryStructure, MediaBackendConfig, TrustedServer, TurnConfig},
     services, Config, Error, Result,
 };
 use futures_util::FutureExt;
@@ -352,7 +355,7 @@ impl Service {
         self.config.allow_check_for_updates
     }
 
-    pub fn trusted_servers(&self) -> &[OwnedServerName] {
+    pub fn trusted_servers(&self) -> &[TrustedServer] {
         &self.config.trusted_servers
     }
 
@@ -395,19 +398,40 @@ impl Service {
     /// This doesn't actually check that the keys provided are newer than the old set.
     pub fn add_signing_key_from_trusted_server(
         &self,
-        origin: &ServerName,
+        // The server which the returned keys actually belong to
+        keys_for: &ServerName,
+        raw_new_keys: Raw<ServerSigningKeys>,
         new_keys: ServerSigningKeys,
+        // The notary/trusted server we obtained the keys from
+        keys_from: &ServerName,
+        // And the keys from the notary/trusted server needed to validate the new keys
+        notary_server_keys: BTreeMap<String, VerifyKey>,
     ) -> Result<SigningKeys> {
+        verify_server_keys(
+            raw_new_keys,
+            new_keys.clone(),
+            keys_for,
+            Some((keys_from, notary_server_keys)),
+        )?;
+
         self.db
-            .add_signing_key_from_trusted_server(origin, new_keys)
+            .add_signing_key_from_trusted_server(keys_for, new_keys)
     }
 
     /// Same as from_trusted_server, except it will move active keys not present in `new_keys` to old_signing_keys
     pub fn add_signing_key_from_origin(
         &self,
         origin: &ServerName,
-        new_keys: ServerSigningKeys,
+        raw_new_keys: Raw<ServerSigningKeys>,
     ) -> Result<SigningKeys> {
+        let Ok(new_keys) = raw_new_keys.deserialize() else {
+            return Err(Error::BadServerResponse(
+                "Server returned invalid keys response",
+            ));
+        };
+
+        verify_server_keys(raw_new_keys, new_keys.clone(), origin, None)?;
+
         self.db.add_signing_key_from_origin(origin, new_keys)
     }
 
@@ -539,4 +563,50 @@ fn reqwest_client_builder(config: &Config) -> Result<reqwest::ClientBuilder> {
     }
 
     Ok(reqwest_client_builder)
+}
+
+/// Verifies that the response from /_matrix/key/v2/* has valid signatures from the necessary
+/// servers.
+fn verify_server_keys(
+    raw_new_keys: Raw<ServerSigningKeys>,
+    new_keys: ServerSigningKeys,
+    keys_for: &ServerName,
+    notary_server: Option<(&ServerName, BTreeMap<String, VerifyKey>)>,
+) -> Result<()> {
+    if !new_keys.signatures.contains_key(keys_for) {
+        return Err(Error::BadServerResponse(
+            "Server returned key response which wasn't self-signed",
+        ));
+    }
+
+    if let Some((server, _)) = notary_server {
+        if !new_keys.signatures.contains_key(server) {
+            return Err(Error::BadServerResponse(
+                "Server returned key response which wasn't signed by the notary server",
+            ));
+        }
+    }
+
+    let mut pub_key_map = BTreeMap::from_iter([(
+        keys_for.to_string(),
+        new_keys
+            .verify_keys
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v.key))
+            .collect(),
+    )]);
+    if let Some((server, notary_key_map)) = notary_server {
+        pub_key_map.insert(
+            server.to_string(),
+            notary_key_map
+                .into_iter()
+                .map(|(k, v)| (k.to_string(), v.key))
+                .collect(),
+        );
+    }
+
+    let obj = utils::to_canonical_object(raw_new_keys)
+        .map_err(|_| Error::BadServerResponse("Server returned invalid keys response"))?;
+    ruma::signatures::verify_json(&pub_key_map, &obj)
+        .map_err(|_| Error::BadServerResponse("Server returned keys response not signed properly"))
 }

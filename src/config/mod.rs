@@ -8,7 +8,10 @@ use std::{
 };
 
 use bytesize::ByteSize;
-use ruma::{api::federation::discovery::VerifyKey, serde::Base64, OwnedServerName, RoomVersionId};
+use ruma::{
+    api::federation::discovery::VerifyKey, serde::Base64, OwnedServerName, RoomVersionId,
+    ServerName,
+};
 use serde::{de::IgnoredAny, Deserialize};
 use tokio::time::{interval, Interval};
 use tracing::warn;
@@ -77,7 +80,7 @@ pub struct IncompleteConfig {
     pub proxy: ProxyConfig,
     pub jwt_secret: Option<String>,
     #[serde(default = "default_trusted_servers")]
-    pub trusted_servers: Vec<OwnedServerName>,
+    pub trusted_servers: Vec<TrustedServer>,
     #[serde(default = "default_log")]
     pub log: String,
     pub turn_username: Option<String>,
@@ -134,7 +137,7 @@ pub struct Config {
     pub tracing_flame: bool,
     pub proxy: ProxyConfig,
     pub jwt_secret: Option<String>,
-    pub trusted_servers: Vec<OwnedServerName>,
+    pub trusted_servers: Vec<TrustedServer>,
     pub log: String,
 
     pub turn: Option<TurnConfig>,
@@ -590,6 +593,51 @@ impl Config {
     }
 }
 
+#[derive(Deserialize, Debug, Clone)]
+#[serde(from = "ShadowTrustedServer")]
+pub enum TrustedServer {
+    Server(OwnedServerName),
+    ServerWithKeys {
+        server: OwnedServerName,
+        keys: BTreeMap<String, VerifyKey>,
+    },
+}
+
+impl TrustedServer {
+    /// Returns the `server` this config part is for
+    pub fn server(&self) -> &ServerName {
+        match self {
+            Self::Server(server) => server,
+            Self::ServerWithKeys { server, keys: _ } => server,
+        }
+    }
+}
+
+#[derive(Deserialize, Debug, Clone)]
+#[serde(untagged)]
+pub enum ShadowTrustedServer {
+    Server(OwnedServerName),
+    ServerWithKey {
+        server: OwnedServerName,
+        keys: BTreeMap<String, Base64>,
+    },
+}
+
+impl From<ShadowTrustedServer> for TrustedServer {
+    fn from(value: ShadowTrustedServer) -> Self {
+        match value {
+            ShadowTrustedServer::Server(server) => Self::Server(server),
+            ShadowTrustedServer::ServerWithKey { server, keys } => Self::ServerWithKeys {
+                server,
+                keys: keys
+                    .into_iter()
+                    .map(|(id, key)| (id, VerifyKey::new(key)))
+                    .collect(),
+            },
+        }
+    }
+}
+
 impl fmt::Display for Config {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Prepare a list of config values to show
@@ -638,7 +686,16 @@ impl fmt::Display for Config {
             ("Trusted servers", {
                 let mut lst = vec![];
                 for server in &self.trusted_servers {
-                    lst.push(server.host());
+                    match server {
+                        TrustedServer::Server(server) => lst.push(server.host().to_owned()),
+                        TrustedServer::ServerWithKeys { server, keys } => {
+                            lst.push(format!(
+                                "{} (with {} set trusted keys)",
+                                server.host(),
+                                keys.len()
+                            ));
+                        }
+                    }
                 }
                 &lst.join(", ")
             }),
@@ -716,8 +773,10 @@ fn default_max_fetch_prev_events() -> u16 {
     100_u16
 }
 
-fn default_trusted_servers() -> Vec<OwnedServerName> {
-    vec![OwnedServerName::try_from("matrix.org").unwrap()]
+fn default_trusted_servers() -> Vec<TrustedServer> {
+    vec![TrustedServer::Server(
+        OwnedServerName::try_from("matrix.org").unwrap(),
+    )]
 }
 
 fn default_log() -> String {
