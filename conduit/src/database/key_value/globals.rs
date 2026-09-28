@@ -244,10 +244,10 @@ lasttimelinecount_cache: {lasttimelinecount_cache}\n"
 
     fn add_signing_key_from_trusted_server(
         &self,
-        origin: &ServerName,
+        keys_for: &ServerName,
         new_keys: ServerSigningKeys,
     ) -> Result<SigningKeys> {
-        let prev_keys = self.server_signingkeys.get(origin.as_bytes())?;
+        let prev_keys = self.server_signingkeys.get(keys_for.as_bytes())?;
 
         Ok(
             if let Some(mut prev_keys) =
@@ -268,14 +268,14 @@ lasttimelinecount_cache: {lasttimelinecount_cache}\n"
                 }
 
                 self.server_signingkeys.insert(
-                    origin.as_bytes(),
+                    keys_for.as_bytes(),
                     &serde_json::to_vec(&prev_keys).expect("serversigningkeys can be serialized"),
                 )?;
 
                 prev_keys.into()
             } else {
                 self.server_signingkeys.insert(
-                    origin.as_bytes(),
+                    keys_for.as_bytes(),
                     &serde_json::to_vec(&new_keys).expect("serversigningkeys can be serialized"),
                 )?;
 

@@ -52,7 +52,7 @@ The `global` section contains the following fields:
 | `tracing_flame` | `boolean` | Enable flame tracing | `false` |
 | `proxy` | `table` | See the [Proxy configuration](#proxy) | N/A |
 | `jwt_secret` | `string` | The secret used in the JWT to enable JWT login without it a 400 error will be returned | N/A |
-| `trusted_servers` | `array` | The list of trusted servers to gather public keys of offline servers | `["matrix.org"]` |
+| `trusted_servers` | `array` | See the [trusted server configuration](#trusted-servers) | `["matrix.org"]` |
 | `log` | `string` | The log verbosity to use | `"warn"` |
 | `ip_address_detection` | See the [IP address detection configuration](#ip-address-detection) | See the [IP address detection configuration](#ip-address-detection) |
 | `turn_username` | `string` | The TURN username | `""` |
@@ -245,6 +245,35 @@ will be proxied via `socks://localhost:9050`, except for domains ending in `.mys
 url = "socks5://localhost:9050"
 include = ["*.onion", "matrix.secretly-an-onion-domain.xyz"]
 exclude = ["*.clearnet.onion"]
+```
+
+### Trusted servers
+This is the list of notary servers used to gather public keys of servers when they're either
+unreachable, or we're joining a room this server isn't in yet (as getting the keys from each
+individual server would take too long).
+This is a very privileged position, as these servers are able to forge events from any server, as
+they could always return keys they own instead of the requested server, so make sure you trust them
+fully.
+
+In addition, while server key responses are signed by the key in the response itself, you can
+instead configure the expected keys, in case your threat-model means you need for the keys to be
+agreed on out of bounds.
+
+To add a server without an agreed public key, just add it's name to the list.
+To add a server with agreed public keys, add a table to the list with the following keys:
+- `server`: the name of the server
+- `keys`: a table of the public keys, with the key being the key id, and the value being the base64-encoded public key.
+
+#### Example
+
+```toml
+[global]
+trusted_servers = [
+  # Trusted server with keys fetched with the /keys endpoint
+  "matrix.org",
+  # Trusted server with pre-configured keys, agreed on out of bounds
+  { server = "example.org", keys = { "ed25519:1" = "thisisanexamplebase64publickey" } },
+]
 ```
 
 ### Example
