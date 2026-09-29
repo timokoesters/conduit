@@ -26,7 +26,14 @@ impl SigningKeys {
     pub fn load_own_keys() -> Self {
         let mut keys = Self {
             verify_keys: BTreeMap::new(),
-            old_verify_keys: BTreeMap::new(),
+            old_verify_keys: services()
+                .globals
+                .config
+                .old_verify_keys
+                .clone()
+                .into_iter()
+                .map(|(k, v)| (k.to_string(), v))
+                .collect(),
             valid_until_ts: MilliSecondsSinceUnixEpoch::from_system_time(
                 SystemTime::now() + Duration::from_secs(7 * 86400),
             )

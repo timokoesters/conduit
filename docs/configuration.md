@@ -60,6 +60,7 @@ The `global` section contains the following fields:
 | `turn_uris` | `array` | The TURN URIs | `[]` |
 | `turn_secret` | `string` | The TURN secret | `""` |
 | `turn_ttl` | `integer` | The TURN TTL in seconds | `86400` |
+| `old_verify_keys` | `table` | See the [old verify keys configuration](#old-verify-keys) | `{}` |
 | `ignored_keys` | `[string]` | Server keys that should be ignored | `["l/O9hxMVKB6Lg+3Hqf0FQQZhVESQcMzbPN1Cz2nM3og"]` ([ESS compromised key](https://github.com/element-hq/ess-helm/security/advisories/GHSA-qwcj-h6m8-vp6q)) |
 | `media` | `table` | See the [media configuration](#media) | See the [media configuration](#media) |
 | `emergency_password` | `string` | Set a password to login as the `conduit` user in case of emergency | N/A |
@@ -274,6 +275,25 @@ trusted_servers = [
   # Trusted server with pre-configured keys, agreed on out of bounds
   { server = "example.org", keys = { "ed25519:1" = "thisisanexamplebase64publickey" } },
 ]
+```
+
+### Old verify keys
+If there previously was another homeserver implementation, or even an old database, there may've
+been other keys used for this domain, which need to be configured to ensure that those events will
+be accepted when retrieved from rooms the server was previously in.
+
+This is a table of tables, where the key is the key id, and the value is a table with the following
+keys:
+- `key`: the base64 encoded public key
+- `expired_ts`: the timestamp beyond which the key should be considered expired, and hence
+shouldn't be accepted for events claimed to be sent after this date.
+  The format for the timestamp can be found [here](https://docs.rs/humantime/latest/humantime/fn.parse_rfc3339_weak.html)
+
+#### Example
+
+```toml
+[global.old_verify_keys]
+"ed25519:1" = {key = "thisisanexamplebase64publickey", expired_ts = "2018-02-14T00:28:07Z"}
 ```
 
 ### Example

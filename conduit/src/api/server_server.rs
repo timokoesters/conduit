@@ -719,7 +719,7 @@ pub async fn get_server_keys_route() -> Result<impl IntoResponse> {
             server_key: Raw::new(&ServerSigningKeys {
                 server_name: services().globals.server_name().to_owned(),
                 verify_keys,
-                old_verify_keys: BTreeMap::new(),
+                old_verify_keys: services().globals.config.old_verify_keys.clone(),
                 signatures: Signatures::new(),
                 valid_until_ts: MilliSecondsSinceUnixEpoch::from_system_time(
                     SystemTime::now() + Duration::from_secs(86400 * 7),

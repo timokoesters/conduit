@@ -433,13 +433,11 @@ impl Service {
 
     /// This returns Ok(None) when there are no keys found for the server.
     pub fn signing_keys_for(&self, origin: &ServerName) -> Result<Option<SigningKeys>> {
-        Ok(self.db.signing_keys_for(origin)?.or_else(|| {
-            if origin == self.server_name() {
-                Some(SigningKeys::load_own_keys())
-            } else {
-                None
-            }
-        }))
+        if origin == self.server_name() {
+            Ok(Some(SigningKeys::load_own_keys()))
+        } else {
+            self.db.signing_keys_for(origin)
+        }
     }
 
     /// Filters the key map of multiple servers down to keys that should be accepted given the expiry time,

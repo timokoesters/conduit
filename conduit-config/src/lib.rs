@@ -3,13 +3,15 @@ use std::{
     net::{IpAddr, Ipv4Addr},
     num::NonZeroU8,
     path::PathBuf,
-    time::Duration,
+    time::{Duration, SystemTime},
 };
 
 use bytesize::ByteSize;
 pub use error::Error;
 use ruma::{
-    OwnedServerName, RoomVersionId, ServerName, api::federation::discovery::VerifyKey,
+    MilliSecondsSinceUnixEpoch, OwnedKeyId, OwnedServerName, RoomVersionId, ServerName,
+    ServerSigningKeyVersion, SigningKeyAlgorithm,
+    api::federation::discovery::{OldVerifyKey, VerifyKey},
     serde::Base64,
 };
 use serde::{
@@ -97,6 +99,9 @@ pub struct IncompleteConfig {
 
     pub turn: Option<TurnConfig>,
 
+    #[serde(default)]
+    pub old_verify_keys:
+        BTreeMap<OwnedKeyId<SigningKeyAlgorithm, ServerSigningKeyVersion>, OldVerifyKeyTimestamp>,
     #[serde(default = "default_ignored_keys")]
     pub ignored_keys: Vec<VerifyKey>,
 
@@ -113,7 +118,7 @@ pub struct IncompleteConfig {
 }
 
 #[derive(Deserialize, Clone, Debug)]
-#[serde(from = "IncompleteConfig")]
+#[serde(try_from = "IncompleteConfig")]
 pub struct Config {
     pub address: IpAddr,
     pub port: u16,
@@ -151,6 +156,8 @@ pub struct Config {
 
     pub turn: Option<TurnConfig>,
 
+    pub old_verify_keys:
+        BTreeMap<OwnedKeyId<SigningKeyAlgorithm, ServerSigningKeyVersion>, OldVerifyKey>,
     pub ignored_keys: Vec<Base64>,
 
     pub media: MediaConfig,
@@ -162,8 +169,10 @@ pub struct Config {
     pub catchall: BTreeMap<String, IgnoredAny>,
 }
 
-impl From<IncompleteConfig> for Config {
-    fn from(val: IncompleteConfig) -> Self {
+impl TryFrom<IncompleteConfig> for Config {
+    type Error = &'static str;
+
+    fn try_from(val: IncompleteConfig) -> Result<Self, Self::Error> {
         let IncompleteConfig {
             address,
             port,
@@ -207,6 +216,7 @@ impl From<IncompleteConfig> for Config {
             rate_limiting,
             emergency_password,
             catchall,
+            old_verify_keys,
             ignored_keys,
         } = val;
 
@@ -271,7 +281,12 @@ impl From<IncompleteConfig> for Config {
             retention: media.retention.into(),
         };
 
-        Config {
+        let old_verify_keys = old_verify_keys
+            .into_iter()
+            .map(|(key_id, old_verify_key)| Ok((key_id, old_verify_key.try_into()?)))
+            .collect::<Result<_, Self::Error>>()?;
+
+        Ok(Config {
             address,
             port,
             tls,
@@ -309,8 +324,9 @@ impl From<IncompleteConfig> for Config {
             rate_limiting,
             emergency_password,
             catchall,
+            old_verify_keys,
             ignored_keys,
-        }
+        })
     }
 }
 
@@ -727,6 +743,30 @@ impl From<ShadowTrustedServer> for TrustedServer {
                     .collect(),
             },
         }
+    }
+}
+
+/// `OldVerifyKeys`, but using `humantime::Timestamp` instead of `MilliSecondsSinceUnixEpoch` for
+/// `valid_until_ts`
+#[derive(Deserialize, Debug, Clone)]
+pub struct OldVerifyKeyTimestamp {
+    #[serde(with = "humantime_serde")]
+    pub expired_ts: SystemTime,
+    pub key: Base64,
+}
+
+impl TryFrom<OldVerifyKeyTimestamp> for OldVerifyKey {
+    type Error = &'static str;
+
+    fn try_from(value: OldVerifyKeyTimestamp) -> Result<Self, Self::Error> {
+        let OldVerifyKeyTimestamp { expired_ts, key } = value;
+
+        Ok(Self {
+            expired_ts: MilliSecondsSinceUnixEpoch::from_system_time(expired_ts).ok_or(
+                "Timestamp is out of bounds (either before UNIX epoch or too far in the future)",
+            )?,
+            key,
+        })
     }
 }
 
