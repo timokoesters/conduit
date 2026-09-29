@@ -75,16 +75,9 @@ If Conduit runs behind a router or in a container and has a different public IP 
 
 ## Optional: Avoid port 8448
 
-If Conduit runs behind Cloudflare reverse proxy, which doesn't support port 8448 on free plans, [delegation](https://matrix-org.github.io/synapse/latest/delegate.html) can be set up to have federation traffic routed to port 443:
-```apache
-# .well-known delegation on Apache
-<Files "/.well-known/matrix/server">
-    ErrorDocument 200 '{"m.server": "your.server.name:443"}'
-    Header always set Content-Type application/json
-    Header always set Access-Control-Allow-Origin *
-</Files>
-```
-[SRV DNS record](https://spec.matrix.org/latest/server-server-api/#resolving-server-names) delegation is also [possible](https://www.cloudflare.com/en-gb/learning/dns/dns-records/dns-srv-record/).
+If you for whatever reason would rather not, or cannot, open port 8448 to the internet, you can
+use [delegation](../delegation.md) to route federation traffic over port 443 (or any other port)
+instead.
 
 ## Setting up a systemd service
 
@@ -143,110 +136,17 @@ sudo chmod 700 /var/lib/matrix-conduit/
 ## Setting up the Reverse Proxy
 
 This depends on whether you use Apache, Caddy, Nginx or another web server.
+While we don't give advice for any reverse-proxy in specific, the generic advice is as follows:
+- Traffic to `/_matrix/*` and `/.well-known/matrix/*` on your `server_name` should be sent to
+  Conduit (unless you're using [delegation](../delegation.md) and set a different domain to serve
+  Conduit)
+- HTTPS is mandatory for Matrix, so ensure you're serving Conduit over HTTPS with valid TLS
+  certificates. If you don't know how to do this, we recommend you use
+  [Caddy](https://caddyserver.com) as your reverse-proxy, as it handles this for you automatically,
+  as well as needing minimal configuration in general.
 
-### Apache
-
-Create `/etc/apache2/sites-enabled/050-conduit.conf` and copy-and-paste this:
-
-```apache
-# Requires mod_proxy and mod_proxy_http
-#
-# On Apache instance compiled from source,
-# paste into httpd-ssl.conf or httpd.conf
-
-Listen 8448
-
-<VirtualHost *:443 *:8448>
-
-ServerName your.server.name # EDIT THIS
-
-AllowEncodedSlashes NoDecode
-ProxyPass /_matrix/ http://127.0.0.1:6167/_matrix/ timeout=300 nocanon
-ProxyPassReverse /_matrix/ http://127.0.0.1:6167/_matrix/
-
-</VirtualHost>
-```
-
-**You need to make some edits again.** When you are done, run
-
-```bash
-# Debian
-$ sudo systemctl reload apache2
-
-# Installed from source
-$ sudo apachectl -k graceful
-```
-
-### Caddy
-
-Create `/etc/caddy/conf.d/conduit_caddyfile` and enter this (substitute for your server name).
-
-```caddy
-your.server.name, your.server.name:8448 {
-        reverse_proxy /_matrix/* 127.0.0.1:6167
-}
-```
-
-That's it! Just start or enable the service and you're set.
-
-```bash
-$ sudo systemctl enable caddy
-```
-
-### Nginx
-
-If you use Nginx and not Apache, add the following server section inside the http section of `/etc/nginx/nginx.conf`
-
-```nginx
-server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
-    listen 8448 ssl http2;
-    listen [::]:8448 ssl http2;
-    server_name your.server.name; # EDIT THIS
-    merge_slashes off;
-
-    # Nginx defaults to only allow 1MB uploads
-    # Increase this to allow posting large files such as videos
-    client_max_body_size 20M;
-
-    location /_matrix/ {
-        proxy_pass http://127.0.0.1:6167;
-        proxy_set_header Host $host;
-        proxy_buffering off;
-        proxy_read_timeout 5m;
-    }
-
-    ssl_certificate /etc/letsencrypt/live/your.server.name/fullchain.pem; # EDIT THIS
-    ssl_certificate_key /etc/letsencrypt/live/your.server.name/privkey.pem; # EDIT THIS
-    ssl_trusted_certificate /etc/letsencrypt/live/your.server.name/chain.pem; # EDIT THIS
-    include /etc/letsencrypt/options-ssl-nginx.conf;
-}
-```
-
-**You need to make some edits again.** When you are done, run
-
-```bash
-$ sudo systemctl reload nginx
-```
-
-## SSL Certificate
-
-If you chose Caddy as your web proxy SSL certificates are handled automatically and you can skip this step.
-
-The easiest way to get an SSL certificate, if you don't have one already, is to [install](https://certbot.eff.org/instructions) `certbot` and run this:
-
-```bash
-# To use ECC for the private key, 
-# paste into /etc/letsencrypt/cli.ini:
-# key-type = ecdsa
-# elliptic-curve = secp384r1
-
-$ sudo certbot -d your.server.name
-```
-[Automated renewal](https://eff-certbot.readthedocs.io/en/stable/using.html#automated-renewals) is usually preconfigured.
-
-If using Cloudflare, configure instead the edge and origin certificates in dashboard. In case you’re already running a website on the same Apache server, you can just copy-and-paste the SSL configuration from your main virtual host on port 443 into the above-mentioned vhost.
+Make sure to refer to the documentation of your chosen reverse-proxy to make sure it's configured
+properly.
 
 ## You're done!
 
@@ -270,9 +170,6 @@ You can also use these commands as a quick health check.
 
 ```bash
 $ curl https://your.server.name/_matrix/client/versions
-
-# If using port 8448
-$ curl https://your.server.name:8448/_matrix/client/versions
 ```
 
 - To check if your server can talk with other homeservers, you can use the [Matrix Federation Tester](https://federationtester.matrix.org/).
