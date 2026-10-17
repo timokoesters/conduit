@@ -18,7 +18,7 @@ If you know the media IDs, (which you can find with the `list-media` command), y
 being stored in the media backend in the future.
 
 If the server itself if malicious, then it should probably be [ACLed](https://spec.matrix.org/v1.14/client-server-api/#server-access-control-lists-acls-for-rooms)
-in rooms it particpates in. In the future, you'll be able to block the remote server from
+in rooms it participates in. In the future, you'll be able to block the remote server from
 interacting with your server completely.
 
 ## From local users

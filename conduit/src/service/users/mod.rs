@@ -57,7 +57,7 @@ impl Service {
     }
 
     pub async fn try_update_device_last_seen(&self) {
-        debug!("Writing cached device last-seens to database");
+        debug!("Writing cached devices last-seen to database");
         for error in self.write_cached_last_seen().await {
             warn!("Error writing last seen timestamp of device to database: {error}");
         }

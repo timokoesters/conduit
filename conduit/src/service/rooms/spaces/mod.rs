@@ -42,7 +42,7 @@ pub enum SummaryAccessibility {
 
 // Note: perhaps use some better form of token rather than just room count
 #[derive(Debug, PartialEq)]
-pub struct PagnationToken {
+pub struct PaginationToken {
     /// Path down the hierarchy of the room to start the response at,
     /// excluding the root space.
     pub short_room_ids: Vec<u64>,
@@ -51,7 +51,7 @@ pub struct PagnationToken {
     pub suggested_only: bool,
 }
 
-impl FromStr for PagnationToken {
+impl FromStr for PaginationToken {
     fn from_str(value: &str) -> Result<Self> {
         let mut values = value.split('_');
 
@@ -62,7 +62,7 @@ impl FromStr for PagnationToken {
                 rooms.push(u64::from_str(room).ok()?)
             }
 
-            Some(PagnationToken {
+            Some(PaginationToken {
                 short_room_ids: rooms,
                 limit: UInt::from_str(values.next()?).ok()?,
                 max_depth: UInt::from_str(values.next()?).ok()?,
@@ -94,7 +94,7 @@ impl FromStr for PagnationToken {
     type Err = Error;
 }
 
-impl Display for PagnationToken {
+impl Display for PaginationToken {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -560,7 +560,7 @@ impl Service {
                 }
 
                 Some(
-                    PagnationToken {
+                    PaginationToken {
                         short_room_ids,
                         limit: UInt::new(limit as u64)
                             .expect("When sent in request it must have been valid UInt"),
@@ -834,9 +834,9 @@ mod tests {
     }
 
     #[test]
-    fn invalid_pagnation_tokens() {
+    fn invalid_pagination_tokens() {
         fn token_is_err(token: &str) {
-            let token: Result<PagnationToken> = PagnationToken::from_str(token);
+            let token: Result<PaginationToken> = PaginationToken::from_str(token);
             assert!(token.is_err());
         }
 
@@ -850,32 +850,32 @@ mod tests {
     }
 
     #[test]
-    fn valid_pagnation_tokens() {
+    fn valid_pagination_tokens() {
         assert_eq!(
-            PagnationToken {
+            PaginationToken {
                 short_room_ids: vec![5383, 42934, 283, 423],
                 limit: UInt::from(20_u32),
                 max_depth: UInt::from(1_u32),
                 suggested_only: true
             },
-            PagnationToken::from_str("5383,42934,283,423_20_1_true").unwrap()
+            PaginationToken::from_str("5383,42934,283,423_20_1_true").unwrap()
         );
 
         assert_eq!(
-            PagnationToken {
+            PaginationToken {
                 short_room_ids: vec![740],
                 limit: UInt::from(97_u32),
                 max_depth: UInt::from(10539_u32),
                 suggested_only: false
             },
-            PagnationToken::from_str("740_97_10539_false").unwrap()
+            PaginationToken::from_str("740_97_10539_false").unwrap()
         );
     }
 
     #[test]
-    fn pagnation_token_to_string() {
+    fn pagination_token_to_string() {
         assert_eq!(
-            PagnationToken {
+            PaginationToken {
                 short_room_ids: vec![740],
                 limit: UInt::from(97_u32),
                 max_depth: UInt::from(10539_u32),
@@ -886,7 +886,7 @@ mod tests {
         );
 
         assert_eq!(
-            PagnationToken {
+            PaginationToken {
                 short_room_ids: vec![9, 34],
                 limit: UInt::from(3_u32),
                 max_depth: UInt::from(1_u32),
