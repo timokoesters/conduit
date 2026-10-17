@@ -237,13 +237,13 @@ impl Service {
                 }
 
                 let d = vec![device];
-                let mut notifi = Notification::new(d);
+                let mut notification = Notification::new(d);
 
-                notifi.prio = NotificationPriority::Low;
-                notifi.event_id = Some((*event.event_id).to_owned());
-                notifi.room_id = Some((*event.room_id()).to_owned());
+                notification.prio = NotificationPriority::Low;
+                notification.event_id = Some((*event.event_id).to_owned());
+                notification.room_id = Some((*event.room_id()).to_owned());
                 // TODO: missed calls
-                notifi.counts = NotificationCounts::new(unread, uint!(0));
+                notification.counts = NotificationCounts::new(unread, uint!(0));
 
                 if event.kind == TimelineEventType::RoomEncrypted
                     || tweaks.iter().any(|t| {
@@ -253,31 +253,37 @@ impl Service {
                         )
                     })
                 {
-                    notifi.prio = NotificationPriority::High
+                    notification.prio = NotificationPriority::High
                 }
 
                 if event_id_only {
-                    self.send_request(&http.url, send_event_notification::v1::Request::new(notifi))
-                        .await?;
+                    self.send_request(
+                        &http.url,
+                        send_event_notification::v1::Request::new(notification),
+                    )
+                    .await?;
                 } else {
-                    notifi.sender = Some(event.sender.clone());
-                    notifi.event_type = Some(event.kind.clone());
-                    notifi.content = serde_json::value::to_raw_value(&event.content).ok();
+                    notification.sender = Some(event.sender.clone());
+                    notification.event_type = Some(event.kind.clone());
+                    notification.content = serde_json::value::to_raw_value(&event.content).ok();
 
                     if event.kind == TimelineEventType::RoomMember {
-                        notifi.user_is_target =
+                        notification.user_is_target =
                             event.state_key.as_deref() == Some(event.sender.as_str());
                     }
 
-                    notifi.sender_display_name = services()
+                    notification.sender_display_name = services()
                         .users
                         .static_profile_field::<DisplayName>(&event.sender)?;
 
-                    notifi.room_name =
+                    notification.room_name =
                         services().rooms.state_accessor.get_name(&event.room_id())?;
 
-                    self.send_request(&http.url, send_event_notification::v1::Request::new(notifi))
-                        .await?;
+                    self.send_request(
+                        &http.url,
+                        send_event_notification::v1::Request::new(notification),
+                    )
+                    .await?;
                 }
 
                 Ok(())

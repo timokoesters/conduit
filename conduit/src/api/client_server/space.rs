@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use crate::{Error, Result, Ruma, service::rooms::spaces::PagnationToken, services};
+use crate::{Error, Result, Ruma, service::rooms::spaces::PaginationToken, services};
 use ruma::{
     UInt,
     api::{client::space::get_hierarchy, error::ErrorKind},
@@ -24,7 +24,7 @@ pub async fn get_hierarchy_route(
     let key = body
         .from
         .as_ref()
-        .and_then(|s| PagnationToken::from_str(s).ok());
+        .and_then(|s| PaginationToken::from_str(s).ok());
 
     // Should prevent unexpected behaviour in (bad) clients
     if let Some(token) = &key

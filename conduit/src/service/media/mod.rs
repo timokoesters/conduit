@@ -793,7 +793,7 @@ async fn delete_file_fs(
         .get_media_path(path, directory_structure, sha256_hex)?;
 
     if let Err(e) = fs::remove_file(&path).await {
-        // Multiple files with the same filehash might be requseted to be deleted
+        // Multiple files with the same filehash might be requested to be deleted
         if e.kind() != std::io::ErrorKind::NotFound {
             error!("Error removing media from filesystem: {e}");
             Err(e)?;

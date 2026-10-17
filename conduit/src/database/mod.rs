@@ -999,7 +999,7 @@ impl KeyValueDatabase {
 
             if services().globals.database_version()? < 17 {
                 warn!(
-                    "Migrating media repository to new format. If you have a lot of media stored, this may take a while, so please be patiant!"
+                    "Migrating media repository to new format. If you have a lot of media stored, this may take a while, so please be patient!"
                 );
 
                 let tree = db._db.open_tree("mediaid_file")?;

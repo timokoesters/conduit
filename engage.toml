@@ -1,89 +1,53 @@
-interpreter = ["bash", "-euo", "pipefail", "-c"]
+[processes.cargo-fmt]
+command = ["cargo", "fmt", "--check", "--", "--color=always"]
+ready-when = "exited"
 
-[[task]]
-group = "versions"
-name = "engage"
-script = "engage --version"
+[processes.cargo-doc]
+command = [
+  "cargo",
+  "doc",
+  "--workspace",
+  "--no-deps",
+  "--document-private-items",
+  "--color",
+  "always",
+]
+environment.RUSTDOCFLAGS = "-D warnings"
+ready-when = "exited"
 
-[[task]]
-group = "versions"
-name = "rustc"
-script = "rustc --version"
+[processes.cargo-clippy]
+command = [
+  "cargo",
+  "clippy",
+  "--workspace",
+  "--all-targets",
+  "--color=always",
+  "--",
+  "-D",
+  "warnings",
+]
+ready-when = "exited"
 
-[[task]]
-group = "versions"
-name = "cargo"
-script = "cargo --version"
+[processes.taplo-fmt]
+command = ["taplo", "fmt", "--check", "--colors", "always"]
+ready-when = "exited"
 
-[[task]]
-group = "versions"
-name = "cargo-fmt"
-script = "cargo fmt --version"
+[processes.lychee]
+command = ["lychee", "--offline", "docs"]
+ready-when = "exited"
 
-[[task]]
-group = "versions"
-name = "rustdoc"
-script = "rustdoc --version"
+[processes.typos]
+command = ["typos"]
+ready-when = "exited"
 
-[[task]]
-group = "versions"
-name = "cargo-clippy"
-script = "cargo clippy -- --version"
-
-[[task]]
-group = "versions"
-name = "lychee"
-script = "lychee --version"
-
-[[task]]
-group = "versions"
-name = "typos"
-script = "typos --version"
-
-[[task]]
-group = "lints"
-name = "cargo-fmt"
-script = "cargo fmt --check -- --color=always"
-
-[[task]]
-group = "lints"
-name = "cargo-doc"
-script = """
-RUSTDOCFLAGS="-D warnings" cargo doc \
-    --workspace \
-    --no-deps \
-    --document-private-items \
-    --color always
-"""
-
-[[task]]
-group = "lints"
-name = "cargo-clippy"
-script = "cargo clippy --workspace --all-targets --color=always -- -D warnings"
-
-[[task]]
-group = "lints"
-name = "taplo-fmt"
-script = "taplo fmt --check --colors always"
-
-[[task]]
-group = "lints"
-name = "lychee"
-script = "lychee --offline docs"
-
-[[task]]
-group = "lints"
-name = "typos"
-script = "typos"
-
-[[task]]
-group = "tests"
-name = "cargo"
-script = """
-cargo test \
-    --workspace \
-    --all-targets \
-    --color=always \
-    -- \
-    --color=always
-"""
+[processes.cargo]
+command = [
+  "cargo",
+  "test",
+  "--workspace",
+  "--all-targets",
+  "--color=always",
+  "--",
+  "--color=always",
+]
+ready-when = "exited"
