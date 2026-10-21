@@ -573,7 +573,7 @@ impl Service {
                 if body.len() > 2 && body[0].trim() == "```" && body.last().unwrap().trim() == "```"
                 {
                     let appservice_config = body[1..body.len() - 1].join("\n");
-                    let parsed_config = serde_yaml::from_str::<Registration>(&appservice_config);
+                    let parsed_config = yaml_serde::from_str::<Registration>(&appservice_config);
                     match parsed_config {
                         Ok(yaml) => match services().appservice.register_appservice(yaml).await {
                             Ok(id) => RoomMessageEventContent::text_plain(format!(

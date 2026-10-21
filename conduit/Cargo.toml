@@ -51,7 +51,7 @@ http = "1"
 # Used for ruma wrapper
 serde_json = { workspace = true, features = ["raw_value"] }
 # Used for appservice registration files
-serde_yaml = "0.9"
+yaml_serde = "0.10"
 # Used for pdu definition
 serde = { version = "1", features = ["rc"] }
 # Used for secure identifiers
