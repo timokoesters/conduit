@@ -8,7 +8,7 @@ impl service::appservice::Data for KeyValueDatabase {
         let id = yaml.id.as_str();
         self.id_appserviceregistrations.insert(
             id.as_bytes(),
-            serde_yaml::to_string(&yaml).unwrap().as_bytes(),
+            yaml_serde::to_string(&yaml).unwrap().as_bytes(),
         )?;
 
         Ok(id.to_owned())
@@ -29,7 +29,7 @@ impl service::appservice::Data for KeyValueDatabase {
         self.id_appserviceregistrations
             .get(id.as_bytes())?
             .map(|bytes| {
-                serde_yaml::from_slice(&bytes).map_err(|_| {
+                yaml_serde::from_slice(&bytes).map_err(|_| {
                     Error::bad_database("Invalid registration bytes in id_appserviceregistrations.")
                 })
             })
