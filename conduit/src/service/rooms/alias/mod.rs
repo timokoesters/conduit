@@ -111,7 +111,7 @@ impl Service {
         match services().rooms.alias.resolve_local_alias(&room_alias)? {
             Some(r) => room_id = Some(r),
             None => {
-                for appservice in services().appservice.read().await.values() {
+                for appservice in services().appservice.iter_registrations() {
                     if appservice.aliases.is_match(room_alias.as_str())
                         && matches!(
                             services()

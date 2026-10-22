@@ -1,18 +1,15 @@
-mod data;
+use std::collections::HashMap;
 
-use std::collections::BTreeMap;
+use conduit_config::Config;
 
-pub use data::Data;
-
-use futures_util::Future;
 use regex::RegexSet;
 use ruma::{
     RoomAliasId, RoomId, UserId,
     api::appservice::{Namespace, Registration},
 };
-use tokio::sync::RwLock;
+use tokio::{fs::File, io::AsyncReadExt};
 
-use crate::{Result, services};
+use crate::Result;
 
 /// Compiled regular expressions for a namespace.
 #[derive(Clone, Debug)]
@@ -114,113 +111,73 @@ impl TryFrom<Registration> for RegistrationInfo {
 }
 
 pub struct Service {
-    pub db: &'static dyn Data,
-    registration_info: RwLock<BTreeMap<String, RegistrationInfo>>,
+    registration_info: HashMap<String, RegistrationInfo>,
 }
 
 impl Service {
-    pub fn build(db: &'static dyn Data) -> Result<Self> {
-        let mut registration_info = BTreeMap::new();
-        // Inserting registrations into cache
-        for appservice in db.all()? {
-            registration_info.insert(
-                appservice.0,
-                appservice
-                    .1
-                    .try_into()
-                    .expect("Should be validated on registration"),
-            );
+    pub async fn build(config: &Config) -> Result<Self> {
+        let mut registration_info = HashMap::new();
+
+        for path in config.appservice_registrations.clone() {
+            let err = |source| conduit_config::Error::AppserviceRegistrationRead {
+                source,
+                path: path.clone(),
+            };
+
+            let mut file = Vec::new();
+            File::open(&path)
+                .await
+                .map_err(err)?
+                .read_to_end(&mut file)
+                .await
+                .map_err(err)?;
+
+            let registration: Registration = yaml_serde::from_slice(&file).map_err(|source| {
+                conduit_config::Error::AppserviceRegistrationDeser { source, path }
+            })?;
+
+            registration_info.insert(registration.id.clone(), registration.try_into()?);
         }
 
-        Ok(Self {
-            db,
-            registration_info: RwLock::new(registration_info),
-        })
-    }
-    /// Registers an appservice and returns the ID to the caller.
-    pub async fn register_appservice(&self, yaml: Registration) -> Result<String> {
-        //TODO: Check for collisions between exclusive appservice namespaces
-        services()
-            .appservice
-            .registration_info
-            .write()
-            .await
-            .insert(yaml.id.clone(), yaml.clone().try_into()?);
-
-        self.db.register_appservice(yaml)
+        Ok(Self { registration_info })
     }
 
-    /// Removes an appservice registration.
-    ///
-    /// # Arguments
-    ///
-    /// * `service_name` - the name you send to register the service previously
-    pub async fn unregister_appservice(&self, service_name: &str) -> Result<()> {
-        services()
-            .appservice
-            .registration_info
-            .write()
-            .await
-            .remove(service_name)
-            .ok_or_else(|| crate::Error::AdminCommand("Appservice not found"))?;
-
-        self.db.unregister_appservice(service_name)
-    }
-
-    pub async fn get_registration(&self, id: &str) -> Option<Registration> {
+    pub fn get_registration(&self, id: &str) -> Option<Registration> {
         self.registration_info
-            .read()
-            .await
             .get(id)
             .cloned()
             .map(|info| info.registration)
     }
 
-    pub async fn iter_ids(&self) -> Vec<String> {
-        self.registration_info
-            .read()
-            .await
-            .keys()
-            .cloned()
-            .collect()
+    pub fn iter_registrations(&self) -> impl Iterator<Item = &RegistrationInfo> {
+        self.registration_info.values()
     }
 
-    pub async fn find_from_token(&self, token: &str) -> Option<RegistrationInfo> {
-        self.read()
-            .await
+    pub fn find_from_token(&self, token: &str) -> Option<RegistrationInfo> {
+        self.registration_info
             .values()
             .find(|info| info.registration.as_token == token)
             .cloned()
     }
 
     // Checks if a given user id matches any exclusive appservice regex
-    pub async fn is_exclusive_user_id(&self, user_id: &UserId) -> bool {
-        self.read()
-            .await
+    pub fn is_exclusive_user_id(&self, user_id: &UserId) -> bool {
+        self.registration_info
             .values()
             .any(|info| info.is_exclusive_user_match(user_id))
     }
 
     // Checks if a given room alias matches any exclusive appservice regex
-    pub async fn is_exclusive_alias(&self, alias: &RoomAliasId) -> bool {
-        self.read()
-            .await
+    pub fn is_exclusive_alias(&self, alias: &RoomAliasId) -> bool {
+        self.registration_info
             .values()
             .any(|info| info.aliases.is_exclusive_match(alias.as_str()))
     }
 
     // Checks if a given room id matches any exclusive appservice regex
-    pub async fn is_exclusive_room_id(&self, room_id: &RoomId) -> bool {
-        self.read()
-            .await
+    pub fn is_exclusive_room_id(&self, room_id: &RoomId) -> bool {
+        self.registration_info
             .values()
             .any(|info| info.rooms.is_exclusive_match(room_id.as_str()))
-    }
-
-    pub fn read(
-        &self,
-    ) -> impl Future<Output = tokio::sync::RwLockReadGuard<'_, BTreeMap<String, RegistrationInfo>>>
-    {
-        self.registration_info.read()
     }
 }

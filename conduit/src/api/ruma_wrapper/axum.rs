@@ -226,7 +226,7 @@ impl SupportedAuthScheme for AccessToken {
             services().rate_limiting.pre_auth_check(ip_addr).await?;
         }
 
-        if let Some(info) = services().appservice.find_from_token(&extracted_auth).await {
+        if let Some(info) = services().appservice.find_from_token(&extracted_auth) {
             #[derive(Deserialize)]
             struct QueryParams {
                 user_id: Option<String>,
@@ -384,7 +384,7 @@ impl SupportedAuthScheme for AppserviceToken {
             services().rate_limiting.pre_auth_check(ip_addr).await?;
         }
 
-        if let Some(info) = services().appservice.find_from_token(&extracted_auth).await {
+        if let Some(info) = services().appservice.find_from_token(&extracted_auth) {
             Ok((parts, body, json_body, Some(info)))
         } else {
             Err(unknown_access_token(ip_addr).await)

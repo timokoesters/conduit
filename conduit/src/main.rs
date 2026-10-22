@@ -204,7 +204,7 @@ async fn main() {
 
     info!("Loading database");
     if let Err(error) = KeyValueDatabase::load_or_create(config).await {
-        error!(?error, "The database couldn't be loaded or created");
+        error!("The database couldn't be loaded or created: {error}");
 
         std::process::exit(1);
     };

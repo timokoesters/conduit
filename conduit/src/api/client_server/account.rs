@@ -144,7 +144,7 @@ pub async fn register_route(body: Ruma<register::v3::Request>) -> Result<registe
                 "Missing appservice token.",
             ));
         }
-    } else if services().appservice.is_exclusive_user_id(&user_id).await {
+    } else if services().appservice.is_exclusive_user_id(&user_id) {
         return Err(Error::BadRequest(
             ErrorKind::Exclusive,
             "User id reserved by appservice.",
