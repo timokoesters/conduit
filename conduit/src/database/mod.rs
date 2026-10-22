@@ -447,7 +447,7 @@ impl KeyValueDatabase {
         }
 
         // If the database has any data, perform data migrations before starting
-        let latest_database_version = 20;
+        let latest_database_version = 21;
 
         if services().users.count()? > 0 {
             // MIGRATIONS
@@ -1144,6 +1144,33 @@ impl KeyValueDatabase {
                 warn!("Migration: 19 -> 20 finished");
             }
 
+            if services().globals.database_version()? < 21 {
+                // Clear emergency password, as we removed it now.
+                let server_user = services().globals.server_user();
+
+                services().users.set_password(server_user, None)?;
+                services().account_data.update(
+                    None,
+                    server_user,
+                    GlobalAccountDataEventType::PushRules.to_string().into(),
+                    &serde_json::to_value(&GlobalAccountDataEvent {
+                        content: PushRulesEventContent {
+                            global: Ruleset::new(),
+                        },
+                    })
+                    .expect("to json value always works"),
+                )?;
+
+                // Also remove all logins for the server user
+                for device_id in services().users.all_device_ids(server_user).flatten() {
+                    services().users.remove_device(server_user, &device_id)?;
+                }
+
+                services().globals.bump_database_version(21)?;
+
+                warn!("Migration: 20 -> 21 finished");
+            }
+
             assert_eq!(
                 services().globals.database_version().unwrap(),
                 latest_database_version
@@ -1173,24 +1200,6 @@ impl KeyValueDatabase {
         db.presenceid_presence.clear()?;
 
         services().admin.start_handler();
-
-        // Set emergency access for the conduit user
-        match set_emergency_access() {
-            Ok(pwd_set) => {
-                if pwd_set {
-                    warn!(
-                        "The Conduit account emergency password is set! Please unset it as soon as you finish admin account recovery!"
-                    );
-                    services().admin.send_message(RoomMessageEventContent::text_plain("The Conduit account emergency password is set! Please unset it as soon as you finish admin account recovery!"));
-                }
-            }
-            Err(e) => {
-                error!(
-                    "Could not set the configured emergency password for the conduit user: {}",
-                    e
-                )
-            }
-        };
 
         services().sending.start_handler();
 
@@ -1507,31 +1516,4 @@ async fn migrate_to_sha256_media(
     tokio::fs::remove_file(path).await?;
 
     Ok(())
-}
-
-/// Sets the emergency password and push rules for the @conduit account in case emergency password is set
-fn set_emergency_access() -> Result<bool> {
-    let conduit_user = services().globals.server_user();
-
-    services().users.set_password(
-        conduit_user,
-        services().globals.emergency_password().as_deref(),
-    )?;
-
-    let (ruleset, res) = match services().globals.emergency_password() {
-        Some(_) => (Ruleset::server_default(conduit_user), Ok(true)),
-        None => (Ruleset::new(), Ok(false)),
-    };
-
-    services().account_data.update(
-        None,
-        conduit_user,
-        GlobalAccountDataEventType::PushRules.to_string().into(),
-        &serde_json::to_value(&GlobalAccountDataEvent {
-            content: PushRulesEventContent { global: ruleset },
-        })
-        .expect("to json value always works"),
-    )?;
-
-    res
 }

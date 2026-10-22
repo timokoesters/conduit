@@ -114,8 +114,6 @@ pub struct IncompleteConfig {
     #[serde(default)]
     pub appservice_registrations: Vec<PathBuf>,
 
-    pub emergency_password: Option<String>,
-
     #[serde(flatten)]
     pub catchall: BTreeMap<String, IgnoredAny>,
 }
@@ -169,8 +167,6 @@ pub struct Config {
 
     pub appservice_registrations: Vec<PathBuf>,
 
-    pub emergency_password: Option<String>,
-
     pub catchall: BTreeMap<String, IgnoredAny>,
 }
 
@@ -220,7 +216,6 @@ impl TryFrom<IncompleteConfig> for Config {
             media,
             rate_limiting,
             appservice_registrations,
-            emergency_password,
             catchall,
             old_verify_keys,
             ignored_keys,
@@ -329,7 +324,6 @@ impl TryFrom<IncompleteConfig> for Config {
             media,
             rate_limiting,
             appservice_registrations,
-            emergency_password,
             catchall,
             old_verify_keys,
             ignored_keys,

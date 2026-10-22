@@ -378,10 +378,6 @@ impl Service {
         self.jwt_decoding_key.as_ref()
     }
 
-    pub fn emergency_password(&self) -> &Option<String> {
-        &self.config.emergency_password
-    }
-
     pub fn supported_room_versions(&self) -> Vec<RoomVersionId> {
         let mut room_versions: Vec<RoomVersionId> = vec![];
         room_versions.extend(self.stable_room_versions.clone());
