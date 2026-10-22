@@ -503,8 +503,7 @@ impl Service {
 
                     // This will evaluate to false if the emergency password is set up so that
                     // the administrator can execute commands as conduit
-                    let from_conduit = pdu.sender == *server_user
-                        && services().globals.emergency_password().is_none();
+                    let from_conduit = pdu.sender == *server_user;
 
                     if let Some(admin_room) = services().admin.get_admin_room()?
                         && to_conduit
