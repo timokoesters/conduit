@@ -111,6 +111,9 @@ pub struct IncompleteConfig {
     #[serde(default)]
     pub rate_limiting: RateLimitingConfig,
 
+    #[serde(default)]
+    pub appservice_registrations: Vec<PathBuf>,
+
     pub emergency_password: Option<String>,
 
     #[serde(flatten)]
@@ -164,6 +167,8 @@ pub struct Config {
 
     pub rate_limiting: RateLimitingConfig,
 
+    pub appservice_registrations: Vec<PathBuf>,
+
     pub emergency_password: Option<String>,
 
     pub catchall: BTreeMap<String, IgnoredAny>,
@@ -214,6 +219,7 @@ impl TryFrom<IncompleteConfig> for Config {
             turn,
             media,
             rate_limiting,
+            appservice_registrations,
             emergency_password,
             catchall,
             old_verify_keys,
@@ -322,6 +328,7 @@ impl TryFrom<IncompleteConfig> for Config {
             turn,
             media,
             rate_limiting,
+            appservice_registrations,
             emergency_password,
             catchall,
             old_verify_keys,

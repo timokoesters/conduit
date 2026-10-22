@@ -115,7 +115,7 @@ pub async fn create_room_route(
                     "Room alias is not in namespace.",
                 ));
             }
-        } else if services().appservice.is_exclusive_alias(alias).await {
+        } else if services().appservice.is_exclusive_alias(alias) {
             return Err(Error::BadRequest(
                 ErrorKind::Exclusive,
                 "Room alias reserved by appservice.",

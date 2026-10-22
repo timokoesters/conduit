@@ -74,7 +74,7 @@ pub async fn login_route(body: Ruma<login::v3::Request>) -> Result<login::v3::Re
             }
             .map_err(|_| Error::BadRequest(ErrorKind::InvalidUsername, "Username is invalid."))?;
 
-            if services().appservice.is_exclusive_user_id(&user_id).await {
+            if services().appservice.is_exclusive_user_id(&user_id) {
                 return Err(Error::BadRequest(
                     ErrorKind::Exclusive,
                     "User id reserved by appservice.",
@@ -122,7 +122,7 @@ pub async fn login_route(body: Ruma<login::v3::Request>) -> Result<login::v3::Re
                             Error::BadRequest(ErrorKind::InvalidUsername, "Username is invalid.")
                         })?;
 
-                if services().appservice.is_exclusive_user_id(&user_id).await {
+                if services().appservice.is_exclusive_user_id(&user_id) {
                     return Err(Error::BadRequest(
                         ErrorKind::Exclusive,
                         "User id reserved by appservice.",

@@ -486,18 +486,14 @@ impl Service {
                 let permit = services().sending.maximum_requests.acquire().await;
 
                 let response = match appservice_server::send_request(
-                    services()
-                        .appservice
-                        .get_registration(id)
-                        .await
-                        .ok_or_else(|| {
-                            (
-                                kind.clone(),
-                                Error::bad_database(
-                                    "[Appservice] Could not load registration from db.",
-                                ),
-                            )
-                        })?,
+                    services().appservice.get_registration(id).ok_or_else(|| {
+                        (
+                            kind.clone(),
+                            Error::bad_database(
+                                "[Appservice] Could not load registration from db.",
+                            ),
+                        )
+                    })?,
                     appservice::event::push_events::v1::Request {
                         //TODO: ephemeral pushing
                         ephemeral: Vec::new(),

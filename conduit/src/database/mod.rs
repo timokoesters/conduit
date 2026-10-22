@@ -197,9 +197,6 @@ pub struct KeyValueDatabase {
     pub(super) servernameevent_data: Arc<dyn KvTree>, // ServernameEvent = (+ / $)SenderKey / ServerName / UserId + PduId / Id (for edus), Data = EDU content
     pub(super) servercurrentevent_data: Arc<dyn KvTree>, // ServerCurrentEvents = (+ / $)ServerName / UserId + PduId / Id (for edus), Data = EDU content
 
-    //pub appservice: appservice::Appservice,
-    pub(super) id_appserviceregistrations: Arc<dyn KvTree>,
-
     //pub pusher: pusher::PushData,
     pub(super) senderkey_pusher: Arc<dyn KvTree>,
 
@@ -396,7 +393,6 @@ impl KeyValueDatabase {
             servername_educount: builder.open_tree("servername_educount")?,
             servernameevent_data: builder.open_tree("servernameevent_data")?,
             servercurrentevent_data: builder.open_tree("servercurrentevent_data")?,
-            id_appserviceregistrations: builder.open_tree("id_appserviceregistrations")?,
             senderkey_pusher: builder.open_tree("senderkey_pusher")?,
             global: builder.open_tree("global")?,
             server_signingkeys: builder.open_tree("server_signingkeys")?,
@@ -429,7 +425,7 @@ impl KeyValueDatabase {
 
         let db = Box::leak(db_raw);
 
-        let services_raw = Box::new(Services::build(db, config)?);
+        let services_raw = Box::new(Services::build(db, config).await?);
 
         // This is the first and only time we initialize the SERVICE static
         *SERVICES.write().unwrap() = Some(Box::leak(services_raw));
@@ -451,7 +447,7 @@ impl KeyValueDatabase {
         }
 
         // If the database has any data, perform data migrations before starting
-        let latest_database_version = 19;
+        let latest_database_version = 20;
 
         if services().users.count()? > 0 {
             // MIGRATIONS
@@ -1138,6 +1134,14 @@ impl KeyValueDatabase {
                 services().globals.bump_database_version(19)?;
 
                 warn!("Migration: 18 -> 19 finished");
+            }
+
+            if services().globals.database_version()? < 20 {
+                let id_appserviceregistrations = db._db.open_tree("id_appserviceregistrations")?;
+                id_appserviceregistrations.clear()?;
+                services().globals.bump_database_version(20)?;
+
+                warn!("Migration: 19 -> 20 finished");
             }
 
             assert_eq!(

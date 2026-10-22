@@ -22,6 +22,8 @@ rusty-s3.workspace = true
 reqwest.workspace = true
 # Generating documentation
 conduit-macros.workspace = true
+# Used for appservice registration deserialization error
+yaml_serde.workspace = true
 
 # default room version, server name, ignored keys
 [dependencies.ruma]

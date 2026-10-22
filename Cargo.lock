@@ -665,6 +665,7 @@ dependencies = [
  "serde",
  "thiserror 2.0.12",
  "url",
+ "yaml_serde",
 ]
 
 [[package]]

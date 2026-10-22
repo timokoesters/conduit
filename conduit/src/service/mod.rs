@@ -41,9 +41,8 @@ pub struct Services {
 }
 
 impl Services {
-    pub fn build<
-        D: appservice::Data
-            + pusher::Data
+    pub async fn build<
+        D: pusher::Data
             + rooms::Data
             + transaction_ids::Data
             + uiaa::Data
@@ -59,7 +58,7 @@ impl Services {
         config: Config,
     ) -> Result<Self> {
         Ok(Self {
-            appservice: appservice::Service::build(db)?,
+            appservice: appservice::Service::build(&config).await?,
             pusher: pusher::Service { db },
             rooms: rooms::Service {
                 alias: rooms::alias::Service { db },

@@ -1,6 +1,5 @@
 mod account_data;
 //mod admin;
-mod appservice;
 mod globals;
 mod key_backups;
 pub(super) mod media;

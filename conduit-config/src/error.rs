@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use thiserror::Error;
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
@@ -20,4 +22,16 @@ pub enum Error {
 
     #[error("Registration token is empty")]
     EmptyRegistrationToken,
+
+    #[error("Invalid appservice registration file at {path}: {source}")]
+    AppserviceRegistrationDeser {
+        source: yaml_serde::Error,
+        path: PathBuf,
+    },
+
+    #[error("Failed to read appservice registration file at {path}: {source}")]
+    AppserviceRegistrationRead {
+        source: std::io::Error,
+        path: PathBuf,
+    },
 }

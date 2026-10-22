@@ -577,7 +577,7 @@ impl Service {
             }
         }
 
-        for appservice in services().appservice.read().await.values() {
+        for appservice in services().appservice.iter_registrations() {
             if services()
                 .rooms
                 .state_cache
