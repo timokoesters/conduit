@@ -599,7 +599,7 @@ impl Config {
             ClientMediaConfig;
 
             download: PerMinute, ByteSize::mb(100), ByteSize::mb(50);
-            upload: PerMinute, ByteSize::mb(10), ByteSize::mb(100);
+            upload: PerMinute, ByteSize::mb(25), ByteSize::mb(100);
             fetch: PerMinute, ByteSize::mb(100), ByteSize::mb(50);
         };
 
