@@ -11,7 +11,7 @@ use ruma::{
 use crate::{api::server_server::DestinationResponse, utils};
 
 use crate::{Config, Error, Result, services};
-use conduit_config::{DirectoryStructure, MediaBackendConfig, TrustedServer, TurnConfig};
+use conduit_config::{Admin, DirectoryStructure, MediaBackendConfig, TrustedServer, TurnConfig};
 use futures_util::FutureExt;
 use hickory_resolver::TokioResolver;
 use hyper_util::client::legacy::connect::dns::{GaiResolver, Name as HyperName};
@@ -53,7 +53,6 @@ pub struct Service {
     pub actual_destination_cache: Arc<RwLock<WellKnownMap>>, // actual_destination, host
     pub tls_name_override: Arc<StdRwLock<TlsNameMap>>,
     pub config: Config,
-    allow_registration: RwLock<bool>,
     keypair: Arc<ruma::signatures::Ed25519KeyPair>,
     dns_resolver: TokioResolver,
     jwt_decoding_key: Option<jsonwebtoken::DecodingKey>,
@@ -194,7 +193,6 @@ impl Service {
         let unstable_room_versions = vec![RoomVersionId::V3, RoomVersionId::V4, RoomVersionId::V5];
 
         let mut s = Self {
-            allow_registration: RwLock::new(config.allow_registration),
             admin_alias: RoomAliasId::parse(format!("#admins:{}", &config.server_name))
                 .expect("#admins:server_name is a valid alias name"),
             server_user: UserId::parse(format!("@conduit:{}", &config.server_name))
@@ -312,15 +310,9 @@ impl Service {
         self.config.max_fetch_prev_events
     }
 
-    /// Allows for the temporary (non-persistent) toggling of registration
-    pub async fn set_registration(&self, status: bool) {
-        let mut lock = self.allow_registration.write().await;
-        *lock = status;
-    }
-
     /// Checks whether user registration is allowed
-    pub async fn allow_registration(&self) -> bool {
-        *self.allow_registration.read().await
+    pub fn allow_registration(&self) -> bool {
+        self.config.allow_registration
     }
 
     pub fn allow_encryption(&self) -> bool {
@@ -546,6 +538,11 @@ impl Service {
                 r
             }
         }
+    }
+
+    /// Checks if the given user is an admin
+    pub fn is_admin(&self, user_id: &UserId) -> bool {
+        self.config.admins.contains(&Admin::new(user_id.to_owned()))
     }
 
     pub async fn shutdown(&self) {

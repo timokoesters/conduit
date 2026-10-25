@@ -23,7 +23,7 @@ use ruma::{
 use tokio::{sync::Mutex, time::interval};
 use tracing::{debug, warn};
 
-use crate::{Error, Result, services};
+use crate::{Error, Result};
 
 pub struct SlidingSyncCache {
     lists: BTreeMap<String, sync_events::v5::request::List>,
@@ -270,18 +270,6 @@ impl Service {
     /// Check if account is deactivated
     pub fn is_deactivated(&self, user_id: &UserId) -> Result<bool> {
         self.db.is_deactivated(user_id)
-    }
-
-    /// Check if a user is an admin
-    pub fn is_admin(&self, user_id: &UserId) -> Result<bool> {
-        if let Some(admin_room_id) = services().admin.get_admin_room()? {
-            services()
-                .rooms
-                .state_cache
-                .is_joined(user_id, &admin_room_id)
-        } else {
-            Ok(false)
-        }
     }
 
     /// Create a new user account on this homeserver.

@@ -9,9 +9,12 @@ use std::{
 use bytesize::ByteSize;
 pub use error::Error;
 use ruma::{
-    MilliSecondsSinceUnixEpoch, OwnedKeyId, OwnedServerName, RoomVersionId, ServerName,
-    ServerSigningKeyVersion, SigningKeyAlgorithm,
-    api::federation::discovery::{OldVerifyKey, VerifyKey},
+    MilliSecondsSinceUnixEpoch, OwnedKeyId, OwnedServerName, OwnedUserId, RoomVersionId,
+    ServerName, ServerSigningKeyVersion, SigningKeyAlgorithm,
+    api::{
+        client::discovery::discover_support::{Contact, ContactRole},
+        federation::discovery::{OldVerifyKey, VerifyKey},
+    },
     serde::Base64,
 };
 use serde::{
@@ -113,6 +116,8 @@ pub struct IncompleteConfig {
 
     #[serde(default)]
     pub appservice_registrations: Vec<PathBuf>,
+    #[serde(default)]
+    pub admins: HashSet<Admin>,
 
     #[serde(flatten)]
     pub catchall: BTreeMap<String, IgnoredAny>,
@@ -166,6 +171,7 @@ pub struct Config {
     pub rate_limiting: RateLimitingConfig,
 
     pub appservice_registrations: Vec<PathBuf>,
+    pub admins: HashSet<Admin>,
 
     pub catchall: BTreeMap<String, IgnoredAny>,
 }
@@ -216,6 +222,7 @@ impl TryFrom<IncompleteConfig> for Config {
             media,
             rate_limiting,
             appservice_registrations,
+            admins,
             catchall,
             old_verify_keys,
             ignored_keys,
@@ -257,6 +264,7 @@ impl TryFrom<IncompleteConfig> for Config {
         let well_known = WellKnownConfig {
             client: well_known_client,
             server: well_known_server,
+            support: well_known.support,
         };
 
         let media = MediaConfig {
@@ -324,6 +332,7 @@ impl TryFrom<IncompleteConfig> for Config {
             media,
             rate_limiting,
             appservice_registrations,
+            admins,
             catchall,
             old_verify_keys,
             ignored_keys,
@@ -395,6 +404,8 @@ pub struct IncompleteWellKnownConfig {
     // We use URL here so that the user gets an error if the config isn't a valid url
     pub client: Option<Url>,
     pub server: Option<OwnedServerName>,
+    #[serde(default)]
+    pub support: WellKnownSupportConfig,
 }
 
 #[derive(Clone, Debug)]
@@ -403,6 +414,24 @@ pub struct WellKnownConfig {
     // URL, just for it to be converted back into a &str
     pub client: String,
     pub server: OwnedServerName,
+    pub support: WellKnownSupportConfig,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct WellKnownSupportConfig {
+    pub contacts: Vec<Contact>,
+    pub publish_admins: bool,
+    pub page: Option<Url>,
+}
+
+impl Default for WellKnownSupportConfig {
+    fn default() -> Self {
+        Self {
+            contacts: Default::default(),
+            publish_admins: true,
+            page: Default::default(),
+        }
+    }
 }
 
 #[derive(Deserialize, Default)]
@@ -771,92 +800,46 @@ impl TryFrom<OldVerifyKeyTimestamp> for OldVerifyKey {
     }
 }
 
-#[cfg(any(feature = "sqlite", feature = "rocksdb"))]
-impl std::fmt::Display for Config {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // Prepare a list of config values to show
-        // TODO: Replace this with something more fit-for-purpose, especially with tables in mind.
-        let lines = [
-            ("Server name", self.server_name.host()),
-            ("Database backend", &self.database_backend.to_string()),
-            ("Database path", &self.database_path),
-            (
-                "Database cache capacity (MB)",
-                &self.db_cache_capacity_mb.to_string(),
-            ),
-            (
-                "Cache capacity modifier",
-                &self.conduit_cache_capacity_modifier.to_string(),
-            ),
-            #[cfg(feature = "rocksdb")]
-            (
-                "Maximum open files for RocksDB",
-                &self.rocksdb_max_open_files.to_string(),
-            ),
-            ("PDU cache capacity", &self.pdu_cache_capacity.to_string()),
-            (
-                "Cleanup interval in seconds",
-                &self.cleanup_second_interval.to_string(),
-            ),
-            ("Maximum request size", &self.max_request_size.to_string()),
-            (
-                "Maximum concurrent requests",
-                &self.max_concurrent_requests.to_string(),
-            ),
-            ("Allow registration", &self.allow_registration.to_string()),
-            (
-                "Enabled lightning bolt",
-                &self.enable_lightning_bolt.to_string(),
-            ),
-            ("Allow encryption", &self.allow_encryption.to_string()),
-            ("Allow federation", &self.allow_federation.to_string()),
-            ("Allow room creation", &self.allow_room_creation.to_string()),
-            (
-                "JWT secret",
-                match self.jwt_secret {
-                    Some(_) => "set",
-                    None => "not set",
-                },
-            ),
-            ("Trusted servers", {
-                let mut lst = vec![];
-                for server in &self.trusted_servers {
-                    match server {
-                        TrustedServer::Server(server) => lst.push(server.host().to_owned()),
-                        TrustedServer::ServerWithKeys { server, keys } => {
-                            lst.push(format!(
-                                "{} (with {} set trusted keys)",
-                                server.host(),
-                                keys.len()
-                            ));
-                        }
-                    }
-                }
-                &lst.join(", ")
-            }),
-            ("TURN URIs", {
-                if let Some(turn) = &self.turn {
-                    let mut lst = vec![];
-                    for item in turn.uris.iter().cloned().enumerate() {
-                        let (_, uri): (usize, String) = item;
-                        lst.push(uri);
-                    }
-                    &lst.join(", ")
-                } else {
-                    "unset"
-                }
-            }),
-            ("Well-known server name", self.well_known.server.as_str()),
-            ("Well-known client URL", &self.well_known.client),
-        ];
+#[derive(Deserialize, Debug, Clone, Eq)]
+pub struct Admin {
+    pub user_id: OwnedUserId,
+    pub email_address: Option<String>,
+}
 
-        let mut msg: String = "Active config values:\n\n".to_owned();
-
-        for line in lines.into_iter().enumerate() {
-            msg += &format!("{}: {}\n", line.1.0, line.1.1);
+impl Admin {
+    pub fn new(user_id: OwnedUserId) -> Self {
+        Self {
+            user_id,
+            email_address: None,
         }
+    }
+}
 
-        write!(f, "{msg}")
+impl From<Admin> for Contact {
+    fn from(value: Admin) -> Self {
+        let Admin {
+            user_id,
+            email_address,
+        } = value;
+
+        Contact {
+            role: ContactRole::Admin,
+            email_address,
+            matrix_id: Some(user_id),
+        }
+    }
+}
+
+// The username needs to be unique among all admins
+impl PartialEq for Admin {
+    fn eq(&self, other: &Self) -> bool {
+        self.user_id == other.user_id
+    }
+}
+
+impl std::hash::Hash for Admin {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.user_id.hash(state);
     }
 }
 

@@ -481,6 +481,7 @@ fn routes(config: &Config) -> Router {
         .ruma_route(client_server::get_relating_events_route)
         .ruma_route(client_server::get_hierarchy_route)
         .ruma_route(client_server::well_known_client)
+        .ruma_route(client_server::well_known_support)
         .route(
             "/_matrix/client/r0/rooms/{room_id}/initialSync",
             get(initial_sync),

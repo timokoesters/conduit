@@ -1187,7 +1187,7 @@ impl KeyValueDatabase {
                 .bump_database_version(latest_database_version)?;
 
             // Create the admin room and server user on first run
-            services().admin.create_admin_room().await?;
+            services().admin.room.create().await?;
 
             warn!(
                 "Created new {} database with version {}",
@@ -1199,7 +1199,7 @@ impl KeyValueDatabase {
         // This data is probably outdated
         db.presenceid_presence.clear()?;
 
-        services().admin.start_handler();
+        services().admin.room.start_handler();
 
         services().sending.start_handler();
 
@@ -1266,7 +1266,7 @@ impl KeyValueDatabase {
                 println!("{}", update.message);
                 services()
                     .admin
-                    .send_message(RoomMessageEventContent::text_plain(format!(
+                    .room.send_message(RoomMessageEventContent::text_plain(format!(
                     "@room: The following is a message from the Conduit developers. It was sent on '{}':\n\n{}",
                     update.date, update.message
                 )))

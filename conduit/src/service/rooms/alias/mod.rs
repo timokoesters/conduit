@@ -42,7 +42,7 @@ impl Service {
             .map(|user| user == user_id)
             .unwrap_or_default()
             // Server admins can remove any local alias
-            || services().admin.user_is_admin(user_id)?
+            || services().admin.room.user_is_admin(user_id)?
             // Always allow the Conduit user to remove the alias, since there may not be an admin room
             || services().globals.server_user ()== user_id
         {

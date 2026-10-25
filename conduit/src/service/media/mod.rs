@@ -558,6 +558,7 @@ impl Service {
     }
 
     /// Returns a list of all the stored media, applying all the given filters to the results
+    #[allow(clippy::too_many_arguments)]
     pub fn list(
         &self,
         server_name_or_user_id: Option<ServerNameOrUserId>,
@@ -565,6 +566,8 @@ impl Service {
         content_type: Option<&str>,
         before: Option<u64>,
         after: Option<u64>,
+        limit: usize,
+        offset: usize,
     ) -> Result<Vec<MediaListItem>> {
         self.db.list(
             server_name_or_user_id,
@@ -572,6 +575,8 @@ impl Service {
             content_type,
             before,
             after,
+            limit,
+            offset,
         )
     }
 
@@ -580,8 +585,8 @@ impl Service {
     /// - The media id
     /// - The time it was blocked, in unix seconds
     /// - The optional reason why it was blocked
-    pub fn list_blocked(&self) -> Vec<Result<BlockedMediaInfo>> {
-        self.db.list_blocked()
+    pub fn list_blocked(&self, limit: usize, offset: usize) -> Result<Vec<BlockedMediaInfo>> {
+        self.db.list_blocked(limit, offset)
     }
 
     pub async fn clear_required_space(

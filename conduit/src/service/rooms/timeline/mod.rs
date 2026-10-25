@@ -505,7 +505,8 @@ impl Service {
                     // the administrator can execute commands as conduit
                     let from_conduit = pdu.sender == *server_user;
 
-                    if let Some(admin_room) = services().admin.get_admin_room()?
+                    if let Some(admin_room) = services().admin.room.get_id()?
+                        && services().globals.is_admin(&pdu.sender)
                         && to_conduit
                         && !from_conduit
                         && admin_room == *pdu.room_id()
@@ -514,7 +515,7 @@ impl Service {
                             .state_cache
                             .is_joined(server_user, &admin_room)?
                     {
-                        services().admin.process_message(body);
+                        services().admin.room.process_message(body);
                     }
                 }
             }
@@ -985,7 +986,7 @@ impl Service {
         let (pdu, pdu_json) =
             self.create_hash_and_sign_event(pdu_builder, sender, Some((room_id, state_lock)))?;
 
-        if let Some(admin_room) = services().admin.get_admin_room()?
+        if let Some(admin_room) = services().admin.room.get_id()?
             && admin_room == *room_id
         {
             match pdu.event_type() {

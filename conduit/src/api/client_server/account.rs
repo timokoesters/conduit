@@ -23,7 +23,7 @@ use ruma::{
     profile::ProfileFieldValue,
     push,
 };
-use tracing::{info, warn};
+use tracing::info;
 
 use register::RegistrationKind;
 
@@ -86,7 +86,7 @@ pub async fn get_register_available_route(
 /// - If `inhibit_login` is false: Creates a device and returns device id and access_token
 #[conduit_macros::rate_limiting(ClientRestriction::Registration)]
 pub async fn register_route(body: Ruma<register::v3::Request>) -> Result<register::v3::Response> {
-    if !services().globals.allow_registration().await && body.sender.is_none() {
+    if !services().globals.allow_registration() && body.sender.is_none() {
         return Err(Error::BadRequest(
             ErrorKind::Forbidden,
             "Registration has been disabled.",
@@ -277,27 +277,10 @@ pub async fn register_route(body: Ruma<register::v3::Request>) -> Result<registe
     if body.sender.is_none() && !is_guest {
         services()
             .admin
+            .room
             .send_message(RoomMessageEventContent::notice_plain(format!(
                 "New user {user_id} registered on this server."
             )));
-    }
-
-    // If this is the first real user, grant them admin privileges
-    // Note: the server user, @conduit:servername, is generated first
-    if !is_guest
-        && let Some(admin_room) = services().admin.get_admin_room()?
-        && services()
-            .rooms
-            .state_cache
-            .room_joined_count(&admin_room)?
-            == Some(1)
-    {
-        services()
-            .admin
-            .make_user_admin(&user_id, displayname)
-            .await?;
-
-        warn!("Granting {} admin privileges as the first user", user_id);
     }
 
     Ok(register::v3::Response {
@@ -400,6 +383,7 @@ pub async fn change_password_route(
     info!("User {} changed their password.", sender_user);
     services()
         .admin
+        .room
         .send_message(RoomMessageEventContent::notice_plain(format!(
             "User {sender_user} changed their password."
         )));
@@ -503,6 +487,7 @@ pub async fn deactivate_route(
     info!("User {} deactivated their account.", sender_user);
     services()
         .admin
+        .room
         .send_message(RoomMessageEventContent::notice_plain(format!(
             "User {sender_user} deactivated their account."
         )));

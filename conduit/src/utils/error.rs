@@ -83,7 +83,7 @@ pub enum Error {
     #[error("{0}")]
     TypedHeaderError(#[from] axum_extra::typed_header::TypedHeaderRejection),
     #[error("{0}")]
-    AdminCommand(&'static str),
+    AdminCommand(#[from] crate::service::admin::Error),
     #[error("from {0}: {1}")]
     RedactionError(
         OwnedServerName,

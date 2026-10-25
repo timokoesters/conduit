@@ -758,6 +758,8 @@ impl service::media::Data for KeyValueDatabase {
         content_type: Option<&str>,
         before: Option<u64>,
         after: Option<u64>,
+        limit: usize,
+        offset: usize,
     ) -> Result<Vec<MediaListItem>> {
         let filter_medialistitem = |item: MediaListItem| {
             if content_type.is_none_or(|ct_filter| {
@@ -874,34 +876,38 @@ impl service::media::Data for KeyValueDatabase {
                 let mut prefix = server_name.as_bytes().to_vec();
                 prefix.push(0xff);
 
-                let mut media = self
+                let media = self
                     .servernamemediaid_metadata
                     .scan_prefix(prefix.clone())
                     .map(|(k, v)| {
                         let mut parts = k.rsplit(|b: &u8| *b == 0xff);
 
                         parse_servernamemediaid_metadata_iter(&v, parts.next(), &server_name)
-                    })
+                    });
+
+                media
+                    .chain(
+                        include_thumbnails
+                            .then_some(self.thumbnailid_metadata.scan_prefix(prefix).map(
+                                |(k, v)| {
+                                    let mut parts = k.split(|b: &u8| *b == 0xff);
+                                    parts.next();
+
+                                    parse_thumbnailid_metadata_iter(
+                                        &k,
+                                        &v,
+                                        parts.next(),
+                                        &server_name,
+                                    )
+                                },
+                            ))
+                            .into_iter()
+                            .flatten(),
+                    )
                     .filter_map(Result::transpose)
-                    .collect::<Result<Vec<_>>>()?;
-
-                if include_thumbnails {
-                    media.append(
-                        &mut self
-                            .thumbnailid_metadata
-                            .scan_prefix(prefix)
-                            .map(|(k, v)| {
-                                let mut parts = k.split(|b: &u8| *b == 0xff);
-                                parts.next();
-
-                                parse_thumbnailid_metadata_iter(&k, &v, parts.next(), &server_name)
-                            })
-                            .filter_map(Result::transpose)
-                            .collect::<Result<Vec<_>>>()?,
-                    );
-                }
-
-                Ok(media)
+                    .skip(offset)
+                    .take(limit)
+                    .collect()
             }
             Some(ServerNameOrUserId::UserId(user_id)) => {
                 let mut prefix = user_id.server_name().as_bytes().to_vec();
@@ -911,7 +917,7 @@ impl service::media::Data for KeyValueDatabase {
 
                 self.servername_userlocalpart_mediaid
                     .scan_prefix(prefix)
-                    .map(|(k, _)| -> Result<_> {
+                    .map(|(k, _)| {
                         let mut parts = k.rsplit(|b: &u8| *b == 0xff);
 
                         let media_id_bytes = parts.next().ok_or_else(|| {
@@ -950,8 +956,7 @@ impl service::media::Data for KeyValueDatabase {
                             ));
                         };
 
-                        let mut media = if let Some(item) = self
-                            .filehash_metadata
+                        self.filehash_metadata
                             .get(&sha256_digest)?
                             .map(FilehashMetadata::from_vec)
                             .map(|meta| {
@@ -966,60 +971,13 @@ impl service::media::Data for KeyValueDatabase {
                                     creation: meta.creation(&sha256_digest)?,
                                 }))
                             })
-                            .transpose()?
-                            .flatten()
-                        {
-                            vec![item]
-                        } else {
-                            Vec::new()
-                        };
-
-                        if include_thumbnails {
-                            key.push(0xff);
-
-                            media.append(
-                                &mut self
-                                    .thumbnailid_metadata
-                                    .scan_prefix(key)
-                                    .map(|(k, v)| {
-                                        let DbFileMeta {
-                                            sha256_digest,
-                                            filename,
-                                            content_type,
-                                            ..
-                                        } = parse_metadata(&v)?;
-
-                                        let dimensions = dimensions_from_thumbnailid(&k)?;
-
-                                        self.filehash_metadata
-                                            .get(&sha256_digest)?
-                                            .map(FilehashMetadata::from_vec)
-                                            .map(|meta| {
-                                                Ok(filter_medialistitem(MediaListItem {
-                                                    server_name: user_id.server_name().to_owned(),
-                                                    media_id: media_id.clone(),
-                                                    uploader_localpart: Some(
-                                                        user_id.localpart().to_owned(),
-                                                    ),
-                                                    content_type,
-                                                    filename,
-                                                    dimensions: Some(dimensions),
-                                                    size: meta.size(&sha256_digest)?,
-                                                    creation: meta.creation(&sha256_digest)?,
-                                                }))
-                                            })
-                                            .transpose()
-                                            .map(Option::flatten)
-                                    })
-                                    .filter_map(Result::transpose)
-                                    .collect::<Result<Vec<_>>>()?,
-                            );
-                        };
-
-                        Ok(media)
+                            .transpose()
+                            .map(Option::flatten)
                     })
-                    .collect::<Result<Vec<Vec<_>>>>()
-                    .map(|outer| outer.into_iter().flatten().collect::<Vec<MediaListItem>>())
+                    .filter_map(Result::transpose)
+                    .skip(offset)
+                    .take(limit)
+                    .collect()
             }
             None => {
                 let splitter = |b: &u8| *b == 0xff;
@@ -1048,7 +1006,7 @@ impl service::media::Data for KeyValueDatabase {
                     Ok(server_name)
                 };
 
-                let mut media = self
+                let media = self
                     .servernamemediaid_metadata
                     .iter()
                     .map(|(k, v)| {
@@ -1057,31 +1015,38 @@ impl service::media::Data for KeyValueDatabase {
 
                         parse_servernamemediaid_metadata_iter(&v, parts.next(), &server_name)
                     })
-                    .filter_map(Result::transpose)
-                    .collect::<Result<Vec<_>>>()?;
+                    .filter_map(Result::transpose);
 
-                if include_thumbnails {
-                    media.append(
-                        &mut self
-                            .thumbnailid_metadata
-                            .iter()
-                            .map(|(k, v)| {
-                                let mut parts = k.split(splitter);
-                                let server_name = get_servername(&mut parts)?;
+                media
+                    .chain(
+                        include_thumbnails
+                            .then_some(
+                                self.thumbnailid_metadata
+                                    .iter()
+                                    .map(|(k, v)| {
+                                        let mut parts = k.split(splitter);
+                                        let server_name = get_servername(&mut parts)?;
 
-                                parse_thumbnailid_metadata_iter(&k, &v, parts.next(), &server_name)
-                            })
-                            .filter_map(Result::transpose)
-                            .collect::<Result<Vec<_>>>()?,
-                    );
-                }
-
-                Ok(media)
+                                        parse_thumbnailid_metadata_iter(
+                                            &k,
+                                            &v,
+                                            parts.next(),
+                                            &server_name,
+                                        )
+                                    })
+                                    .filter_map(Result::transpose),
+                            )
+                            .into_iter()
+                            .flatten(),
+                    )
+                    .skip(offset)
+                    .take(limit)
+                    .collect()
             }
         }
     }
 
-    fn list_blocked(&self) -> Vec<Result<BlockedMediaInfo>> {
+    fn list_blocked(&self, limit: usize, offset: usize) -> Result<Vec<BlockedMediaInfo>> {
         let parse_servername = |parts: &mut Split<_, _>| {
             OwnedServerName::try_from(
                 utils::string_from_bytes(parts.next().ok_or_else(|| {
@@ -1155,6 +1120,8 @@ impl service::media::Data for KeyValueDatabase {
                     sha256_hex,
                 })
             })
+            .skip(offset)
+            .take(limit)
             .collect()
     }
 

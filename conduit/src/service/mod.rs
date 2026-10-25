@@ -32,7 +32,7 @@ pub struct Services {
     pub uiaa: uiaa::Service,
     pub users: Arc<users::Service>,
     pub account_data: account_data::Service,
-    pub admin: Arc<admin::Service>,
+    pub admin: admin::Service,
     pub globals: globals::Service,
     pub key_backups: key_backups::Service,
     pub media: Arc<media::Service>,

@@ -88,6 +88,7 @@ pub trait Data: Send + Sync {
 
     fn unblock(&self, media: &[(OwnedServerName, String)]) -> Vec<Error>;
 
+    #[allow(clippy::too_many_arguments)]
     fn list(
         &self,
         server_name_or_user_id: Option<ServerNameOrUserId>,
@@ -95,6 +96,8 @@ pub trait Data: Send + Sync {
         content_type: Option<&str>,
         before: Option<u64>,
         after: Option<u64>,
+        limit: usize,
+        offset: usize,
     ) -> Result<Vec<MediaListItem>>;
 
     /// Returns a Vec of:
@@ -102,7 +105,7 @@ pub trait Data: Send + Sync {
     /// - The media id
     /// - The time it was blocked, in unix seconds
     /// - The optional reason why it was blocked
-    fn list_blocked(&self) -> Vec<Result<BlockedMediaInfo>>;
+    fn list_blocked(&self, limit: usize, offset: usize) -> Result<Vec<BlockedMediaInfo>>;
 
     fn is_blocked_filehash(&self, sha256_digest: &[u8]) -> Result<bool>;
 

@@ -72,7 +72,7 @@ pub async fn create_room_route(
 
     if !services().globals.allow_room_creation()
         && appservice_info.is_none()
-        && !services().users.is_admin(&sender_user)?
+        && !services().globals.is_admin(&sender_user)
     {
         return Err(Error::BadRequest(
             ErrorKind::Forbidden,
