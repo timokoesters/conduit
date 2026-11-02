@@ -524,7 +524,23 @@ pub(crate) async fn get_keys_helper<F: Fn(&UserId) -> bool>(
     while let Some((server, response)) = futures.next().await {
         match response {
             Ok(Ok(response)) => {
-                for (user, masterkey) in response.master_keys {
+                let is_wanted = |user_id: &UserId| {
+                    user_id.server_name() == server && device_keys_input.contains_key(user_id)
+                };
+                let filtered_master_keys = response
+                    .master_keys
+                    .into_iter()
+                    .filter(|(user_id, _)| is_wanted(user_id));
+                let filtered_device_keys = response
+                    .device_keys
+                    .into_iter()
+                    .filter(|(user_id, _)| is_wanted(user_id));
+                let filtered_self_signing_keys = response
+                    .self_signing_keys
+                    .into_iter()
+                    .filter(|(user_id, _)| is_wanted(user_id));
+
+                for (user, masterkey) in filtered_master_keys {
                     let (master_key_id, mut master_key) =
                         services().users.parse_master_key(&user, &masterkey)?;
 
@@ -547,8 +563,8 @@ pub(crate) async fn get_keys_helper<F: Fn(&UserId) -> bool>(
                     master_keys.insert(user, raw);
                 }
 
-                self_signing_keys.extend(response.self_signing_keys);
-                device_keys.extend(response.device_keys);
+                self_signing_keys.extend(filtered_self_signing_keys);
+                device_keys.extend(filtered_device_keys);
             }
             _ => {
                 back_off(server.to_owned()).await;
