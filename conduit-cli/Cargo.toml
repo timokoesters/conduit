@@ -1,0 +1,21 @@
+[package]
+edition.workspace = true
+homepage.workspace = true
+name = "conduit-cli"
+repository.workspace = true
+rust-version.workspace = true
+version = "0.11.0-alpha"
+
+[dependencies]
+clap.workspace = true
+comfy-table = "8"
+conduit-common.workspace = true
+conduit-config.workspace = true
+ruma.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+
+[lints]
+workspace = true

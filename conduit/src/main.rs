@@ -1,4 +1,7 @@
-use std::{future::Future, io, net::SocketAddr, sync::atomic, time::Duration};
+use std::{
+    fs::Permissions, future::Future, io, net::SocketAddr, os::unix::fs::PermissionsExt,
+    path::PathBuf, sync::atomic, time::Duration,
+};
 
 use axum::{
     Router,
@@ -10,6 +13,7 @@ use axum::{
 };
 use axum_server::{Handle as ServerHandle, bind, bind_rustls, tls_rustls::RustlsConfig};
 use conduit::api::{client_server, ruma_wrapper::axum::SupportedAuthScheme, server_server};
+use conduit_cli::CommandWithStdin;
 use figment::{
     Figment,
     providers::{Env, Format, Toml},
@@ -26,7 +30,12 @@ use ruma::api::{
     error::{Error as RumaError, ErrorBody, ErrorKind, StandardErrorBody},
     path_builder::PathBuilder,
 };
-use tokio::signal;
+use tokio::{
+    fs,
+    io::{AsyncReadExt, AsyncWriteExt},
+    net::UnixListener,
+    signal,
+};
 use tower::ServiceBuilder;
 use tower_http::{
     ServiceBuilderExt as _,
@@ -62,7 +71,7 @@ const DEPRECATED_KEYS: &[&str] = &[
 
 #[tokio::main]
 async fn main() {
-    clap::parse();
+    let args = conduit_cli::parse();
 
     // Initialize config
     let raw_config = Figment::new()
@@ -111,6 +120,15 @@ async fn main() {
             std::process::exit(1);
         }
     };
+
+    if let Some(command) = args.command {
+        if let Err(err) = conduit_cli::handle_command(&config.socket_path, command).await {
+            eprintln!("Failed to connect to Conduit unix socket: {err}");
+            std::process::exit(1);
+        }
+
+        std::process::exit(0);
+    }
 
     let mut was_deprecated = false;
     for key in config
@@ -277,6 +295,11 @@ async fn run_server() -> io::Result<()> {
 
     tokio::spawn(shutdown_signal(handle.clone()));
 
+    #[cfg(unix)]
+    info!("Setting up unix socket");
+    #[cfg(unix)]
+    tokio::spawn(init_unix_socket(&config.socket_path));
+
     match &config.tls {
         Some(tls) => {
             let conf = RustlsConfig::from_pem_file(&tls.certs, &tls.key).await?;
@@ -293,7 +316,7 @@ async fn run_server() -> io::Result<()> {
             #[cfg(feature = "systemd")]
             let _ = sd_notify::notify(true, &[sd_notify::NotifyState::Ready]);
 
-            server.await?
+            server.await?;
         }
     }
 
@@ -666,6 +689,57 @@ fn method_to_filter(method: Method) -> MethodFilter {
         Method::PUT => MethodFilter::PUT,
         Method::TRACE => MethodFilter::TRACE,
         m => panic!("Unsupported HTTP method: {m:?}"),
+    }
+}
+
+async fn init_unix_socket(path: &PathBuf) -> io::Result<SocketGuard<'_>> {
+    let path = SocketGuard::new(path);
+    // In case of dirty shutdown. We ignore the error, as if it matters, we'll get it again when we try to bind.
+    _ = fs::remove_file(&path).await;
+    let listener = UnixListener::bind(&path).unwrap();
+    fs::set_permissions(&path, Permissions::from_mode(0o660)).await?;
+
+    loop {
+        let (mut stream, _addr) = listener.accept().await?;
+        let mut buf = Vec::new();
+
+        stream.readable().await?;
+        stream.read_to_end(&mut buf).await?;
+
+        let CommandWithStdin { command, stdin } = serde_json::from_slice(&buf).unwrap();
+        let conduit_cli::Command::Admin(command) = command;
+
+        let output = services()
+            .admin
+            .process_command(command, stdin)
+            .await
+            .map_err(|e| e.to_string());
+
+        stream.writable().await?;
+        stream
+            .write_all(&serde_json::to_vec(&output).unwrap())
+            .await?;
+    }
+
+    // Ensures that socket guard isn't dropped while still accepting connections, and hence the socket isn't removed
+    #[allow(unreachable_code)]
+    Ok(path)
+}
+
+pub struct SocketGuard<'a>(&'a PathBuf);
+impl<'a> SocketGuard<'a> {
+    pub fn new(path: &'a PathBuf) -> Self {
+        Self(path)
+    }
+}
+impl<'a> AsRef<std::path::Path> for SocketGuard<'a> {
+    fn as_ref(&self) -> &std::path::Path {
+        self.0.as_ref()
+    }
+}
+impl<'a> Drop for SocketGuard<'a> {
+    fn drop(&mut self) {
+        _ = std::fs::remove_file(self)
     }
 }
 

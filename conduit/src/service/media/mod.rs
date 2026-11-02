@@ -1,11 +1,14 @@
 mod data;
 use std::{io::Cursor, sync::Arc};
 
+use conduit_common::media::{
+    self, BlockedMediaInfo, DbFileMeta, FileInfo, FileMeta, ServerNameOrUserId,
+};
 use conduit_config::{DirectoryStructure, MediaBackendConfig, S3MediaBackend};
 pub use data::Data;
 use http::StatusCode;
 use ruma::{
-    OwnedServerName, OwnedUserId, ServerName, UserId,
+    OwnedServerName, ServerName, UserId,
     api::{client::media::is_safe_inline_content_type, error::ErrorKind},
     http_headers::{ContentDisposition, ContentDispositionType},
 };
@@ -19,107 +22,14 @@ use tracing::{error, info, warn};
 use crate::{Error, Result, service::rate_limiting::Target, services, utils};
 use image::imageops::FilterType;
 
-pub struct DbFileMeta {
-    pub sha256_digest: Vec<u8>,
-    pub filename: Option<String>,
-    pub content_type: Option<String>,
-    pub unauthenticated_access_permitted: bool,
-}
-
 use tokio::{
     fs::{self, File},
     io::{AsyncReadExt, AsyncWriteExt},
     time::interval,
 };
 
-pub struct MediaQuery {
-    pub is_blocked: bool,
-    pub source_file: Option<MediaQueryFileInfo>,
-    pub thumbnails: Vec<MediaQueryThumbInfo>,
-}
-
-pub struct MediaQueryFileInfo {
-    pub uploader_localpart: Option<String>,
-    pub sha256_hex: String,
-    pub filename: Option<String>,
-    pub content_type: Option<String>,
-    pub unauthenticated_access_permitted: bool,
-    pub is_blocked_via_filehash: bool,
-    pub file_info: Option<FileInfo>,
-}
-
-pub struct MediaQueryThumbInfo {
-    pub width: u32,
-    pub height: u32,
-    pub sha256_hex: String,
-    pub filename: Option<String>,
-    pub content_type: Option<String>,
-    pub unauthenticated_access_permitted: bool,
-    pub is_blocked_via_filehash: bool,
-    pub file_info: Option<FileInfo>,
-}
-
-pub struct FileInfo {
-    pub creation: u64,
-    pub last_access: u64,
-    pub size: u64,
-}
-
-pub struct MediaListItem {
-    pub server_name: OwnedServerName,
-    pub media_id: String,
-    pub uploader_localpart: Option<String>,
-    pub content_type: Option<String>,
-    pub filename: Option<String>,
-    pub dimensions: Option<(u32, u32)>,
-    pub size: u64,
-    pub creation: u64,
-}
-
-pub enum ServerNameOrUserId {
-    ServerName(OwnedServerName),
-    UserId(OwnedUserId),
-}
-
-pub struct FileMeta {
-    pub content_disposition: ContentDisposition,
-    pub content_type: Option<String>,
-    pub file: Vec<u8>,
-}
-
-pub enum MediaType {
-    LocalMedia { thumbnail: bool },
-    RemoteMedia { thumbnail: bool },
-}
-
-impl MediaType {
-    pub fn new(server_name: &ServerName, thumbnail: bool) -> Self {
-        if server_name == services().globals.server_name() {
-            Self::LocalMedia { thumbnail }
-        } else {
-            Self::RemoteMedia { thumbnail }
-        }
-    }
-
-    pub fn is_thumb(&self) -> bool {
-        match self {
-            MediaType::LocalMedia { thumbnail } | MediaType::RemoteMedia { thumbnail } => {
-                *thumbnail
-            }
-        }
-    }
-}
-
 pub struct Service {
     pub db: &'static dyn Data,
-}
-
-pub struct BlockedMediaInfo {
-    pub server_name: OwnedServerName,
-    pub media_id: String,
-    pub unix_secs: u64,
-    pub reason: Option<String>,
-    pub sha256_hex: Option<String>,
 }
 
 impl Service {
@@ -172,7 +82,7 @@ impl Service {
         for error in self
             .clear_required_space(
                 &sha256_digest,
-                MediaType::new(servername, false),
+                media::Type::new(services().globals.server_name(), servername, false),
                 size(file)?,
             )
             .await?
@@ -218,7 +128,7 @@ impl Service {
 
         self.clear_required_space(
             &sha256_digest,
-            MediaType::new(servername, true),
+            media::Type::new(services().globals.server_name(), servername, true),
             size(file)?,
         )
         .await?;
@@ -454,7 +364,7 @@ impl Service {
     }
 
     /// Returns information about the queried media
-    pub fn query(&self, server_name: &ServerName, media_id: &str) -> Result<MediaQuery> {
+    pub fn query(&self, server_name: &ServerName, media_id: &str) -> Result<media::Query> {
         self.db.query(server_name, media_id)
     }
 
@@ -568,7 +478,7 @@ impl Service {
         after: Option<u64>,
         limit: usize,
         offset: usize,
-    ) -> Result<Vec<MediaListItem>> {
+    ) -> Result<Vec<media::ListItem>> {
         self.db.list(
             server_name_or_user_id,
             include_thumbnails,
@@ -592,7 +502,7 @@ impl Service {
     pub async fn clear_required_space(
         &self,
         sha256_digest: &[u8],
-        media_type: MediaType,
+        media_type: media::Type,
         new_size: u64,
     ) -> Result<Vec<Error>> {
         let files = self.db.files_to_delete(

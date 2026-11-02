@@ -118,6 +118,9 @@ pub struct IncompleteConfig {
     pub appservice_registrations: Vec<PathBuf>,
     #[serde(default)]
     pub admins: HashSet<Admin>,
+    #[cfg(unix)]
+    #[serde(default = "default_socket_path")]
+    pub socket_path: PathBuf,
 
     #[serde(flatten)]
     pub catchall: BTreeMap<String, IgnoredAny>,
@@ -172,6 +175,8 @@ pub struct Config {
 
     pub appservice_registrations: Vec<PathBuf>,
     pub admins: HashSet<Admin>,
+    #[cfg(unix)]
+    pub socket_path: PathBuf,
 
     pub catchall: BTreeMap<String, IgnoredAny>,
 }
@@ -223,6 +228,8 @@ impl TryFrom<IncompleteConfig> for Config {
             rate_limiting,
             appservice_registrations,
             admins,
+            #[cfg(unix)]
+            socket_path,
             catchall,
             old_verify_keys,
             ignored_keys,
@@ -333,6 +340,8 @@ impl TryFrom<IncompleteConfig> for Config {
             rate_limiting,
             appservice_registrations,
             admins,
+            #[cfg(unix)]
+            socket_path,
             catchall,
             old_verify_keys,
             ignored_keys,
@@ -916,6 +925,16 @@ pub fn default_default_room_version() -> RoomVersionId {
 
 fn default_s3_duration() -> u64 {
     30
+}
+
+/// The default socket path for sending/recieving admin commands
+///
+/// Can be overwritten by package maintainers by setting the `CONDUIT_DEFAULT_SOCKET_PATH`
+/// environment variable at build time.
+pub fn default_socket_path() -> PathBuf {
+    option_env!("CONDUIT_DEFAULT_SOCKET_PATH")
+        .unwrap_or("/run/matrix-conduit/conduit.sock")
+        .into()
 }
 
 fn default_ignored_keys() -> Vec<VerifyKey> {

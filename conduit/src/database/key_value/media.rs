@@ -1,6 +1,7 @@
 use std::{collections::BTreeMap, ops::Range, slice::Split};
 
 use bytesize::ByteSize;
+use conduit_common::media::{self, BlockedMediaInfo, DbFileMeta, FileInfo, ServerNameOrUserId};
 use conduit_config::{MediaRetentionConfig, MediaRetentionScope};
 use ruma::{OwnedServerName, ServerName, UserId, api::error::ErrorKind};
 use sha2::{Sha256, digest::Output};
@@ -9,13 +10,7 @@ use tracing::error;
 use crate::{
     Error, Result,
     database::KeyValueDatabase,
-    service::{
-        self,
-        media::{
-            BlockedMediaInfo, Data as _, DbFileMeta, FileInfo, MediaListItem, MediaQuery,
-            MediaQueryFileInfo, MediaQueryThumbInfo, MediaType, ServerNameOrUserId,
-        },
-    },
+    service::{self, media::Data as _},
     services, utils,
 };
 
@@ -168,12 +163,12 @@ impl service::media::Data for KeyValueDatabase {
             .ok_or_else(|| Error::BadRequest(ErrorKind::NotFound, "Media not found."))
     }
 
-    fn query(&self, server_name: &ServerName, media_id: &str) -> Result<MediaQuery> {
+    fn query(&self, server_name: &ServerName, media_id: &str) -> Result<media::Query> {
         let mut key = server_name.as_bytes().to_vec();
         key.push(0xff);
         key.extend_from_slice(media_id.as_bytes());
 
-        Ok(MediaQuery {
+        Ok(media::Query {
             is_blocked: self.is_directly_blocked(server_name, media_id)?,
             source_file: if let Some(DbFileMeta {
                 sha256_digest,
@@ -206,7 +201,7 @@ impl service::media::Data for KeyValueDatabase {
 
                 let file_info = self.file_info(&sha256_digest)?;
 
-                Some(MediaQueryFileInfo {
+                Some(media::QueryFileInfo {
                     uploader_localpart,
                     sha256_hex,
                     filename,
@@ -251,7 +246,7 @@ impl service::media::Data for KeyValueDatabase {
                             None
                         };
 
-                        Ok(MediaQueryThumbInfo {
+                        Ok(media::QueryThumbInfo {
                             width,
                             height,
                             sha256_hex,
@@ -760,8 +755,8 @@ impl service::media::Data for KeyValueDatabase {
         after: Option<u64>,
         limit: usize,
         offset: usize,
-    ) -> Result<Vec<MediaListItem>> {
-        let filter_medialistitem = |item: MediaListItem| {
+    ) -> Result<Vec<media::ListItem>> {
+        let filter_medialistitem = |item: media::ListItem| {
             if content_type.is_none_or(|ct_filter| {
                 item.content_type
                     .as_deref()
@@ -819,7 +814,7 @@ impl service::media::Data for KeyValueDatabase {
                     .get(&sha256_digest)?
                     .map(FilehashMetadata::from_vec)
                     .map(|meta| {
-                        Ok(filter_medialistitem(MediaListItem {
+                        Ok(filter_medialistitem(media::ListItem {
                             server_name: server_name.to_owned(),
                             media_id: media_id.clone(),
                             uploader_localpart,
@@ -856,7 +851,7 @@ impl service::media::Data for KeyValueDatabase {
                     .get(&sha256_digest)?
                     .map(FilehashMetadata::from_vec)
                     .map(|meta| {
-                        Ok(filter_medialistitem(MediaListItem {
+                        Ok(filter_medialistitem(media::ListItem {
                             server_name: server_name.to_owned(),
                             media_id,
                             uploader_localpart: None,
@@ -960,7 +955,7 @@ impl service::media::Data for KeyValueDatabase {
                             .get(&sha256_digest)?
                             .map(FilehashMetadata::from_vec)
                             .map(|meta| {
-                                Ok::<_, Error>(filter_medialistitem(MediaListItem {
+                                Ok::<_, Error>(filter_medialistitem(media::ListItem {
                                     server_name: user_id.server_name().to_owned(),
                                     media_id: media_id.clone(),
                                     uploader_localpart: Some(user_id.localpart().to_owned()),
@@ -1184,7 +1179,7 @@ impl service::media::Data for KeyValueDatabase {
         &self,
         sha256_digest: &[u8],
         retention: &MediaRetentionConfig,
-        media_type: MediaType,
+        media_type: media::Type,
         new_size: u64,
     ) -> Result<Vec<Result<String>>> {
         // If the file already exists, no space needs to be cleared
@@ -1196,7 +1191,7 @@ impl service::media::Data for KeyValueDatabase {
 
         let mut files_to_delete = Vec::new();
 
-        if media_type.is_thumb()
+        if media_type.thumbnail
             && let Some(mut f) = self.purge_if_necessary(
                 scoped_space(MediaRetentionScope::Thumbnail),
                 |k| self.file_is_thumb(k),
@@ -1206,25 +1201,20 @@ impl service::media::Data for KeyValueDatabase {
             files_to_delete.append(&mut f);
         }
 
-        match media_type {
-            MediaType::LocalMedia { thumbnail: _ } => {
-                if let Some(mut f) = self.purge_if_necessary(
-                    scoped_space(MediaRetentionScope::Local),
-                    |k| self.file_is_local(k).unwrap_or(true),
-                    &new_size,
-                ) {
-                    files_to_delete.append(&mut f);
-                }
+        if media_type.local {
+            if let Some(mut f) = self.purge_if_necessary(
+                scoped_space(MediaRetentionScope::Local),
+                |k| self.file_is_local(k).unwrap_or(true),
+                &new_size,
+            ) {
+                files_to_delete.append(&mut f);
             }
-            MediaType::RemoteMedia { thumbnail: _ } => {
-                if let Some(mut f) = self.purge_if_necessary(
-                    scoped_space(MediaRetentionScope::Remote),
-                    |k| !self.file_is_local(k).unwrap_or(true),
-                    &new_size,
-                ) {
-                    files_to_delete.append(&mut f);
-                }
-            }
+        } else if let Some(mut f) = self.purge_if_necessary(
+            scoped_space(MediaRetentionScope::Remote),
+            |k| !self.file_is_local(k).unwrap_or(true),
+            &new_size,
+        ) {
+            files_to_delete.append(&mut f);
         }
 
         if let Some(mut f) = self.purge_if_necessary(retention.global_space, |_| true, &new_size) {

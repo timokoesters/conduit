@@ -1,0 +1,25 @@
+[package]
+edition.workspace = true
+homepage.workspace = true
+name = "conduit-common"
+repository.workspace = true
+rust-version.workspace = true
+version = "0.11.0-alpha"
+
+[dependencies]
+bytesize.workspace = true
+chrono.workspace = true
+clap.workspace = true
+humantime.workspace = true
+ruma = { workspace = true, features = ["api"] }
+serde.workspace = true
+tokio = { workspace = true, features = [
+  "io-std",
+  "io-util",
+  "macros",
+  "net",
+  "rt-multi-thread",
+] }
+
+[lints]
+workspace = true

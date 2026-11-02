@@ -1,12 +1,11 @@
+use conduit_common::media;
 use conduit_config::MediaRetentionConfig;
 use ruma::{OwnedServerName, ServerName, UserId};
 use sha2::{Sha256, digest::Output};
 
 use crate::{Error, Result, service::media::FileInfo};
 
-use super::{
-    BlockedMediaInfo, DbFileMeta, MediaListItem, MediaQuery, MediaType, ServerNameOrUserId,
-};
+use super::{BlockedMediaInfo, DbFileMeta, ServerNameOrUserId};
 
 pub trait Data: Send + Sync {
     #[allow(clippy::too_many_arguments)]
@@ -47,7 +46,7 @@ pub trait Data: Send + Sync {
         height: u32,
     ) -> Result<DbFileMeta>;
 
-    fn query(&self, server_name: &ServerName, media_id: &str) -> Result<MediaQuery>;
+    fn query(&self, server_name: &ServerName, media_id: &str) -> Result<media::Query>;
 
     fn purge_and_get_hashes(
         &self,
@@ -98,7 +97,7 @@ pub trait Data: Send + Sync {
         after: Option<u64>,
         limit: usize,
         offset: usize,
-    ) -> Result<Vec<MediaListItem>>;
+    ) -> Result<Vec<media::ListItem>>;
 
     /// Returns a Vec of:
     /// - The server the media is from
@@ -116,7 +115,7 @@ pub trait Data: Send + Sync {
         &self,
         sha256_digest: &[u8],
         retention: &MediaRetentionConfig,
-        media_type: MediaType,
+        media_type: media::Type,
         new_size: u64,
     ) -> Result<Vec<Result<String>>>;
 

@@ -20,6 +20,10 @@ workspace = true
 conduit-config.workspace = true
 # Rate limiting
 conduit-macros = { workspace = true, features = ["rate-limiting"] }
+# Shared types
+conduit-common.workspace = true
+# Cli commands/args
+conduit-cli.workspace = true
 
 # Web framework
 axum = { version = "0.8", default-features = false, features = [
@@ -43,7 +47,7 @@ tower-http = { version = "0.6", features = [
 tower-service = "0.3"
 
 # Async runtime and utilities
-tokio = { version = "1", features = ["fs", "macros", "signal", "sync"] }
+tokio = { workspace = true, features = ["fs", "macros", "signal", "sync"] }
 
 # Used for the http request / response body type for Ruma endpoints used with reqwest
 bytes = "1"
@@ -117,9 +121,8 @@ thread_local = "1"
 hmac = "0.12"
 sha-1 = "0.10"
 # used for conduit's CLI and admin room command parsing
-chrono = "0.4"
+chrono.workspace = true
 clap.workspace = true
-humantime = "2"
 shell-words = "1.1.0"
 
 futures-util = { version = "0.3", default-features = false }

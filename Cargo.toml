@@ -1,6 +1,13 @@
 [workspace]
 default-members = ["conduit"]
-members = ["conduit", "conduit-config", "conduit-macros", "xtask"]
+members = [
+  "conduit",
+  "conduit-cli",
+  "conduit-common",
+  "conduit-config",
+  "conduit-macros",
+  "xtask",
+]
 resolver = "2"
 
 [workspace.lints.rust]
@@ -24,6 +31,7 @@ bytesize = "2"
 # Removing the `color` feature as it is not used in the admin room commands.
 # `string` feature is added for some reason, not sure.
 # Added `derive` feature to allow derive macros
+chrono = "0.4"
 clap = { version = "4", default-features = false, features = [
   "derive",
   "error-context",
@@ -32,14 +40,18 @@ clap = { version = "4", default-features = false, features = [
   "string",
   "usage",
 ] }
+conduit-cli.path = "conduit-cli"
+conduit-common.path = "conduit-common"
 conduit-config.path = "conduit-config"
 conduit-macros.path = "conduit-macros"
+humantime = "2"
 reqwest = { version = "0.12", default-features = false }
 ruma = "0.17"
 rusty-s3 = "0.8"
 serde = "1"
 serde_json = "1"
 thiserror = "2"
+tokio = "1"
 yaml_serde = "0.10"
 
 [profile.dev]

@@ -1,19 +1,25 @@
 use std::{collections::BTreeMap, sync::Arc};
 
 use clap::Parser;
+use conduit_common::admin::{CodeBlock, Command, CommandOutput, MediaFile, RowItem};
+use image::GenericImageView;
 use regex::Regex;
 use ruma::{
     OwnedRoomAliasId, OwnedRoomId, ServerName, UserId,
     events::{
         TimelineEventType,
         room::{
+            MediaSource,
             canonical_alias::RoomCanonicalAliasEventContent,
             create::RoomCreateEventContent,
             guest_access::{GuestAccess, RoomGuestAccessEventContent},
             history_visibility::{HistoryVisibility, RoomHistoryVisibilityEventContent},
             join_rules::{JoinRule, RoomJoinRulesEventContent},
             member::{MembershipState, RoomMemberEventContent},
-            message::{MessageType, RoomMessageEventContent},
+            message::{
+                FileMessageEventContent, ImageMessageEventContent, MessageType,
+                RoomMessageEventContent,
+            },
             name::RoomNameEventContent,
             power_levels::RoomPowerLevelsEventContent,
             topic::RoomTopicEventContent,
@@ -23,9 +29,11 @@ use ruma::{
 use serde_json::value::to_raw_value;
 use tokio::sync::{Mutex, mpsc};
 
-use crate::{Result, service::pdu::PduBuilder, services};
-
-use super::Command;
+use crate::{
+    Result,
+    service::{media::size, pdu::PduBuilder},
+    services,
+};
 
 #[cfg_attr(test, derive(Debug))]
 #[derive(Parser)]
@@ -36,16 +44,55 @@ struct Args {
 }
 
 pub trait Output {
-    fn to_message(self) -> MessageType;
+    fn to_message(self) -> Result<MessageType>;
 }
 
-impl Output for super::CommandOutput {
-    fn to_message(self) -> MessageType {
-        match self {
+impl Output for CommandOutput {
+    fn to_message(self) -> Result<MessageType> {
+        Ok(match self {
             Self::Plain(message) => RoomMessageEventContent::text_plain(message).into(),
             Self::TaskComplete(message) => RoomMessageEventContent::text_plain(message).into(),
-            Self::Image(image_event_content) => MessageType::Image(image_event_content),
-            Self::File(file_event_content) => MessageType::File(file_event_content),
+            Self::File(MediaFile {
+                file,
+                content_type,
+                filename,
+                mxc,
+            }) => {
+                if let Ok(image) = image::load_from_memory(&file) {
+                    let (width, height) = image.dimensions();
+
+                    MessageType::Image(ImageMessageEventContent {
+                        body: filename.clone().unwrap_or_default(),
+                        formatted: None,
+                        filename,
+                        source: MediaSource::Plain(mxc.to_owned()),
+                        info: Some(Box::new(ruma::events::room::ImageInfo {
+                            height: Some(height.into()),
+                            width: Some(width.into()),
+                            mimetype: content_type,
+                            size: size(&file)?.try_into().ok(),
+                            thumbnail_info: None,
+                            thumbnail_source: None,
+                            blurhash: None,
+                            thumbhash: None,
+                            is_animated: None,
+                        })),
+                    })
+                } else {
+                    MessageType::File(FileMessageEventContent {
+                        body: filename.clone().unwrap_or_default(),
+                        formatted: None,
+                        filename,
+                        source: MediaSource::Plain(mxc.to_owned()),
+                        info: Some(Box::new(ruma::events::room::message::FileInfo {
+                            mimetype: content_type,
+                            size: size(&file)?.try_into().ok(),
+                            thumbnail_info: None,
+                            thumbnail_source: None,
+                        })),
+                    })
+                }
+            }
             Self::Table {
                 title,
                 headers,
@@ -92,7 +139,7 @@ impl Output for super::CommandOutput {
             }
             .into(),
             Self::CodeBlockWithMsg {
-                code_block: super::CodeBlock { code, language },
+                code_block: CodeBlock { code, language },
                 message,
             } => {
                 let markdown_message = format!("{message}\n```{language}\n{code}\n```");
@@ -103,23 +150,23 @@ impl Output for super::CommandOutput {
                 RoomMessageEventContent::text_html(markdown_message, html_message)
             }
             .into(),
-        }
+        })
     }
 }
 
-fn markdown_rowitem(value: super::RowItem) -> String {
+fn markdown_rowitem(value: RowItem) -> String {
     match value {
-        super::RowItem::Plain(value) => value,
-        super::RowItem::Code(value) => format!("`{value}`"),
-        super::RowItem::Empty => String::new(),
+        RowItem::Plain(value) => value,
+        RowItem::Code(value) => format!("`{value}`"),
+        RowItem::Empty => String::new(),
     }
 }
 
-fn html_rowitem(value: super::RowItem) -> String {
+fn html_rowitem(value: RowItem) -> String {
     match value {
-        super::RowItem::Plain(value) => value,
-        super::RowItem::Code(value) => format!("<code>{value}</code>"),
-        super::RowItem::Empty => String::new(),
+        RowItem::Plain(value) => value,
+        RowItem::Code(value) => format!("<code>{value}</code>"),
+        RowItem::Empty => String::new(),
     }
 }
 
@@ -286,7 +333,7 @@ impl Service {
             .admin
             .process_command(command, code_block_input)
             .await
-            .map(Output::to_message)
+            .map(Output::to_message)?
     }
 
     // Utility to turn clap's `--help` text to HTML.
@@ -758,7 +805,9 @@ impl Service {
 
 #[cfg(test)]
 mod test {
-    use super::*;
+    use clap::Parser;
+
+    use super::Args;
 
     #[test]
     fn get_help_short() {

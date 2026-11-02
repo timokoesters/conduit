@@ -8,7 +8,6 @@ use crate::{
     },
     service::{
         globals::SigningKeys,
-        media::FileMeta,
         pdu::{PduBuilder, gen_event_id_canonical_json},
         rate_limiting::Target,
     },
@@ -17,6 +16,7 @@ use crate::{
 use axum::{Json, response::IntoResponse};
 use axum_extra::headers::{CacheControl, Header};
 
+use conduit_common::media::FileMeta;
 use ruma::{
     CanonicalJsonObject, CanonicalJsonValue, EventId, MilliSecondsSinceUnixEpoch, OwnedEventId,
     OwnedRoomId, OwnedServerName, OwnedServerSigningKeyId, OwnedUserId, RoomId, RoomVersionId,

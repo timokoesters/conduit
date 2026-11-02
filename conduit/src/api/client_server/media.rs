@@ -5,12 +5,10 @@ use std::time::Duration;
 
 use crate::{
     Error, Result, Ruma,
-    service::{
-        media::{FileMeta, size},
-        rate_limiting::Target,
-    },
+    service::{media::size, rate_limiting::Target},
     services, utils,
 };
+use conduit_common::media::FileMeta;
 use http::header::{CONTENT_DISPOSITION, CONTENT_TYPE};
 use ruma::{
     ServerName, UInt,

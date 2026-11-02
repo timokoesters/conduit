@@ -1,5 +1,4 @@
 pub mod api;
-pub mod clap;
 mod database;
 mod service;
 mod utils;
