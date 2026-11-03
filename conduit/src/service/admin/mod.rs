@@ -26,6 +26,7 @@ use tokio::{sync::RwLock, time::Instant};
 use crate::{
     Error as ConduitError, PduEvent, Result,
     api::client_server::{self, AUTO_GEN_PASSWORD_LENGTH, leave_all_rooms},
+    service::globals::SigningKeys,
     services, utils,
 };
 
@@ -1204,24 +1205,28 @@ impl Service {
                         let mut expired_key_map = BTreeMap::new();
                         let mut valid_key_map = BTreeMap::new();
 
-                        for (server, keys) in pub_key_map.into_inner().into_iter() {
+                        for (server, keys) in pub_key_map.into_inner().into_iter().chain(vec![(
+                            services().globals.server_name().to_string(),
+                            SigningKeys::load_own_keys(),
+                        )]) {
                             if keys.valid_until_ts > MilliSecondsSinceUnixEpoch::now() {
                                 valid_key_map.insert(
-                                    server,
+                                    server.clone(),
                                     keys.verify_keys
-                                        .into_iter()
-                                        .map(|(id, key)| (id, key.key))
-                                        .collect(),
-                                );
-                            } else {
-                                expired_key_map.insert(
-                                    server,
-                                    keys.verify_keys
+                                        .clone()
                                         .into_iter()
                                         .map(|(id, key)| (id, key.key))
                                         .collect(),
                                 );
                             }
+                            // Valid keys can go into the expired key map
+                            expired_key_map.insert(
+                                server,
+                                keys.verify_keys
+                                    .into_iter()
+                                    .map(|(id, key)| (id, key.key))
+                                    .collect(),
+                            );
                         }
 
                         if ruma::signatures::verify_json(&valid_key_map, &value).is_ok() {
