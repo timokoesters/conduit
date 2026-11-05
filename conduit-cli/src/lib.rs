@@ -7,7 +7,7 @@ use std::{
 
 use clap::{Parser, Subcommand};
 use comfy_table::{Table, presets::UTF8_FULL};
-use conduit_common::admin::{self, CodeBlock, CommandOutput, MediaFile, RowItem};
+use conduit_common::admin::{self, CodeBlock, CommandOutput, RowItem, media};
 use serde::{Deserialize, Serialize};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
@@ -104,7 +104,7 @@ impl Output for CommandOutput {
         match self {
             Self::Plain(message) => println!("{message}"),
             Self::TaskComplete(message) => println!("{message}"),
-            Self::File(MediaFile { file, .. }) => {
+            Self::File(media::File { file, .. }) => {
                 terminal_check()?;
 
                 let mut stdout = tokio::io::stdout();

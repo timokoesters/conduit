@@ -37,6 +37,13 @@ pub trait Data: Send + Sync {
     /// Hash and set the user's password to the Argon2 hash
     fn set_password(&self, user_id: &UserId, password: Option<&str>) -> Result<()>;
 
+    /// Sets the creation time of the user, just for admin usage
+    fn set_creation_time(&self, user_id: &UserId) -> Result<()>;
+
+    /// Gets the creation time of the user.
+    /// Is `None` if the user was created before we started tracking user creation times.
+    fn get_creation_time(&self, user_id: &UserId) -> Result<Option<u64>>;
+
     /// Returns the complete profile of a user on this homeserver.
     fn profile(&self, user_id: &UserId) -> Result<UserProfile>;
 

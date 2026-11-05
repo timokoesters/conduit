@@ -74,6 +74,7 @@ pub struct KeyValueDatabase {
 
     //pub users: users::Users,
     pub(super) userid_password: Arc<dyn KvTree>,
+    pub(super) userid_creationtime: Arc<dyn KvTree>,
     pub(super) userid_profile: Arc<dyn KvTree>,
     pub(super) userdeviceid_token: Arc<dyn KvTree>,
     pub(super) userdeviceid_metadata: Arc<dyn KvTree>, // This is also used to check if a device exists
@@ -294,6 +295,7 @@ impl KeyValueDatabase {
         let db_raw = Box::new(Self {
             _db: builder.clone(),
             userid_password: builder.open_tree("userid_password")?,
+            userid_creationtime: builder.open_tree("userid_creationtime")?,
             userid_profile: builder.open_tree("userid_profile")?,
             userdeviceid_token: builder.open_tree("userdeviceid_token")?,
             userdeviceid_metadata: builder.open_tree("userdeviceid_metadata")?,

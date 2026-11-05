@@ -472,7 +472,7 @@ impl Service {
     pub fn list(
         &self,
         server_name_or_user_id: Option<ServerNameOrUserId>,
-        include_thumbnails: bool,
+        thumbnails: bool,
         content_type: Option<&str>,
         before: Option<u64>,
         after: Option<u64>,
@@ -481,7 +481,7 @@ impl Service {
     ) -> Result<Vec<media::ListItem>> {
         self.db.list(
             server_name_or_user_id,
-            include_thumbnails,
+            thumbnails,
             content_type,
             before,
             after,

@@ -275,6 +275,7 @@ impl Service {
     /// Create a new user account on this homeserver.
     pub fn create(&self, user_id: &UserId, password: Option<&str>) -> Result<()> {
         self.db.set_password(user_id, password)?;
+        self.db.set_creation_time(user_id)?;
         Ok(())
     }
 

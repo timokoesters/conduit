@@ -749,7 +749,7 @@ impl service::media::Data for KeyValueDatabase {
     fn list(
         &self,
         server_name_or_user_id: Option<ServerNameOrUserId>,
-        include_thumbnails: bool,
+        thumbnails: bool,
         content_type: Option<&str>,
         before: Option<u64>,
         after: Option<u64>,
@@ -871,38 +871,34 @@ impl service::media::Data for KeyValueDatabase {
                 let mut prefix = server_name.as_bytes().to_vec();
                 prefix.push(0xff);
 
-                let media = self
-                    .servernamemediaid_metadata
-                    .scan_prefix(prefix.clone())
-                    .map(|(k, v)| {
-                        let mut parts = k.rsplit(|b: &u8| *b == 0xff);
+                // let media = ;
 
-                        parse_servernamemediaid_metadata_iter(&v, parts.next(), &server_name)
-                    });
+                if thumbnails {
+                    self.thumbnailid_metadata
+                        .scan_prefix(prefix)
+                        .map(|(k, v)| {
+                            let mut parts = k.split(|b: &u8| *b == 0xff);
+                            parts.next();
 
-                media
-                    .chain(
-                        include_thumbnails
-                            .then_some(self.thumbnailid_metadata.scan_prefix(prefix).map(
-                                |(k, v)| {
-                                    let mut parts = k.split(|b: &u8| *b == 0xff);
-                                    parts.next();
+                            parse_thumbnailid_metadata_iter(&k, &v, parts.next(), &server_name)
+                        })
+                        .filter_map(Result::transpose)
+                        .skip(offset)
+                        .take(limit)
+                        .collect()
+                } else {
+                    self.servernamemediaid_metadata
+                        .scan_prefix(prefix.clone())
+                        .map(|(k, v)| {
+                            let mut parts = k.rsplit(|b: &u8| *b == 0xff);
 
-                                    parse_thumbnailid_metadata_iter(
-                                        &k,
-                                        &v,
-                                        parts.next(),
-                                        &server_name,
-                                    )
-                                },
-                            ))
-                            .into_iter()
-                            .flatten(),
-                    )
-                    .filter_map(Result::transpose)
-                    .skip(offset)
-                    .take(limit)
-                    .collect()
+                            parse_servernamemediaid_metadata_iter(&v, parts.next(), &server_name)
+                        })
+                        .filter_map(Result::transpose)
+                        .skip(offset)
+                        .take(limit)
+                        .collect()
+                }
             }
             Some(ServerNameOrUserId::UserId(user_id)) => {
                 let mut prefix = user_id.server_name().as_bytes().to_vec();
@@ -1001,42 +997,33 @@ impl service::media::Data for KeyValueDatabase {
                     Ok(server_name)
                 };
 
-                let media = self
-                    .servernamemediaid_metadata
-                    .iter()
-                    .map(|(k, v)| {
-                        let mut parts = k.split(splitter);
-                        let server_name = get_servername(&mut parts)?;
+                if thumbnails {
+                    self.thumbnailid_metadata
+                        .iter()
+                        .map(|(k, v)| {
+                            let mut parts = k.split(splitter);
+                            let server_name = get_servername(&mut parts)?;
 
-                        parse_servernamemediaid_metadata_iter(&v, parts.next(), &server_name)
-                    })
-                    .filter_map(Result::transpose);
+                            parse_thumbnailid_metadata_iter(&k, &v, parts.next(), &server_name)
+                        })
+                        .filter_map(Result::transpose)
+                        .skip(offset)
+                        .take(limit)
+                        .collect()
+                } else {
+                    self.servernamemediaid_metadata
+                        .iter()
+                        .map(|(k, v)| {
+                            let mut parts = k.split(splitter);
+                            let server_name = get_servername(&mut parts)?;
 
-                media
-                    .chain(
-                        include_thumbnails
-                            .then_some(
-                                self.thumbnailid_metadata
-                                    .iter()
-                                    .map(|(k, v)| {
-                                        let mut parts = k.split(splitter);
-                                        let server_name = get_servername(&mut parts)?;
-
-                                        parse_thumbnailid_metadata_iter(
-                                            &k,
-                                            &v,
-                                            parts.next(),
-                                            &server_name,
-                                        )
-                                    })
-                                    .filter_map(Result::transpose),
-                            )
-                            .into_iter()
-                            .flatten(),
-                    )
-                    .skip(offset)
-                    .take(limit)
-                    .collect()
+                            parse_servernamemediaid_metadata_iter(&v, parts.next(), &server_name)
+                        })
+                        .filter_map(Result::transpose)
+                        .skip(offset)
+                        .take(limit)
+                        .collect()
+                }
             }
         }
     }

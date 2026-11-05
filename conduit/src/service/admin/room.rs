@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, sync::Arc};
 
 use clap::Parser;
-use conduit_common::admin::{CodeBlock, Command, CommandOutput, MediaFile, RowItem};
+use conduit_common::admin::{CodeBlock, Command, CommandOutput, RowItem, media};
 use image::GenericImageView;
 use regex::Regex;
 use ruma::{
@@ -52,7 +52,7 @@ impl Output for CommandOutput {
         Ok(match self {
             Self::Plain(message) => RoomMessageEventContent::text_plain(message).into(),
             Self::TaskComplete(message) => RoomMessageEventContent::text_plain(message).into(),
-            Self::File(MediaFile {
+            Self::File(media::File {
                 file,
                 content_type,
                 filename,

@@ -129,6 +129,23 @@ impl service::users::Data for KeyValueDatabase {
         }
     }
 
+    fn set_creation_time(&self, user_id: &UserId) -> Result<()> {
+        self.userid_creationtime.insert(
+            user_id.as_bytes(),
+            &utils::secs_since_unix_epoch().to_be_bytes(),
+        )
+    }
+
+    fn get_creation_time(&self, user_id: &UserId) -> Result<Option<u64>> {
+        self.userid_creationtime
+            .get(user_id.as_bytes())?
+            .map(|bytes| {
+                utils::u64_from_bytes(&bytes)
+                    .map_err(|_| Error::bad_database("Invalid length of user creation time"))
+            })
+            .transpose()
+    }
+
     fn profile(&self, user_id: &UserId) -> Result<UserProfile> {
         self.userid_profile.get(user_id.as_bytes())?.map_or_else(
             || Ok(UserProfile::new()),

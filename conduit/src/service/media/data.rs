@@ -91,7 +91,7 @@ pub trait Data: Send + Sync {
     fn list(
         &self,
         server_name_or_user_id: Option<ServerNameOrUserId>,
-        include_thumbnails: bool,
+        thumbnails: bool,
         content_type: Option<&str>,
         before: Option<u64>,
         after: Option<u64>,
