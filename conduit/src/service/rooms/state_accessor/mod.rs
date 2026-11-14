@@ -22,7 +22,7 @@ use ruma::{
         },
     },
     room::{JoinRuleSummary, RoomMembership},
-    state_res::{Event, events::RoomCreateEvent},
+    state_res::events::RoomCreateEvent,
 };
 use serde_json::value::to_raw_value;
 use tokio::sync::MutexGuard;
@@ -363,17 +363,18 @@ impl Service {
         federation: bool,
     ) -> Result<bool> {
         self.power_levels(room_id).map(|power_levels| {
-            power_levels.user_can_redact_event_of_other(sender)
-                || power_levels.user_can_redact_own_event(sender)
-                    && if let Ok(Some(pdu)) = services().rooms.timeline.get_pdu(redacts) {
-                        if federation {
-                            pdu.sender().server_name() == sender.server_name()
+            let Ok(Some(pdu)) = services().rooms.timeline.get_pdu(redacts) else {
+                return false;
+            };
+
+            room_id == pdu.room_id().as_ref()
+                && (power_levels.user_can_redact_event_of_other(sender)
+                    || power_levels.user_can_redact_own_event(sender)
+                        && if federation {
+                            pdu.sender.server_name() == sender.server_name()
                         } else {
                             pdu.sender == sender
-                        }
-                    } else {
-                        false
-                    }
+                        })
         })
     }
 
