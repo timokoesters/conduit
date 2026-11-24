@@ -41,8 +41,8 @@ use crate::{
 
 async fn into_checked_parts(
     req: Request<Body>,
-) -> Result<(Parts, Bytes, Option<CanonicalJsonValue>)> {
-    let (parts, body) = req.into_parts();
+) -> Result<(Parts, Path<Vec<String>>, Bytes, Option<CanonicalJsonValue>)> {
+    let (mut parts, body) = req.into_parts();
     let body = axum::body::to_bytes(
         body,
         services()
@@ -66,7 +66,8 @@ async fn into_checked_parts(
 
     let json_body = serde_json::from_slice::<CanonicalJsonValue>(&body).ok();
 
-    Ok((parts, body, json_body))
+    let path_params = parts.extract().await?;
+    Ok((parts, path_params, body, json_body))
 }
 
 async fn extract_ip_address(parts: &mut Parts) -> Result<Option<IpAddr>> {
@@ -95,6 +96,7 @@ pub trait SupportedAuthScheme: AuthScheme {
     ) -> impl Future<
         Output = Result<(
             Parts,
+            Path<Vec<String>>,
             Bytes,
             Option<CanonicalJsonValue>,
             Option<Self::SenderInfo>,
@@ -110,11 +112,12 @@ impl SupportedAuthScheme for ServerSignatures {
         extracted_auth: <Self as AuthScheme>::Output,
     ) -> Result<(
         Parts,
+        Path<Vec<String>>,
         Bytes,
         Option<CanonicalJsonValue>,
         Option<Self::SenderInfo>,
     )> {
-        let (parts, body, json_body) = into_checked_parts(req).await?;
+        let (parts, path_params, body, json_body) = into_checked_parts(req).await?;
 
         let keys_result = services()
             .rooms
@@ -163,7 +166,13 @@ impl SupportedAuthScheme for ServerSignatures {
             Ok(()) => {
                 let (parts, body) = req.into_parts();
 
-                Ok((parts, body, json_body, Some(extracted_auth.origin)))
+                Ok((
+                    parts,
+                    path_params,
+                    body,
+                    json_body,
+                    Some(extracted_auth.origin),
+                ))
             }
             Err(e) => {
                 warn!(
@@ -214,11 +223,12 @@ impl SupportedAuthScheme for AccessToken {
         extracted_auth: <Self as AuthScheme>::Output,
     ) -> Result<(
         Parts,
+        Path<Vec<String>>,
         Bytes,
         Option<CanonicalJsonValue>,
         Option<Self::SenderInfo>,
     )> {
-        let (mut parts, mut body, mut json_body) = into_checked_parts(req).await?;
+        let (mut parts, path_params, mut body, mut json_body) = into_checked_parts(req).await?;
 
         let ip_addr = extract_ip_address(&mut parts).await?;
 
@@ -278,6 +288,7 @@ impl SupportedAuthScheme for AccessToken {
 
             Ok((
                 parts,
+                path_params,
                 body,
                 json_body,
                 Some(Self::SenderInfo {
@@ -315,6 +326,7 @@ impl SupportedAuthScheme for AccessToken {
 
             Ok((
                 parts,
+                path_params,
                 body,
                 json_body,
                 Some(Self::SenderInfo {
@@ -337,26 +349,29 @@ impl SupportedAuthScheme for AccessTokenOptional {
         extracted_auth: <Self as AuthScheme>::Output,
     ) -> Result<(
         Parts,
+        Path<Vec<String>>,
         Bytes,
         Option<CanonicalJsonValue>,
         Option<Self::SenderInfo>,
     )> {
         if let Some(token) = extracted_auth {
-            AccessToken::process_auth(req, token)
-                .await
-                .map(|(req, path_params, json_body, out)| {
+            AccessToken::process_auth(req, token).await.map(
+                |(req, path_params, body, json_body, out)| {
                     (
                         req,
                         path_params,
+                        body,
                         json_body,
                         out.map(OptionalAuthSenderInfo::Some),
                     )
-                })
+                },
+            )
         } else {
-            let (mut parts, body, json_body) = into_checked_parts(req).await?;
+            let (mut parts, path_params, body, json_body) = into_checked_parts(req).await?;
             let ip_addr = extract_ip_address(&mut parts).await?;
             Ok((
                 parts,
+                path_params,
                 body,
                 json_body,
                 ip_addr.map(OptionalAuthSenderInfo::None),
@@ -373,11 +388,12 @@ impl SupportedAuthScheme for AppserviceToken {
         extracted_auth: <Self as AuthScheme>::Output,
     ) -> Result<(
         Parts,
+        Path<Vec<String>>,
         Bytes,
         Option<CanonicalJsonValue>,
         Option<Self::SenderInfo>,
     )> {
-        let (mut parts, body, json_body) = into_checked_parts(req).await?;
+        let (mut parts, path_params, body, json_body) = into_checked_parts(req).await?;
         let ip_addr = extract_ip_address(&mut parts).await?;
 
         if let Some(ip_addr) = ip_addr {
@@ -385,7 +401,7 @@ impl SupportedAuthScheme for AppserviceToken {
         }
 
         if let Some(info) = services().appservice.find_from_token(&extracted_auth).await {
-            Ok((parts, body, json_body, Some(info)))
+            Ok((parts, path_params, body, json_body, Some(info)))
         } else {
             Err(unknown_access_token(ip_addr).await)
         }
@@ -400,26 +416,29 @@ impl SupportedAuthScheme for AppserviceTokenOptional {
         extracted_auth: <Self as AuthScheme>::Output,
     ) -> Result<(
         Parts,
+        Path<Vec<String>>,
         Bytes,
         Option<CanonicalJsonValue>,
         Option<Self::SenderInfo>,
     )> {
         if let Some(token) = extracted_auth {
             AppserviceToken::process_auth(req, token).await.map(
-                |(req, path_params, json_body, out)| {
+                |(req, path_params, body, json_body, out)| {
                     (
                         req,
                         path_params,
+                        body,
                         json_body,
                         out.map(OptionalAuthSenderInfo::Some),
                     )
                 },
             )
         } else {
-            let (mut parts, body, json_body) = into_checked_parts(req).await?;
+            let (mut parts, path_params, body, json_body) = into_checked_parts(req).await?;
             let ip_addr = extract_ip_address(&mut parts).await?;
             Ok((
                 parts,
+                path_params,
                 body,
                 json_body,
                 ip_addr.map(OptionalAuthSenderInfo::None),
@@ -436,13 +455,14 @@ impl SupportedAuthScheme for NoAccessToken {
         _extracted_auth: <Self as AuthScheme>::Output,
     ) -> Result<(
         Parts,
+        Path<Vec<String>>,
         Bytes,
         Option<CanonicalJsonValue>,
         Option<Self::SenderInfo>,
     )> {
-        let (mut parts, body, json_body) = into_checked_parts(req).await?;
+        let (mut parts, path_params, body, json_body) = into_checked_parts(req).await?;
         let ip_addr = extract_ip_address(&mut parts).await?;
-        Ok((parts, body, json_body, ip_addr))
+        Ok((parts, path_params, body, json_body, ip_addr))
     }
 }
 
@@ -454,13 +474,14 @@ impl SupportedAuthScheme for NoAuthentication {
         _extracted_auth: <Self as AuthScheme>::Output,
     ) -> Result<(
         Parts,
+        Path<Vec<String>>,
         Bytes,
         Option<CanonicalJsonValue>,
         Option<Self::SenderInfo>,
     )> {
-        let (mut parts, body, json_body) = into_checked_parts(req).await?;
+        let (mut parts, path_params, body, json_body) = into_checked_parts(req).await?;
         let ip_addr = extract_ip_address(&mut parts).await?;
-        Ok((parts, body, json_body, ip_addr))
+        Ok((parts, path_params, body, json_body, ip_addr))
     }
 }
 
@@ -480,7 +501,7 @@ where
                 "Failed to authenticate request",
             ));
         };
-        let (mut parts, body, json_body, sender) =
+        let (parts, path_params, body, json_body, sender) =
             <T::Authentication as SupportedAuthScheme>::process_auth(req, authentication).await?;
         let Some(sender) = sender else {
             error!(
@@ -491,8 +512,6 @@ where
                 "No sender info was extracted from request",
             ));
         };
-
-        let path_params: Path<Vec<String>> = parts.extract().await?;
 
         let mut http_request = Request::builder().uri(parts.uri).method(parts.method);
         *http_request.headers_mut().unwrap() = parts.headers;
